@@ -36,11 +36,13 @@ public class ManufacturingService {
     private final CategoryRepository categoryRepository;
     private final UnitRepository unitRepository;
 
+    @Transactional(readOnly = true)
     public List<ManufacturingOrderDTO> getAll() {
         return orderRepository.findAllByOrderByCreatedAtDesc()
                 .stream().map(this::toDTO).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public ManufacturingOrderDTO getById(Integer id) {
         return toDTO(findOrder(id));
     }
@@ -243,9 +245,7 @@ public class ManufacturingService {
                 if (Boolean.FALSE.equals(product.getHasSerial())) {
                     available = product.getStockQty() != null ? product.getStockQty() : 0;
                 } else {
-                    available = (int) serialRepository.findAll().stream()
-                            .filter(s -> s.getProduct().getId().equals(item.getProductId()) && s.getStatus() == SerialStatus.Available)
-                            .count();
+                    available = serialRepository.countByProductIdAndStatus(item.getProductId(), SerialStatus.Available).intValue();
                 }
             }
 

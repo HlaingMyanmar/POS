@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { AuditLogDTO } from '../types';
 import { api } from '../services/api';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import {
   RefreshCw, Search, X, Shield, Monitor, Smartphone,
   LogIn, Plus, Pencil, Trash2, Zap, ChevronDown, ChevronRight,
@@ -193,6 +194,7 @@ const AuditLogManagement: React.FC = () => {
   }, [page, actor, action, module, dateFrom, dateTo]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
   useDataEvents(['Sale', 'Service Job', 'Booking', 'Product', 'Purchase', 'Expense', 'Income'], () => void fetchData());
 
   const clearFilters = () => { setActor(''); setAction(''); setModule(''); setDateFrom(''); setDateTo(''); setPage(0); };

@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { unitService } from '../services/unitapiservice';
 import { UnitDTO } from '../types';
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const UnitManagement: React.FC = () => {
   const [units, setUnits] = useState<UnitDTO[]>([]);
@@ -31,6 +32,7 @@ const UnitManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
   useWebsocket('/topic/brand', () => { setWsStatus('online'); fetchData(); setTimeout(() => setWsStatus('offline'), 5000); });
 
   const filteredUnits = useMemo(() => {

@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { staffService } from '../services/staffapiservice';
 import { StaffDTO } from '../types';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const StaffManagement: React.FC = () => {
   const [staffList, setStaffList] = useState<StaffDTO[]>([]);
@@ -41,6 +42,7 @@ const StaffManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
 
   // WebSocket topic matches backend: /topic/staff
   useWebsocket('/topic/staff', fetchData);

@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback } from 'react';
 import { supplierService } from '../services/supplierapiservice';
 import { SupplierDTO } from '../types';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const SupplierManagement: React.FC = () => {
   const [suppliers, setSuppliers] = useState<SupplierDTO[]>([]);
@@ -47,6 +48,7 @@ const SupplierManagement: React.FC = () => {
   useEffect(() => {
     fetchPaginatedData();
   }, [fetchPaginatedData]);
+  useRefreshOnTabActivate(fetchPaginatedData);
 
   useDataEvents(['Supplier', 'Purchase'], fetchPaginatedData);
 

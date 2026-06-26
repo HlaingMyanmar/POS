@@ -1,4 +1,4 @@
-
+﻿
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Eye, List, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ import { productService } from '../services/productapiservice';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO } from '../types';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 type DetailForm = SaleReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
 
@@ -183,6 +184,7 @@ const SaleReturnManagement: React.FC = () => {
   useEffect(() => {
     void loadMaster();
   }, [loadMaster]);
+  useRefreshOnTabActivate(loadMaster);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);

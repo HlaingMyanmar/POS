@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { getCachedCompanySettings, getCompanySettings, CompanySettings } from '../utils/companySettings';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import {
   Activity,
   BarChart2,
@@ -64,7 +64,6 @@ const hasMenuAccess = (user: User, permission?: string): boolean => {
 };
 
 interface LayoutProps {
-  children: React.ReactNode;
   user: User;
   onLogout: () => void;
   language: AppLanguage;
@@ -74,7 +73,6 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({
-  children,
   user,
   onLogout,
   language,
@@ -82,13 +80,21 @@ const Layout: React.FC<LayoutProps> = ({
   theme,
   onThemeChange
 }) => {
+  const outlet = useOutlet();
+  // Cache each path's element on first visit — keeps components mounted (state preserved)
+  const cachedOutlets = useRef<Map<string, React.ReactNode>>(new Map());
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const tabBarRef = useRef<HTMLDivElement>(null);
   const [selectedGroup, setSelectedGroup] = useState<string>('အထွေထွေ');
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openTabs, setOpenTabs] = useState<{ path: string; name: string }[]>([
+    { path: AppRoute.DASHBOARD, name: 'ခွဲခြမ်းစိတ်ဖြာ' }
+  ]);
   const [company, setCompany] = useState<CompanySettings>(() => getCachedCompanySettings());
 
   useKeyboardShortcuts(() => setShowShortcuts(true));
@@ -201,6 +207,42 @@ const Layout: React.FC<LayoutProps> = ({
   useEffect(() => {
     setSelectedGroup(activeGroupName);
   }, [activeGroupName]);
+
+  // Cache outlet on first visit — write to ref during render (safe for refs)
+  if (outlet && !cachedOutlets.current.has(location.pathname)) {
+    cachedOutlets.current.set(location.pathname, outlet);
+  }
+
+  // Auto-add tab when navigating to a known page
+  useEffect(() => {
+    const item = menuItems.find(i => i.path === location.pathname);
+    if (!item) return;
+    setOpenTabs(prev => {
+      if (prev.some(t => t.path === item.path)) return prev;
+      return [...prev, { path: item.path, name: item.name }];
+    });
+    // Scroll active tab into view
+    setTimeout(() => {
+      const el = tabBarRef.current?.querySelector(`[data-tab="${item.path}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }, 50);
+  }, [location.pathname, menuItems]);
+
+  const closeTab = useCallback((path: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Remove from keep-alive cache so it starts fresh when reopened
+    cachedOutlets.current.delete(path);
+    setOpenTabs(prev => {
+      const idx = prev.findIndex(t => t.path === path);
+      const next = prev.filter(t => t.path !== path);
+      if (path === location.pathname && next.length > 0) {
+        const target = next[idx] ?? next[next.length - 1];
+        navigate(target.path);
+      }
+      return next.length > 0 ? next : [{ path: AppRoute.DASHBOARD, name: 'ခွဲခြမ်းစိတ်ဖြာ' }];
+    });
+  }, [location.pathname, navigate]);
 
   const currentPathName = menuItems.find((item) => item.path === location.pathname)?.name || 'စီမံခန့်ခွဲမှုစနစ်';
   const primaryRole = useMemo(
@@ -315,7 +357,7 @@ const Layout: React.FC<LayoutProps> = ({
                   <ChevronRight size={16} className={`transition-transform ${selectedGroup === group.name && openGroup === group.name ? 'rotate-90' : ''}`} />
                 )}
               </button>
-              
+
               {!isSidebarCollapsed && openGroup === group.name && (
                 <div className="pl-2 mt-1 space-y-1 border-l-2 border-indigo-200 ml-4">
                   {group.items.map((item) => {
@@ -407,7 +449,7 @@ const Layout: React.FC<LayoutProps> = ({
                     </span>
                     <ChevronRight size={16} className={`transition-transform ${selectedGroup === group.name && openGroup === group.name ? 'rotate-90' : ''}`} />
                   </button>
-                  
+
                   {openGroup === group.name && (
                     <div className="pl-2 mt-1 space-y-1 border-l-2 border-indigo-200 ml-4">
                       {group.items.map((item) => {
@@ -541,9 +583,56 @@ const Layout: React.FC<LayoutProps> = ({
               </div>
             </header>
 
-            <main className={`min-w-0 px-3 py-3 sm:p-4 pb-32 sm:pb-36 lg:pb-8 ${isDark ? 'bg-slate-950/60' : 'bg-slate-50/50'}`}>
-              {children}
-            </main>
+            {/* Page Tab Bar */}
+            {openTabs.length > 1 && (
+              <div
+                ref={tabBarRef}
+                className={`flex overflow-x-auto shrink-0 border-b ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
+                style={{ scrollbarWidth: 'none' }}
+              >
+                {openTabs.map(tab => {
+                  const isActive = tab.path === location.pathname;
+                  const icon = menuItems.find(i => i.path === tab.path)?.icon;
+                  return (
+                    <Link
+                      key={tab.path}
+                      to={tab.path}
+                      data-tab={tab.path}
+                      className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap border-r shrink-0 transition-all select-none ${
+                        isActive
+                          ? isDark
+                            ? 'bg-slate-950 text-indigo-400 border-b-2 border-b-indigo-400 border-r-slate-700'
+                            : 'bg-slate-50 text-indigo-600 border-b-2 border-b-indigo-500 border-r-slate-200'
+                          : isDark
+                          ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border-r-slate-700'
+                          : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-r-slate-200'
+                      }`}
+                    >
+                      {icon && <span className="w-3.5 h-3.5 flex items-center justify-center opacity-70">{icon}</span>}
+                      <span className="max-w-[120px] truncate">{tab.name}</span>
+                      <button
+                        onClick={e => closeTab(tab.path, e)}
+                        className={`ml-0.5 w-4 h-4 flex items-center justify-center rounded hover:bg-rose-100 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-60' : ''}`}
+                        title="ပိတ်မည်"
+                      >
+                        <X size={10} />
+                      </button>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Keep-alive pages: all cached outlets stay mounted; only active one is visible */}
+            {Array.from(cachedOutlets.current.entries()).map(([path, el]) => (
+              <main
+                key={path}
+                style={{ display: path === location.pathname ? undefined : 'none' }}
+                className={`min-w-0 px-3 py-3 sm:p-4 pb-32 sm:pb-36 lg:pb-8 ${isDark ? 'bg-slate-950/60' : 'bg-slate-50/50'}`}
+              >
+                {el}
+              </main>
+            ))}
           </div>
         </div>
       </div>

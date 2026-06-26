@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { categoryService } from '../services/categoryapiservice';
 import { CategoryDTO } from '../types';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 interface CategoryOption {
   id: number;
@@ -52,6 +53,7 @@ const CategoryManagement: React.FC = () => {
   }, [flatten]);
 
   useEffect(() => { fetchTreeData(); }, [fetchTreeData]);
+  useRefreshOnTabActivate(fetchTreeData);
   useWebsocket('/topic/category', () => { setWsStatus('online'); fetchTreeData(); setTimeout(() => setWsStatus('offline'), 5000); });
 
   // Helper for hierarchical select options

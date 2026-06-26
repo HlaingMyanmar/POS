@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { serviceTypeService, serviceItemService, subServiceTypeService, exportService } from '../services/api';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const emptyType = { name: '', description: '', isActive: true };
 const emptyItem = { item: '', price: '', serviceTypeId: '', subServiceTypeId: '', isActive: true };
@@ -39,6 +40,7 @@ const ServiceManagement: React.FC = () => {
   };
 
   useEffect(() => { loadAll(); }, []);
+  useRefreshOnTabActivate(loadAll);
   useDataEvents(['Service'], loadAll);
 
   // ── Service Types ──────────────────────────────────────

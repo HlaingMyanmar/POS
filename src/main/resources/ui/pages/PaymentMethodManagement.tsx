@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { coaService } from '../services/coaapiservice';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 interface COAOption {
   id: number;
@@ -59,6 +60,7 @@ const PaymentMethodManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
 
   useWebsocket('/topic/payment-method', fetchData);
 

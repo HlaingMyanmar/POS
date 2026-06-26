@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Swal from 'sweetalert2';
 import {
   AlertTriangle,
@@ -25,6 +25,7 @@ import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { saleApiService } from '../services/saleapiservice';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { CreditAlertDTO, CustomerCreditTermDTO, CustomerCreditTermHistoryDTO, CustomerDTO, CustomerPaymentDTO, PaymentMethodDTO, SaleDTO } from '../types';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 type ModalTab = 'basic' | 'credit' | 'payments' | 'history';
 type StatusFilter = 'all' | 'normal' | 'hold' | 'blacklist' | 'hasDue' | 'overdue';
@@ -156,6 +157,7 @@ const CustomerManagement: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+  useRefreshOnTabActivate(loadData);
 
   useDataEvents(['Customer', 'Sale', 'Customer Payment'], loadData);
 

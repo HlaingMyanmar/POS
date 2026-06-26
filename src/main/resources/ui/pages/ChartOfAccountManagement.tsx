@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { coaService } from '../services/coaapiservice';
 import { ChartOfAccountDTO, AccountType } from '../types';
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 interface COAOption {
   id: number;
@@ -60,6 +61,7 @@ const ChartOfAccountManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
 
   useWebsocket('/topic/coa', fetchData);
 

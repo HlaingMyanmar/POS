@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+﻿import React, { useCallback, useMemo, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import {
   ArrowDownUp,
@@ -17,6 +17,7 @@ import { expenseApiService } from '../services/expenseapiservice';
 import { incomeApiService } from '../services/incomeapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { staffService } from '../services/staffapiservice';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import {
   AccountType,
   ChartOfAccountDTO,
@@ -171,6 +172,7 @@ const ExpenseIncomeManagement: React.FC = () => {
   React.useEffect(() => {
     void loadAll();
   }, [loadAll]);
+  useRefreshOnTabActivate(loadAll);
   useDataEvents(['Expense', 'Income'], loadAll);
 
   const expenseAccounts = useMemo(

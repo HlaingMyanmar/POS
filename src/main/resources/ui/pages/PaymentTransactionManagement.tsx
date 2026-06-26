@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { accountingApiService } from '../services/accountingapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { PaymentTransactionDTO, PaymentMethodDTO } from '../types';
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Minus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const money = (v: number | undefined) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
@@ -84,6 +85,7 @@ const PaymentTransactionManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
   useDataEvents(['Sale', 'Service Job', 'Purchase', 'Payment'], fetchData);
 
   const filtered = useMemo(() => {

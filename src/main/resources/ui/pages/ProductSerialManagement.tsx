@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { productSerialService } from '../services/productserialapiservice';
 import { productService } from '../services/productapiservice';
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const ProductSerialManagement: React.FC = () => {
   const [serials, setSerials] = useState<ProductSerialDTO[]>([]);
@@ -56,6 +57,7 @@ const ProductSerialManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
 
   useWebsocket('/topic/productSerial', fetchData);
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -35,6 +35,7 @@ import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { getFromSession } from '../utils/storageHelper';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import {
   AppRoute,
   CustomerCreditTermDTO,
@@ -268,6 +269,7 @@ const SaleManagement: React.FC = () => {
   useEffect(() => {
     loadMaster();
   }, [loadMaster]);
+  useRefreshOnTabActivate(loadMaster);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);

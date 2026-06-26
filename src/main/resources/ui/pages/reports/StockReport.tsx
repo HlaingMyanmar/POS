@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+﻿import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useDataEvents } from '../../hooks/useDataEvents';
 import { productService } from '../../services/productapiservice';
 import { ProductDTO } from '../../types';
 import { Package, AlertTriangle, BarChart2 } from 'lucide-react';
+import { useRefreshOnTabActivate } from '../../hooks/useRefreshOnTabActivate';
 
 const fmt = (v: any) => Number(v ?? 0).toLocaleString();
 
@@ -16,6 +17,7 @@ export default function StockReport() {
   }, []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
+  useRefreshOnTabActivate(loadProducts);
   useDataEvents(['Product', 'Stock', 'Sale'], loadProducts);
 
   const stats = useMemo(() => {

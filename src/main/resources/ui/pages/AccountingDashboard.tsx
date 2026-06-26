@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { accountingApiService } from '../services/accountingapiservice';
@@ -15,6 +15,7 @@ import {
   ArrowLeftRight, Save, ChevronRight, ExternalLink, Landmark, PieChart
 } from 'lucide-react';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const money = (v: number | undefined) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
@@ -93,6 +94,7 @@ const AccountingDashboard: React.FC = () => {
   };
 
   useEffect(() => { fetchData(); fetchPL(); }, []);
+  useRefreshOnTabActivate(fetchData);
   useDataEvents(['Sale', 'Purchase', 'Expense', 'Income', 'Payment', 'Journal'], () => {
     fetchData(); fetchPL();
   });

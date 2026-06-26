@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { bookingService, api } from '../services/api';
 import { shelfLocationService } from '../services/shelfLocationApiService';
@@ -6,6 +6,7 @@ import { staffService } from '../services/staffapiservice';
 import { ApiResponse } from '../types';
 import Swal from 'sweetalert2';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'Other'];
 
@@ -235,6 +236,7 @@ export default function BookingManagement() {
   };
 
   useEffect(() => { load(); }, [page, search, dateFrom, dateTo]);
+  useRefreshOnTabActivate(load);
   useDataEvents(['Booking'], load);
 
   useEffect(() => {

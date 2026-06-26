@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Plus, Loader2, Package, Trash2, CheckCircle2, X,
@@ -19,6 +19,7 @@ import { unitService } from '../services/unitapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { manufacturingService } from '../services/manufacturingapiservice';
 import { manufacturingFormulaService } from '../services/manufacturingformulaapiservice';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 /* ─── helpers ─── */
 const statusBadge = (status?: string) => {
@@ -342,6 +343,7 @@ const ManufacturingManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+  useRefreshOnTabActivate(fetchAll);
 
   /* ── form helpers ── */
   const resetForm = () => {

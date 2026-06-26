@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { ArrowLeft, Eye, List, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { supplierService } from '../services/supplierapiservice';
 import { AppRoute, PaymentMethodDTO, PaymentTransactionDTO, PurchaseDTO, PurchaseReturnDTO, PurchaseReturnDetailDTO, SupplierDTO } from '../types';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 type DetailForm = PurchaseReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
 
@@ -168,6 +169,7 @@ const PurchaseReturnManagement: React.FC = () => {
   useEffect(() => {
     loadMaster();
   }, [loadMaster]);
+  useRefreshOnTabActivate(loadMaster);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);

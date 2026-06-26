@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { brandService } from '../services/brandapiservice';
 import { BrandDTO } from '../types';
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const BrandManagement: React.FC = () => {
   const [brands, setBrands] = useState<BrandDTO[]>([]);
@@ -30,6 +31,7 @@ const BrandManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
   useWebsocket('/topic/brand', () => { setWsStatus('online'); fetchData(); setTimeout(() => setWsStatus('offline'), 5000); });
 
   const filteredBrands = useMemo(() => {

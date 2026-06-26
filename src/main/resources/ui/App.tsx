@@ -93,7 +93,7 @@ const App: React.FC = () => {
     const initializeAuth = async () => {
       const savedUser = getFromSession('sspd_user');
       const refreshToken = getFromSession('sspd_refresh');
-      
+
       if (savedUser && refreshToken) {
         try {
           const res = await authService.refresh();
@@ -130,7 +130,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const dispose = initDomLanguageTranslator(language);
     return () => dispose();
-    // Keep translator mounted once for live DOM updates across all routes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,22 +144,11 @@ const App: React.FC = () => {
     setUser(null);
   };
 
-  const renderProtected = (page: React.ReactNode, requiredPermission?: string) => {
-    if (!user) return <Navigate to={AppRoute.LOGIN} />;
-    if (!canAccess(user, requiredPermission)) return <Navigate to={AppRoute.DASHBOARD} replace />;
-
-    return (
-      <Layout
-        user={user}
-        onLogout={handleLogout}
-        language={language}
-        onLanguageChange={setLanguage}
-        theme={theme}
-        onThemeChange={setTheme}
-      >
-        {page}
-      </Layout>
-    );
+  // Permission guard for child routes (no Layout — Layout is the parent)
+  const guard = (element: React.ReactNode, perm?: string) => {
+    if (!user) return <Navigate to={AppRoute.LOGIN} replace />;
+    if (perm && !canAccess(user, perm)) return <Navigate to={AppRoute.DASHBOARD} replace />;
+    return <>{element}</>;
   };
 
   if (loading) {
@@ -180,6 +168,11 @@ const App: React.FC = () => {
     );
   }
 
+  // The Layout element for the parent route — rendered ONCE; child routes fill <Outlet>
+  const layoutElement = user
+    ? <Layout user={user} onLogout={handleLogout} language={language} onLanguageChange={setLanguage} theme={theme} onThemeChange={setTheme} />
+    : <Navigate to={AppRoute.LOGIN} replace />;
+
   return (
     <HashRouter>
       <Routes>
@@ -188,186 +181,61 @@ const App: React.FC = () => {
           path={AppRoute.LOGIN}
           element={!user ? <Login onLoginSuccess={handleLoginSuccess} language={language} onLanguageChange={setLanguage} /> : <Navigate to={AppRoute.DASHBOARD} />}
         />
-        <Route 
-          path={AppRoute.DASHBOARD} 
-          element={renderProtected(<Dashboard />)} 
-        />
-        <Route
-          path={AppRoute.USERS}
-          element={renderProtected(<UserManagement />, 'CAN_ACCESS_USERS_READ')}
-        />
-        <Route
-          path={AppRoute.ROLES}
-          element={renderProtected(<RoleManagement />, 'CAN_ACCESS_ROLES_READ')}
-        />
-        <Route
-          path={AppRoute.PERMISSIONS}
-          element={renderProtected(<PermissionManagement />, 'CAN_ACCESS_PERMISSIONS_READ')}
-        />
-        <Route
-          path={AppRoute.PRODUCTS}
-          element={renderProtected(<ProductManagement />, 'CAN_ACCESS_PRODUCT_READ')}
-        />
-        <Route
-          path={AppRoute.PRODUCT_LABELS}
-          element={<Navigate to={AppRoute.LABEL_DESIGNER} replace />}
-        />
-        <Route
-          path={AppRoute.LABEL_DESIGNER}
-          element={renderProtected(<LabelDesigner />, 'CAN_ACCESS_PRODUCT_READ')}
-        />
-        <Route
-          path={AppRoute.STOCK_ADJUSTMENTS}
-          element={renderProtected(<StockAdjustmentManagement />, 'CAN_ACCESS_STOCK_ADJUSTMENT_READ')}
-        />
-        <Route
-          path={AppRoute.PRODUCT_SERIALS}
-          element={renderProtected(<ProductSerialManagement />, 'CAN_ACCESS_PRODUCT_SERIAL_READ')}
-        />
-        <Route
-          path={AppRoute.BRANDS}
-          element={renderProtected(<BrandManagement />, 'CAN_ACCESS_BRAND_READ')}
-        />
-        <Route
-          path={AppRoute.CATEGORIES}
-          element={renderProtected(<CategoryManagement />, 'CAN_ACCESS_CATEGORY_READ')}
-        />
-        <Route
-          path={AppRoute.UNITS}
-          element={renderProtected(<UnitManagement />, 'CAN_ACCESS_UNIT_READ')}
-        />
-        <Route
-          path={AppRoute.SUPPLIERS}
-          element={renderProtected(<SupplierManagement />, 'CAN_ACCESS_SUPPLIER_READ')}
-        />
-        <Route
-          path={AppRoute.CUSTOMERS}
-          element={renderProtected(<CustomerManagement />, 'CAN_ACCESS_CUSTOMER_READ')}
-        />
-        <Route
-          path={AppRoute.STAFF}
-          element={renderProtected(<StaffManagement />, 'CAN_ACCESS_STAFF_READ')}
-        />
-        <Route
-          path={AppRoute.COA}
-          element={renderProtected(<ChartOfAccountManagement />, 'CAN_ACCESS_COA_READ')}
-        />
-        <Route
-          path={AppRoute.PAYMENT_METHODS}
-          element={renderProtected(<PaymentMethodManagement />, 'CAN_ACCESS_PAYMENT_METHOD_READ')}
-        />
-        <Route
-          path={AppRoute.ACCOUNTING_DASHBOARD}
-          element={renderProtected(<AccountingDashboard />, 'CAN_ACCESS_COA_READ')}
-        />
-        <Route
-          path={AppRoute.JOURNAL_ENTRIES}
-          element={renderProtected(<JournalEntryManagement />, 'CAN_ACCESS_JOURNAL_READ')}
-        />
-        <Route
-          path={AppRoute.EXPENSE_INCOME}
-          element={renderProtected(<ExpenseIncomeManagement />, 'CAN_ACCESS_EXPENSE_READ')}
-        />
-        <Route
-          path={AppRoute.OPENING_BALANCE}
-          element={renderProtected(<OpeningBalancePage />, 'CAN_ACCESS_COA_READ')}
-        />
-        <Route
-          path={AppRoute.PAYMENT_TRANSACTIONS}
-          element={renderProtected(<PaymentTransactionManagement />, 'CAN_ACCESS_COA_READ')}
-        />
-        <Route
-          path={AppRoute.OPENING_STOCK}
-          element={renderProtected(<OpeningStockPage />, 'CAN_ACCESS_PRODUCT_READ')}
-        />
-        <Route
-          path={AppRoute.MANUFACTURING}
-          element={renderProtected(<ManufacturingManagement />, 'CAN_ACCESS_PRODUCT_READ')}
-        />
-        <Route
-          path={AppRoute.PURCHASES}
-          element={renderProtected(<PurchaseManagement />, 'CAN_ACCESS_PURCHASE_READ')}
-        />
-        <Route
-          path={AppRoute.PURCHASE_RETURNS}
-          element={renderProtected(<PurchaseReturnManagement />, 'CAN_ACCESS_PURCHASE_RETURN_READ')}
-        />
-        <Route
-          path={AppRoute.SALES}
-          element={renderProtected(<SaleManagement />, 'CAN_ACCESS_SALE_READ')}
-        />
-        <Route
-          path={AppRoute.SALE_RETURNS}
-          element={renderProtected(<SaleReturnManagement />, 'CAN_ACCESS_SALE_RETURN_READ')}
-        />
-        <Route
-          path={AppRoute.CREDIT}
-          element={<Navigate to={AppRoute.CUSTOMERS} replace />}
-        />
-        <Route
-          path={AppRoute.PROFIT_LOSS}
-          element={renderProtected(<ProfitLossReport />, 'CAN_ACCESS_REPORT_READ')}
-        />
-        <Route
-          path={AppRoute.TRIAL_BALANCE}
-          element={renderProtected(<TrialBalanceReport />, 'CAN_ACCESS_REPORT_READ')}
-        />
-        <Route
-          path={AppRoute.BALANCE_SHEET}
-          element={renderProtected(<BalanceSheetReport />, 'CAN_ACCESS_REPORT_READ')}
-        />
-        <Route
-          path={AppRoute.AR_AGING}
-          element={renderProtected(<AgingReportPage type="ar" />, 'CAN_ACCESS_REPORT_READ')}
-        />
-        <Route
-          path={AppRoute.AP_AGING}
-          element={renderProtected(<AgingReportPage type="ap" />, 'CAN_ACCESS_REPORT_READ')}
-        />
-        <Route
-          path={AppRoute.BOOKINGS}
-          element={renderProtected(<BookingManagement />, 'CAN_ACCESS_BOOKING_READ')}
-        />
-        <Route
-          path={AppRoute.SERVICES}
-          element={renderProtected(<ServiceManagement />, 'CAN_ACCESS_SERVICE_READ')}
-        />
-        <Route
-          path={AppRoute.SERVICE_JOBS}
-          element={renderProtected(<ServiceJobManagement />, 'CAN_ACCESS_SERVICE_JOB_READ')}
-        />
-        <Route
-          path={AppRoute.SHELF_LOCATIONS}
-          element={renderProtected(<ShelfLocationManagement />, 'CAN_ACCESS_SHELF_LOCATION_READ')}
-        />
-        <Route
-          path={AppRoute.BACKUP}
-          element={renderProtected(<BackupSettings />, 'CAN_ACCESS_BACKUP_SETTINGS_READ')}
-        />
-        <Route
-          path={AppRoute.COMPANY_SETTINGS}
-          element={renderProtected(<CompanySettingsPage />)}
-        />
-        <Route
-          path={AppRoute.VOUCHER_SETTINGS}
-          element={renderProtected(<VoucherSettingsPage />)}
-        />
-        <Route
-          path={AppRoute.APP_VERSION_SETTINGS}
-          element={renderProtected(<AppVersionSettingsPage />, 'CAN_ACCESS_USERS_READ')}
-        />
-        <Route
-          path={AppRoute.AUDIT_LOGS}
-          element={renderProtected(<AuditLogManagement />, 'CAN_ACCESS_AUDIT_LOG_READ')}
-        />
-        <Route path={AppRoute.INCOME_REPORT}    element={renderProtected(<DailyReport />,            'CAN_ACCESS_REPORT_READ')}   />
-        <Route path={AppRoute.SALES_RANKING}    element={renderProtected(<SalesRankingPage />,       'CAN_ACCESS_SALE_READ')}     />
-        <Route path={AppRoute.SALES_SUMMARY}    element={renderProtected(<SalesSummaryReport />,    'CAN_ACCESS_SALE_READ')}     />
-        <Route path={AppRoute.PURCHASE_SUMMARY} element={renderProtected(<PurchaseSummaryReport />, 'CAN_ACCESS_PURCHASE_READ')} />
-        <Route path={AppRoute.SERVICE_SUMMARY}    element={renderProtected(<ServiceSummaryReport />,    'CAN_ACCESS_SERVICE_JOB_READ')} />
-        <Route path={AppRoute.STAFF_PERFORMANCE}  element={renderProtected(<StaffPerformanceReport />, 'CAN_ACCESS_STAFF_READ')} />
-        <Route path={AppRoute.STOCK_REPORT}     element={renderProtected(<StockReport />,           'CAN_ACCESS_PRODUCT_READ')}  />
-        <Route path="*" element={<Navigate to={AppRoute.DASHBOARD} />} />
+
+        {/* ONE Layout wraps all protected pages — keeps components mounted across tab switches */}
+        <Route element={layoutElement}>
+          <Route path={AppRoute.DASHBOARD}           element={guard(<Dashboard />)} />
+          <Route path={AppRoute.USERS}               element={guard(<UserManagement />,              'CAN_ACCESS_USERS_READ')} />
+          <Route path={AppRoute.ROLES}               element={guard(<RoleManagement />,              'CAN_ACCESS_ROLES_READ')} />
+          <Route path={AppRoute.PERMISSIONS}         element={guard(<PermissionManagement />,        'CAN_ACCESS_PERMISSIONS_READ')} />
+          <Route path={AppRoute.PRODUCTS}            element={guard(<ProductManagement />,           'CAN_ACCESS_PRODUCT_READ')} />
+          <Route path={AppRoute.PRODUCT_LABELS}      element={<Navigate to={AppRoute.LABEL_DESIGNER} replace />} />
+          <Route path={AppRoute.LABEL_DESIGNER}      element={guard(<LabelDesigner />,              'CAN_ACCESS_PRODUCT_READ')} />
+          <Route path={AppRoute.STOCK_ADJUSTMENTS}   element={guard(<StockAdjustmentManagement />,  'CAN_ACCESS_STOCK_ADJUSTMENT_READ')} />
+          <Route path={AppRoute.PRODUCT_SERIALS}     element={guard(<ProductSerialManagement />,    'CAN_ACCESS_PRODUCT_SERIAL_READ')} />
+          <Route path={AppRoute.BRANDS}              element={guard(<BrandManagement />,            'CAN_ACCESS_BRAND_READ')} />
+          <Route path={AppRoute.CATEGORIES}          element={guard(<CategoryManagement />,         'CAN_ACCESS_CATEGORY_READ')} />
+          <Route path={AppRoute.UNITS}               element={guard(<UnitManagement />,             'CAN_ACCESS_UNIT_READ')} />
+          <Route path={AppRoute.SUPPLIERS}           element={guard(<SupplierManagement />,         'CAN_ACCESS_SUPPLIER_READ')} />
+          <Route path={AppRoute.CUSTOMERS}           element={guard(<CustomerManagement />,         'CAN_ACCESS_CUSTOMER_READ')} />
+          <Route path={AppRoute.STAFF}               element={guard(<StaffManagement />,            'CAN_ACCESS_STAFF_READ')} />
+          <Route path={AppRoute.COA}                 element={guard(<ChartOfAccountManagement />,   'CAN_ACCESS_COA_READ')} />
+          <Route path={AppRoute.PAYMENT_METHODS}     element={guard(<PaymentMethodManagement />,    'CAN_ACCESS_PAYMENT_METHOD_READ')} />
+          <Route path={AppRoute.ACCOUNTING_DASHBOARD} element={guard(<AccountingDashboard />,       'CAN_ACCESS_COA_READ')} />
+          <Route path={AppRoute.JOURNAL_ENTRIES}     element={guard(<JournalEntryManagement />,     'CAN_ACCESS_JOURNAL_READ')} />
+          <Route path={AppRoute.EXPENSE_INCOME}      element={guard(<ExpenseIncomeManagement />,    'CAN_ACCESS_EXPENSE_READ')} />
+          <Route path={AppRoute.OPENING_BALANCE}     element={guard(<OpeningBalancePage />,         'CAN_ACCESS_COA_READ')} />
+          <Route path={AppRoute.PAYMENT_TRANSACTIONS} element={guard(<PaymentTransactionManagement />, 'CAN_ACCESS_COA_READ')} />
+          <Route path={AppRoute.OPENING_STOCK}       element={guard(<OpeningStockPage />,           'CAN_ACCESS_PRODUCT_READ')} />
+          <Route path={AppRoute.MANUFACTURING}       element={guard(<ManufacturingManagement />,    'CAN_ACCESS_PRODUCT_READ')} />
+          <Route path={AppRoute.PURCHASES}           element={guard(<PurchaseManagement />,         'CAN_ACCESS_PURCHASE_READ')} />
+          <Route path={AppRoute.PURCHASE_RETURNS}    element={guard(<PurchaseReturnManagement />,   'CAN_ACCESS_PURCHASE_RETURN_READ')} />
+          <Route path={AppRoute.SALES}               element={guard(<SaleManagement />,             'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.SALE_RETURNS}        element={guard(<SaleReturnManagement />,       'CAN_ACCESS_SALE_RETURN_READ')} />
+          <Route path={AppRoute.CREDIT}              element={<Navigate to={AppRoute.CUSTOMERS} replace />} />
+          <Route path={AppRoute.PROFIT_LOSS}         element={guard(<ProfitLossReport />,           'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.TRIAL_BALANCE}       element={guard(<TrialBalanceReport />,         'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.BALANCE_SHEET}       element={guard(<BalanceSheetReport />,         'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.AR_AGING}            element={guard(<AgingReportPage type="ar" />,  'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.AP_AGING}            element={guard(<AgingReportPage type="ap" />,  'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.BOOKINGS}            element={guard(<BookingManagement />,          'CAN_ACCESS_BOOKING_READ')} />
+          <Route path={AppRoute.SERVICES}            element={guard(<ServiceManagement />,          'CAN_ACCESS_SERVICE_READ')} />
+          <Route path={AppRoute.SERVICE_JOBS}        element={guard(<ServiceJobManagement />,       'CAN_ACCESS_SERVICE_JOB_READ')} />
+          <Route path={AppRoute.SHELF_LOCATIONS}     element={guard(<ShelfLocationManagement />,    'CAN_ACCESS_SHELF_LOCATION_READ')} />
+          <Route path={AppRoute.BACKUP}              element={guard(<BackupSettings />,             'CAN_ACCESS_BACKUP_SETTINGS_READ')} />
+          <Route path={AppRoute.COMPANY_SETTINGS}    element={guard(<CompanySettingsPage />)} />
+          <Route path={AppRoute.VOUCHER_SETTINGS}    element={guard(<VoucherSettingsPage />)} />
+          <Route path={AppRoute.APP_VERSION_SETTINGS} element={guard(<AppVersionSettingsPage />,   'CAN_ACCESS_USERS_READ')} />
+          <Route path={AppRoute.AUDIT_LOGS}          element={guard(<AuditLogManagement />,         'CAN_ACCESS_AUDIT_LOG_READ')} />
+          <Route path={AppRoute.INCOME_REPORT}       element={guard(<DailyReport />,                'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.SALES_RANKING}       element={guard(<SalesRankingPage />,           'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.SALES_SUMMARY}       element={guard(<SalesSummaryReport />,         'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.PURCHASE_SUMMARY}    element={guard(<PurchaseSummaryReport />,      'CAN_ACCESS_PURCHASE_READ')} />
+          <Route path={AppRoute.SERVICE_SUMMARY}     element={guard(<ServiceSummaryReport />,       'CAN_ACCESS_SERVICE_JOB_READ')} />
+          <Route path={AppRoute.STAFF_PERFORMANCE}   element={guard(<StaffPerformanceReport />,     'CAN_ACCESS_STAFF_READ')} />
+          <Route path={AppRoute.STOCK_REPORT}        element={guard(<StockReport />,                'CAN_ACCESS_PRODUCT_READ')} />
+          <Route path="*" element={<Navigate to={AppRoute.DASHBOARD} />} />
+        </Route>
       </Routes>
     </HashRouter>
   );

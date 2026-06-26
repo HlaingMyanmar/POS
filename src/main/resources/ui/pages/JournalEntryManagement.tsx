@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import { accountingApiService } from '../services/accountingapiservice';
 import { journalApiService } from '../services/journalapiservice';
 import { staffService } from '../services/staffapiservice';
 import { AccountBalanceDTO, JournalEntryDTO, StaffDTO } from '../types';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 type DateShortcut = 'TODAY' | 'WEEK' | 'MONTH' | 'ALL';
 type BalanceFilter = 'ALL' | 'BALANCED' | 'CHECK';
@@ -112,6 +113,7 @@ const JournalEntryManagement: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, []);
+  useRefreshOnTabActivate(loadData);
   useDataEvents(['Sale', 'Purchase', 'Expense', 'Income', 'Journal', 'StockAdj', 'Return'], loadData);
 
   const getStaffName = (id?: number) => staffs.find((staff) => staff.id === id)?.name || '-';

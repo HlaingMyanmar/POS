@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -19,6 +19,7 @@ import { productSerialService } from '../services/productserialapiservice';
 import { staffService } from '../services/staffapiservice';
 import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
 import { AdjustmentType, ProductDTO, ProductSerialDTO, StaffDTO, StockAdjustmentDTO } from '../types';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 type TypeFilter = 'ALL' | AdjustmentType;
 
@@ -166,6 +167,7 @@ const StockAdjustmentManagement: React.FC = () => {
   useEffect(() => {
     void loadMaster();
   }, [loadMaster]);
+  useRefreshOnTabActivate(loadMaster);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);

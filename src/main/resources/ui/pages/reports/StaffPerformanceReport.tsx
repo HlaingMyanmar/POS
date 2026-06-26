@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import { useDataEvents } from '../../hooks/useDataEvents';
 import { summaryReportService } from '../../services/api';
 import { Users, TrendingUp, Wrench, XCircle, RefreshCw, AlertCircle } from 'lucide-react';
+import { useRefreshOnTabActivate } from '../../hooks/useRefreshOnTabActivate';
 
 const fmt = (v: any) => Number(v ?? 0).toLocaleString();
 const pct = (v: any) => `${Number(v ?? 0).toFixed(1)}%`;
@@ -54,6 +55,7 @@ export default function StaffPerformanceReport() {
   }, [from, to]);
 
   useEffect(() => { load(); }, []);
+  useRefreshOnTabActivate(load);
   useDataEvents(['Sale', 'Service Job'], load);
 
   function toggleSort(key: keyof StaffPerformanceDTO) {

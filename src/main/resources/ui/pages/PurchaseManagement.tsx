@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { purchaseApiService, PurchasePage } from '../services/purchaseapiservice';
 import { purchaseReturnApiService } from '../services/purchasereturnapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
@@ -129,25 +130,25 @@ const PurchaseManagement: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [supRes, staffRes, prodRes, payRes] = await Promise.all([
-          supplierService.getAll(),
-          staffService.getAll(),
-          productService.getAll(),
-          paymentMethodService.getAllActive()
-        ]);
-        setSuppliers(supRes);
-        setStaffs(staffRes);
-        setProducts(prodRes);
-        setPaymentMethods(payRes);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      }
-    };
-    fetchData();
+  const fetchMasterData = useCallback(async () => {
+    try {
+      const [supRes, staffRes, prodRes, payRes] = await Promise.all([
+        supplierService.getAll(),
+        staffService.getAll(),
+        productService.getAll(),
+        paymentMethodService.getAllActive()
+      ]);
+      setSuppliers(supRes);
+      setStaffs(staffRes);
+      setProducts(prodRes);
+      setPaymentMethods(payRes);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
   }, []);
+
+  useEffect(() => { fetchMasterData(); }, [fetchMasterData]);
+  useRefreshOnTabActivate(fetchMasterData);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);

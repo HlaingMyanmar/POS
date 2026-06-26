@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { shelfLocationService } from '../services/shelfLocationApiService';
 import { ShelfLocationDTO } from '../types';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const emptyForm: Omit<ShelfLocationDTO, 'id'> = { code: '', label: '', active: true };
 
@@ -22,6 +23,7 @@ const ShelfLocationManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useRefreshOnTabActivate(load);
   useDataEvents(['Shelf'], load);
 
   const filtered = locations.filter(l =>

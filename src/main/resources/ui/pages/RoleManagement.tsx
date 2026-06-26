@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback } from 'react';
 import { roleService } from '../services/roleapiservice';
 import { permissionService } from '../services/permissionapiservice';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const RoleManagement: React.FC = () => {
   const [roles, setRoles] = useState<RoleDTO[]>([]);
@@ -44,6 +45,7 @@ const RoleManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
 
   const handleWsMessage = useCallback(() => {
     setWsStatus('online');

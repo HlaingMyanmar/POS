@@ -1,4 +1,4 @@
-
+﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productService } from '../services/productapiservice';
@@ -22,6 +22,7 @@ import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
 import BarcodeLabel from '../components/BarcodeLabel';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 interface CategoryOption {
   id: number;
@@ -371,6 +372,7 @@ const ProductManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  useRefreshOnTabActivate(fetchData);
 
   useDataEvents(['Product', 'Stock', 'Sale'], fetchData);
 

@@ -1,10 +1,11 @@
-
+﻿
 import React, { useEffect, useState, useCallback } from 'react';
 import { permissionService } from '../services/permissionapiservice';
 import { PermissionDTO } from '../types';
 import { Loader2, Key, Search, Trash2, Edit2, Wifi, Plus, X, Save } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const PermissionManagement: React.FC = () => {
   const [permissions, setPermissions] = useState<PermissionDTO[]>([]);
@@ -31,6 +32,7 @@ const PermissionManagement: React.FC = () => {
   useEffect(() => {
     fetchPermissions();
   }, [fetchPermissions]);
+  useRefreshOnTabActivate(fetchPermissions);
 
   const handleWsMessage = useCallback((message: string) => {
     setWsStatus('online');

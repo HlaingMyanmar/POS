@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { Printer, FileEdit, AlertTriangle } from 'lucide-react';
 import { serviceJobService, serviceItemService } from '../services/api';
@@ -12,6 +12,7 @@ import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { PaymentTransactionDTO } from '../types';
 import Swal from 'sweetalert2';
+import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 /* ── Status config ─────────────────────────────────────────────── */
 const STATUS_LIST = ['RECEIVED','INSPECTING','IN_PROGRESS','COMPLETED','DELIVERED','CANCELLED'] as const;
@@ -173,6 +174,7 @@ export default function ServiceJobManagement() {
   };
 
   useEffect(() => { load(); }, [page, search, dateFrom, dateTo]);
+  useRefreshOnTabActivate(load);
   useDataEvents(['Service Job', 'Booking'], load);
 
   useEffect(() => {

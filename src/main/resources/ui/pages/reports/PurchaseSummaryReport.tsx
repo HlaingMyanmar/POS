@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import { useDataEvents } from '../../hooks/useDataEvents';
 import { summaryReportService } from '../../services/api';
 import { Truck, TrendingDown } from 'lucide-react';
+import { useRefreshOnTabActivate } from '../../hooks/useRefreshOnTabActivate';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const fmt = (v: any) => Number(v ?? 0).toLocaleString();
@@ -22,6 +23,7 @@ export default function PurchaseSummaryReport() {
   }, [from, to]);
 
   useEffect(() => { load(); }, []);
+  useRefreshOnTabActivate(load);
   useDataEvents(['Purchase', 'Purchase Return'], load);
 
   return (

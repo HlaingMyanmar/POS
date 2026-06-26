@@ -696,6 +696,46 @@ export interface ShelfLocationDTO {
   active: boolean;
 }
 
+export enum ManufacturingStatus {
+  DRAFT = 'DRAFT',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export interface ManufacturingOrderItemDTO {
+  id?: number;
+  productId: number;
+  productName?: string;
+  productCode?: string;
+  hasSerial?: boolean;
+  qty: number;
+  unitCost?: number;
+  selectedSerialIds?: number[];
+  selectedSerialNumbers?: string[];
+  availableQty?: number;
+}
+
+export interface ManufacturingOrderDTO {
+  id?: number;
+  orderCode?: string;
+  status?: string;
+  finishedProductName: string;
+  finishedProductBrandId?: number;
+  finishedProductBrandName?: string;
+  finishedProductCategoryId?: number;
+  finishedProductCategoryName?: string;
+  finishedProductUnitId?: number;
+  finishedProductUnitName?: string;
+  finishedProductType?: string;
+  finishedProductSellingPrice?: number;
+  finishedProductId?: number;
+  notes?: string;
+  createdAt?: string;
+  completedAt?: string;
+  items: ManufacturingOrderItemDTO[];
+  totalComponentCost?: number;
+}
+
 export enum AppRoute {
   LOGIN = '/login',
   DASHBOARD = '/',
@@ -746,5 +786,6 @@ export enum AppRoute {
   SHELF_LOCATIONS      = '/services/shelf-locations',
   OPENING_BALANCE          = '/accounting/opening-balance',
   OPENING_STOCK            = '/inventory/opening-stock',
-  PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions'
+  PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',
+  MANUFACTURING            = '/inventory/manufacturing'
 }

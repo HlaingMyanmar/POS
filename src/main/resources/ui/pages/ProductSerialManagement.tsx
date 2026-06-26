@@ -17,10 +17,10 @@ const ProductSerialManagement: React.FC = () => {
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSerial, setEditingSerial] = useState<ProductSerialDTO | null>(null);
   const [formData, setFormData] = useState<Partial<ProductSerialDTO>>({
@@ -60,7 +60,7 @@ const ProductSerialManagement: React.FC = () => {
   useWebsocket('/topic/productSerial', fetchData);
 
   const filteredSerials = useMemo(() => {
-    return serials.filter(s => 
+    return serials.filter(s =>
       s.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.productName?.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -74,16 +74,53 @@ const ProductSerialManagement: React.FC = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedSerials = filteredSerials.slice(startIndex, startIndex + itemsPerPage);
 
-  const monthsToDisplay = (months: number): { value: number; unit: 'ရက်' | 'လ' | 'နှစ်' } => {
-    if (months <= 0) return { value: 0, unit: 'လ' };
-    if (months % 12 === 0) return { value: months / 12, unit: 'နှစ်' };
-    return { value: months, unit: 'လ' };
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const toDateOnly = (value?: string) => value ? String(value).slice(0, 10) : '';
+  const todayDateOnly = () => new Date().toISOString().slice(0, 10);
+  const addDays = (dateIso: string, days: number) => {
+    const date = new Date(`${dateIso}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const countDays = (start?: string, end?: string) => {
+    if (!start || !end) return 0;
+    const startTime = new Date(`${toDateOnly(start)}T00:00:00`).getTime();
+    const endTime = new Date(`${toDateOnly(end)}T00:00:00`).getTime();
+    if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) return 0;
+    return Math.round((endTime - startTime) / MS_PER_DAY);
+  };
+
+  const monthsToDisplay = (serial: ProductSerialDTO): { value: number; unit: 'ရက်' | 'လ' | 'နှစ်' } => {
+    const months = Number(serial.warrantyMonths ?? 0) || 0;
+    if (months > 0 && months % 12 === 0) return { value: months / 12, unit: 'နှစ်' };
+    if (months > 0) return { value: months, unit: 'လ' };
+    const days = countDays(serial.warrantyStartDate, serial.warrantyEndDate);
+    if (days > 0) return { value: days, unit: 'ရက်' };
+    return { value: 0, unit: 'လ' };
   };
 
   const toMonths = (value: number, unit: 'ရက်' | 'လ' | 'နှစ်'): number => {
-    if (unit === 'ရက်') return Math.round(value / 30);
+    if (unit === 'ရက်') return 0;
     if (unit === 'နှစ်') return value * 12;
     return value;
+  };
+
+  const buildWarrantyPayload = () => {
+    const value = Math.max(0, Number(wValue) || 0);
+    if (value <= 0) return { warrantyMonths: 0, warrantyStartDate: undefined, warrantyEndDate: undefined };
+    const start = toDateOnly(formData.warrantyStartDate) || todayDateOnly();
+    if (wUnit === 'ရက်') {
+      return { warrantyMonths: 0, warrantyStartDate: start, warrantyEndDate: addDays(start, value) };
+    }
+    return { warrantyMonths: toMonths(value, wUnit), warrantyStartDate: start, warrantyEndDate: undefined };
+  };
+
+  const formatSerialWarranty = (serial: ProductSerialDTO) => {
+    const months = Number(serial.warrantyMonths ?? 0) || 0;
+    if (months > 0 && months % 12 === 0) return `${months / 12} နှစ်`;
+    if (months > 0) return `${months} လ`;
+    const days = countDays(serial.warrantyStartDate, serial.warrantyEndDate);
+    return days > 0 ? `${days} ရက်` : '-';
   };
 
   const handleOpenModal = (serial?: ProductSerialDTO) => {
@@ -98,7 +135,7 @@ const ProductSerialManagement: React.FC = () => {
         condition: serial.condition ?? '',
         photoBase64: serial.photoBase64
       });
-      const d = monthsToDisplay(serial.warrantyMonths ?? 0);
+      const d = monthsToDisplay(serial);
       setWValue(d.value);
       setWUnit(d.unit);
     } else {
@@ -145,7 +182,7 @@ const ProductSerialManagement: React.FC = () => {
       return;
     }
 
-    const payload = { ...formData, warrantyMonths: toMonths(wValue, wUnit) };
+    const payload = { ...formData, ...buildWarrantyPayload() };
 
     setSaving(true);
     try {
@@ -156,7 +193,7 @@ const ProductSerialManagement: React.FC = () => {
       }
       setIsModalOpen(false);
       fetchData();
-      Swal.fire({ icon: 'success', title: 'Serial Saved', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+      Swal.fire({ icon: 'success', title: 'စီရီယယ် သိမ်းဆည်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
     } catch (error: any) {
       Swal.fire('Error', error.message || 'Action failed', 'error');
     } finally {
@@ -166,19 +203,19 @@ const ProductSerialManagement: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     const result = await Swal.fire({
-      title: 'Delete Serial?',
-      text: "This removal is permanent.",
+      title: 'စီရီယယ် ဖျက်လိုက်ပါသလား?',
+      text: "ဤဆုံးဖြတ်ချက်သည် ထာဝရ ဖျက်ခြင်း ဖြစ်သည်။",
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
-      confirmButtonText: 'Yes, delete it'
+      confirmButtonText: 'ဟုတ်, ဖျက်လိုက်ပါ'
     });
 
     if (result.isConfirmed) {
       try {
         await productSerialService.delete(id);
         fetchData();
-        Swal.fire({ icon: 'success', title: 'Deleted', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+        Swal.fire({ icon: 'success', title: 'ဖျက်လိုက်ပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
       } catch (error: any) {
         Swal.fire('Error', error.message, 'error');
       }
@@ -205,25 +242,25 @@ const ProductSerialManagement: React.FC = () => {
             <SearchCode size={24} />
           </div>
           <div>
-            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase">Serial Registry</h2>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">Asset Tracking & Serialization</p>
+            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase">စီရီယယ် မှတ်တမ်း</h2>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">ပိုင်ဆိုင်မှု ခြေရာခံသည် နှင့် စီရီယယ်ခွဲခြားခြင်း</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative group">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
-            <input 
-              type="text" placeholder="Search serial or product..." 
+            <input
+              type="text" placeholder="စီရီယယ် သို့မဟုတ် ထုတ်ကုန် ရှာဖွေ..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-11 pr-3 py-2.5 bg-white border border-slate-200 rounded-2xl outline-none text-[11px] font-bold w-full md:w-64 focus:border-indigo-500 transition-all shadow-sm"
             />
           </div>
-          <button 
-            onClick={() => handleOpenModal()} 
+          <button
+            onClick={() => handleOpenModal()}
             className="bg-indigo-600 text-white px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-indigo-100 active:scale-95 transition-all flex items-center gap-1.5"
           >
-            <Plus size={18} /> Add Serial
+            <Plus size={18} /> စီရီယယ် ထည့်ရန်
           </button>
         </div>
       </div>
@@ -233,13 +270,13 @@ const ProductSerialManagement: React.FC = () => {
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
               <tr>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Serial Number</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Product Association</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Condition</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Warranty</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Purchased From</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">စီရီယယ် အမှတ်</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ထုတ်ကုန် ယူလုံ့စုံစုံဆိုင်ရာ</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">အခြအအဖြေ</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">အာမခံ</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ဝယ်ယူခဲ့သည့် အရင်းအမြစ်</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">အခြေအနေ</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">လုပ်ဆောင်ချက်များ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -263,7 +300,7 @@ const ProductSerialManagement: React.FC = () => {
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-2">
                       <Package size={14} className="text-slate-300" />
-                      <span className="text-xs font-bold text-slate-600">{serial.productName || 'Unknown Product'}</span>
+                      <span className="text-xs font-bold text-slate-600">{serial.productName || 'အမည်မသိ ထုတ်ကုန်'}</span>
                     </div>
                   </td>
                   <td className="px-4 py-4">
@@ -278,12 +315,7 @@ const ProductSerialManagement: React.FC = () => {
                   <td className="px-4 py-4">
                     <div className="text-xs text-slate-600 space-y-0.5">
                       <div className="font-semibold">
-                        {(() => {
-                          const m = serial.warrantyMonths ?? 0;
-                          if (m <= 0) return '-';
-                          if (m % 12 === 0) return `${m / 12} နှစ်`;
-                          return `${m} လ`;
-                        })()}
+                        {formatSerialWarranty(serial)}
                       </div>
                       <div className="text-[10px] text-slate-400">
                         {serial.warrantyStartDate || '-'} → {serial.warrantyEndDate || '-'}
@@ -319,7 +351,7 @@ const ProductSerialManagement: React.FC = () => {
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={7} className="px-6 py-24 text-center text-slate-400 text-xs font-bold tracking-widest uppercase">No records found</td></tr>
+                <tr><td colSpan={7} className="px-6 py-24 text-center text-slate-400 text-xs font-bold tracking-widest uppercase">မှတ်တမ်း မရှိ</td></tr>
               )}
             </tbody>
           </table>
@@ -329,27 +361,27 @@ const ProductSerialManagement: React.FC = () => {
           <div className="sticky bottom-0 z-30 px-8 py-5 bg-white border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
             <div className="w-full md:w-auto text-center md:text-left order-2 md:order-1">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                Showing <span className="text-indigo-600">{startIndex + 1}</span> to <span className="text-indigo-600">{Math.min(startIndex + itemsPerPage, filteredSerials.length)}</span> of <span className="text-slate-800">{filteredSerials.length}</span> items
+                ပြ示 <span className="text-indigo-600">{startIndex + 1}</span> မှ <span className="text-indigo-600">{Math.min(startIndex + itemsPerPage, filteredSerials.length)}</span> of <span className="text-slate-800">{filteredSerials.length}</span> ပစ္စည်းများ
               </span>
             </div>
 
             <div className="w-full md:w-auto flex flex-col sm:flex-row items-center justify-center gap-4 order-1 md:order-2">
               <div className="relative group">
-                <select 
+                <select
                   value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                   className="appearance-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-1.5 pr-10 text-[10px] font-black text-slate-600 outline-none focus:bg-white focus:border-indigo-500 cursor-pointer transition-all"
                 >
-                  <option value={10}>10 per page</option>
-                  <option value={25}>25 per page</option>
-                  <option value={50}>50 per page</option>
+                  <option value={10}>စာမျက်နှာတစ်ခုလျှင် ၁၀</option>
+                  <option value={25}>စာမျက်နှာတစ်ခုလျှင် ၂၅</option>
+                  <option value={50}>စာမျက်နှာတစ်ခုလျှင် ၅၀</option>
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-500 transition-colors" />
               </div>
 
               <div className="flex items-center gap-1.5">
-                <button 
-                  disabled={currentPage === 1} 
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition-all active:scale-90"
                 >
                   <ChevronLeft size={16} />
@@ -359,9 +391,9 @@ const ProductSerialManagement: React.FC = () => {
                     const pageNum = i + 1;
                     if (totalPages > 5 && Math.abs(pageNum - currentPage) > 1 && pageNum !== 1 && pageNum !== totalPages) return null;
                     return (
-                      <button 
-                        key={i} 
-                        onClick={() => setCurrentPage(pageNum)} 
+                      <button
+                        key={i}
+                        onClick={() => setCurrentPage(pageNum)}
                         className={`min-w-[40px] h-10 rounded-xl text-[11px] font-black transition-all ${
                           currentPage === pageNum ? 'bg-indigo-600 text-white shadow-lg border-indigo-600 scale-105' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'
                         }`}
@@ -371,9 +403,9 @@ const ProductSerialManagement: React.FC = () => {
                     );
                   })}
                 </div>
-                <button 
-                  disabled={currentPage === totalPages} 
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition-all active:scale-90"
                 >
                   <ChevronRight size={16} />
@@ -401,7 +433,7 @@ const ProductSerialManagement: React.FC = () => {
               onClick={() => setViewPhotoUrl(null)}
               className="px-5 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-full border border-white/20 transition-all"
             >
-              Close
+              ပိတ်
             </button>
           </div>
         </div>
@@ -412,42 +444,42 @@ const ProductSerialManagement: React.FC = () => {
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 animate-in zoom-in-95 overflow-hidden">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
-                <h3 className="text-[14px] font-black text-slate-800 uppercase tracking-tight">{editingSerial ? 'Update' : 'New'} Serial Entry</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest italic">Inventory Assignment</p>
+                <h3 className="text-[14px] font-black text-slate-800 uppercase tracking-tight">{editingSerial ? 'ပြင်ဆင်' : 'အသစ်'} စီရီယယ် ဝင်လျက်</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest italic">စုံစုံတည်သည့် စားနည်း သတ်မှတ်ခြင်း</p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2.5 hover:bg-white hover:shadow-md rounded-2xl transition-all border border-transparent hover:border-slate-100"><X size={20} className="text-slate-400" /></button>
             </div>
-            
+
             <form onSubmit={handleSave} className="p-8 space-y-6 text-left">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Serial Number</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">စီရီယယ် အမှတ်</label>
                 <div className="relative group">
                   <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={16} />
-                  <input 
-                    type="text" required 
+                  <input
+                    type="text" required
                     autoFocus
-                    value={formData.serialNumber} 
-                    onChange={(e) => setFormData(prev => ({...prev, serialNumber: e.target.value.toUpperCase()}))} 
-                    className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm" 
-                    placeholder="e.g. SN-8829-XL"
+                    value={formData.serialNumber}
+                    onChange={(e) => setFormData(prev => ({...prev, serialNumber: e.target.value.toUpperCase()}))}
+                    className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
+                    placeholder="ဥပမာ SN-8829-XL"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Target Product</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ရည်မှန်းဒီမြောက် ထုတ်ကုန်</label>
                 <div className="relative group">
                   <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={16} />
-                  <select 
-                    required 
-                    value={formData.productId ?? ""} 
+                  <select
+                    required
+                    value={formData.productId ?? ""}
                     onChange={(e) => {
                       const val = e.target.value ? Number(e.target.value) : undefined;
                       setFormData(prev => ({...prev, productId: val}));
                     }}
                     className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none shadow-sm"
                   >
-                    <option value="" disabled>Select Associated Product</option>
+                    <option value="" disabled>ယူလုံ့စုံစုံဆိုင်ရာ ထုတ်ကုန် ရွေးချယ်</option>
                     {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.productCode})</option>)}
                   </select>
                   <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -455,16 +487,16 @@ const ProductSerialManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 text-left">Current Status</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 text-left">လက်ရှိ အခြေအနေ</label>
                 <div className="grid grid-cols-2 gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
                   {Object.values(SerialStatus).map((status) => (
-                    <button 
+                    <button
                       key={status}
-                      type="button" 
+                      type="button"
                       onClick={() => setFormData(prev => ({...prev, status}))}
                       className={`py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
-                        formData.status === status 
-                        ? 'bg-white text-indigo-600 border-indigo-100 shadow-sm' 
+                        formData.status === status
+                        ? 'bg-white text-indigo-600 border-indigo-100 shadow-sm'
                         : 'text-slate-400 border-transparent hover:text-slate-600'
                       }`}
                     >
@@ -475,7 +507,7 @@ const ProductSerialManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အာမခံကာလ</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အာမခံ ကာလ</label>
                 <div className="flex gap-2">
                   <input
                     type="number"
@@ -490,20 +522,20 @@ const ProductSerialManagement: React.FC = () => {
                     onChange={e => setWUnit(e.target.value as 'ရက်' | 'လ' | 'နှစ်')}
                     className="px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
                   >
-                    <option value="ရက်">ရက်</option>
                     <option value="လ">လ</option>
+                    <option value="ရက်">ရက်</option>
                     <option value="နှစ်">နှစ်</option>
                   </select>
                 </div>
                 {wValue > 0 && (
                   <p className="text-[10px] text-indigo-500 font-semibold ml-1">
-                    = {toMonths(wValue, wUnit)} လ (တွက်ချက်မှု)
+                    = {wUnit === 'ရက်' ? wValue : toMonths(wValue, wUnit)} {wUnit === 'ရက်' ? 'ရက်' : 'လ'} (တွက်ချက်မှု)
                   </p>
                 )}
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Warranty Start</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အာမခံ စတင်</label>
                 <input
                   type="date"
                   value={formData.warrantyStartDate ? String(formData.warrantyStartDate).slice(0, 10) : ''}
@@ -514,14 +546,14 @@ const ProductSerialManagement: React.FC = () => {
 
               {/* Condition */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condition</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အခြအအဖြေ</label>
                 <div className="relative group">
                   <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-amber-500 transition-colors" size={15} />
                   <input
                     type="text"
                     value={formData.condition ?? ''}
                     onChange={e => setFormData(prev => ({ ...prev, condition: e.target.value }))}
-                    placeholder="e.g. New, Good, Scratched..."
+                    placeholder="ဥပမာ အသစ်, ကောင်း, ဆူးများ..."
                     className="w-full pl-12 pr-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-amber-400 focus:bg-white transition-all shadow-sm"
                   />
                 </div>
@@ -529,7 +561,7 @@ const ProductSerialManagement: React.FC = () => {
 
               {/* Photo */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Photo</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ကြည့်ကောင်း</label>
                 <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
                 <div className="flex items-center gap-3">
                   {formData.photoBase64 ? (
@@ -541,19 +573,19 @@ const ProductSerialManagement: React.FC = () => {
                   )}
                   <div className="flex flex-col gap-1.5">
                     <button type="button" onClick={() => photoInputRef.current?.click()}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl transition-all">
-                      {formData.photoBase64 ? 'Change Photo' : 'Upload Photo'}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text[10px] font-black uppercase rounded-xl transition-all">
+                      {formData.photoBase64 ? 'ကြည့်ကောင်း ပြောင်းလဲ' : 'ကြည့်ကောင်း တင်သွင်း'}
                     </button>
                     {formData.photoBase64 && (
                       <button type="button" onClick={() => setViewPhotoUrl(formData.photoBase64!)}
                         className="flex items-center justify-center gap-1 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase rounded-xl transition-all">
-                        <Eye size={11} /> View Photo
+                        <Eye size={11} /> ကြည့်ကောင်း ကြည်ကြည့်
                       </button>
                     )}
                     {formData.photoBase64 && (
                       <button type="button" onClick={() => setFormData(prev => ({ ...prev, photoBase64: undefined }))}
                         className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-500 text-[10px] font-black uppercase rounded-xl transition-all">
-                        Remove
+                        ဖယ်ရှား
                       </button>
                     )}
                   </div>
@@ -566,15 +598,15 @@ const ProductSerialManagement: React.FC = () => {
                   onClick={() => setIsModalOpen(false)}
                   className="flex-1 py-4 border border-slate-200 rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest bg-white text-slate-500 hover:bg-slate-50 transition-all shadow-sm"
                 >
-                  Discard
+                  စွန့်ခွာ
                 </button>
-                <button 
-                  type="submit" 
-                  disabled={saving} 
+                <button
+                  type="submit"
+                  disabled={saving}
                   className="flex-[2] py-4 bg-indigo-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                   {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  Confirm & Save
+                  အတည်ပြု နှင့် သိမ်းဆည်း
                 </button>
               </div>
             </form>

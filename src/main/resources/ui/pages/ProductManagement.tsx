@@ -15,7 +15,8 @@ import {
   Save, Hash, Send, Barcode, Camera,
   CheckCircle2, AlertCircle, Filter, RotateCcw,
   ClipboardList, Eye, Info, LayoutList, Wallet,
-  Settings2, AlertTriangle, ArrowLeft, Shield
+  Settings2, AlertTriangle, ArrowLeft, Shield,
+  Download, Upload, FileSpreadsheet, FileDown, CheckCheck
 } from 'lucide-react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
@@ -57,6 +58,30 @@ const formatWarranty = (product?: Partial<ProductDTO> | null) => {
   if (months <= 0) return '-';
   if (months % 12 === 0) return `${months / 12} နှစ်`;
   return `${months} လ`;
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const toDateOnly = (value?: string) => value ? String(value).slice(0, 10) : '';
+const todayDateOnly = () => new Date().toISOString().slice(0, 10);
+const addWarrantyDays = (dateIso: string, days: number) => {
+  const date = new Date(`${dateIso}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+const countWarrantyDays = (start?: string, end?: string) => {
+  if (!start || !end) return 0;
+  const startTime = new Date(`${toDateOnly(start)}T00:00:00`).getTime();
+  const endTime = new Date(`${toDateOnly(end)}T00:00:00`).getTime();
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) return 0;
+  return Math.round((endTime - startTime) / MS_PER_DAY);
+};
+const formatSerialWarranty = (serial?: Partial<ProductSerialDTO> | null, fallbackProduct?: Partial<ProductDTO> | null) => {
+  const months = Number(serial?.warrantyMonths ?? 0) || 0;
+  if (months > 0 && months % 12 === 0) return `${months / 12} နှစ်`;
+  if (months > 0) return `${months} လ`;
+  const days = countWarrantyDays(serial?.warrantyStartDate, serial?.warrantyEndDate);
+  if (days > 0) return `${days} ရက်`;
+  return formatWarranty(fallbackProduct);
 };
 
 const InventoryMetricCard: React.FC<{
@@ -150,6 +175,7 @@ const ProductManagement: React.FC = () => {
   const [filterCategoryId, setFilterCategoryId] = useState<'All' | number>('All');
   const [filterTracking, setFilterTracking] = useState<'All' | 'Serial' | 'Qty'>('All');
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
+  const [showFilterTools, setShowFilterTools] = useState(false);
   
   // Per-group filter for nested rows
   const [nestedFilters, setNestedFilters] = useState<Record<string, 'All' | 'New' | 'Second' | 'Second_New'>>({});
@@ -162,6 +188,15 @@ const ProductManagement: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [isSerialModalOpen, setIsSerialModalOpen] = useState(false);
   const [selectedProductForSerial, setSelectedProductForSerial] = useState<ProductDTO | null>(null);
+  const [selectedSerialGroup, setSelectedSerialGroup] = useState<ProductGroup | null>(null);
+  const [editingSerialId, setEditingSerialId] = useState<number | null>(null);
+  const [serialEditForm, setSerialEditForm] = useState<{ serialNumber: string; status: SerialStatus; warrantyValue: number; warrantyUnit: 'ရက်' | 'လ' | 'နှစ်' }>({
+    serialNumber: '',
+    status: SerialStatus.AVAILABLE,
+    warrantyValue: 0,
+    warrantyUnit: 'လ',
+  });
+  const [serialEditSaving, setSerialEditSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductDTO | null>(null);
   const [newSerialInput, setNewSerialInput] = useState('');
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
@@ -202,6 +237,14 @@ const ProductManagement: React.FC = () => {
     unitId: undefined
   });
   const [saving, setSaving] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importDragging, setImportDragging] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ successCount: number; errorCount: number; errors: { row: number; message: string }[] } | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
   const [formPhoto, setFormPhoto] = useState<string | undefined>(undefined);
   const [photoChanged, setPhotoChanged] = useState(false);
   const [viewFormPhoto, setViewFormPhoto] = useState<string | null>(null);
@@ -331,6 +374,89 @@ const ProductManagement: React.FC = () => {
 
   useDataEvents(['Product', 'Stock', 'Sale'], fetchData);
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await productService.exportExcel();
+    } catch {
+      Swal.fire('Error', 'Export မအောင်မြင်ပါ', 'error');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportFiltered = () => {
+    const rows: string[][] = [
+      ['ကုဒ်', 'ကုန်ပစ္စည်းနာမည်', 'ဘရန်း', 'အမျိုးအစား', 'ယူနစ်', 'ပစ္စည်းအခြေအနေ', 'ခြေရာခံနည်း', 'ကုန်ကျစရိတ်', 'ရောင်းဈေး', 'ရောင်းနိုင်သောပမာဏ', 'ပြန်မှာမည့်အဆင့်', 'အာမခံ'],
+    ];
+    productGroups.forEach(group => {
+      group.products.forEach(p => {
+        const available = getAvailableCount(p);
+        rows.push([
+          p.productCode || '',
+          p.name,
+          p.brandName || '',
+          p.categoryName || '',
+          p.unitName || '',
+          p.productType === 'NEW' ? 'အသစ်' : p.productType === 'SECOND_NEW' ? 'အသစ်နှင့်တူသော' : 'အသုံးပြုပြီး',
+          p.hasSerial !== false ? 'Serial' : 'Qty',
+          String(p.costPrice ?? 0),
+          String(p.sellingPrice ?? 0),
+          String(available),
+          String(p.reorderLevel ?? 0),
+          formatWarranty(p),
+        ]);
+      });
+    });
+
+    const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const bom = '﻿';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `products_filtered_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadTemplate = async () => {
+    setTemplateLoading(true);
+    try {
+      await productService.downloadTemplate();
+    } catch {
+      Swal.fire('Error', 'Template ဒေါင်းလုပ်မအောင်မြင်ပါ', 'error');
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
+  const handleImportFileChange = (file: File | null) => {
+    setImportFile(file);
+    setImportResult(null);
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+    try {
+      const res = await productService.importExcel(importFile);
+      setImportResult(res.data);
+      if (res.data.successCount > 0) await fetchData();
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'Import မအောင်မြင်ပါ', 'error');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleCloseImportModal = () => {
+    setIsImportModalOpen(false);
+    setImportFile(null);
+    setImportResult(null);
+    setImportDragging(false);
+  };
+
   const getCategoryOptions = useCallback((nodes: CategoryDTO[], level = 0): CategoryOption[] => {
     return nodes.reduce((acc: CategoryOption[], node) => {
       const indentation = "\u00A0\u00A0".repeat(level * 2);
@@ -444,6 +570,26 @@ const ProductManagement: React.FC = () => {
     };
   }, [products, productGroups.length, lowStockProducts.length, totalAvailableStockValue, getAvailableCount]);
 
+  const activeFilterCount = useMemo(() => {
+    return [
+      filterCondition !== 'All',
+      filterStatus !== 'All',
+      filterBrandId !== 'All',
+      filterCategoryId !== 'All',
+      filterTracking !== 'All',
+      filterLowStockOnly,
+    ].filter(Boolean).length;
+  }, [filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly]);
+
+  const resetProductFilters = () => {
+    setSearchTerm('');
+    setFilterCondition('All');
+    setFilterStatus('All');
+    setFilterBrandId('All');
+    setFilterCategoryId('All');
+    setFilterTracking('All');
+    setFilterLowStockOnly(false);
+  };
   useEffect(() => {
     setCurrentPage(1);
     setExpandedGroups(new Set());
@@ -576,6 +722,69 @@ const ProductManagement: React.FC = () => {
     setIsSerialModalOpen(true);
   };
 
+  const getSerialWarrantyEditUnit = (serial: ProductSerialDTO): { warrantyValue: number; warrantyUnit: 'ရက်' | 'လ' | 'နှစ်' } => {
+    const safeMonths = Math.max(0, Number(serial.warrantyMonths ?? 0) || 0);
+    if (safeMonths > 0 && safeMonths % 12 === 0) return { warrantyValue: safeMonths / 12, warrantyUnit: 'နှစ်' };
+    if (safeMonths > 0) return { warrantyValue: safeMonths, warrantyUnit: 'လ' };
+    const days = countWarrantyDays(serial.warrantyStartDate, serial.warrantyEndDate);
+    if (days > 0) return { warrantyValue: days, warrantyUnit: 'ရက်' };
+    return { warrantyValue: 0, warrantyUnit: 'လ' };
+  };
+
+  const buildSerialWarrantyPayload = (serial: ProductSerialDTO) => {
+    const value = Math.max(0, Number(serialEditForm.warrantyValue) || 0);
+    if (value <= 0) return { warrantyMonths: 0, warrantyStartDate: undefined, warrantyEndDate: undefined };
+    const start = toDateOnly(serial.warrantyStartDate) || todayDateOnly();
+    if (serialEditForm.warrantyUnit === 'ရက်') {
+      return { warrantyMonths: 0, warrantyStartDate: start, warrantyEndDate: addWarrantyDays(start, value) };
+    }
+    return {
+      warrantyMonths: toWarrantyMonths(value, serialEditForm.warrantyUnit),
+      warrantyStartDate: start,
+      warrantyEndDate: undefined,
+    };
+  };
+
+  const startEditSerial = (serial: ProductSerialDTO) => {
+    setEditingSerialId(serial.id);
+    setSerialEditForm({
+      serialNumber: serial.serialNumber,
+      status: serial.status,
+      ...getSerialWarrantyEditUnit(serial),
+    });
+  };
+
+  const cancelEditSerial = () => {
+    setEditingSerialId(null);
+    setSerialEditForm({ serialNumber: '', status: SerialStatus.AVAILABLE, warrantyValue: 0, warrantyUnit: 'လ' });
+  };
+
+  const handleSaveSerialEdit = async (serial: ProductSerialDTO) => {
+    const serialNumber = serialEditForm.serialNumber.trim().toUpperCase();
+    if (!serialNumber || serialEditSaving) return;
+    setSerialEditSaving(true);
+    try {
+      await productSerialService.update(serial.id, {
+        ...serial,
+        serialNumber,
+        status: serialEditForm.status,
+        ...buildSerialWarrantyPayload(serial),
+      });
+      cancelEditSerial();
+      await fetchSerials();
+      Swal.fire({ icon: 'success', title: 'Serial updated', toast: true, position: 'top-end', showConfirmButton: false, timer: 1400 });
+    } catch (err: any) {
+      Swal.fire('Error', err?.response?.data?.message || err?.message || 'Failed to update serial', 'error');
+    } finally {
+      setSerialEditSaving(false);
+    }
+  };
+
+  const handleOpenGroupSerials = (group: ProductGroup) => {
+    if (!group.products.some((product) => product.hasSerial !== false)) return;
+    setSelectedSerialGroup(group);
+  };
+
   const handleAddSerial = async () => {
     if (!newSerialInput.trim() || !selectedProductForSerial) return;
     setSaving(true);
@@ -668,7 +877,7 @@ const ProductManagement: React.FC = () => {
   };
 
   const toWarrantyMonths = (value: number, unit: 'ရက်' | 'လ' | 'နှစ်'): number => {
-    if (unit === 'ရက်') return Math.round(value / 30);
+    if (unit === 'ရက်') return 0;
     if (unit === 'နှစ်') return value * 12;
     return value;
   };
@@ -1262,24 +1471,75 @@ const ProductManagement: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">ကုန်ပစ္စည်း မာစတာ စာရင်း</h2>
-            <p className="text-slate-500 text-xs font-semibold mt-0.5 flex items-center gap-1.5">
-              <ClipboardList size={12} className="text-indigo-500" /> {productGroups.length} အုပ်စု, {products.length} ကုန်ပစ္စည်း
-            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleDownloadTemplate}
+            disabled={templateLoading}
+            className="bg-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-teal-700 disabled:opacity-60"
+            title="Import Format Template ဒေါင်းလုပ်ဆွဲရန်"
+          >
+            {templateLoading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+            Template
+          </button>
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-emerald-700"
+            title="Excel မှ ကုန်ပစ္စည်းတွေ Import လုပ်ရန်"
+          >
+            <Upload size={14} /> Import
+          </button>
+          <div className="relative">
+            <div className="flex rounded-lg overflow-hidden">
+              <button
+                onClick={handleExportFiltered}
+                disabled={exportLoading}
+                className="bg-green-600 text-white px-3 py-2 text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-green-700 disabled:opacity-60"
+                title={`ပြသနေသော ကုန်ပစ္စည်း ${productGroups.reduce((s, g) => s + g.products.length, 0)} ခု CSV Export လုပ်ရန်`}
+              >
+                {exportLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                Export{(activeFilterCount > 0 || searchTerm) ? ` (${productGroups.reduce((s, g) => s + g.products.length, 0)})` : ''}
+              </button>
+              <button
+                onClick={() => setExportDropdownOpen(v => !v)}
+                className="bg-green-700 text-white px-1.5 py-2 hover:bg-green-800 border-l border-green-500"
+              >
+                <ChevronDown size={12} />
+              </button>
+            </div>
+            {exportDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl min-w-[190px]" onMouseLeave={() => setExportDropdownOpen(false)}>
+                <button
+                  onClick={() => { handleExportFiltered(); setExportDropdownOpen(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-green-50 hover:text-green-700 rounded-t-xl"
+                >
+                  <FileSpreadsheet size={13} />
+                  Filter CSV ({productGroups.reduce((s, g) => s + g.products.length, 0)} ခု)
+                </button>
+                <button
+                  onClick={() => { handleExportExcel(); setExportDropdownOpen(false); }}
+                  disabled={exportLoading}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-b-xl disabled:opacity-50"
+                >
+                  <Download size={13} />
+                  အားလုံး Excel
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => navigate(AppRoute.LABEL_DESIGNER)}
-            className="bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 hover:bg-violet-700"
+            className="bg-violet-600 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-violet-700"
           >
-            <Barcode size={16} /> တံဆိပ် ဒီဇိုင်
+            <Barcode size={14} /> တံဆိပ်
           </button>
           <button
             onClick={() => handleOpenModal()}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 hover:bg-indigo-700"
+            className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-indigo-700"
           >
-            <Plus size={16} /> ကုန်ပစ္စည်း ထည့်ရန်
+            <Plus size={14} /> ထည့်ရန်
           </button>
         </div>
       </div>
@@ -1317,7 +1577,7 @@ const ProductManagement: React.FC = () => {
 
       {/* Primary Filters */}
       <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
-        <div className="flex flex-col xl:flex-row gap-3">
+        <div className="flex flex-col xl:flex-row gap-3 items-start">
           <div className="relative flex-1 group flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
@@ -1337,8 +1597,32 @@ const ProductManagement: React.FC = () => {
               <Camera size={15} /> စကမ်ဖတ်ရန်
             </button>
           </div>
-          
-          <div className="flex flex-wrap items-center gap-3">
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowFilterTools(prev => !prev)}
+              className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-bold uppercase transition-colors ${
+                showFilterTools || activeFilterCount > 0
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Filter size={14} />
+              <span>စစ်ထုတ်မည့်ကိရိယာ</span>
+              {activeFilterCount > 0 && (
+                <span className="min-w-5 h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-black inline-flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+              {showFilterTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          </div>
+        </div>
+
+        {showFilterTools && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
               <span className="text-[10px] font-bold text-slate-500 uppercase px-2">အခြေအနေ</span>
               {[
@@ -1426,11 +1710,12 @@ const ProductManagement: React.FC = () => {
               <AlertTriangle size={14} /> Low stock
             </button>
 
-            <button onClick={() => {setSearchTerm(''); setFilterCondition('All'); setFilterStatus('All'); setFilterBrandId('All'); setFilterCategoryId('All'); setFilterTracking('All'); setFilterLowStockOnly(false);}} className="px-3 py-2 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 bg-white inline-flex items-center gap-2 text-xs font-bold uppercase">
+            <button onClick={resetProductFilters} className="px-3 py-2 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 bg-white inline-flex items-center gap-2 text-xs font-bold uppercase">
               <RotateCcw size={14} /> ပြန်လည်သတ်မှတ်ရန်
             </button>
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Main Ledger Groups */}
@@ -1453,12 +1738,21 @@ const ProductManagement: React.FC = () => {
               {paginatedGroups.length > 0 ? paginatedGroups.map((group) => {
                 const isExpanded = expandedGroups.has(group.groupId);
                 const hasLowStock = group.products.some(p => lowStockIds.has(p.id));
+                const serialProductCount = group.products.filter(p => p.hasSerial !== false).length;
+                const qtyProductCount = group.products.length - serialProductCount;
+                const hasSerialProducts = serialProductCount > 0;
+                const primaryProduct = group.products[0];
+                const singleProduct = group.products.length === 1;
+                const assignableQtyProduct = group.products.find(p => p.hasSerial === false && Number(p.stockQty ?? p.currentStock ?? 0) > 0);
                 return (
                   <React.Fragment key={group.groupId}>
-                    <tr className={`group ${isExpanded ? 'bg-indigo-50/40' : hasLowStock ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-slate-50'}`}>
+                    <tr
+                      onClick={() => handleOpenGroupSerials(group)}
+                      className={`group ${hasSerialProducts ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : hasLowStock ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-slate-50'}`}
+                    >
                       <td className="px-3 text-center">
                         <button
-                          onClick={() => toggleGroup(group.groupId)}
+                          onClick={(e) => { e.stopPropagation(); toggleGroup(group.groupId); }}
                           className={`p-1.5 rounded-md ${isExpanded ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
                         >
                           {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1481,9 +1775,22 @@ const ProductManagement: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-slate-500 font-medium mt-0.5">
-                              {group.products.length} ဖြစ်ရပ်
-                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs text-slate-500 font-medium">{group.products.length} ဖြစ်ရပ်</span>
+                              {serialProductCount > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-indigo-100 bg-indigo-50 text-[9px] font-black text-indigo-700 uppercase">
+                                  <Hash size={9} /> Serial x{serialProductCount}
+                                </span>
+                              )}
+                              {qtyProductCount > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[9px] font-black text-slate-600 uppercase">
+                                  <Box size={9} /> Qty x{qtyProductCount}
+                                </span>
+                              )}
+                              {serialProductCount > 0 && qtyProductCount > 0 && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded border border-amber-100 bg-amber-50 text-[9px] font-black text-amber-700 uppercase">Mixed</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1549,15 +1856,33 @@ const ProductManagement: React.FC = () => {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                         <div className="flex justify-end gap-2">
-                            <button 
-                              onClick={() => toggleGroup(group.groupId)}
-                              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-indigo-600 hover:text-white text-slate-700 text-xs font-bold uppercase rounded-md flex items-center gap-2"
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => { setBarcodeProduct(primaryProduct); setIsBarcodeModalOpen(true); }}
+                            title="Barcode print"
+                            className="p-1.5 bg-violet-50 text-violet-700 border border-violet-100 hover:bg-violet-600 hover:text-white rounded-md"
+                          >
+                            <Barcode size={14} />
+                          </button>
+                          {assignableQtyProduct && (
+                            <button
+                              onClick={() => handleOpenAssignSerials(assignableQtyProduct)}
+                              title="Assign serial numbers"
+                              className="p-1.5 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-md"
                             >
-                              <Eye size={14} /> {isExpanded ? 'အသေးစိတ် ဝှက်ရန်' : 'အသေးစိတ် ကြည့်ရန်'}
+                              <Hash size={14} />
                             </button>
-                          </div>
+                          )}
+                          {singleProduct ? (
+                            <button onClick={() => handleOpenModal(primaryProduct)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
+                          ) : (
+                            <button onClick={() => toggleGroup(group.groupId)} title="Product variants" className={`p-1.5 border rounded-md ${isExpanded ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-700 hover:text-white'}`}><LayoutList size={14} /></button>
+                          )}
+                          {canDelete && singleProduct && (
+                            <button onClick={() => handleDeleteProduct(primaryProduct)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     
@@ -1661,6 +1986,7 @@ const ProductManagement: React.FC = () => {
                                             )}
                                             <button onClick={() => handleOpenWarrantyEdit(p)} title="အာမခံ ပြင်ဆင်" className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white rounded-md"><Shield size={14} /></button>
                                             <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
+
                                             {canDelete && (
                                               <button onClick={() => handleDeleteProduct(p)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
                                             )}
@@ -1699,6 +2025,7 @@ const ProductManagement: React.FC = () => {
                                         <td className="px-4 py-3 text-right">
                                           <div className="flex justify-end gap-2">
                                             <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
+
                                             {canDelete && (
                                               <button onClick={() => handleDeleteProduct(p)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
                                             )}
@@ -1735,7 +2062,7 @@ const ProductManagement: React.FC = () => {
                                         {idx === 0 ? <OpeningStockBadge product={p} /> : <span className="text-slate-300">-</span>}
                                       </td>
                                       <td className="px-4 py-3 text-center text-xs font-semibold text-slate-600">
-                                        {Number(s.warrantyMonths ?? 0) > 0 ? `${s.warrantyMonths} mo` : formatWarranty(p)}
+                                        {formatSerialWarranty(s, p)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${
@@ -1749,13 +2076,17 @@ const ProductManagement: React.FC = () => {
                                         <div className="flex justify-end gap-2">
                                           {idx === 0 ? (
                                             <>
+                                              <button onClick={() => { setSelectedSerialGroup(group); startEditSerial(s); }} title="Edit Serial Warranty" className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white rounded-md"><Shield size={14} /></button>
                                               <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
                                               {canDelete && (
                                                 <button onClick={() => handleDeleteProduct(p)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
                                               )}
                                             </>
                                           ) : (
-                                            <button onClick={() => handleDeleteSerial(s.id)} title="Remove Serial" className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md"><Trash2 size={12} /></button>
+                                            <>
+                                              <button onClick={() => { setSelectedSerialGroup(group); startEditSerial(s); }} title="Edit Serial Warranty" className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-md"><Shield size={12} /></button>
+                                              <button onClick={() => handleDeleteSerial(s.id)} title="Remove Serial" className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md"><Trash2 size={12} /></button>
+                                            </>
                                           )}
                                         </div>
                                       </td>
@@ -1838,6 +2169,156 @@ const ProductManagement: React.FC = () => {
         )}
       </div>
 
+      {selectedSerialGroup && (() => {
+        const serialProducts = selectedSerialGroup.products.filter(product => product.hasSerial !== false);
+        const serialRows = serialProducts.flatMap(product =>
+          allSerials
+            .filter(serial => serial.productId === product.id)
+            .map(serial => ({ product, serial }))
+        );
+        const availableCount = serialRows.filter(row => row.serial.status === SerialStatus.AVAILABLE).length;
+
+        return (
+          <div className="fixed inset-0 z-[103] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-150" onClick={() => { cancelEditSerial(); setSelectedSerialGroup(null); }}>
+            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[86vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0"><Hash size={18} /></div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-black text-slate-800 truncate">{selectedSerialGroup.displayName}</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                      Serial List - {serialRows.length} units - {availableCount} available
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => { cancelEditSerial(); setSelectedSerialGroup(null); }} className="p-2 rounded-lg text-slate-400 hover:bg-white hover:text-slate-700 border border-transparent hover:border-slate-200">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-2 bg-white">
+                {serialProducts.map(product => {
+                  const count = allSerials.filter(serial => serial.productId === product.id).length;
+                  return (
+                    <span key={product.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-600">
+                      <Package size={12} /> {product.productCode} - {formatProductType(product.productType)} - {count}
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/60">
+                {serialRows.length === 0 ? (
+                  <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-300">
+                    <Hash size={34} />
+                    <p className="text-[11px] font-black uppercase tracking-widest">No serial numbers yet</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-white border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <tr>
+                        <th className="px-4 py-3">Serial No</th>
+                        <th className="px-4 py-3">Product Code</th>
+                        <th className="px-4 py-3 text-center">Warranty</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                        <th className="px-4 py-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {serialRows.map(({ product, serial }) => {
+                        const isEditing = editingSerialId === serial.id;
+                        return (
+                          <tr key={serial.id} className="hover:bg-indigo-50/50">
+                            <td className="px-4 py-3">
+                              {isEditing ? (
+                                <input
+                                  value={serialEditForm.serialNumber}
+                                  onChange={(e) => setSerialEditForm(prev => ({ ...prev, serialNumber: e.target.value }))}
+                                  className="w-full min-w-[160px] px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs font-black text-slate-800 tabular-nums focus:outline-none focus:border-indigo-500"
+                                />
+                              ) : (
+                                <span className="font-black text-slate-800 tabular-nums">{serial.serialNumber}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                {product.photoBase64
+                                  ? <img src={product.photoBase64} alt="" className="w-7 h-7 rounded object-contain border border-slate-100 bg-slate-50 shrink-0" />
+                                  : <div className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={12} className="text-slate-400" /></div>}
+                                <div>
+                                  <p className="font-bold text-indigo-700">{product.productCode}</p>
+                                  <p className="text-[10px] text-slate-400 font-semibold">{formatProductType(product.productType)}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center font-semibold text-slate-600">
+                              {isEditing ? (
+                                <div className="flex justify-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={serialEditForm.warrantyValue}
+                                    onChange={(e) => setSerialEditForm(prev => ({ ...prev, warrantyValue: Math.max(0, Number(e.target.value) || 0) }))}
+                                    className="w-16 px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs text-center font-bold focus:outline-none focus:border-indigo-500"
+                                  />
+                                  <select
+                                    value={serialEditForm.warrantyUnit}
+                                    onChange={(e) => setSerialEditForm(prev => ({ ...prev, warrantyUnit: e.target.value as 'ရက်' | 'လ' | 'နှစ်' }))}
+                                    className="px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                                  >
+                                    <option value="လ">လ</option>
+                                    <option value="ရက်">ရက်</option>
+                                    <option value="နှစ်">နှစ်</option>
+                                  </select>
+                                </div>
+                              ) : (
+                                formatSerialWarranty(serial, product)
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {isEditing ? (
+                                <select
+                                  value={serialEditForm.status}
+                                  onChange={(e) => setSerialEditForm(prev => ({ ...prev, status: e.target.value as SerialStatus }))}
+                                  className="px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-[10px] font-black uppercase text-slate-700 focus:outline-none focus:border-indigo-500"
+                                >
+                                  {Object.values(SerialStatus).map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+                                </select>
+                              ) : (
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${serial.status === SerialStatus.AVAILABLE ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                  {serial.status.replace(/_/g, ' ')}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {isEditing ? (
+                                <div className="flex justify-end gap-1.5">
+                                  <button onClick={() => handleSaveSerialEdit(serial)} disabled={serialEditSaving || !serialEditForm.serialNumber.trim()} title="Save serial" className="p-1.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white disabled:opacity-50">
+                                    {serialEditSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                  </button>
+                                  <button onClick={cancelEditSerial} title="Cancel" className="p-1.5 rounded-md bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-200"><X size={13} /></button>
+                                </div>
+                              ) : (
+                                <button onClick={() => startEditSerial(serial)} title="Edit serial" className="p-1.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white">
+                                  <Edit2 size={13} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="px-5 py-3 border-t border-slate-100 bg-white flex justify-end">
+                <button onClick={() => { cancelEditSerial(); setSelectedSerialGroup(null); }} className="px-5 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200">Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* Warranty Quick-Edit Modal — qty products only */}
       {isWarrantyModalOpen && warrantyProduct && (
         <div className="fixed inset-0 z-[102] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsWarrantyModalOpen(false)}>
@@ -1876,7 +2357,7 @@ const ProductManagement: React.FC = () => {
                 </div>
                 {warrantyValue > 0 && (
                   <p className="mt-1 text-[10px] text-emerald-600 font-semibold">
-                    = {toWarrantyMonths(warrantyValue, warrantyUnit)} လ (တွက်ချက်မှု)
+                    = {warrantyUnit === 'ရက်' ? warrantyValue : toWarrantyMonths(warrantyValue, warrantyUnit)} {warrantyUnit === 'ရက်' ? 'ရက်' : 'လ'} (တွက်ချက်မှု)
                   </p>
                 )}
               </div>
@@ -2294,6 +2775,143 @@ const ProductManagement: React.FC = () => {
           #barcode-print-area > div { overflow: visible !important; }
         }
       `}</style>
+
+      {/* ── Import Excel Modal ─────────────────────────────────── */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-emerald-600 rounded-lg flex items-center justify-center text-white">
+                  <FileSpreadsheet size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Excel မှ Import လုပ်ရန်</h3>
+                  <p className="text-[10px] text-slate-400 font-semibold">ကုန်ပစ္စည်းစာရင်း အသုတ်လိုက် ထည့်သွင်းရန်</p>
+                </div>
+              </div>
+              <button onClick={handleCloseImportModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Template hint */}
+              {!importResult && (
+                <div className="flex items-start gap-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3">
+                  <FileDown size={16} className="text-teal-600 mt-0.5 shrink-0" />
+                  <div className="text-xs text-teal-700">
+                    <span className="font-bold">Template မရှိသေးပါက</span> — ညာဘက်အပေါ် Template ခလုတ်မှ ဒေါင်းလုပ်ဆွဲပြီး ဖြည့်သွင်းပါ။
+                    Brand / Category / Unit နာမည်များ မှန်ကန်ရပါမည်။
+                  </div>
+                </div>
+              )}
+
+              {/* Result */}
+              {importResult ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                      <CheckCheck size={20} className="text-emerald-600 mx-auto mb-1" />
+                      <p className="text-2xl font-black text-emerald-700">{importResult.successCount}</p>
+                      <p className="text-[11px] font-bold text-emerald-600 uppercase">အောင်မြင်သည်</p>
+                    </div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-center">
+                      <AlertCircle size={20} className="text-rose-500 mx-auto mb-1" />
+                      <p className="text-2xl font-black text-rose-600">{importResult.errorCount}</p>
+                      <p className="text-[11px] font-bold text-rose-500 uppercase">မအောင်မြင်သည်</p>
+                    </div>
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1.5">
+                      <p className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-2">အမှားများ</p>
+                      {importResult.errors.map((e, i) => (
+                        <div key={i} className="flex items-start gap-2 text-xs text-rose-700">
+                          <span className="bg-rose-200 text-rose-700 font-black rounded px-1.5 py-0.5 text-[10px] shrink-0">Row {e.row}</span>
+                          <span>{e.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={handleCloseImportModal}
+                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700"
+                  >
+                    ပိတ်မည်
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Drop Zone */}
+                  <div
+                    onDragOver={e => { e.preventDefault(); setImportDragging(true); }}
+                    onDragLeave={() => setImportDragging(false)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setImportDragging(false);
+                      const f = e.dataTransfer.files[0];
+                      if (f) handleImportFileChange(f);
+                    }}
+                    className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                      importDragging ? 'border-emerald-400 bg-emerald-50' : importFile ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300 hover:bg-slate-50'
+                    }`}
+                    onClick={() => document.getElementById('import-file-input')?.click()}
+                  >
+                    <input
+                      id="import-file-input"
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={e => handleImportFileChange(e.target.files?.[0] ?? null)}
+                    />
+                    {importFile ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <FileSpreadsheet size={32} className="text-emerald-500" />
+                        <div className="text-left">
+                          <p className="text-sm font-bold text-slate-800 truncate max-w-[220px]">{importFile.name}</p>
+                          <p className="text-xs text-slate-400">{(importFile.size / 1024).toFixed(1)} KB</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); handleImportFileChange(null); }}
+                          className="ml-auto text-slate-300 hover:text-rose-400 transition-colors"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload size={32} className="text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-slate-500">ဖိုင်ကို ဤနေရာသို့ ဆွဲချပါ</p>
+                        <p className="text-xs text-slate-400 mt-1">သို့မဟုတ် နှိပ်၍ ရွေးချယ်ပါ (.xlsx, .xls)</p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCloseImportModal}
+                      className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold uppercase hover:bg-slate-50"
+                    >
+                      မလုပ်တော့ပါ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleImportSubmit}
+                      disabled={!importFile || importLoading}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {importLoading ? <><Loader2 size={15} className="animate-spin" /> လုပ်ဆောင်နေသည်...</> : <><Upload size={15} /> Import လုပ်မည်</>}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

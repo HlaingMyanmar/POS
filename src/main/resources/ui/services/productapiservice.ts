@@ -1,5 +1,5 @@
 
-import { api } from './api';
+import { api, BASE_URL, getAccessToken } from './api';
 import { ProductDTO, ApiResponse } from '../types';
 
 export const productService = {
@@ -31,4 +31,42 @@ export const productService = {
 
   updatePhoto: (id: number, photoBase64: string | null) =>
     api.put<any, ApiResponse<void>>(`/v1/products/${id}/photo`, { photoBase64 }).then((res: any) => res),
+
+  exportExcel: async (): Promise<void> => {
+    const token = getAccessToken();
+    const res = await fetch(`${BASE_URL}/v1/products/export`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `products_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  downloadTemplate: async (): Promise<void> => {
+    const token = getAccessToken();
+    const res = await fetch(`${BASE_URL}/v1/products/import-template`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Template download failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'product_import_template.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  importExcel: async (file: File): Promise<ApiResponse<{ successCount: number; errorCount: number; errors: { row: number; message: string }[] }>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/v1/products/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }) as any;
+  },
 };

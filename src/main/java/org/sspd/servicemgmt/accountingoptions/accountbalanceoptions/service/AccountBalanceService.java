@@ -10,9 +10,9 @@ import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.mapper.Accou
 import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.model.AccountBalance;
 import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.repository.AccountBalanceRepository;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountCode;
-import org.sspd.servicemgmt.accountingoptions.coaoptions.service.ChartOfAccountService;
-import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.dto.PaymentMethodDTO;
-import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentMethodService;
+import org.sspd.servicemgmt.accountingoptions.coaoptions.enums.AccountType;
+import org.sspd.servicemgmt.accountingoptions.coaoptions.model.ChartOfAccount;
+import org.sspd.servicemgmt.accountingoptions.coaoptions.repository.ChartOfAccountRepository;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.PaymentTransactionDTO;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.service.PaymentTransactionService;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -23,7 +23,6 @@ import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -34,14 +33,10 @@ public class AccountBalanceService {
     private final SimpMessagingTemplate messagingTemplate;
     private final JournalWriter journalWriter;
     private final PaymentTransactionService paymentTransactionService;
-    private final PaymentMethodService paymentMethodService;
-
+    private final ChartOfAccountRepository coaRepository;
 
     private static final String BALANCE_TOPIC = "/topic/account-balance";
 
-    /**
-     * ၁။ အကောင့်အားလုံး၏ လက်ကျန်ငွေစာရင်းကို ကြည့်ရှုခြင်း (Trial Balance အတွက်)
-     */
     @PreAuthorize("hasAuthority('CAN_ACCESS_ACCOUNT_BALANCE_READ')")
     @Transactional(readOnly = true)
     public List<AccountBalanceDTO> findAll() {
@@ -50,9 +45,6 @@ public class AccountBalanceService {
                 .toList();
     }
 
-    /**
-     * ၂။ အကောင့်တစ်ခုချင်းစီအလိုက် လက်ကျန်ငွေကို ရှာဖွေခြင်း
-     */
     @PreAuthorize("hasAuthority('CAN_ACCESS_ACCOUNT_BALANCE_READ')")
     @Transactional(readOnly = true)
     public AccountBalanceDTO findByAccountId(Integer accountId) {
@@ -61,9 +53,6 @@ public class AccountBalanceService {
         return mapper.toDto(balance);
     }
 
-    /**
-     * ၃။ သတ်မှတ်ထားသော ဘဏ္ဍာရေးနှစ်အလိုက် လက်ကျန်ငွေကို ရှာဖွေခြင်း
-     */
     @PreAuthorize("hasAuthority('CAN_ACCESS_ACCOUNT_BALANCE_READ')")
     @Transactional(readOnly = true)
     public AccountBalanceDTO findByAccountAndYear(Integer accountId, String fiscalYear) {
@@ -72,9 +61,6 @@ public class AccountBalanceService {
         return mapper.toDto(balance);
     }
 
-    /**
-     * ၄။ လက်ကျန်ငွေ ပြောင်းလဲသွားတိုင်း WebSocket မှတစ်ဆင့် အသိပေးရန် (Internal Use)
-     */
     public void notifyBalanceUpdate() {
         messagingTemplate.convertAndSend(BALANCE_TOPIC, "BALANCE_UPDATED");
     }
@@ -83,56 +69,85 @@ public class AccountBalanceService {
     @Transactional
     public AccountBalanceDTO setOpeningBalance(Integer accountId, BigDecimal amount, Integer staffId, Integer paymentMethodId) {
 
-        String refNo = "OPN-" + System.currentTimeMillis() / 1000;
+        // ၁။ Target account (Cash / KPay / etc.) ရှာမယ်
+        ChartOfAccount targetAccount = coaRepository.findById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found: " + accountId));
 
-        // ၁။ Journal Entry တစ်ခု အလိုအလျောက် တည်ဆောက်မယ်
-        JournalEntryDTO journalDTO = new JournalEntryDTO();
-        journalDTO.setReferenceNo(refNo);
-        journalDTO.setEntryDate(LocalDateTime.now());
-        journalDTO.setDescription("Opening Balance Initialization");
-        journalDTO.setStaffId(staffId);
+        // ၂။ Counter-entry account: Share Capital (EQU-001) auto-ရှာမယ်
+        ChartOfAccount equityAccount = coaRepository.findByCode(AccountCode.SHARE_CAPITAL)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Opening Balance Equity account (EQU-001 / Share Capital) not found. Please seed the Chart of Accounts."));
 
-        PaymentMethodDTO method = paymentMethodService.findAll()
-                .stream()
-                .filter(pm -> Objects.equals(pm.getId(), paymentMethodId))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Payment Method not found"));
+        // ၃။ ဟောင်းသည့် opening balance journal ရှိရင် reverse လုပ်မယ် (re-set case)
+        String openingRefNo = "OPN-ACCT-" + accountId;
+        journalWriter.reverseByReferenceNo(openingRefNo);
 
-        // ၂။ Double Entry စာရင်းဝင်မယ်
-        // DR - ပစ်မှတ်အကောင့် (ဥပမာ- Cash Account ID 5)
+        // ၄။ Double-entry direction: Asset/Expense → DR target, CR equity
+        //                            Liability/Equity/Income → DR equity, CR target
+        boolean isDebitNormal = targetAccount.getAccountType() == AccountType.Asset
+                             || targetAccount.getAccountType() == AccountType.Expense;
+
         JournalDetailDTO drDetail = new JournalDetailDTO();
-        drDetail.setAccountId(method.getAccountId());
-        drDetail.setDebit(amount);
-        drDetail.setCredit(BigDecimal.ZERO);
-
-
-        // CR - Opening Balance Equity (သင်သတ်မှတ်ထားသော ID 15)
         JournalDetailDTO crDetail = new JournalDetailDTO();
-        crDetail.setAccountId(accountId);
-        crDetail.setDebit(BigDecimal.ZERO);
-        crDetail.setCredit(amount);
 
+        if (isDebitNormal) {
+            drDetail.setAccountId(targetAccount.getId());
+            drDetail.setDebit(amount);
+            drDetail.setCredit(BigDecimal.ZERO);
+            crDetail.setAccountId(equityAccount.getId());
+            crDetail.setDebit(BigDecimal.ZERO);
+            crDetail.setCredit(amount);
+        } else {
+            drDetail.setAccountId(equityAccount.getId());
+            drDetail.setDebit(amount);
+            drDetail.setCredit(BigDecimal.ZERO);
+            crDetail.setAccountId(targetAccount.getId());
+            crDetail.setDebit(BigDecimal.ZERO);
+            crDetail.setCredit(amount);
+        }
+
+        JournalEntryDTO journalDTO = new JournalEntryDTO();
+        journalDTO.setReferenceNo(openingRefNo);
+        journalDTO.setEntryDate(LocalDateTime.now());
+        journalDTO.setDescription("Opening Balance: " + targetAccount.getAccountName());
+        journalDTO.setStaffId(staffId);
         journalDTO.setDetails(List.of(drDetail, crDetail));
-        journalWriter.write(journalDTO); // Journal သိမ်းလိုက်တာနဲ့ AccountBalance ပါ auto update ဖြစ်သွားမယ်
 
-        // ၃။ Payment Transaction မှတ်တမ်းသွင်းမယ် (Report မှာ ပေါ်လာအောင်)
-        PaymentTransactionDTO payDto = new PaymentTransactionDTO();
-        payDto.setReferenceId(0); // 0 သည် အဖွင့်လက်ကျန်ဖြစ်ကြောင်း အမှတ်အသားပြုခြင်း
-        payDto.setReferenceType("Opening_Balance"); // သို့မဟုတ် Enum တွင် 'Opening' ထပ်တိုးနိုင်ပါသည်
-        payDto.setPaymentMethodId(paymentMethodId); // Cash သို့မဟုတ် KBZ Pay ID
-        payDto.setAmount(amount);
-        payDto.setTransactionNo(refNo);
+        journalWriter.write(journalDTO);
 
-        paymentTransactionService.saveInternalTransaction(payDto); // Payment Report ထဲ data ရောက်သွားမယ်
+        // ၅။ AccountBalance.openingBalance field ကို update လုပ်မယ်
+        //    (currentBalance ကို JournalWriter က auto update ဖြစ်ပြီးသား)
+        String year = String.valueOf(LocalDateTime.now().getYear());
+        AccountBalance balance = repository.findByAccountIdAndFiscalYear(targetAccount.getId(), year)
+                .orElseGet(() -> {
+                    AccountBalance b = new AccountBalance();
+                    b.setAccount(targetAccount);
+                    b.setFiscalYear(year);
+                    b.setOpeningBalance(BigDecimal.ZERO);
+                    b.setCurrentBalance(BigDecimal.ZERO);
+                    b.setLastUpdated(LocalDateTime.now());
+                    return b;
+                });
+        balance.setOpeningBalance(amount);
+        repository.save(balance);
 
-        // ၄။ Update ဖြစ်သွားတဲ့ Balance ကို ပြန်ရှာပြီး DTO အနေနဲ့ Return ပြန်ပေးမယ်
-        AccountBalance updatedBalance = repository.findByAccountId(accountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Balance not found after update"));
+        // ၆။ Payment Transaction မှတ်တမ်း (report အတွက်)
+        if (paymentMethodId != null) {
+            PaymentTransactionDTO payDto = new PaymentTransactionDTO();
+            payDto.setReferenceId(0);
+            payDto.setReferenceType("Opening_Balance");
+            payDto.setPaymentMethodId(paymentMethodId);
+            payDto.setAmount(amount);
+            payDto.setTransactionNo(openingRefNo);
+            paymentTransactionService.saveInternalTransaction(payDto);
+        }
 
         messagingTemplate.convertAndSend(BALANCE_TOPIC, "BALANCE_INITIALIZED");
-        return mapper.toDto(updatedBalance);
+
+        // ၇။ Target account ၏ updated balance ကို return ပြန်ပေးမယ်
+        return mapper.toDto(
+                repository.findByAccountId(accountId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Balance not found after update: " + accountId))
+        );
     }
-
-
-
 }

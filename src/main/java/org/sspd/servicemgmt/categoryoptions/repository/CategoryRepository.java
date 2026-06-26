@@ -13,6 +13,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     // ၁။ နာမည်နဲ့ ရှာဖို့ (Unique ဖြစ်လို့ Optional နဲ့ သုံးတာ ကောင်းပါတယ်)
     Optional<Category> findByName(String name);
 
+    Optional<Category> findByNameIgnoreCase(String name);
+
     // ၂။ နာမည် ရှိမရှိ စစ်ဆေးဖို့
     boolean existsByName(String name);
 

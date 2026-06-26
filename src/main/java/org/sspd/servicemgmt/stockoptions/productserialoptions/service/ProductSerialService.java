@@ -157,6 +157,7 @@ public class ProductSerialService {
     private void applyWarrantyFields(ProductSerial entity, ProductSerialDTO dto) {
         Integer months = dto.getWarrantyMonths() != null ? dto.getWarrantyMonths() : entity.getWarrantyMonths();
         LocalDate start = dto.getWarrantyStartDate() != null ? dto.getWarrantyStartDate() : entity.getWarrantyStartDate();
+        LocalDate explicitEnd = dto.getWarrantyEndDate();
 
         if (months != null && months < 0) {
             throw new RuntimeException("Warranty months cannot be negative");
@@ -167,7 +168,9 @@ public class ProductSerialService {
 
         entity.setWarrantyMonths(months);
         entity.setWarrantyStartDate(start);
-        if (months != null && months > 0 && start != null) {
+        if (explicitEnd != null) {
+            entity.setWarrantyEndDate(explicitEnd);
+        } else if (months != null && months > 0 && start != null) {
             entity.setWarrantyEndDate(start.plusMonths(months));
         } else {
             entity.setWarrantyEndDate(null);

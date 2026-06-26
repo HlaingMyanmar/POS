@@ -472,8 +472,8 @@ const StockAdjustmentManagement: React.FC = () => {
       <div className="w-full max-w-none space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-800 text-left">New Stock Adjustment</h2>
-            <p className="text-xs text-slate-500 mt-1">Record damage, loss, found, and stock correction with serial-aware validation.</p>
+            <h2 className="text-xl font-bold text-slate-800 text-left">Stock ပြင်ဆင်မှု အသစ်</h2>
+            <p className="text-xs text-slate-500 mt-1">ဒဏ်ခတ်၊ ဆုံးရှုံး၊ တွေ့ရှိသည့်၊ နှင့် ကုန်ပစ္စည်း ပြင်ဆင်မှုများကို စီရီယယ် အဆင့်စစ်ဆေးချက်နှင့်မှတ်တမ်းတင်ပါ။</p>
           </div>
           <button
             onClick={() => {
@@ -759,15 +759,15 @@ const StockAdjustmentManagement: React.FC = () => {
     <div className="w-full max-w-none space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 text-left">Stock Adjustment</h2>
-          <p className="text-xs text-slate-500 mt-1">Track stock corrections, damage/loss, and found inventory with serial support.</p>
+          <h2 className="text-xl font-bold text-slate-800 text-left">Stock ပြင်ဆင်မှု</h2>
+          <p className="text-xs text-slate-500 mt-1">စီရီယယ် ထောက်ပံ့မှုဖြင့် ကုန်ပစ္စည်း ပြင်ဆင်မှုများ၊ ဒဏ်ခတ်/ဆုံးရှုံးမှုများနှင့် တွေ့ရှိမှုများကို ကောက်ချက်ပြုပါ။</p>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <button onClick={() => void loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button onClick={openForm} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">
-            <Plus size={16} /> New Adjustment
+            <Plus size={16} /> ပြင်ဆင်မှု အသစ်
           </button>
         </div>
       </div>

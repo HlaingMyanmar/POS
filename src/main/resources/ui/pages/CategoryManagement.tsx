@@ -124,7 +124,7 @@ const CategoryManagement: React.FC = () => {
       else await categoryService.create(formData);
       setIsModalOpen(false); 
       fetchTreeData();
-      Swal.fire({ icon: 'success', title: 'Category Saved', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+      Swal.fire({ icon: 'success', title: 'အမျိုးအစားခွဲခြားမှု သိမ်းဆည်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
     } catch (err: any) {
       Swal.fire('Error', err.message || 'Action failed', 'error');
     } finally { setSaving(false); }
@@ -132,19 +132,19 @@ const CategoryManagement: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     const result = await Swal.fire({
-      title: 'Delete Category?',
-      text: "Warning: This might affect all sub-categories and linked products.",
+      title: 'အမျိုးအစားခွဲခြားမှု ဖျက်လိုက်ပါသလား?',
+      text: "သတိပေးချက်: ၎င်းသည် အဆင့်နိမ့်အမျိုးအစား စုံစုံတည်သည့်နှင့် ချိတ်ဆက်ထားသည့် ထုတ်ကုန်များအားလုံးကို प्रभାव ခြင်း ရှိနိုင်သည်။",
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
-      confirmButtonText: 'Yes, delete'
+      confirmButtonText: 'ဟုတ်, ဖျက်လိုက်ပါ'
     });
 
     if (result.isConfirmed) {
       try {
         await categoryService.delete(id);
         fetchTreeData();
-        Swal.fire({ icon: 'success', title: 'Deleted', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+        Swal.fire({ icon: 'success', title: 'ဖျက်လိုက်ပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
       } catch (err: any) {
         Swal.fire('Error', err.message || 'Delete failed', 'error');
       }
@@ -181,7 +181,7 @@ const CategoryManagement: React.FC = () => {
             </div>
           </td>
           <td className="px-4 text-center">
-            <span className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${cat.active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{cat.active ? 'Active' : 'Inactive'}</span>
+            <span className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${cat.active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{cat.active ? 'ပြီးပြည့်စုံ' : 'ပိတ်ထားသည်'}</span>
           </td>
           <td className="px-8 py-2 text-right">
             <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -202,11 +202,11 @@ const CategoryManagement: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-100"><FolderTree size={24} /></div>
-          <div><h2 className="text-base font-black text-slate-800 tracking-tight uppercase">Taxonomy Tree</h2><p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Classification Hierarchy</p></div>
+          <div><h2 className="text-base font-black text-slate-800 tracking-tight uppercase">အမျိုးအစားခွဲခြားမှု အပင်</h2><p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">အမျိုးအစားခွဲခြားမှု အဆင့်အတန်း</p></div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-2xl text-[11px] font-bold outline-none w-48 focus:border-indigo-500 shadow-sm" /></div>
-          <button onClick={() => handleOpenModal()} className="bg-indigo-600 text-white px-4 py-2 rounded-2xl text-[11px] font-black uppercase shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"><Plus size={16} className="inline mr-1" /> New Entry</button>
+          <button onClick={() => handleOpenModal()} className="bg-indigo-600 text-white px-4 py-2 rounded-2xl text-[11px] font-black uppercase shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"><Plus size={16} className="inline mr-1" /> ဝင်လျက်သစ်</button>
         </div>
       </div>
 
@@ -215,13 +215,13 @@ const CategoryManagement: React.FC = () => {
           <table className="w-full border-collapse min-w-[700px]">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
               <tr>
-                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Hierarchy</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">အဆင့်အတန်း</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">အခြေအနေ</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">လုပ်ဆောင်ချက်များ</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedCategories.length > 0 ? paginatedCategories.map((cat, index) => (<CategoryRow key={cat.id} cat={cat} level={0} isLast={index === paginatedCategories.length - 1} parentPaths={[]} />)) : <tr><td colSpan={3} className="py-20 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">NO DATA AVAILABLE</td></tr>}
+              {paginatedCategories.length > 0 ? paginatedCategories.map((cat, index) => (<CategoryRow key={cat.id} cat={cat} level={0} isLast={index === paginatedCategories.length - 1} parentPaths={[]} />)) : <tr><td colSpan={3} className="py-20 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">အချက်အလက် မရှိ</td></tr>}
             </tbody>
           </table>
         </div>
@@ -231,7 +231,7 @@ const CategoryManagement: React.FC = () => {
           <div className="sticky bottom-0 z-30 px-8 py-5 bg-white border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
             <div className="w-full md:w-auto text-center md:text-left order-2 md:order-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Showing <span className="text-indigo-600">{startIndex + 1}</span> to <span className="text-indigo-600">{Math.min(startIndex + itemsPerPage, filteredCategories.length)}</span> root branches of <span className="text-slate-800">{filteredCategories.length}</span>
+                ပြ示 <span className="text-indigo-600">{startIndex + 1}</span> မှ <span className="text-indigo-600">{Math.min(startIndex + itemsPerPage, filteredCategories.length)}</span> အခြေခံအကိုင်းအခက် <span className="text-slate-800">{filteredCategories.length}</span>
               </span>
             </div>
 
@@ -241,9 +241,9 @@ const CategoryManagement: React.FC = () => {
                   value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                   className="appearance-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-1.5 pr-10 text-[10px] font-black text-slate-600 outline-none focus:bg-white focus:border-indigo-500 cursor-pointer transition-all"
                 >
-                  <option value={10}>10 per page</option>
-                  <option value={20}>20 per page</option>
-                  <option value={50}>50 per page</option>
+                  <option value={10}>စာမျက်နှာတစ်ခုလျှင် ၁၀</option>
+                  <option value={20}>စာမျက်နှာတစ်ခုလျှင် ၂၀</option>
+                  <option value={50}>စာမျက်နှာတစ်ခုလျှင် ၅၀</option>
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-indigo-500" />
               </div>
@@ -267,15 +267,15 @@ const CategoryManagement: React.FC = () => {
           <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl border border-slate-200 animate-in zoom-in-95 overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{editingCategory ? 'Update' : 'New'} Category</h3>
-                <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5 tracking-widest italic">Organizational Node</p>
+                <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{editingCategory ? 'ပြင်ဆင်' : 'အသစ်'} အမျိုးအစားခွဲခြားမှု</h3>
+                <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5 tracking-widest italic">အဖွဲ့အစည်း အုပ်စုမုံရုံး</p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><X size={20} /></button>
             </div>
             
             <form onSubmit={handleSave} className="p-6 space-y-5 text-left overflow-y-auto max-h-[70vh] custom-scrollbar">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category Name</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အမျိုးအစားခွဲခြားမှု အမည်</label>
                 <input 
                   type="text" required value={formData.name} 
                   onChange={(e) => setFormData({...formData, name: e.target.value})} 
@@ -285,7 +285,7 @@ const CategoryManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Parent Category</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">မူလအမျိုးအစားခွဲခြားမှု</label>
                 <div className="relative group">
                   <Layers className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={14} />
                   <select 
@@ -293,18 +293,18 @@ const CategoryManagement: React.FC = () => {
                     onChange={(e) => setFormData({...formData, parentId: e.target.value ? Number(e.target.value) : null})}
                     className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-bold outline-none focus:border-indigo-500 transition-all appearance-none"
                   >
-                    <option value="">Root Category (Main)</option>
+                    <option value="">အခြေခံအမျိုးအစားခွဲခြားမှု (ပင်မ)</option>
                     {parentOptions.map(opt => (
                       <option key={opt.id} value={opt.id}>{opt.displayName}</option>
                     ))}
                   </select>
                   <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
-                <p className="text-[9px] text-slate-400 font-bold ml-1 uppercase">Leave blank to keep as top-level</p>
+                <p className="text-[9px] text-slate-400 font-bold ml-1 uppercase">အထက်အဆင့်အဖြစ် ထိန်းသိမ်းရန် ဗလာထား</p>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Description</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အဖြေလက်ခြင်း</label>
                 <textarea 
                   rows={2}
                   value={formData.description} 
@@ -322,14 +322,14 @@ const CategoryManagement: React.FC = () => {
                   onChange={(e) => setFormData({...formData, active: e.target.checked})}
                   className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <label htmlFor="active_check" className="text-[11px] font-black text-slate-700 uppercase tracking-wider cursor-pointer">Status: Active</label>
+                <label htmlFor="active_check" className="text-[11px] font-black text-slate-700 uppercase tracking-wider cursor-pointer">အခြေအနေ: ပြီးပြည့်စုံ</label>
               </div>
 
               <div className="flex gap-3 pt-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-2xl text-[10px] font-black uppercase bg-white text-slate-500 hover:bg-slate-50 transition-colors">Discard</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-2xl text-[10px] font-black uppercase bg-white text-slate-500 hover:bg-slate-50 transition-colors">စွန့်ခွာ</button>
                 <button type="submit" disabled={saving} className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-xl shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-2">
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Confirm Save
+                  သိမ်းဆည်းခြင်း အတည်ပြု
                 </button>
               </div>
             </form>

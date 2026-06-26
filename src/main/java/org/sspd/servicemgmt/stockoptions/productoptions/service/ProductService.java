@@ -1,16 +1,22 @@
 package org.sspd.servicemgmt.stockoptions.productoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddressList;
+import org.apache.poi.xssf.usermodel.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.sspd.servicemgmt.brandoptions.model.Brand;
 import org.sspd.servicemgmt.brandoptions.repository.BrandRepository;
 import org.sspd.servicemgmt.categoryoptions.model.Category;
 import org.sspd.servicemgmt.categoryoptions.repository.CategoryRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.ImportResultDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.dto.ProductDTO;
+import org.sspd.servicemgmt.stockoptions.productoptions.enums.ProductType;
 import org.sspd.servicemgmt.stockoptions.productoptions.mapper.ProductMapper;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
@@ -19,6 +25,9 @@ import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.Product
 import org.sspd.servicemgmt.unitsoptions.model.Unit;
 import org.sspd.servicemgmt.unitsoptions.repository.UnitRepository;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -243,4 +252,318 @@ public class ProductService {
         return Math.max(0, reorderLevel != null ? reorderLevel : 0);
     }
 
+    // ── Excel Export ──────────────────────────────────────────────────────────
+
+    private static final String[] HEADERS = {
+        "ကုန်ပစ္စည်းကုဒ်", "ကုန်ပစ္စည်းနာမည်*", "ကုန်ပစ္စည်းအမျိုးအစား*",
+        "ဘရန်း", "ကဏ္ဍ", "ယူနစ်",
+        "ရောင်းဈေး", "ဝယ်ဈေး", "Stock အရေအတွက်",
+        "Serial ရှိမရှိ (Yes/No)", "Reorder Level",
+        "အာမခံ လ (Months)", "အာမခံ အသေးစိတ်", "မှတ်ချက်"
+    };
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @Transactional(readOnly = true)
+    public byte[] exportExcel() throws IOException {
+        List<ProductDTO> products = findAll();
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            XSSFSheet sheet = wb.createSheet("ကုန်ပစ္စည်းစာရင်း");
+
+            // Header style
+            XSSFCellStyle headerStyle = wb.createCellStyle();
+            XSSFFont headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.INDIGO.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+
+            // Data style
+            XSSFCellStyle dataStyle = wb.createCellStyle();
+            dataStyle.setBorderBottom(BorderStyle.THIN);
+            dataStyle.setBorderLeft(BorderStyle.THIN);
+            dataStyle.setBorderRight(BorderStyle.THIN);
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < HEADERS.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(HEADERS[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, 5000);
+            }
+
+            int rowNum = 1;
+            for (ProductDTO p : products) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(nullStr(p.getProductCode()));
+                row.createCell(1).setCellValue(nullStr(p.getName()));
+                row.createCell(2).setCellValue(p.getProductType() != null ? p.getProductType().name() : "New");
+                row.createCell(3).setCellValue(nullStr(p.getBrandName()));
+                row.createCell(4).setCellValue(nullStr(p.getCategoryName()));
+                row.createCell(5).setCellValue(nullStr(p.getUnitName()));
+                row.createCell(6).setCellValue(p.getSellingPrice() != null ? p.getSellingPrice().doubleValue() : 0);
+                row.createCell(7).setCellValue(p.getCostPrice() != null ? p.getCostPrice().doubleValue() : 0);
+                row.createCell(8).setCellValue(p.getStockQty() != null ? p.getStockQty() : 0);
+                row.createCell(9).setCellValue(Boolean.TRUE.equals(p.getHasSerial()) ? "Yes" : "No");
+                row.createCell(10).setCellValue(p.getReorderLevel() != null ? p.getReorderLevel() : 0);
+                row.createCell(11).setCellValue(p.getWarrantyMonths() != null ? p.getWarrantyMonths() : 0);
+                row.createCell(12).setCellValue(nullStr(p.getWarrantyTerms()));
+                row.createCell(13).setCellValue(nullStr(p.getRemark()));
+            }
+
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    // ── Import Template ───────────────────────────────────────────────────────
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    public byte[] downloadTemplate() throws IOException {
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            XSSFSheet sheet = wb.createSheet("ကုန်ပစ္စည်းထည့်သွင်းရန်");
+
+            XSSFCellStyle headerStyle = wb.createCellStyle();
+            XSSFFont headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.DARK_TEAL.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+
+            XSSFCellStyle noteStyle = wb.createCellStyle();
+            XSSFFont noteFont = wb.createFont();
+            noteFont.setItalic(true);
+            noteFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+            noteStyle.setFont(noteFont);
+
+            // Note row
+            Row noteRow = sheet.createRow(0);
+            Cell noteCell = noteRow.createCell(0);
+            noteCell.setCellValue("မှတ်ချက်: * ဖြင့်မှတ်သားထားသောကော်လံများ မဖြည့်မဖြစ်ပါ။ ကုန်ပစ္စည်းကုဒ် ကော်လံသည် import တွင် အသုံးမဝင်ဘဲ ရည်ညွှန်းရုံသာဖြစ်သည်။");
+            noteCell.setCellStyle(noteStyle);
+
+            // Header row
+            Row headerRow = sheet.createRow(1);
+            for (int i = 0; i < HEADERS.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(HEADERS[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, 5500);
+            }
+
+            // Sample row
+            Row sample = sheet.createRow(2);
+            sample.createCell(0).setCellValue("(auto)");
+            sample.createCell(1).setCellValue("Samsung Galaxy S24");
+            sample.createCell(2).setCellValue("New");
+            sample.createCell(3).setCellValue("Samsung");
+            sample.createCell(4).setCellValue("Phone");
+            sample.createCell(5).setCellValue("pcs");
+            sample.createCell(6).setCellValue(1500000);
+            sample.createCell(7).setCellValue(1200000);
+            sample.createCell(8).setCellValue(10);
+            sample.createCell(9).setCellValue("No");
+            sample.createCell(10).setCellValue(5);
+            sample.createCell(11).setCellValue(12);
+            sample.createCell(12).setCellValue("မူရင်းထုတ်လုပ်သူ အာမခံ");
+            sample.createCell(13).setCellValue("");
+
+            // Dropdown for Product Type
+            DataValidationHelper dvHelper = sheet.getDataValidationHelper();
+            DataValidationConstraint typeConstraint = dvHelper.createExplicitListConstraint(new String[]{"New", "Second_New", "Second"});
+            CellRangeAddressList typeRange = new CellRangeAddressList(2, 1000, 2, 2);
+            DataValidation typeValidation = dvHelper.createValidation(typeConstraint, typeRange);
+            sheet.addValidationData(typeValidation);
+
+            // Dropdown for Has Serial
+            DataValidationConstraint serialConstraint = dvHelper.createExplicitListConstraint(new String[]{"Yes", "No"});
+            CellRangeAddressList serialRange = new CellRangeAddressList(2, 1000, 9, 9);
+            DataValidation serialValidation = dvHelper.createValidation(serialConstraint, serialRange);
+            sheet.addValidationData(serialValidation);
+
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    // ── Excel Import ──────────────────────────────────────────────────────────
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_CREATE')")
+    @Transactional
+    public ImportResultDTO importExcel(MultipartFile file) throws IOException {
+        ImportResultDTO result = new ImportResultDTO();
+
+        try (XSSFWorkbook wb = new XSSFWorkbook(file.getInputStream())) {
+            Sheet sheet = wb.getSheetAt(0);
+            // Detect if template (has note row at 0, headers at 1, data from 2)
+            // or plain export (headers at 0, data from 1)
+            int dataStartRow = detectDataStartRow(sheet);
+
+            for (int r = dataStartRow; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null || isRowEmpty(row, 1, 13)) continue;
+
+                int displayRow = r + 1;
+                try {
+                    String name = getCellString(row, 1);
+                    if (name.isBlank()) {
+                        result.getErrors().add(new ImportResultDTO.RowError(displayRow, "ကုန်ပစ္စည်းနာမည် မပါဝင်ပါ"));
+                        result.setErrorCount(result.getErrorCount() + 1);
+                        continue;
+                    }
+
+                    if (productRepository.existsByName(name)) {
+                        result.getErrors().add(new ImportResultDTO.RowError(displayRow, "'" + name + "' ဆိုသောကုန်ပစ္စည်း ရှိပြီးသားဖြစ်သည်"));
+                        result.setErrorCount(result.getErrorCount() + 1);
+                        continue;
+                    }
+
+                    String typeStr = getCellString(row, 2);
+                    ProductType productType;
+                    try {
+                        productType = typeStr.isBlank() ? ProductType.New : ProductType.valueOf(typeStr.trim());
+                    } catch (IllegalArgumentException e) {
+                        result.getErrors().add(new ImportResultDTO.RowError(displayRow, "ကုန်ပစ္စည်းအမျိုးအစား မမှန်ကန်ပါ: " + typeStr + " (New / Second_New / Second သာ ခွင့်ပြု)"));
+                        result.setErrorCount(result.getErrorCount() + 1);
+                        continue;
+                    }
+
+                    String brandName = getCellString(row, 3);
+                    String categoryName = getCellString(row, 4);
+                    String unitName = getCellString(row, 5);
+
+                    Brand brand = null;
+                    if (!brandName.isBlank()) {
+                        brand = brandRepository.findByNameIgnoreCase(brandName).orElse(null);
+                        if (brand == null) {
+                            result.getErrors().add(new ImportResultDTO.RowError(displayRow, "ဘရန်း '" + brandName + "' မတွေ့ပါ"));
+                            result.setErrorCount(result.getErrorCount() + 1);
+                            continue;
+                        }
+                    }
+
+                    Category category = null;
+                    if (!categoryName.isBlank()) {
+                        category = categoryRepository.findByNameIgnoreCase(categoryName).orElse(null);
+                        if (category == null) {
+                            result.getErrors().add(new ImportResultDTO.RowError(displayRow, "ကဏ္ဍ '" + categoryName + "' မတွေ့ပါ"));
+                            result.setErrorCount(result.getErrorCount() + 1);
+                            continue;
+                        }
+                    }
+
+                    Unit unit = null;
+                    if (!unitName.isBlank()) {
+                        unit = unitRepository.findByUnitNameIgnoreCase(unitName).orElse(null);
+                        if (unit == null) {
+                            result.getErrors().add(new ImportResultDTO.RowError(displayRow, "ယူနစ် '" + unitName + "' မတွေ့ပါ"));
+                            result.setErrorCount(result.getErrorCount() + 1);
+                            continue;
+                        }
+                    }
+
+                    double sellingPriceVal = getCellNumeric(row, 6);
+                    double costPriceVal = getCellNumeric(row, 7);
+                    int stockQty = (int) getCellNumeric(row, 8);
+                    boolean hasSerial = getCellString(row, 9).equalsIgnoreCase("yes");
+                    int reorderLevel = (int) getCellNumeric(row, 10);
+                    int warrantyMonths = (int) getCellNumeric(row, 11);
+                    String warrantyTerms = getCellString(row, 12);
+                    String remark = getCellString(row, 13);
+
+                    Product product = new Product();
+                    product.setName(name);
+                    product.setProductCode("PENDING");
+                    product.setProductType(productType);
+                    product.setBrand(brand);
+                    product.setCategory(category);
+                    product.setUnit(unit);
+                    product.setSellingPrice(BigDecimal.valueOf(sellingPriceVal));
+                    product.setCostPrice(BigDecimal.valueOf(costPriceVal));
+                    product.setStockQty(stockQty);
+                    product.setHasSerial(hasSerial);
+                    product.setReorderLevel(sanitizeReorderLevel(reorderLevel));
+                    product.setWarrantyMonths(warrantyMonths);
+                    product.setWarrantyTerms(warrantyTerms.isBlank() ? null : warrantyTerms);
+                    product.setRemark(remark.isBlank() ? null : remark);
+
+                    Product saved = productRepository.save(product);
+                    saved.setProductCode("PRD-" + String.format("%06d", saved.getId()));
+                    productRepository.save(saved);
+
+                    result.setSuccessCount(result.getSuccessCount() + 1);
+
+                } catch (Exception ex) {
+                    result.getErrors().add(new ImportResultDTO.RowError(displayRow, "မမျှော်လင့်သောအမှား: " + ex.getMessage()));
+                    result.setErrorCount(result.getErrorCount() + 1);
+                }
+            }
+        }
+
+        if (result.getSuccessCount() > 0) {
+            messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_CREATED");
+        }
+        return result;
+    }
+
+    private int detectDataStartRow(Sheet sheet) {
+        Row row0 = sheet.getRow(0);
+        if (row0 == null) return 1;
+        String first = getCellString(row0, 0);
+        // Template has note at row 0, headers at row 1
+        if (first.startsWith("မှတ်ချက်")) return 2;
+        // Export has headers at row 0
+        return 1;
+    }
+
+    private boolean isRowEmpty(Row row, int fromCol, int toCol) {
+        for (int c = fromCol; c <= toCol; c++) {
+            Cell cell = row.getCell(c);
+            if (cell != null && cell.getCellType() != CellType.BLANK) {
+                String v = getCellString(row, c);
+                if (!v.isBlank()) return false;
+            }
+        }
+        return true;
+    }
+
+    private String getCellString(Row row, int col) {
+        Cell cell = row.getCell(col);
+        if (cell == null) return "";
+        return switch (cell.getCellType()) {
+            case STRING -> cell.getStringCellValue().trim();
+            case NUMERIC -> {
+                double d = cell.getNumericCellValue();
+                if (d == Math.floor(d)) yield String.valueOf((long) d);
+                yield String.valueOf(d);
+            }
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> {
+                try { yield cell.getStringCellValue().trim(); }
+                catch (Exception e) { yield String.valueOf(cell.getNumericCellValue()); }
+            }
+            default -> "";
+        };
+    }
+
+    private double getCellNumeric(Row row, int col) {
+        Cell cell = row.getCell(col);
+        if (cell == null) return 0;
+        if (cell.getCellType() == CellType.NUMERIC) return cell.getNumericCellValue();
+        try { return Double.parseDouble(getCellString(row, col)); }
+        catch (NumberFormatException e) { return 0; }
+    }
+
+    private String nullStr(String s) { return s != null ? s : ""; }
 }

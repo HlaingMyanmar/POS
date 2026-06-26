@@ -50,6 +50,7 @@ import ScanPage from './pages/ScanPage';
 import OpeningBalancePage from './pages/OpeningBalancePage';
 import OpeningStockPage from './pages/OpeningStockPage';
 import AppVersionSettingsPage from './pages/AppVersionSettingsPage';
+import ManufacturingManagement from './pages/ManufacturingManagement';
 import Layout from './components/Layout';
 import { User, AppLanguage, AppRoute, AppTheme } from './types';
 import { getFromSession } from './utils/storageHelper';
@@ -278,6 +279,10 @@ const App: React.FC = () => {
         <Route
           path={AppRoute.OPENING_STOCK}
           element={renderProtected(<OpeningStockPage />, 'CAN_ACCESS_PRODUCT_READ')}
+        />
+        <Route
+          path={AppRoute.MANUFACTURING}
+          element={renderProtected(<ManufacturingManagement />, 'CAN_ACCESS_PRODUCT_READ')}
         />
         <Route
           path={AppRoute.PURCHASES}

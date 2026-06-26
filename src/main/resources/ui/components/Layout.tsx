@@ -107,6 +107,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ကုန်ပစ္စည်းများ', icon: <Box size={18} />, path: AppRoute.PRODUCTS, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_PRODUCT_READ' },
       { name: 'လေဘယ်ဒီဇိုင်း', icon: <Barcode size={18} />, path: AppRoute.LABEL_DESIGNER, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_PRODUCT_READ' },
       { name: 'ကနဦး ကုန်လက်ကျန်', icon: <Package size={18} />, path: AppRoute.OPENING_STOCK, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_PRODUCT_READ' },
+      { name: 'ထုတ်လုပ်ရေး', icon: <Layers size={18} />, path: AppRoute.MANUFACTURING, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_PRODUCT_READ' },
       { name: 'လက်ကျန်ညှိမှု', icon: <Wrench size={18} />, path: AppRoute.STOCK_ADJUSTMENTS, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_STOCK_ADJUSTMENT_READ' },
       { name: 'စီရီနံပါတ်', icon: <Hash size={18} />, path: AppRoute.PRODUCT_SERIALS, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_PRODUCT_SERIAL_READ' },
       { name: 'အမှတ်တံဆိပ်', icon: <Package size={18} />, path: AppRoute.BRANDS, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_BRAND_READ' },

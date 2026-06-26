@@ -2,13 +2,18 @@ package org.sspd.servicemgmt.stockoptions.productoptions.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.sspd.servicemgmt.api.ApiResponse;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.ImportResultDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.dto.ProductDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.service.ProductService;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -86,6 +91,34 @@ public class ProductController {
             @RequestBody java.util.Map<String, String> body) {
         service.updatePhoto(id, body.get("photoBase64"));
         return ResponseEntity.ok(new ApiResponse<>(true, "Photo updated", null));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportExcel() throws IOException {
+        byte[] bytes = service.exportExcel();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"products.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @GetMapping("/import-template")
+    public ResponseEntity<byte[]> downloadTemplate() throws IOException {
+        byte[] bytes = service.downloadTemplate();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"product_import_template.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_CREATE')")
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ImportResultDTO>> importExcel(
+            @RequestParam("file") MultipartFile file) throws IOException {
+        ImportResultDTO result = service.importExcel(file);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Import completed", result));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")

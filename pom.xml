@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>org.sspd</groupId>
-	<artifactId>servicemgmt</artifactId>
+	<artifactId>pos</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>war</packaging>
 	<name>servicemgmt</name>

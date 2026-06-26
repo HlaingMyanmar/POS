@@ -46,6 +46,7 @@ import {
   Wrench,
   X,
   ChevronRight,
+  ChevronDown,
   Smartphone
 } from 'lucide-react';
 import { AppLanguage, AppRoute, AppTheme, User } from '../types';
@@ -53,6 +54,62 @@ import { creditAlertService } from '../services/creditalertapiservice';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsHelp from './KeyboardShortcutsHelp';
+
+/* ── Tab Close Menu ─────────────────────────────────────────── */
+const TabCloseMenu: React.FC<{
+  isDark: boolean;
+  activePath: string;
+  onCloseOthers: () => void;
+  onCloseAll: () => void;
+}> = ({ isDark, onCloseOthers, onCloseAll }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative flex items-center shrink-0">
+      <button
+        onClick={() => setOpen(v => !v)}
+        title="Tabs ပိတ်မည်"
+        className={`h-full px-2.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide border-l transition-all ${
+          isDark
+            ? 'border-slate-700 text-slate-400 hover:text-rose-400 hover:bg-slate-800'
+            : 'border-slate-200 text-slate-400 hover:text-rose-500 hover:bg-rose-50'
+        }`}
+      >
+        <X size={11} />
+        <ChevronDown size={10} />
+      </button>
+      {open && (
+        <div className={`absolute right-0 top-full z-50 mt-1 w-44 rounded-xl shadow-xl border overflow-hidden ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <button
+            onClick={() => { onCloseOthers(); setOpen(false); }}
+            className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-all flex items-center gap-2 ${isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-50'}`}
+          >
+            <X size={12} className="text-amber-500" />
+            ဤ Tab မှလွဲ၍ ပိတ်မည်
+          </button>
+          <div className={`border-t ${isDark ? 'border-slate-700' : 'border-slate-100'}`} />
+          <button
+            onClick={() => { onCloseAll(); setOpen(false); }}
+            className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-all flex items-center gap-2 ${isDark ? 'text-rose-400 hover:bg-slate-700' : 'text-rose-600 hover:bg-rose-50'}`}
+          >
+            <X size={12} />
+            Tabs အားလုံး ပိတ်မည်
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const isAdministrator = (user: User) =>
   user.roles.some(r => r === 'ADMINISTRATOR' || r === 'ROLE_ADMINISTRATOR');
@@ -231,7 +288,6 @@ const Layout: React.FC<LayoutProps> = ({
   const closeTab = useCallback((path: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Remove from keep-alive cache so it starts fresh when reopened
     cachedOutlets.current.delete(path);
     setOpenTabs(prev => {
       const idx = prev.findIndex(t => t.path === path);
@@ -243,6 +299,21 @@ const Layout: React.FC<LayoutProps> = ({
       return next.length > 0 ? next : [{ path: AppRoute.DASHBOARD, name: 'ခွဲခြမ်းစိတ်ဖြာ' }];
     });
   }, [location.pathname, navigate]);
+
+  const closeOtherTabs = useCallback((keepPath: string) => {
+    setOpenTabs(prev => {
+      prev.forEach(t => { if (t.path !== keepPath) cachedOutlets.current.delete(t.path); });
+      return prev.filter(t => t.path === keepPath);
+    });
+    navigate(keepPath);
+  }, [navigate]);
+
+  const closeAllTabs = useCallback(() => {
+    cachedOutlets.current.clear();
+    const dashboard = { path: AppRoute.DASHBOARD, name: 'ခွဲခြမ်းစိတ်ဖြာ' };
+    setOpenTabs([dashboard]);
+    navigate(AppRoute.DASHBOARD);
+  }, [navigate]);
 
   const currentPathName = menuItems.find((item) => item.path === location.pathname)?.name || 'စီမံခန့်ခွဲမှုစနစ်';
   const primaryRole = useMemo(
@@ -585,41 +656,52 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Page Tab Bar */}
             {openTabs.length > 1 && (
-              <div
-                ref={tabBarRef}
-                className={`flex overflow-x-auto shrink-0 border-b ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
-                style={{ scrollbarWidth: 'none' }}
-              >
-                {openTabs.map(tab => {
-                  const isActive = tab.path === location.pathname;
-                  const icon = menuItems.find(i => i.path === tab.path)?.icon;
-                  return (
-                    <Link
-                      key={tab.path}
-                      to={tab.path}
-                      data-tab={tab.path}
-                      className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap border-r shrink-0 transition-all select-none ${
-                        isActive
-                          ? isDark
-                            ? 'bg-slate-950 text-indigo-400 border-b-2 border-b-indigo-400 border-r-slate-700'
-                            : 'bg-slate-50 text-indigo-600 border-b-2 border-b-indigo-500 border-r-slate-200'
-                          : isDark
-                          ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border-r-slate-700'
-                          : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-r-slate-200'
-                      }`}
-                    >
-                      {icon && <span className="w-3.5 h-3.5 flex items-center justify-center opacity-70">{icon}</span>}
-                      <span className="max-w-[120px] truncate">{tab.name}</span>
-                      <button
-                        onClick={e => closeTab(tab.path, e)}
-                        className={`ml-0.5 w-4 h-4 flex items-center justify-center rounded hover:bg-rose-100 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-60' : ''}`}
-                        title="ပိတ်မည်"
+              <div className={`flex shrink-0 border-b ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                {/* Scrollable tab list */}
+                <div
+                  ref={tabBarRef}
+                  className="flex overflow-x-auto flex-1 min-w-0"
+                  style={{ scrollbarWidth: 'none' }}
+                >
+                  {openTabs.map(tab => {
+                    const isActive = tab.path === location.pathname;
+                    const icon = menuItems.find(i => i.path === tab.path)?.icon;
+                    return (
+                      <Link
+                        key={tab.path}
+                        to={tab.path}
+                        data-tab={tab.path}
+                        className={`group flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap border-r shrink-0 transition-all select-none ${
+                          isActive
+                            ? isDark
+                              ? 'bg-slate-950 text-indigo-400 border-b-2 border-b-indigo-400 border-r-slate-700'
+                              : 'bg-slate-50 text-indigo-600 border-b-2 border-b-indigo-500 border-r-slate-200'
+                            : isDark
+                            ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border-r-slate-700'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-r-slate-200'
+                        }`}
                       >
-                        <X size={10} />
-                      </button>
-                    </Link>
-                  );
-                })}
+                        {icon && <span className="w-3.5 h-3.5 flex items-center justify-center opacity-70">{icon}</span>}
+                        <span className="max-w-[120px] truncate">{tab.name}</span>
+                        <button
+                          onClick={e => closeTab(tab.path, e)}
+                          className={`ml-0.5 w-4 h-4 flex items-center justify-center rounded hover:bg-rose-100 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-60' : ''}`}
+                          title="ပိတ်မည်"
+                        >
+                          <X size={10} />
+                        </button>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                {/* Close actions — always visible at right */}
+                <TabCloseMenu
+                  isDark={isDark}
+                  activePath={location.pathname}
+                  onCloseOthers={() => closeOtherTabs(location.pathname)}
+                  onCloseAll={closeAllTabs}
+                />
               </div>
             )}
 

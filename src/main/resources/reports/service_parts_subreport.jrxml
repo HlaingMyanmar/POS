@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="service_parts_subreport"
+  pageWidth="555" pageHeight="842"
+  columnWidth="555" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0"
+  isFloatColumnFooter="true">
+
+  <field name="ROW_NO"       class="java.lang.Integer"/>
+  <field name="PRODUCT_NAME" class="java.lang.String"/>
+  <field name="SERIAL_INFO"  class="java.lang.String"/>
+  <field name="QTY"          class="java.lang.Integer"/>
+  <field name="UNIT_PRICE"   class="java.lang.String"/>
+  <field name="SUBTOTAL"     class="java.lang.String"/>
+
+  <columnHeader>
+    <band height="16">
+      <rectangle>
+        <reportElement x="0" y="0" width="555" height="16" backcolor="#EFF6FF" forecolor="#BFDBFE"/>
+        <graphicElement><pen lineWidth="0.5"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="2" y="2" width="30" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[#]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="32" y="2" width="185" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[PART]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="217" y="2" width="120" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[SERIAL NO]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="337" y="2" width="40" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[QTY]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="377" y="2" width="80" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[UNIT PRICE]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="457" y="2" width="95" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[SUBTOTAL]]></text>
+      </staticText>
+    </band>
+  </columnHeader>
+
+  <detail>
+    <band height="14">
+      <textField isBlankWhenNull="true">
+        <reportElement x="2" y="1" width="30" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{ROW_NO}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true" isStretchWithOverflow="true">
+        <reportElement x="32" y="1" width="185" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{PRODUCT_NAME}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="217" y="1" width="120" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="8" forecolor="#475569"/></textElement>
+        <textFieldExpression><![CDATA[$F{SERIAL_INFO}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="337" y="1" width="40" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{QTY}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="377" y="1" width="80" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{UNIT_PRICE}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="457" y="1" width="95" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$F{SUBTOTAL}]]></textFieldExpression>
+      </textField>
+      <line>
+        <reportElement x="0" y="13" width="555" height="1" forecolor="#EFF6FF"/>
+      </line>
+    </band>
+  </detail>
+
+</jasperReport>

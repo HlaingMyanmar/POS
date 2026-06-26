@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: invoice-header
+  Two variants:
+    th:fragment="full"  — first page: gradient header + accent bar + company info
+    th:fragment="cont"  — continuation pages: compact bar
+-->
+<head><title>fragment</title></head>
+<body>
+
+<!-- ═══ Full header (first page) ══════════════════════════════════════════ -->
+<div th:fragment="full(inv, layout)">
+  <div class="inv-header">
+    <!-- Left: logo + company branding -->
+    <div class="inv-header__brand">
+      <img th:if="${inv.showLogo and not #strings.isEmpty(inv.logoBase64)}"
+           th:src="${inv.logoBase64}"
+           class="inv-header__logo"
+           alt="logo"/>
+      <div>
+        <div class="inv-header__company-name" th:text="${inv.companyName}">Company Name</div>
+        <div class="inv-header__company-sub">
+          <span th:if="${not #strings.isEmpty(inv.companyAddress)}"
+                th:text="${inv.companyAddress}"></span>
+          <span th:if="${not #strings.isEmpty(inv.companyPhone)}"
+                th:text="${(not #strings.isEmpty(inv.companyAddress) ? ' · ' : '') + inv.companyPhone}"></span>
+          <span th:if="${not #strings.isEmpty(inv.companyEmail)}"
+                th:text="${' · ' + inv.companyEmail}"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: invoice meta -->
+    <div class="inv-header__meta">
+      <div class="inv-header__meta-title" th:text="${inv.invoiceTitle}">SALES INVOICE</div>
+      <div class="inv-header__meta-number" th:text="${inv.invoiceNo}">#0001</div>
+      <div class="inv-header__meta-date"   th:text="${inv.invoiceDate}">01/01/2025</div>
+      <img th:if="${inv.showQrCode and not #strings.isEmpty(inv.qrCodeBase64)}"
+           th:src="${inv.qrCodeBase64}"
+           class="inv-header__qr"
+           alt="QR"/>
+    </div>
+  </div>
+  <!-- Accent gradient bar -->
+  <div class="inv-accent-bar"></div>
+</div>
+
+<!-- ═══ Compact header (continuation pages) ══════════════════════════════ -->
+<div th:fragment="cont(inv, layout)">
+  <div class="inv-cont-header">
+    <span class="inv-cont-header__title"
+          th:text="${inv.invoiceTitle + ' - ' + inv.invoiceNo}">Invoice</span>
+    <span class="inv-cont-header__page"
+          th:text="${'Page ' + inv.currentPage + ' of ' + inv.totalPages}">Page 2 of 3</span>
+  </div>
+</div>
+
+</body>
+</html>

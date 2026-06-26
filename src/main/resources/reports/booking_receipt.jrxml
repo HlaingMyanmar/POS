@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="booking_receipt"
+  pageWidth="595" pageHeight="842"
+  columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  isFloatColumnFooter="true">
+
+  <!-- Company params -->
+  <parameter name="COMPANY_NAME"    class="java.lang.String"/>
+  <parameter name="COMPANY_ADDRESS" class="java.lang.String"/>
+  <parameter name="COMPANY_PHONE"   class="java.lang.String"/>
+  <parameter name="INVOICE_TITLE"   class="java.lang.String"/>
+  <parameter name="FOOTER_NOTE"     class="java.lang.String"/>
+
+  <!-- Booking header params -->
+  <parameter name="INVOICE_NO"       class="java.lang.String"/>
+  <parameter name="BOOKING_DATE"     class="java.lang.String"/>
+  <parameter name="APPOINTMENT_DATE" class="java.lang.String"/>
+  <parameter name="STATUS"           class="java.lang.String"/>
+
+  <!-- Customer params -->
+  <parameter name="CUSTOMER_NAME"   class="java.lang.String"/>
+  <parameter name="CUSTOMER_PHONE"  class="java.lang.String"/>
+  <parameter name="RECEPTIONIST"    class="java.lang.String"/>
+
+  <!-- Device params -->
+  <parameter name="DEVICE_TYPE"  class="java.lang.String"/>
+  <parameter name="BRAND"        class="java.lang.String"/>
+  <parameter name="MODEL"        class="java.lang.String"/>
+  <parameter name="SERIAL_NO"    class="java.lang.String"/>
+  <parameter name="COLOR"        class="java.lang.String"/>
+  <parameter name="ACCESSORIES"  class="java.lang.String"/>
+
+  <!-- Financial params -->
+  <parameter name="TOTAL_AMOUNT" class="java.lang.String"/>
+  <parameter name="REMARK"       class="java.lang.String"/>
+
+  <!-- Subreport params -->
+  <parameter name="DEVICE_INFO_SOURCE"    class="net.sf.jasperreports.engine.JRDataSource"/>
+  <parameter name="DEVICE_INFO_SUBREPORT" class="net.sf.jasperreports.engine.JasperReport"/>
+
+  <title>
+    <band height="116">
+      <!-- Header background -->
+      <rectangle>
+        <reportElement x="0" y="0" width="535" height="62" backcolor="#1E3A5F" forecolor="#1E3A5F"/>
+        <graphicElement><pen lineWidth="0"/></graphicElement>
+      </rectangle>
+
+      <!-- Company name -->
+      <textField isBlankWhenNull="true">
+        <reportElement x="8" y="8" width="280" height="14"/>
+        <textElement verticalAlignment="Middle">
+          <font fontName="DejaVu Sans" size="11" isBold="true" forecolor="#FFFFFF"/>
+        </textElement>
+        <textFieldExpression><![CDATA[$P{COMPANY_NAME}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="8" y="26" width="280" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" forecolor="#BFD7F5"/></textElement>
+        <textFieldExpression><![CDATA[$P{COMPANY_ADDRESS}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="8" y="38" width="280" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" forecolor="#BFD7F5"/></textElement>
+        <textFieldExpression><![CDATA[$P{COMPANY_PHONE}]]></textFieldExpression>
+      </textField>
+
+      <!-- Title -->
+      <textField isBlankWhenNull="true">
+        <reportElement x="340" y="7" width="191" height="14"/>
+        <textElement textAlignment="Right">
+          <font fontName="DejaVu Sans" size="12" isBold="true" forecolor="#FFFFFF"/>
+        </textElement>
+        <textFieldExpression><![CDATA[$P{INVOICE_TITLE} != null && !$P{INVOICE_TITLE}.isEmpty() ? $P{INVOICE_TITLE} : "DEVICE INTAKE RECEIPT"]]></textFieldExpression>
+      </textField>
+
+      <!-- Receipt No / Date -->
+      <staticText>
+        <reportElement x="360" y="26" width="80" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" forecolor="#BFD7F5"/></textElement>
+        <text><![CDATA[Receipt No:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="444" y="26" width="87" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#FFFFFF"/></textElement>
+        <textFieldExpression><![CDATA[$P{INVOICE_NO}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="360" y="38" width="80" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" forecolor="#BFD7F5"/></textElement>
+        <text><![CDATA[Date:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="444" y="38" width="87" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" forecolor="#FFFFFF"/></textElement>
+        <textFieldExpression><![CDATA[$P{BOOKING_DATE}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="360" y="50" width="80" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" forecolor="#BFD7F5"/></textElement>
+        <text><![CDATA[Status:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="444" y="50" width="87" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#FFFFFF"/></textElement>
+        <textFieldExpression><![CDATA[$P{STATUS}]]></textFieldExpression>
+      </textField>
+
+      <!-- Divider -->
+      <line>
+        <reportElement x="0" y="64" width="535" height="1" forecolor="#BFDBFE"/>
+      </line>
+
+      <!-- Row 1: Customer | Appointment -->
+      <staticText>
+        <reportElement x="0" y="68" width="58" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Customer:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="60" y="68" width="195" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$P{CUSTOMER_NAME}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="280" y="68" width="100" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Appointment:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="384" y="68" width="147" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5"/></textElement>
+        <textFieldExpression><![CDATA[$P{APPOINTMENT_DATE}]]></textFieldExpression>
+      </textField>
+
+      <!-- Row 2: Phone | Receptionist -->
+      <staticText>
+        <reportElement x="0" y="80" width="58" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Phone:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="60" y="80" width="195" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5"/></textElement>
+        <textFieldExpression><![CDATA[$P{CUSTOMER_PHONE}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="280" y="80" width="100" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Receptionist:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="384" y="80" width="147" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6.5"/></textElement>
+        <textFieldExpression><![CDATA[$P{RECEPTIONIST}]]></textFieldExpression>
+      </textField>
+
+      <!-- Row 3: Booking No -->
+      <staticText>
+        <reportElement x="0" y="92" width="58" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Booking No:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="60" y="92" width="195" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$P{INVOICE_NO}]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <summary>
+    <band height="430" isSplitAllowed="true">
+
+      <!-- Device Information section header -->
+      <rectangle>
+        <reportElement x="0" y="0" width="535" height="13" backcolor="#F1F5F9" forecolor="#E2E8F0"/>
+        <graphicElement><pen lineWidth="0.5"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="4" y="2" width="200" height="9"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#1E3A5F"/></textElement>
+        <text><![CDATA[DEVICE INFORMATION]]></text>
+      </staticText>
+
+      <!-- Device fields: row 1 -->
+      <staticText>
+        <reportElement x="4" y="17" width="78" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Device Type:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="84" y="17" width="150" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{DEVICE_TYPE}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="280" y="17" width="55" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Brand:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="337" y="17" width="194" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{BRAND}]]></textFieldExpression>
+      </textField>
+
+      <!-- Device fields: row 2 -->
+      <staticText>
+        <reportElement x="4" y="30" width="78" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Model:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="84" y="30" width="150" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{MODEL}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="280" y="30" width="55" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Serial No:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="337" y="30" width="194" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{SERIAL_NO}]]></textFieldExpression>
+      </textField>
+
+      <!-- Device fields: row 3 -->
+      <staticText>
+        <reportElement x="4" y="43" width="78" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Color:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="84" y="43" width="150" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{COLOR}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="280" y="43" width="55" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Accessories:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true" isStretchWithOverflow="true">
+        <reportElement x="337" y="43" width="194" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{ACCESSORIES}]]></textFieldExpression>
+      </textField>
+
+      <line>
+        <reportElement x="0" y="56" width="535" height="1" forecolor="#E2E8F0"/>
+      </line>
+
+      <!-- Component condition section -->
+      <rectangle>
+        <reportElement x="0" y="59" width="535" height="13" backcolor="#EFF6FF" forecolor="#BFDBFE"/>
+        <graphicElement><pen lineWidth="0.5"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="4" y="61" width="200" height="9"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#1D4ED8"/></textElement>
+        <text><![CDATA[COMPONENT CONDITION]]></text>
+      </staticText>
+
+      <!-- Device info subreport -->
+      <subreport>
+        <reportElement x="0" y="72" width="535" height="60" isRemoveLineWhenBlank="true"/>
+        <dataSourceExpression><![CDATA[$P{DEVICE_INFO_SOURCE}]]></dataSourceExpression>
+        <subreportExpression><![CDATA[$P{DEVICE_INFO_SUBREPORT}]]></subreportExpression>
+      </subreport>
+
+      <!-- Estimated cost box -->
+      <rectangle>
+        <reportElement x="360" y="146" width="175" height="16" backcolor="#1E3A5F" forecolor="#1E3A5F"/>
+        <graphicElement><pen lineWidth="0"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="368" y="149" width="88" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#FFFFFF"/></textElement>
+        <text><![CDATA[Estimated Cost]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="456" y="149" width="72" height="10"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="8" isBold="true" forecolor="#FFFFFF"/></textElement>
+        <textFieldExpression><![CDATA[$P{TOTAL_AMOUNT}]]></textFieldExpression>
+      </textField>
+
+      <!-- Remark -->
+      <staticText>
+        <reportElement x="0" y="172" width="58" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Remark:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true" isStretchWithOverflow="true">
+        <reportElement x="60" y="172" width="475" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" forecolor="#475569"/></textElement>
+        <textFieldExpression><![CDATA[$P{REMARK}]]></textFieldExpression>
+      </textField>
+
+      <!-- Notice box -->
+      <rectangle>
+        <reportElement x="0" y="192" width="535" height="34" backcolor="#FFFBEB" forecolor="#FDE68A"/>
+        <graphicElement><pen lineWidth="0.5"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="6" y="196" width="523" height="10"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#92400E"/></textElement>
+        <text><![CDATA[IMPORTANT NOTICE]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="6" y="207" width="523" height="15" isStretchWithOverflow="true"/>
+        <textElement><font fontName="DejaVu Sans" size="6" forecolor="#92400E"/></textElement>
+        <text><![CDATA[This receipt confirms that the device has been received for service. The estimated cost may change after diagnosis. Please keep this receipt to collect your device.]]></text>
+      </staticText>
+
+      <!-- Signatures -->
+      <line>
+        <reportElement x="0" y="256" width="160" height="1" forecolor="#CBD5E1"/>
+      </line>
+      <staticText>
+        <reportElement x="0" y="259" width="160" height="10"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="6.5" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Customer Signature]]></text>
+      </staticText>
+
+      <line>
+        <reportElement x="375" y="256" width="160" height="1" forecolor="#CBD5E1"/>
+      </line>
+      <staticText>
+        <reportElement x="375" y="259" width="160" height="10"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="6.5" forecolor="#64748B"/></textElement>
+        <text><![CDATA[Receptionist Signature]]></text>
+      </staticText>
+
+      <!-- Footer -->
+      <line>
+        <reportElement x="0" y="280" width="535" height="1" forecolor="#BFDBFE"/>
+      </line>
+      <textField isBlankWhenNull="true">
+        <reportElement x="0" y="284" width="535" height="10"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="6.5" forecolor="#64748B"/></textElement>
+        <textFieldExpression><![CDATA[$P{FOOTER_NOTE} != null && !$P{FOOTER_NOTE}.isEmpty() ? $P{FOOTER_NOTE} : "Thank you for your business!"]]></textFieldExpression>
+      </textField>
+    </band>
+  </summary>
+
+</jasperReport>

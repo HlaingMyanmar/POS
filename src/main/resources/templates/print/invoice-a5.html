@@ -1,0 +1,42 @@
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  A5 INVOICE PAGE TEMPLATE
+
+  Identical structure to invoice-a4.html but uses A5 page class.
+  A5-specific sizing (smaller fonts, tighter padding) lives in print-base.css.
+  No logic lives here — see fragment files for markup changes.
+
+  Template variables: inv, layout
+
+  NOTE: No <html>/<head>/<body> wrapper — the preview shell and PDF wrapper
+  are added by TemplateRenderingService / HtmlPdfService.
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<div class="invoice-page invoice-page--a5" xmlns:th="http://www.thymeleaf.org">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div th:if="${inv.currentPage == 1}"
+       th:replace="~{print/fragments/invoice-header :: full(${inv}, ${layout})}"></div>
+  <div th:if="${inv.currentPage > 1}"
+       th:replace="~{print/fragments/invoice-header :: cont(${inv}, ${layout})}"></div>
+
+  <!-- ── Body ───────────────────────────────────────────────────────────── -->
+  <div class="inv-body">
+
+    <div th:if="${inv.currentPage == 1}"
+         th:replace="~{print/fragments/invoice-info-blocks :: render(${inv})}"></div>
+
+    <div th:replace="~{print/fragments/sale-table :: render(${inv})}"></div>
+
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-summary :: render(${inv})}"></div>
+
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: last(${inv})}"></div>
+
+    <div th:if="${inv.currentPage < inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: cont(${inv})}"></div>
+
+  </div>
+
+</div>

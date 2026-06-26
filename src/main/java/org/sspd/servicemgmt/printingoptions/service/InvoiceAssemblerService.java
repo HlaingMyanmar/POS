@@ -1,0 +1,482 @@
+package org.sspd.servicemgmt.printingoptions.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.bookingoptions.model.Booking;
+import org.sspd.servicemgmt.bookingoptions.model.BookingDevice;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
+import org.sspd.servicemgmt.companysettingoptions.dto.CompanySettingsDTO;
+import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
+import org.sspd.servicemgmt.printingoptions.dto.PrintInvoiceData;
+import org.sspd.servicemgmt.printingoptions.dto.PrintLineItem;
+import org.sspd.servicemgmt.printingoptions.dto.PrintPageConfig;
+import org.sspd.servicemgmt.printingoptions.dto.PrintRequest;
+import org.sspd.servicemgmt.printingoptions.entity.VoucherSetting;
+import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
+import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetail;
+import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
+import org.sspd.servicemgmt.saleoptions.model.Sale;
+import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
+import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.text.NumberFormat;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+/**
+ * Assembles a {@link PrintInvoiceData} from the database entities matching
+ * the incoming {@link PrintRequest}.  One source-of-truth for field mapping
+ * so both the PDF endpoint and the HTML-preview endpoint share the same data.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class InvoiceAssemblerService {
+
+    private final SaleRepository saleRepository;
+    private final BookingRepository bookingRepository;
+    private final ServiceJobRepository serviceJobRepository;
+    private final PurchaseRepository purchaseRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
+    private final CompanySettingsService companySettingsService;
+    private final QrCodeService qrCodeService;
+    private final ObjectMapper objectMapper;
+
+    private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter D_FMT  = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    // ── Public dispatch ───────────────────────────────────────────────────────
+
+    public PrintInvoiceData assemble(PrintRequest req) {
+        return assemble(req, null);
+    }
+
+    /**
+     * Assembles invoice data, then overlays non-null fields from {@code setting}.
+     * Pass {@code null} for setting to use only the request and company defaults.
+     */
+    public PrintInvoiceData assemble(PrintRequest req, VoucherSetting setting) {
+        PrintPageConfig pageCfg = resolvePageConfig(req.getPaperSize());
+        CompanySettingsDTO cs = companySettingsService.getSettings();
+
+        PrintInvoiceData data = switch (req.getDocumentType()) {
+            case SALE         -> assembleSale(req.getDocumentId(), cs);
+            case BOOKING      -> assembleBooking(req.getDocumentId(), cs);
+            case SERVICE_JOB  -> assembleServiceJob(req.getDocumentId(), cs);
+            case SERVICE_DONE -> assembleServiceDone(req.getDocumentId(), cs);
+            case PURCHASE     -> assemblePurchase(req.getDocumentId(), cs);
+        };
+        data.setDocumentType(req.getDocumentType().name());
+
+        data.setPageConfig(pageCfg);
+        data.setShowLogo(req.isShowLogo());
+        data.setShowSerial(req.isShowSerial());
+        data.setShowPaymentHistory(req.isShowPaymentHistory());
+        data.setShowSignatures(req.isShowSignatures());
+        data.setShowQrCode(req.isShowQrCode());
+        data.setSign1Label(req.getSign1Label());
+        data.setSign2Label(req.getSign2Label());
+        data.setHeaderFontFamily(req.getHeaderFontFamily());
+        data.setHeaderFontSizePx(req.getHeaderFontSizePx());
+        data.setInfoFontFamily(req.getInfoFontFamily());
+        data.setInfoFontSizePx(req.getInfoFontSizePx());
+        data.setTableHeaderFontFamily(req.getTableHeaderFontFamily());
+        data.setTableHeaderFontSizePx(req.getTableHeaderFontSizePx());
+        data.setTableDataFontFamily(req.getTableDataFontFamily());
+        data.setTableDataFontSizePx(req.getTableDataFontSizePx());
+        data.setFooterFontFamily(req.getFooterFontFamily());
+        data.setFooterFontSizePx(req.getFooterFontSizePx());
+        data.setNoticeFontFamily(req.getNoticeFontFamily());
+        data.setNoticeFontSizePx(req.getNoticeFontSizePx());
+
+        if (req.isShowQrCode()) {
+            String qrContent = buildQrContent(data);
+            data.setQrCodeBase64(qrCodeService.generateDataUri(qrContent));
+        }
+
+        if (setting != null) {
+            if (setting.getVoucherTitle() != null && !setting.getVoucherTitle().isBlank())
+                data.setInvoiceTitle(setting.getVoucherTitle());
+            if (setting.getFooterNote() != null && !setting.getFooterNote().isBlank())
+                data.setFooterNote(setting.getFooterNote());
+            if (setting.getCustomerNotice() != null && !setting.getCustomerNotice().isBlank())
+                data.setCustomerNotice(setting.getCustomerNotice());
+        }
+
+        return data;
+    }
+
+    // ── Sale ─────────────────────────────────────────────────────────────────
+
+    private PrintInvoiceData assembleSale(Integer saleId, CompanySettingsDTO cs) {
+        Sale sale = saleRepository.findById(saleId)
+                .orElseThrow(() -> new NoSuchElementException("Sale not found: " + saleId));
+
+        List<PrintLineItem> items = new ArrayList<>();
+        if (sale.getDetails() != null) {
+            int i = 1;
+            for (SaleDetail d : sale.getDetails()) {
+                String serial = d.getSerialNumber() != null ? d.getSerialNumber() : "";
+                items.add(PrintLineItem.builder()
+                        .rowNo(i++)
+                        .productName(safe(d.getProduct() != null ? d.getProduct().getName() : ""))
+                        .serialInfo(serial)
+                        .qty(d.getQty() != null ? d.getQty() : 0)
+                        .unitPrice(fmt(d.getUnitPrice()))
+                        .subtotal(fmt(d.getSubtotal()))
+                        .discount("0")
+                        .warrantyLabel(fmtWarrantyLabel(d.getWarrantyMonths(), d.getWarrantyExpiryDate()))
+                        .build());
+            }
+        }
+
+        List<PrintInvoiceData.PaymentEntry> payments = buildPayments(saleId, ReferenceType.Sale);
+
+        return PrintInvoiceData.builder()
+                .companyName(cs.getCompanyName())
+                .companyAddress(safe(cs.getCompanyAddress()))
+                .companyPhone(safe(cs.getCompanyPhone()))
+                .companyEmail(safe(cs.getCompanyEmail()))
+                .logoBase64(safe(cs.getLogoBase64()))
+                .footerNote(safe(cs.getFooterNote()))
+                .headerColor("#1e3a5f")
+                .invoiceTitle(safe(cs.getInvoiceTitle(), "SALES INVOICE"))
+                .invoiceNo(sale.getSaleCode())
+                .invoiceDate(sale.getSaleDate() != null ? sale.getSaleDate().format(DT_FMT) : "")
+                .dueDate(sale.getDueDate() != null ? sale.getDueDate().format(D_FMT) : "")
+                .paymentStatus(sale.getPaymentStatus() != null ? sale.getPaymentStatus().name() : "")
+                .creditStatus("")
+                .customerName(sale.getCustomer() != null ? sale.getCustomer().getName() : "")
+                .customerPhone(sale.getCustomer() != null ? safe(sale.getCustomer().getPhone()) : "")
+                .customerAddress(sale.getCustomer() != null ? safe(sale.getCustomer().getAddress()) : "")
+                .cashierName(sale.getStaff() != null ? sale.getStaff().getName() : "")
+                .lineItems(items)
+                .payments(payments)
+                .subtotal(fmt(sale.getTotalAmount()))
+                .discount(fmt(sale.getDiscountAmount()))
+                .netAmount(fmt(sale.getNetAmount()))
+                .paid(fmt(sale.getPaidAmount()))
+                .balanceDue(fmt(sale.getDueAmount()))
+                .remark(safe(sale.getRemark()))
+                .customerNotice("")
+                .build();
+    }
+
+    // ── Booking ───────────────────────────────────────────────────────────────
+
+    private PrintInvoiceData assembleBooking(Integer bookingId, CompanySettingsDTO cs) {
+        Booking b = bookingRepository.findByIdWithDevices(bookingId)
+                .orElseThrow(() -> new NoSuchElementException("Booking not found: " + bookingId));
+
+        // Build device rows — prefer the devices list; fall back to single device fields
+        List<PrintInvoiceData.DeviceRow> deviceRows = new ArrayList<>();
+        if (b.getDevices() != null && !b.getDevices().isEmpty()) {
+            for (BookingDevice d : b.getDevices()) {
+                deviceRows.add(PrintInvoiceData.DeviceRow.builder()
+                        .deviceType(safe(d.getDeviceType()))
+                        .brand(safe(d.getBrand()))
+                        .model(safe(d.getModel()))
+                        .serialNo(safe(d.getSerialNumber()))
+                        .color(safe(d.getColor()))
+                        .accessories(safe(d.getAccessories()))
+                        .problemDesc(safe(d.getProblemDesc()))
+                        .build());
+            }
+        } else if (!safe(b.getBrand()).isBlank() || !safe(b.getModel()).isBlank()
+                || !safe(b.getDeviceType()).isBlank() || !safe(b.getSerialNumber()).isBlank()
+                || !safe(b.getColor()).isBlank() || !safe(b.getAccessories()).isBlank()) {
+            deviceRows.add(PrintInvoiceData.DeviceRow.builder()
+                    .deviceType(safe(b.getDeviceType()))
+                    .brand(safe(b.getBrand()))
+                    .model(safe(b.getModel()))
+                    .serialNo(safe(b.getSerialNumber()))
+                    .color(safe(b.getColor()))
+                    .accessories(safe(b.getAccessories()))
+                    .problemDesc("")
+                    .build());
+        }
+
+        return PrintInvoiceData.builder()
+                .companyName(cs.getCompanyName())
+                .companyAddress(safe(cs.getCompanyAddress()))
+                .companyPhone(safe(cs.getCompanyPhone()))
+                .companyEmail(safe(cs.getCompanyEmail()))
+                .logoBase64(safe(cs.getLogoBase64()))
+                .footerNote(safe(cs.getFooterNote()))
+                .headerColor("#1e3a5f")
+                .invoiceTitle("DEVICE INTAKE RECEIPT")
+                .invoiceNo(safe(b.getInvoiceNo()))
+                .invoiceDate(b.getBookingDate() != null ? b.getBookingDate().format(DT_FMT) : "")
+                .dueDate(b.getAppointmentDate() != null ? b.getAppointmentDate().format(DT_FMT) : "")
+                .paymentStatus(b.getStatus() != null ? b.getStatus().name() : "")
+                .customerName(b.getCustomer() != null ? b.getCustomer().getName() : "")
+                .customerPhone(b.getCustomer() != null ? safe(b.getCustomer().getPhone()) : "")
+                .cashierName(b.getStaff() != null ? b.getStaff().getName() : "")
+                .lineItems(List.of())
+                .payments(List.of())
+                .subtotal("0")
+                .discount("0")
+                .netAmount("0")
+                .paid("0")
+                .balanceDue("0")
+                .remark(safe(b.getRemark()))
+                .bookingReceipt(true)
+                .deviceRows(deviceRows)
+                .build();
+    }
+
+    // ── Service Job ───────────────────────────────────────────────────────────
+
+    private PrintInvoiceData assembleServiceJob(Integer jobId, CompanySettingsDTO cs) {
+        ServiceJob job = serviceJobRepository.findById(jobId)
+                .orElseThrow(() -> new NoSuchElementException("ServiceJob not found: " + jobId));
+
+        List<PrintLineItem> items = new ArrayList<>();
+        int i = 1;
+        if (job.getLines() != null) {
+            for (ServiceJobLine l : job.getLines()) {
+                items.add(PrintLineItem.builder()
+                        .rowNo(i++)
+                        .productName(l.getServiceItem() != null ? l.getServiceItem().getItem() : "")
+                        .serialInfo("Service")
+                        .qty(l.getQty() != null ? l.getQty() : 0)
+                        .unitPrice(fmt(l.getPrice()))
+                        .subtotal(fmt(l.getSubtotal()))
+                        .discount("0")
+                        .warrantyLabel(fmtWarrantyLabel(l.getWarrantyMonths(), null))
+                        .build());
+            }
+        }
+        if (job.getProductParts() != null) {
+            for (ServiceJobPart p : job.getProductParts()) {
+                items.add(PrintLineItem.builder()
+                        .rowNo(i++)
+                        .productName(p.getProduct() != null ? p.getProduct().getName() : "")
+                        .serialInfo(safe(p.getSerialNumbers()))
+                        .qty(p.getQty() != null ? p.getQty() : 0)
+                        .unitPrice(fmt(p.getUnitPrice()))
+                        .subtotal(fmt(p.getSubtotal()))
+                        .discount("0")
+                        .warrantyLabel("")
+                        .build());
+            }
+        }
+
+        BigDecimal laborTotal = job.getLines() == null ? BigDecimal.ZERO :
+                job.getLines().stream().map(ServiceJobLine::getSubtotal)
+                        .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal partsTotal = job.getProductParts() == null ? BigDecimal.ZERO :
+                job.getProductParts().stream().map(ServiceJobPart::getSubtotal)
+                        .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal gross = laborTotal.add(partsTotal);
+
+        List<PrintInvoiceData.PaymentEntry> payments = new ArrayList<>(buildPayments(jobId, ReferenceType.Service));
+        if (job.getSaleId() != null) {
+            payments.addAll(buildPayments(job.getSaleId(), ReferenceType.Sale));
+        }
+
+        // Accessories: entity's own value first, then booking fallback
+        String accessories = safe(job.getAccessories());
+        if (accessories.isBlank() && job.getBookingId() != null) {
+            accessories = bookingRepository.findById(job.getBookingId())
+                    .map(b -> safe(b.getAccessories())).orElse("");
+        }
+
+        // Parse device conditions JSON → ConditionRow list
+        List<PrintInvoiceData.ConditionRow> conditionRows = parseConditionRows(job.getDeviceConditions());
+
+        return PrintInvoiceData.builder()
+                .companyName(cs.getCompanyName())
+                .companyAddress(safe(cs.getCompanyAddress()))
+                .companyPhone(safe(cs.getCompanyPhone()))
+                .companyEmail(safe(cs.getCompanyEmail()))
+                .logoBase64(safe(cs.getLogoBase64()))
+                .footerNote(safe(cs.getFooterNote()))
+                .headerColor("#1e3a5f")
+                .invoiceTitle("SERVICE VOUCHER")
+                .invoiceNo(safe(job.getJobNo()))
+                .invoiceDate(job.getReceivedDate() != null ? job.getReceivedDate().format(DT_FMT) : "")
+                .dueDate(job.getCompletedDate() != null ? job.getCompletedDate().format(DT_FMT) : "")
+                .paymentStatus(job.getPaymentStatus() != null ? job.getPaymentStatus().name() : "")
+                .customerName(job.getCustomer() != null ? job.getCustomer().getName() : "")
+                .customerPhone(job.getCustomer() != null ? safe(job.getCustomer().getPhone()) : "")
+                .cashierName(job.getAssignedStaff() != null ? job.getAssignedStaff().getName() : "")
+                .lineItems(items)
+                .payments(payments)
+                .subtotal(fmt(gross))
+                .discount(fmt(job.getDiscountAmount()))
+                .netAmount(fmt(job.getNetAmount()))
+                .paid(fmt(job.getPaidAmount()))
+                .balanceDue(fmt(job.getDueAmount()))
+                .remark(safe(job.getRemark()))
+                .itemName(safe(job.getItemName()))
+                .problemDesc(safe(job.getProblemDesc()))
+                .accessories(accessories)
+                .estimatedCost(job.getEstimatedCost() != null && job.getEstimatedCost().compareTo(BigDecimal.ZERO) > 0
+                        ? fmt(job.getEstimatedCost()) : "")
+                .deviceConditionRows(conditionRows)
+                .build();
+    }
+
+    private List<PrintInvoiceData.ConditionRow> parseConditionRows(String json) {
+        List<PrintInvoiceData.ConditionRow> rows = new ArrayList<>();
+        if (json == null || json.isBlank()) return rows;
+        try {
+            List<Map<String, String>> parsed = objectMapper.readValue(json, new TypeReference<>() {});
+            for (Map<String, String> m : parsed) {
+                String status = m.get("status");
+                if (status != null && !status.isBlank()) {
+                    rows.add(PrintInvoiceData.ConditionRow.builder()
+                            .component(safe(m.get("name")))
+                            .status(status)
+                            .build());
+                }
+            }
+        } catch (Exception ignored) {}
+        return rows;
+    }
+
+    // ── Service Done ──────────────────────────────────────────────────────────
+
+    private PrintInvoiceData assembleServiceDone(Integer jobId, CompanySettingsDTO cs) {
+        PrintInvoiceData data = assembleServiceJob(jobId, cs);
+        data.setInvoiceTitle("SERVICE DONE VOUCHER");
+        return data;
+    }
+
+    // ── Purchase ──────────────────────────────────────────────────────────────
+
+    private PrintInvoiceData assemblePurchase(Integer purchaseId, CompanySettingsDTO cs) {
+        Purchase purchase = purchaseRepository.findById(purchaseId)
+                .orElseThrow(() -> new NoSuchElementException("Purchase not found: " + purchaseId));
+
+        List<PrintLineItem> items = new ArrayList<>();
+        if (purchase.getDetails() != null) {
+            int i = 1;
+            for (PurchaseDetail d : purchase.getDetails()) {
+                items.add(PrintLineItem.builder()
+                        .rowNo(i++)
+                        .productName(d.getProduct() != null ? d.getProduct().getName() : "")
+                        .serialInfo("")
+                        .qty(d.getQty() != null ? d.getQty() : 0)
+                        .unitPrice(fmt(d.getUnitCost()))
+                        .subtotal(fmt(d.getSubtotal()))
+                        .discount("0")
+                        .warrantyLabel(fmtWarrantyLabel(d.getWarrantyMonths(), null))
+                        .build());
+            }
+        }
+
+        return PrintInvoiceData.builder()
+                .companyName(cs.getCompanyName())
+                .companyAddress(safe(cs.getCompanyAddress()))
+                .companyPhone(safe(cs.getCompanyPhone()))
+                .companyEmail(safe(cs.getCompanyEmail()))
+                .logoBase64(safe(cs.getLogoBase64()))
+                .footerNote(safe(cs.getFooterNote()))
+                .headerColor("#1e3a5f")
+                .invoiceTitle(safe(cs.getInvoiceTitle(), "PURCHASE ORDER"))
+                .invoiceNo(purchase.getPurchaseCode())
+                .invoiceDate(purchase.getPurchaseDate() != null ? purchase.getPurchaseDate().format(DT_FMT) : "")
+                .dueDate(purchase.getDueDate() != null ? purchase.getDueDate().format(D_FMT) : "")
+                .paymentStatus(purchase.getPaymentStatus() != null ? purchase.getPaymentStatus().name() : "")
+                .creditStatus("")
+                .customerName(purchase.getSupplier() != null ? purchase.getSupplier().getName() : "")
+                .customerPhone(purchase.getSupplier() != null ? safe(purchase.getSupplier().getPhone()) : "")
+                .customerAddress(purchase.getSupplier() != null ? safe(purchase.getSupplier().getAddress()) : "")
+                .cashierName(purchase.getStaff() != null ? purchase.getStaff().getName() : "")
+                .lineItems(items)
+                .payments(List.of())
+                .subtotal(fmt(purchase.getTotalAmount()))
+                .discount("0")
+                .netAmount(fmt(purchase.getTotalAmount()))
+                .paid(fmt(purchase.getPaidAmount()))
+                .balanceDue(fmt(purchase.getDueAmount()))
+                .remark(safe(purchase.getRemark()))
+                .customerNotice("")
+                .build();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private List<PrintInvoiceData.PaymentEntry> buildPayments(Integer refId, ReferenceType type) {
+        List<PaymentTransaction> txns =
+                paymentTransactionRepository.findByReferenceIdAndReferenceType(refId, type);
+        List<PrintInvoiceData.PaymentEntry> rows = new ArrayList<>();
+        for (PaymentTransaction t : txns) {
+            String methodName = t.getPaymentMethod() != null ? t.getPaymentMethod().getMethodName() : "";
+            String txnNo = t.getTransactionNo();
+            String displayMethod = (txnNo != null && !txnNo.isBlank())
+                    ? methodName + "||" + txnNo
+                    : methodName;
+            rows.add(PrintInvoiceData.PaymentEntry.builder()
+                    .date(t.getPaymentDate() != null ? t.getPaymentDate().format(DT_FMT) : "")
+                    .method(displayMethod)
+                    .amount(fmt(t.getAmount()))
+                    .build());
+        }
+        return rows;
+    }
+
+    private PrintPageConfig resolvePageConfig(String paperSize) {
+        if (paperSize == null) return PrintPageConfig.a4();
+        return switch (paperSize.toUpperCase()) {
+            case "A5"        -> PrintPageConfig.a5();
+            case "POS_58MM"  -> PrintPageConfig.pos58mm();
+            case "POS_80MM"  -> PrintPageConfig.pos80mm();
+            default          -> PrintPageConfig.a4();
+        };
+    }
+
+    private String fmt(BigDecimal v) {
+        if (v == null) return "0";
+        return NumberFormat.getNumberInstance(Locale.US)
+                .format(v.setScale(0, java.math.RoundingMode.HALF_UP));
+    }
+
+    private String safe(String s) { return s != null ? s : ""; }
+
+    private String safe(String s, String fallback) { return (s != null && !s.isBlank()) ? s : fallback; }
+
+    /** Converts warranty months → "N Year(s)" / "N Month(s)", optionally appending expiry. */
+    private String fmtWarrantyLabel(Integer months, java.time.LocalDate expiryDate) {
+        int m = months != null ? months : 0;
+        String duration = "";
+        if (m > 0) {
+            if (m % 12 == 0) {
+                int y = m / 12;
+                duration = y + (y == 1 ? " Year" : " Years");
+            } else {
+                duration = m + (m == 1 ? " Month" : " Months");
+            }
+        }
+        if (duration.isEmpty()) return "";
+        if (expiryDate != null) return duration + " (exp: " + expiryDate.format(D_FMT) + ")";
+        return duration;
+    }
+
+    private String buildQrContent(PrintInvoiceData d) {
+        StringBuilder sb = new StringBuilder();
+        if (d.getInvoiceNo()   != null) sb.append(d.getInvoiceNo());
+        if (d.getInvoiceDate() != null) sb.append("\n").append(d.getInvoiceDate());
+        if (d.getCustomerName()!= null) sb.append("\n").append(d.getCustomerName());
+        if (d.getNetAmount()   != null) sb.append("\nAmt: ").append(d.getNetAmount());
+        return sb.toString();
+    }
+}

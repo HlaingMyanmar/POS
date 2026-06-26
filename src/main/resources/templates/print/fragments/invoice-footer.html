@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: invoice-footer
+  Three variants:
+    th:fragment="last(inv)"         — final page: remark + signatures + footer bar
+    th:fragment="booking-last(inv)" — booking final page: signatures + footer bar (remark shown in booking-body)
+    th:fragment="cont(inv)"         — mid-page: "continued" notice + page number
+-->
+<head><title>fragment</title></head>
+<body>
+
+<!-- ═══ Last-page footer (SALE · SERVICE_JOB · SERVICE_DONE · PURCHASE) ══ -->
+<div th:fragment="last(inv)">
+
+  <!-- Remark box -->
+  <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:14px;">
+    <div class="inv-section-label">Remarks</div>
+    <div class="inv-remark" th:text="${inv.remark}"></div>
+  </div>
+
+  <!-- Signature lines -->
+  <div th:if="${inv.showSignatures}" class="inv-signatures">
+    <div class="inv-sign">
+      <div class="inv-sign__line" th:text="${inv.sign1Label ?: 'Prepared By'}"></div>
+    </div>
+    <div class="inv-sign">
+      <div class="inv-sign__line" th:text="${inv.sign2Label ?: 'Received By'}"></div>
+    </div>
+  </div>
+
+  <!-- Footer bar -->
+  <div class="inv-footer">
+    <span th:text="${inv.companyName}"></span>
+    <span th:if="${not #strings.isEmpty(inv.footerNote)}"
+          th:text="${' · ' + inv.footerNote}"></span>
+    <span th:text="${' · Page ' + inv.currentPage + ' of ' + inv.totalPages}"></span>
+  </div>
+
+</div>
+
+<!-- ═══ Last-page footer (BOOKING — remark already shown in booking-body) ═ -->
+<div th:fragment="booking-last(inv)">
+
+  <!-- Signature lines -->
+  <div th:if="${inv.showSignatures}" class="inv-signatures">
+    <div class="inv-sign">
+      <div class="inv-sign__line" th:text="${inv.sign1Label ?: 'Prepared By'}"></div>
+    </div>
+    <div class="inv-sign">
+      <div class="inv-sign__line" th:text="${inv.sign2Label ?: 'Received By'}"></div>
+    </div>
+  </div>
+
+  <!-- Footer bar -->
+  <div class="inv-footer">
+    <span th:text="${inv.companyName}"></span>
+    <span th:if="${not #strings.isEmpty(inv.footerNote)}"
+          th:text="${' · ' + inv.footerNote}"></span>
+    <span th:text="${' · Page ' + inv.currentPage + ' of ' + inv.totalPages}"></span>
+  </div>
+
+</div>
+
+<!-- ═══ Continuation footer (non-last pages) ═════════════════════════════ -->
+<div th:fragment="cont(inv)" class="inv-footer">
+  <span th:text="${inv.invoiceNo}"></span>
+  <span> · Continued on next page · </span>
+  <span th:text="${'Page ' + inv.currentPage + ' of ' + inv.totalPages}"></span>
+</div>
+
+</body>
+</html>

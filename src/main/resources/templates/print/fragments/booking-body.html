@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: booking-body  [LEGACY — kept for reference]
+  Replaced by booking-table.html — edit that file instead.
+  booking-a4.html and booking-a5.html no longer reference this file.
+  ═══════════════════════════════════════════════════════════════════════════
+  DEVICE INTAKE RECEIPT — body content
+  Dedicated to BOOKING document type only. No cross-type conditionals.
+
+  Sections shown:
+    1. Device Information table (type · brand · model · serial · color · accessories)
+    2. Brief Remark  (shown here — footer will NOT repeat it)
+
+  To customise: edit this file only. The page wrapper is booking-a4/a5.html.
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)" style="margin-bottom:16px;">
+
+  <!-- ── Brief Remark (inline — footer booking-last does NOT repeat this) ── -->
+  <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:14px;">
+    <div class="inv-section-label">Remark</div>
+    <div class="inv-remark" th:text="${inv.remark}"></div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="service_lines_subreport"
+  pageWidth="555" pageHeight="842"
+  columnWidth="555" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0"
+  isFloatColumnFooter="true">
+
+  <field name="ROW_NO"       class="java.lang.Integer"/>
+  <field name="SERVICE_NAME" class="java.lang.String"/>
+  <field name="QTY"          class="java.lang.Integer"/>
+  <field name="PRICE"        class="java.lang.String"/>
+  <field name="SUBTOTAL"     class="java.lang.String"/>
+
+  <columnHeader>
+    <band height="16">
+      <rectangle>
+        <reportElement x="0" y="0" width="555" height="16" backcolor="#F1F5F9" forecolor="#E2E8F0"/>
+        <graphicElement><pen lineWidth="0.5"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="2" y="2" width="30" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[#]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="32" y="2" width="310" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[SERVICE]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="342" y="2" width="40" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[QTY]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="382" y="2" width="80" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[UNIT PRICE]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="462" y="2" width="90" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[SUBTOTAL]]></text>
+      </staticText>
+    </band>
+  </columnHeader>
+
+  <detail>
+    <band height="14">
+      <textField isBlankWhenNull="true">
+        <reportElement x="2" y="1" width="30" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{ROW_NO}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true" isStretchWithOverflow="true">
+        <reportElement x="32" y="1" width="310" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{SERVICE_NAME}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="342" y="1" width="40" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{QTY}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="382" y="1" width="80" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA[$F{PRICE}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="462" y="1" width="90" height="12"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$F{SUBTOTAL}]]></textFieldExpression>
+      </textField>
+      <line>
+        <reportElement x="0" y="13" width="555" height="1" forecolor="#F1F5F9"/>
+      </line>
+    </band>
+  </detail>
+
+</jasperReport>

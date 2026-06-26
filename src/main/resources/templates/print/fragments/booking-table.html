@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: booking-table
+  ═══════════════════════════════════════════════════════════════════════════
+  DEVICE INTAKE RECEIPT — Device Items Table + Remark
+  Used by: booking-a4.html · booking-a5.html
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)" style="margin-bottom:16px;">
+
+  <!-- ── Device Information Table ─────────────────────────────────────── -->
+  <div style="font-size:9px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+              color:#334155; border-bottom:2px solid #334155; padding-bottom:3px; margin-bottom:6px;">
+    Device Information
+  </div>
+
+  <table style="width:100%; border-collapse:collapse; font-size:10.5px;">
+    <thead>
+      <tr style="background:#f1f5f9; color:#475569; font-weight:700; font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px;">
+        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:center; width:5%;">#</th>
+        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left; width:25%;">Device / Brand</th>
+        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left; width:18%;">Model</th>
+        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left; width:15%;">Serial No</th>
+        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left;">Problem</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- Populated rows -->
+      <tr th:each="dev, stat : ${inv.deviceRows}"
+          th:style="${stat.odd} ? 'background:#ffffff;' : 'background:#f8fafc;'">
+        <td style="border:1px solid #cbd5e1; padding:6px 7px; text-align:center; font-weight:600; color:#64748b;"
+            th:text="${stat.count}">1</td>
+        <td style="border:1px solid #cbd5e1; padding:6px 7px;">
+          <div style="font-weight:600;" th:text="${not #strings.isEmpty(dev.brand) ? dev.brand : '—'}">—</div>
+          <div style="font-size:9px; color:#64748b; margin-top:1px;"
+               th:text="${not #strings.isEmpty(dev.deviceType) ? dev.deviceType : ''}"></div>
+          <div style="font-size:9px; color:#94a3b8; margin-top:1px;"
+               th:text="${not #strings.isEmpty(dev.color) ? dev.color : ''}"></div>
+        </td>
+        <td style="border:1px solid #cbd5e1; padding:6px 7px;"
+            th:text="${not #strings.isEmpty(dev.model) ? dev.model : '—'}">—</td>
+        <td style="border:1px solid #cbd5e1; padding:6px 7px; font-family:monospace; font-size:9.5px;"
+            th:text="${not #strings.isEmpty(dev.serialNo) ? dev.serialNo : '—'}">—</td>
+        <td style="border:1px solid #cbd5e1; padding:6px 7px; color:#b45309;"
+            th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}">—</td>
+      </tr>
+
+      <!-- Empty placeholder row when no device data -->
+      <tr th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
+          style="background:#ffffff;">
+        <td style="border:1px solid #cbd5e1; padding:8px 7px; text-align:center; color:#94a3b8;">1</td>
+        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
+        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
+        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
+        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <!-- ── Brief Remark (optional) ────────────────────────────────────────── -->
+  <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:10px;">
+    <div class="inv-section-label">Brief Remark</div>
+    <div class="inv-remark" th:text="${inv.remark}"></div>
+  </div>
+
+</div>
+
+</body>
+</html>

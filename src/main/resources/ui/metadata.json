@@ -1,0 +1,5 @@
+{
+  "name": "SSPD Service & ERP Management",
+  "description": "A comprehensive service and resource planning management system featuring a dashboard and authentication system based on the provided ERD.",
+  "requestFramePermissions": []
+}

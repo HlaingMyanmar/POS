@@ -1,0 +1,844 @@
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Eye, List, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import Swal from 'sweetalert2';
+import { saleReturnApiService } from '../services/salereturnapiservice';
+import { saleApiService } from '../services/saleapiservice';
+import { customerService } from '../services/customerapiservice';
+import { paymentMethodService } from '../services/paymentmethodapiservice';
+import { productService } from '../services/productapiservice';
+import { useDataEvents } from '../hooks/useDataEvents';
+import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO } from '../types';
+import SplitPaymentEditor from '../components/SplitPaymentEditor';
+
+type DetailForm = SaleReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
+
+type SaleProductOption = {
+  productId: number;
+  productName: string;
+  unitPrice: number;
+  hasSerial: boolean;
+  serialNumbers: string[];
+};
+
+const sanitizeSerial = (serial: string) => serial.trim().toUpperCase();
+const normalizeSerial = (serial: string) => sanitizeSerial(serial).toLowerCase();
+
+const ensureSerialCount = (serials: string[] | undefined, qty: number): string[] => {
+  const safeQty = Math.max(0, qty || 0);
+  const next = [...(serials || [])];
+  if (next.length > safeQty) return next.slice(0, safeQty);
+  if (next.length < safeQty) return [...next, ...Array(safeQty - next.length).fill('')];
+  return next;
+};
+
+const emptyDetail = (): DetailForm => ({
+  productId: 0,
+  qty: 1,
+  unitPrice: 0,
+  subtotal: 0,
+  productSearch: '',
+  serialNumbers: ['']
+});
+
+const toLocalDateTime = (value?: string) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+};
+
+const nowLocalDateTime = () => toLocalDateTime(new Date().toISOString());
+const money = (v: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+const normalizePayments = (payments: PaymentTransactionDTO[]) =>
+  payments
+    .map((p) => ({
+      ...p,
+      paymentMethodId: Number(p.paymentMethodId) || 0,
+      amount: Number(p.amount) || 0,
+      transactionNo: p.transactionNo?.trim() || undefined
+    }))
+    .filter((p) => p.paymentMethodId > 0 && p.amount > 0);
+const paymentTotal = (payments: PaymentTransactionDTO[]) => normalizePayments(payments).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+const netUnitPrice = (sale: SaleDTO, detail: { qty: number; unitPrice: number; subtotal: number }) => {
+  const qty = Number(detail.qty) || 0;
+  if (qty <= 0) return Number(detail.unitPrice) || 0;
+  const lineNet = Number(detail.subtotal || 0);
+  const allLineNet = (sale.details || []).reduce((sum, d) => sum + Number(d.subtotal || 0), 0);
+  const overallDiscount = Math.max(0, Number(sale.discountAmount || 0));
+  const allocatedOverallDiscount = allLineNet > 0 && overallDiscount > 0
+    ? (lineNet * overallDiscount) / allLineNet
+    : 0;
+  const returnableNet = Math.max(0, lineNet - allocatedOverallDiscount);
+  return Math.round((returnableNet / qty) * 100) / 100;
+};
+
+const SaleReturnManagement: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<SaleReturnDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [masterLoading, setMasterLoading] = useState(true);
+  const [saleLoading, setSaleLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  const [customers, setCustomers] = useState<CustomerDTO[]>([]);
+  const [sales, setSales] = useState<SaleDTO[]>([]);
+  const [products, setProducts] = useState<ProductDTO[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDTO[]>([]);
+  const [selectedSale, setSelectedSale] = useState<SaleDTO | null>(null);
+
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [viewRow, setViewRow] = useState<SaleReturnDTO | null>(null);
+
+  const [customerId, setCustomerId] = useState(0);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [saleId, setSaleId] = useState(0);
+  const [saleSearch, setSaleSearch] = useState('');
+  const [returnDate, setReturnDate] = useState(nowLocalDateTime());
+  const [reason, setReason] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundPayments, setRefundPayments] = useState<PaymentTransactionDTO[]>([]);
+  const [paymentMethodId, setPaymentMethodId] = useState(0);
+  const [transactionNo, setTransactionNo] = useState('');
+  const [details, setDetails] = useState<DetailForm[]>([emptyDetail()]);
+
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+
+  const customerLabel = useCallback((c?: CustomerDTO) => {
+    if (!c) return '';
+    const code = (c as any).code ? ` (${(c as any).code})` : '';
+    return `${c.name}${code}`;
+  }, []);
+
+  const customerLabelById = useCallback((id?: number) => {
+    if (!id) return '-';
+    const c = customers.find((x) => x.id === id);
+    return c ? customerLabel(c) : `Customer #${id}`;
+  }, [customers, customerLabel]);
+
+  const saleLabel = useCallback((s?: SaleDTO) => {
+    if (!s) return '';
+    return `${s.saleCode || `#${s.id}`} - ${s.customerName || `Customer #${s.customerId}`}`;
+  }, []);
+
+  const saleLabelById = useCallback((id?: number) => {
+    if (!id) return '-';
+    const s = sales.find((x) => x.id === id);
+    return s ? saleLabel(s) : `#${id}`;
+  }, [sales, saleLabel]);
+
+  const loadRows = useCallback(async (page: number, size: number, search: string) => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const result = await saleReturnApiService.getAll(page, size, search);
+      setRows(result.content);
+      setTotalElements(result.totalElements);
+      setTotalPages(result.totalPages);
+    } catch (e: any) {
+      console.error('Failed to load sale returns', e);
+      setRows([]);
+      setLoadError(e?.message || 'Failed to load sale return vouchers.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadMaster = useCallback(async () => {
+    setMasterLoading(true);
+    try {
+      const [cus, sal, pro, pm] = await Promise.all([
+        customerService.getAll(),
+        saleApiService.getAll(),
+        productService.getAll(),
+        paymentMethodService.getAllActive()
+      ]);
+      setCustomers(cus);
+      setSales(sal);
+      setProducts(pro);
+      setPaymentMethods(pm);
+    } catch (e) {
+      console.error('Failed to load master data', e);
+    } finally {
+      setMasterLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMaster();
+  }, [loadMaster]);
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setCurrentPage(0);
+      setDebouncedSearch(search.trim());
+    }, 400);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [search]);
+
+  useEffect(() => {
+    void loadRows(currentPage, pageSize, debouncedSearch);
+  }, [loadRows, currentPage, pageSize, debouncedSearch]);
+
+  useDataEvents(['Return', 'Sale'], () => void loadRows(currentPage, pageSize, debouncedSearch));
+  useEffect(() => {
+    if (saleId <= 0) {
+      setSelectedSale(null);
+      return;
+    }
+
+    let active = true;
+    setSaleLoading(true);
+
+    saleApiService.getById(saleId)
+      .then((data) => {
+        if (!active) return;
+        setSelectedSale(data);
+        if (data.customerId) {
+          setCustomerId(data.customerId);
+          setCustomerSearch(customerLabelById(data.customerId));
+        }
+      })
+      .catch((e) => {
+        if (!active) return;
+        console.error('Failed to load sale details', e);
+        setSelectedSale(null);
+      })
+      .finally(() => {
+        if (active) setSaleLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [saleId, customerLabelById]);
+
+  const filteredSales = useMemo(() => {
+    if (customerId <= 0) return [];
+    return sales.filter((s) => s.customerId === customerId);
+  }, [sales, customerId]);
+
+  const productOptions = useMemo<SaleProductOption[]>(() => {
+    if (!selectedSale?.details || selectedSale.details.length === 0) return [];
+
+    const map = new Map<number, SaleProductOption>();
+    selectedSale.details.forEach((detail) => {
+      const serialNumbers = Array.from(
+        new Set<string>((detail.serialNumbers || []).map((sn) => sanitizeSerial(sn)).filter(Boolean))
+      );
+      const detailProduct = productById.get(detail.productId);
+      const hasSerial = detailProduct ? detailProduct.hasSerial !== false : serialNumbers.length > 0;
+      const unitPrice = netUnitPrice(selectedSale, detail);
+
+      const existing = map.get(detail.productId);
+      if (!existing) {
+        map.set(detail.productId, {
+          productId: detail.productId,
+          productName: detail.productName || `Product #${detail.productId}`,
+          unitPrice,
+          hasSerial,
+          serialNumbers
+        });
+        return;
+      }
+
+      existing.serialNumbers = Array.from(new Set<string>([...existing.serialNumbers, ...serialNumbers]));
+      if (existing.unitPrice <= 0 && unitPrice > 0) existing.unitPrice = unitPrice;
+      else if (unitPrice > 0) existing.unitPrice = Math.round(((existing.unitPrice + unitPrice) / 2) * 100) / 100;
+      if (!existing.hasSerial && hasSerial) existing.hasSerial = true;
+    });
+
+    return Array.from(map.values());
+  }, [productById, selectedSale]);
+
+  const productLabel = useCallback((p: SaleProductOption) => `${p.productName} (#${p.productId})`, []);
+
+  const productOptionById = useCallback((productId: number) => {
+    return productOptions.find((option) => option.productId === productId);
+  }, [productOptions]);
+
+  const getProductSerialPool = useCallback((productId: number) => {
+    return productOptionById(productId)?.serialNumbers || [];
+  }, [productOptionById]);
+
+  const isSerialProduct = useCallback((productId: number) => {
+    return Boolean(productOptionById(productId)?.hasSerial);
+  }, [productOptionById]);
+
+  const getSerialOptionsForRow = useCallback((rowIndex: number) => {
+    const row = details[rowIndex];
+    if (!row || row.productId <= 0 || !isSerialProduct(row.productId)) return [];
+
+    const pool = getProductSerialPool(row.productId);
+    const usedInOtherRows = new Set(
+      details.flatMap((detail, index) => {
+        if (index === rowIndex || !isSerialProduct(detail.productId)) return [];
+        return detail.serialNumbers.map((serial) => normalizeSerial(serial)).filter(Boolean);
+      })
+    );
+
+    return pool.filter((serial) => {
+      const normalized = normalizeSerial(serial);
+      const belongsToCurrentRow = row.serialNumbers.some((value) => normalizeSerial(value) === normalized);
+      return belongsToCurrentRow || !usedInOtherRows.has(normalized);
+    });
+  }, [details, getProductSerialPool, isSerialProduct]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setCustomerId(0);
+    setCustomerSearch('');
+    setSaleId(0);
+    setSaleSearch('');
+    setSelectedSale(null);
+    setReturnDate(nowLocalDateTime());
+    setReason('');
+    setRefundAmount('');
+    setRefundPayments([]);
+    setPaymentMethodId(paymentMethods[0]?.id ?? 0);
+    setTransactionNo('');
+    setDetails([emptyDetail()]);
+  };
+
+  const total = useMemo(() => details.reduce((s, d) => s + d.subtotal, 0), [details]);
+  const resolvedRefund = useMemo(() => refundAmount.trim() === '' ? total : parseFloat(refundAmount), [refundAmount, total]);
+  const normalizedRefundPayments = useMemo(() => normalizePayments(refundPayments), [refundPayments]);
+  const splitRefund = useMemo(() => paymentTotal(refundPayments), [refundPayments]);
+  const effectiveRefund = normalizedRefundPayments.length > 0 ? splitRefund : resolvedRefund;
+  const paymentRequired = !Number.isNaN(effectiveRefund) && effectiveRefund > 0;
+  const validRefund = !Number.isNaN(effectiveRefund) && effectiveRefund >= 0 && effectiveRefund <= total;
+
+  const serialValidation = useMemo(() => {
+    const rowsWithProduct = details.filter((row) => row.productId > 0);
+    const serialRows = rowsWithProduct.filter((row) => isSerialProduct(row.productId));
+    const serials = serialRows.flatMap((row) => row.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean));
+    const unique = new Set(serials.map((sn) => sn.toLowerCase()));
+
+    const qtyMatchesSerialCount = serialRows.every((row) => row.serialNumbers.length === row.qty);
+    const allRowsHaveSerials = serialRows.every((row) => row.qty > 0 && row.serialNumbers.length > 0 && row.serialNumbers.every((sn) => sanitizeSerial(sn).length > 0));
+    const strictCheckAvailable = serialRows.some((row) => getProductSerialPool(row.productId).length > 0);
+    const belongsToSelectedProduct = serialRows.every((row) => {
+      const pool = getProductSerialPool(row.productId);
+      if (pool.length === 0) return true;
+      const normalizedPool = new Set(pool.map((sn) => normalizeSerial(sn)));
+      return row.serialNumbers.every((sn) => normalizedPool.has(normalizeSerial(sn)));
+    });
+
+    return {
+      qtyMatchesSerialCount,
+      allRowsHaveSerials,
+      uniqueAcrossRows: unique.size === serials.length,
+      belongsToSelectedProduct,
+      strictCheckAvailable
+    };
+  }, [details, getProductSerialPool, isSerialProduct]);
+
+  const validForm = customerId > 0
+    && saleId > 0
+    && details.length > 0
+    && details.every((d) => d.productId > 0 && d.qty > 0 && d.unitPrice > 0)
+    && serialValidation.qtyMatchesSerialCount
+    && serialValidation.allRowsHaveSerials
+    && serialValidation.uniqueAcrossRows
+    && serialValidation.belongsToSelectedProduct
+    && validRefund
+    && (!paymentRequired || paymentMethodId > 0 || normalizedRefundPayments.length > 0);
+
+  const onDetailChange = (index: number, field: 'qty' | 'unitPrice', value: string) => {
+    setDetails((prev) => prev.map((d, i) => {
+      if (i !== index) return d;
+      const next = { ...d };
+      if (field === 'qty') {
+        next.qty = Math.max(0, parseInt(value, 10) || 0);
+        next.serialNumbers = isSerialProduct(next.productId) ? ensureSerialCount(next.serialNumbers, next.qty) : [];
+      }
+      if (field === 'unitPrice') next.unitPrice = Math.max(0, parseFloat(value) || 0);
+      next.subtotal = next.qty * next.unitPrice;
+      return next;
+    }));
+  };
+
+  const onProductSearch = (index: number, value: string) => {
+    const match = productOptions.find((p) => productLabel(p).toLowerCase() === value.toLowerCase());
+    setDetails((prev) => prev.map((d, i) => {
+      if (i !== index) return d;
+      const unitPrice = match ? (d.unitPrice > 0 ? d.unitPrice : match.unitPrice) : d.unitPrice;
+      const serialNumbers = match?.hasSerial ? ensureSerialCount(d.serialNumbers, d.qty) : [];
+      return { ...d, productSearch: value, productId: match?.productId || 0, unitPrice, serialNumbers, subtotal: d.qty * unitPrice };
+    }));
+  };
+
+  const onSerialChange = (detailIndex: number, serialIndex: number, value: string) => {
+    setDetails((prev) => prev.map((detail, rowIndex) => {
+      if (rowIndex !== detailIndex) return detail;
+      const serialNumbers = [...detail.serialNumbers];
+      serialNumbers[serialIndex] = sanitizeSerial(value);
+      return { ...detail, serialNumbers };
+    }));
+  };
+  const onCustomerSearch = (value: string) => {
+    setCustomerSearch(value);
+    const match = customers.find((c) => customerLabel(c).toLowerCase() === value.toLowerCase());
+    const nextCustomerId = match?.id || 0;
+
+    if (nextCustomerId !== customerId) {
+      setCustomerId(nextCustomerId);
+      setSaleId(0);
+      setSaleSearch('');
+      setSelectedSale(null);
+      setDetails([emptyDetail()]);
+      return;
+    }
+
+    setCustomerId(nextCustomerId);
+  };
+
+  const onSaleSearch = (value: string) => {
+    setSaleSearch(value);
+    const match = filteredSales.find((s) => saleLabel(s).toLowerCase() === value.toLowerCase());
+    const nextSaleId = match?.id || 0;
+
+    if (nextSaleId !== saleId) {
+      setSaleId(nextSaleId);
+      setDetails([emptyDetail()]);
+    }
+
+    if (match && match.customerId !== customerId) {
+      setCustomerId(match.customerId);
+      setCustomerSearch(customerLabelById(match.customerId));
+    }
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setShowForm(true);
+  };
+
+  const openView = useCallback(async (id: number) => {
+    try {
+      const data = await saleReturnApiService.getById(id);
+      setViewRow(data);
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'Failed to load sale return', 'error');
+    }
+  }, []);
+
+  const handleDelete = useCallback(async (id: number, label: string) => {
+    const result = await Swal.fire({
+      title: `Void ${label}?`,
+      html: `This will <strong>permanently reverse</strong> all stock movements, journal entries, and sale amount adjustments. This cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      confirmButtonText: 'Yes, void it',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await saleReturnApiService.delete(id);
+      await loadRows(currentPage, pageSize, debouncedSearch);
+      Swal.fire({ icon: 'success', title: 'Sale return voided', toast: true, showConfirmButton: false, timer: 1500, position: 'top-end' });
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'Failed to void sale return', 'error');
+    }
+  }, [currentPage, pageSize, debouncedSearch, loadRows]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const params = new URLSearchParams(location.search);
+    const linkedReturnId = Number(params.get('saleReturnId'));
+    if (!Number.isInteger(linkedReturnId) || linkedReturnId <= 0) return;
+
+    openView(linkedReturnId).finally(() => {
+      navigate({ pathname: location.pathname, search: '' }, { replace: true });
+    });
+  }, [loading, location.pathname, location.search, navigate, openView]);
+
+  const onSave = async () => {
+    if (saving) return;
+    if (!validForm) {
+      Swal.fire('Validation', 'Please select customer/sale, fill details, and provide valid serial numbers.', 'warning');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload: SaleReturnDTO = {
+        saleId,
+        customerId: selectedSale?.customerId || customerId || undefined,
+        staffId: selectedSale?.staffId || undefined,
+        returnDate: returnDate || undefined,
+        reason: reason.trim() || undefined,
+        totalReturnAmount: total,
+        refundAmount: normalizedRefundPayments.length > 0 ? effectiveRefund : (refundAmount.trim() === '' ? undefined : Number(refundAmount)),
+        paymentMethodId: paymentRequired ? (normalizedRefundPayments[0]?.paymentMethodId || paymentMethodId) : undefined,
+        payments: normalizedRefundPayments.length > 0 ? normalizedRefundPayments : undefined,
+        transactionNo: transactionNo.trim() || undefined,
+        details: details.map((d) => ({
+          returnId: editingId || undefined,
+          productId: Number(d.productId),
+          qty: Number(d.qty),
+          unitPrice: Number(d.unitPrice),
+          subtotal: Number((d.qty * d.unitPrice).toFixed(2)),
+          serialNumbers: isSerialProduct(d.productId) ? d.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean) : []
+        }))
+      };
+
+      if (editingId) {
+        await saleReturnApiService.update(editingId, payload);
+      } else {
+        await saleReturnApiService.create(payload);
+      }
+
+      setShowForm(false);
+      resetForm();
+      await loadRows(currentPage, pageSize, debouncedSearch);
+      Swal.fire({
+        icon: 'success',
+        title: editingId ? 'Sale return updated' : 'Sale return created',
+        toast: true,
+        showConfirmButton: false,
+        timer: 1500,
+        position: 'top-end'
+      });
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'Failed to save sale return', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
+    if (to) to.setHours(23, 59, 59, 999);
+    if (!from && !to) return rows;
+    return rows.filter((r) => {
+      if (!r.returnDate) return false;
+      const d = new Date(r.returnDate);
+      if (Number.isNaN(d.getTime())) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  }, [dateFrom, dateTo, rows]);
+
+  const stats = useMemo(() => ({
+    count: totalElements,
+    total: filtered.reduce((s, r) => s + (r.totalReturnAmount || 0), 0),
+    refund: filtered.reduce((s, r) => s + (r.refundAmount ?? r.totalReturnAmount ?? 0), 0)
+  }), [filtered, totalElements]);
+
+  if (showForm) {
+    return (
+      <div className="w-full max-w-none space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 text-left">{editingId ? 'Update Sale Return' : 'New Sale Return'}</h2>
+            <p className="text-xs text-slate-500 mt-1">Select customer first, then choose sale. Product/serial must belong to selected sale.</p>
+          </div>
+          <button onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex w-full sm:w-auto justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
+            <ArrowLeft size={14} /> Back
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2 space-y-5">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Customer</label>
+                  <input list="sr-customers" value={customerSearch} onChange={(e) => onCustomerSearch(e.target.value)} placeholder="Select customer..." className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${customerId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
+                  <datalist id="sr-customers">{customers.map((c) => <option key={c.id} value={customerLabel(c)} />)}</datalist>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sale</label>
+                  <input list="sr-sales" value={saleSearch} onChange={(e) => onSaleSearch(e.target.value)} placeholder={customerId > 0 ? 'Select sale...' : 'Select customer first'} disabled={customerId <= 0} className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed ${saleId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
+                  <datalist id="sr-sales">{filteredSales.map((s) => <option key={s.id} value={saleLabel(s)} />)}</datalist>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return Date</label>
+                  <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sale Info</label>
+                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">{saleLoading ? 'Loading sale details...' : saleId > 0 ? `${productOptions.length} product(s) available for return` : '-'}</div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Reason</label>
+                <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Optional reason..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-bold text-slate-800 text-sm">Return Items</h3>
+                <button onClick={() => setDetails((d) => [...d, emptyDetail()])} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"><Plus size={14} /> Add Row</button>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full text-left border-collapse min-w-[700px]">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3 border-b border-slate-100">Product</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-24">Qty</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-32">Unit Price</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-36 text-right">Subtotal</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {details.map((d, i) => {
+                      const serialRequired = isSerialProduct(d.productId);
+                      const serialOptions = getSerialOptionsForRow(i);
+                      return (
+                        <React.Fragment key={i}>
+                          <tr className="hover:bg-slate-50/60">
+                            <td className="px-4 py-3">
+                              <input list={`sr-products-${i}`} value={d.productSearch} onChange={(e) => onProductSearch(i, e.target.value)} placeholder={saleId > 0 ? 'Select product...' : 'Select sale first'} disabled={saleId <= 0 || productOptions.length === 0} className={`w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${d.productId > 0 ? 'text-slate-700' : 'text-rose-500'}`} />
+                              <datalist id={`sr-products-${i}`}>{productOptions.map((p) => <option key={p.productId} value={productLabel(p)} />)}</datalist>
+                            </td>
+                            <td className="px-4 py-3"><input type="number" min="1" value={d.qty || ''} onChange={(e) => onDetailChange(i, 'qty', e.target.value)} className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none" /></td>
+                            <td className="px-4 py-3"><input type="number" min="0" step="0.01" value={d.unitPrice || ''} onChange={(e) => onDetailChange(i, 'unitPrice', e.target.value)} className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none" /></td>
+                            <td className="px-4 py-3 text-right font-bold text-slate-700">{money(d.subtotal)}</td>
+                            <td className="px-4 py-3 text-center"><button onClick={() => setDetails((prev) => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i))} className="p-1.5 text-slate-300 hover:text-rose-500 disabled:opacity-40" disabled={details.length <= 1}><Trash2 size={14} /></button></td>
+                          </tr>
+                          {d.productId > 0 && d.qty > 0 && (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={5} className="px-4 py-3">
+                                {serialRequired ? (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-[10px] text-slate-500"><span className="font-bold uppercase tracking-wider">Serial Numbers ({d.qty})</span><span>{serialOptions.length} available</span></div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {ensureSerialCount(d.serialNumbers, d.qty).map((serial, serialIndex) => (
+                                        <input key={serialIndex} list={`sr-serial-options-${i}`} type="text" value={serial} onChange={(e) => onSerialChange(i, serialIndex, e.target.value)} placeholder={`Serial #${serialIndex + 1}`} className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] w-36 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                                      ))}
+                                      <datalist id={`sr-serial-options-${i}`}>{serialOptions.map((serial) => <option key={serial} value={serial} />)}</datalist>
+                                    </div>
+                                  </div>
+                                ) : <span className="inline-flex px-2.5 py-1 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">Qty Only</span>}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 xl:sticky xl:top-20">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> Refund & Summary</h3>
+              <div className="flex justify-between items-center text-sm pb-2 border-b border-slate-100"><span className="text-slate-500">Total Return</span><span className="font-bold text-slate-800">{money(total)}</span></div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Refund Amount</label>
+                <input type="number" min="0" step="0.01" value={refundAmount} onChange={(e) => { setRefundAmount(e.target.value); if (refundPayments.length > 0) setRefundPayments([]); }} placeholder="Leave blank for full refund" className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${validRefund ? 'border-slate-200' : 'border-rose-200'}`} />
+                <p className="text-[10px] text-slate-400">Blank means full refund from total return.</p>
+                {!Number.isNaN(effectiveRefund) && effectiveRefund > total && <p className="text-[10px] text-rose-500">Refund amount cannot exceed total return.</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Payment Method</label>
+                <select value={paymentMethodId} onChange={(e) => setPaymentMethodId(Number(e.target.value))} className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${!paymentRequired || paymentMethodId > 0 ? 'border-slate-200' : 'border-rose-200'}`}>
+                  <option value={0}>Select payment method</option>
+                  {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.methodName}</option>)}
+                </select>
+                <p className="text-[10px] text-slate-400">Required only if refund amount is greater than zero.</p>
+              </div>
+
+              <SplitPaymentEditor
+                methods={paymentMethods}
+                payments={refundPayments}
+                onChange={(next) => {
+                  setRefundPayments(next);
+                  const totalPaid = paymentTotal(next);
+                  setRefundAmount(totalPaid > 0 ? String(totalPaid.toFixed(2)) : '');
+                }}
+                label="Split Refund"
+              />
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Transaction No</label>
+                <input type="text" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)} placeholder="Optional transaction no" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+              </div>
+
+              {!serialValidation.qtyMatchesSerialCount && <p className="text-[10px] text-rose-500">Each serial-tracked row must contain exactly `qty` serial numbers.</p>}
+              {serialValidation.qtyMatchesSerialCount && !serialValidation.allRowsHaveSerials && <p className="text-[10px] text-rose-500">Every serial number field is required for serial products.</p>}
+              {!serialValidation.uniqueAcrossRows && <p className="text-[10px] text-rose-500">Duplicate serial numbers are not allowed.</p>}
+              {!serialValidation.belongsToSelectedProduct && serialValidation.strictCheckAvailable && <p className="text-[10px] text-rose-500">Serial number must belong to selected sale and product.</p>}
+
+              <button onClick={onSave} disabled={!validForm || saving} className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${validForm && !saving ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update Return' : 'Create Return'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-none space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 text-left">Sale Return Management</h2>
+          <p className="text-xs text-slate-500 mt-1">Track returns, refunded amounts, and return voucher history.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+          <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> New Sale Return</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Vouchers</p><p className="text-2xl font-bold text-slate-800">{stats.count}</p></div><div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center"><List size={20} className="text-indigo-600" /></div></div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Returned</p><p className="text-2xl font-bold text-slate-800">{money(stats.total)}</p></div><div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center"><RotateCcw size={20} className="text-slate-600" /></div></div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Refunded</p><p className="text-2xl font-bold text-emerald-700">{money(stats.refund)}</p></div><div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center"><RotateCcw size={20} className="text-emerald-600" /></div></div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search all data — return code, sale, customer..." className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            {loading && search && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                <svg className="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            <span className="hidden sm:block text-slate-300 text-xs">-</span>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            <button onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); }} className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800 text-sm">Sale Return Vouchers</h3>
+          <div className="flex items-center gap-3">
+            {loadError && <span className="text-[11px] text-rose-500">{loadError}</span>}
+            {masterLoading && <span className="text-[11px] text-slate-400">Loading master data...</span>}
+          </div>
+        </div>
+        <div className="overflow-auto max-h-[65vh] custom-scrollbar">
+          {loading ? <div className="p-8 text-center text-slate-400">Loading...</div> : (
+            <table className="w-full text-left border-collapse min-w-[920px]">
+              <thead className="sticky top-0 bg-white z-10 shadow-sm">
+                <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                  <th className="px-4 py-3 border-b border-slate-100">Return No</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Sale</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Customer</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Date</th>
+                  <th className="px-4 py-3 border-b border-slate-100 text-right">Total</th>
+                  <th className="px-4 py-3 border-b border-slate-100 text-right">Refund</th>
+                  <th className="px-4 py-3 border-b border-slate-100">Reason</th>
+                  <th className="px-4 py-3 border-b border-slate-100 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length > 0 ? filtered.map((r) => (
+                  <tr key={r.id || r.returnCode} className="hover:bg-slate-50 text-xs">
+                    <td className="px-4 py-3 font-medium text-slate-800">{r.returnCode || `#${r.id}`}</td>
+                    <td className="px-4 py-3 text-slate-600">{r.saleId > 0 ? <Link to={`${AppRoute.SALES}?saleId=${r.saleId}`} className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium">{saleLabelById(r.saleId)}</Link> : '-'}</td>
+                    <td className="px-4 py-3 text-slate-600">{r.customerName || customerLabelById(sales.find((s) => s.id === r.saleId)?.customerId)}</td>
+                    <td className="px-4 py-3 text-slate-600">{r.returnDate ? new Date(r.returnDate).toLocaleString() : '-'}</td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-700">{money(r.totalReturnAmount || 0)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-700">{money(r.refundAmount ?? r.totalReturnAmount ?? 0)}</td>
+                    <td className="px-4 py-3 text-slate-500 max-w-[260px] truncate">{r.reason || '-'}</td>
+                    <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                      <button onClick={() => r.id && openView(r.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50" title="View"><Eye size={15} /></button>
+                      <button onClick={() => r.id && handleDelete(r.id, r.returnCode || `#${r.id}`)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50" title="Void & Delete"><Trash2 size={15} /></button>
+                    </td>
+                  </tr>
+                )) : <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">No sale returns match the current filters.</td></tr>}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {totalPages > 1 && (
+          <div className="p-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-[11px] text-slate-500">
+              Showing {totalElements === 0 ? 0 : currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()}
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(0); }} className="text-xs px-2 py-1 border border-slate-200 rounded-lg bg-white">
+                {[10, 20, 50, 100].map((n) => <option key={n} value={n}>Show {n}</option>)}
+              </select>
+              <button onClick={() => setCurrentPage((p) => Math.max(0, p - 1))} disabled={currentPage === 0} className="px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40">‹</button>
+              {(() => {
+                const delta = 2; const pages: (number | string)[] = []; let prev = -1;
+                for (let i = 0; i < totalPages; i++) {
+                  if (i === 0 || i === totalPages - 1 || (i >= currentPage - delta && i <= currentPage + delta)) {
+                    if (prev !== -1 && i - prev > 1) pages.push('…');
+                    pages.push(i); prev = i;
+                  }
+                }
+                return pages.map((p, idx) => typeof p === 'string'
+                  ? <span key={`e${idx}`} className="px-1 text-slate-400 text-xs">…</span>
+                  : <button key={p} onClick={() => setCurrentPage(p as number)} className={`px-2.5 py-1 text-xs rounded-lg border ${currentPage === p ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>{(p as number) + 1}</button>
+                );
+              })()}
+              <button onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40">›</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {viewRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
+          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800">Sale Return: {viewRow.returnCode || `#${viewRow.id}`}</h3>
+              <button onClick={() => setViewRow(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Sale:</span> {viewRow.saleId > 0 ? <Link to={`${AppRoute.SALES}?saleId=${viewRow.saleId}`} className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium">{saleLabelById(viewRow.saleId)}</Link> : '-'}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Customer:</span> {viewRow.customerName || customerLabelById(sales.find((s) => s.id === viewRow.saleId)?.customerId)}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Return Date:</span> {viewRow.returnDate ? new Date(viewRow.returnDate).toLocaleString() : '-'}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Total Return:</span> {money(viewRow.totalReturnAmount || 0)}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Refund:</span> {money(viewRow.refundAmount ?? viewRow.totalReturnAmount ?? 0)}</p>
+              </div>
+              {viewRow.reason && <p className="text-sm text-slate-600"><span className="font-medium text-slate-500">Reason:</span> {viewRow.reason}</p>}
+              <table className="w-full text-left border-collapse text-sm">
+                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">Product</th><th className="px-3 py-2 border-b w-16">Qty</th><th className="px-3 py-2 border-b text-right">Unit Price</th><th className="px-3 py-2 border-b text-right">Subtotal</th><th className="px-3 py-2 border-b">Serials</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `Product #${d.productId}`}</td><td className="px-3 py-2">{d.qty}</td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SaleReturnManagement;

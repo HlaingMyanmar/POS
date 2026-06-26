@@ -1,0 +1,469 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Enterprise POS & Invoice Print Stylesheet
+   Supports: A4, A5, POS 58mm / 80mm thermal receipts
+
+   Import order in your component:
+     import './print/styles/print-base.css';
+
+   The stylesheet is split into three layers:
+     1. CSS custom properties (design tokens)
+     2. Screen styles (preview / interactive UI)
+     3. @media print overrides (production printing)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. Design Tokens ───────────────────────────────────────────────────── */
+:root {
+  --inv-primary:       #1e3a5f;
+  --inv-primary-light: #2563eb;
+  --inv-accent:        #f0fdf4;
+  --inv-text:          #1e293b;
+  --inv-muted:         #64748b;
+  --inv-border:        #e2e8f0;
+  --inv-row-alt:       #fafbfd;
+  --inv-header-bg:     #f1f5f9;
+  --inv-paid-bg:       #dcfce7;
+  --inv-paid-fg:       #166534;
+  --inv-partial-bg:    #fef9c3;
+  --inv-partial-fg:    #854d0e;
+  --inv-neutral-bg:    #f1f5f9;
+  --inv-neutral-fg:    #475569;
+  --inv-radius:        8px;
+  --inv-radius-sm:     5px;
+  --inv-shadow:        0 2px 16px 0 rgba(30,58,95,0.10);
+}
+
+/* ─── 2. Screen Styles (preview) ─────────────────────────────────────────── */
+
+.invoice-print-root {
+  font-family: 'Pyidaungsu', 'Noto Sans Myanmar', 'Myanmar Text', 'Padauk', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  color: var(--inv-text);
+  background: #e5e7eb;
+  padding: 16px;
+  min-height: 100vh;
+}
+
+/* Page shadow shown in preview only */
+.invoice-page {
+  background: #fff;
+  box-shadow: var(--inv-shadow);
+  border-radius: var(--inv-radius);
+  margin: 0 auto 24px;
+  overflow: hidden;
+}
+
+/* A4 page dimensions in preview */
+.invoice-page--a4 {
+  width: 210mm;
+  min-height: 297mm;
+}
+
+/* A5 page dimensions in preview */
+.invoice-page--a5 {
+  width: 148mm;
+  min-height: 210mm;
+}
+
+/* Thermal — auto width */
+.invoice-page--pos-80mm { width: 80mm; }
+.invoice-page--pos-58mm { width: 58mm; }
+
+/* ─── Header band ────────────────────────────────────────────────────────── */
+.inv-header {
+  background: var(--inv-primary);
+  padding: 16px 20px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.inv-header--compact {
+  padding: 10px 16px 9px;
+}
+
+.inv-logo {
+  max-height: 52px;
+  max-width: 80px;
+  border-radius: 5px;
+  background: #fff;
+  padding: 3px;
+  flex-shrink: 0;
+}
+
+.inv-company-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.2px;
+}
+
+.inv-company-name--sm { font-size: 17px; }
+
+.inv-company-sub {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.inv-meta-label {
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #64748b;
+}
+
+.inv-meta-number {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 2px;
+}
+
+.inv-meta-date {
+  font-size: 9.5px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+/* Continuation header (page 2+) */
+.inv-cont-header {
+  background: var(--inv-primary);
+  padding: 9px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inv-cont-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.inv-cont-page {
+  font-size: 9.5px;
+  color: #94a3b8;
+}
+
+/* ─── Body ───────────────────────────────────────────────────────────────── */
+.inv-body {
+  border: 1px solid var(--inv-border);
+  border-top: none;
+  padding: 16px 20px;
+}
+
+/* ─── Info blocks — single box, left / right columns ─────────────────────── */
+.inv-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--inv-border);
+  border-top: 3px solid var(--inv-primary-light);
+  border-radius: var(--inv-radius-sm);
+  overflow: hidden;
+  margin-bottom: 16px;
+  padding-bottom: 0;
+}
+
+.inv-block {
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.inv-block:first-child {
+  border-right: 1px solid var(--inv-border);
+}
+
+.inv-block__title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--inv-primary-light);
+  border-bottom: 1px solid var(--inv-border);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.inv-block__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.inv-block__row:first-of-type { margin-top: 0; }
+
+.inv-block__label { font-size: 10px; color: var(--inv-muted); }
+.inv-block__value { font-size: 11px; font-weight: 600; text-align: right; }
+
+/* ─── Status badge ───────────────────────────────────────────────────────── */
+.inv-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 9.5px;
+  font-weight: 700;
+  background: var(--inv-paid-bg);
+  color: var(--inv-paid-fg);
+}
+
+.inv-badge--partial { background: var(--inv-partial-bg); color: var(--inv-partial-fg); }
+.inv-badge--neutral { background: var(--inv-neutral-bg); color: var(--inv-neutral-fg); }
+
+/* ─── Items table ────────────────────────────────────────────────────────── */
+.inv-table-wrap {
+  border: 1px solid var(--inv-border);
+  border-radius: var(--inv-radius-sm);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.inv-table thead tr { background: var(--inv-header-bg); }
+
+.inv-table th {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: #475569;
+  padding: 7px 9px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--inv-border);
+  white-space: nowrap;
+}
+
+.inv-table td {
+  padding: 7px 9px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+  /* prevent rows from breaking across pages */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.inv-table tbody tr:last-child td { border-bottom: none; }
+.inv-table tbody tr:nth-child(even) td { background: var(--inv-row-alt); }
+
+.inv-table .col-num    { text-align: right; white-space: nowrap; }
+.inv-table .col-center { text-align: center; }
+
+.inv-item-sub {
+  font-size: 9.5px;
+  color: var(--inv-muted);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* ─── Summary + payment area ─────────────────────────────────────────────── */
+.inv-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.inv-payment-section { flex: 1; min-width: 0; }
+
+.inv-section-label {
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--inv-muted);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.inv-summary-box {
+  width: 240px;
+  flex-shrink: 0;
+  border: 1px solid var(--inv-border);
+  border-radius: var(--inv-radius-sm);
+  overflow: hidden;
+}
+
+.inv-summary-box--sm { width: 200px; }
+
+.inv-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px;
+}
+
+.inv-summary-row:last-child { border-bottom: none; }
+
+.inv-summary-row--highlight {
+  background: var(--inv-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.inv-summary-row--sub {
+  background: var(--inv-header-bg);
+  font-weight: 700;
+}
+
+.inv-summary-row__label { color: inherit; }
+.inv-summary-row__value { font-weight: 600; }
+
+/* payment history mini-table */
+.inv-pay-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.inv-pay-table th {
+  background: var(--inv-header-bg);
+  color: #475569;
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--inv-border);
+  font-weight: 700;
+}
+
+.inv-pay-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.inv-pay-table tr:last-child td { border-bottom: none; }
+
+/* ─── Remark / notice ────────────────────────────────────────────────────── */
+.inv-remark {
+  margin-top: 12px;
+  border: 1px solid var(--inv-border);
+  border-radius: var(--inv-radius-sm);
+  padding: 8px 11px;
+  min-height: 36px;
+  font-size: 11px;
+  color: #475569;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.inv-notice {
+  margin-top: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--inv-radius-sm);
+  padding: 8px 12px;
+  font-size: 10.5px;
+  color: #475569;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  background: #f8fafc;
+}
+
+/* ─── Signatures ─────────────────────────────────────────────────────────── */
+.inv-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-top: 28px;
+}
+
+.inv-sign {
+  text-align: center;
+}
+
+.inv-sign__line {
+  border-top: 1px solid #cbd5e1;
+  padding-top: 6px;
+  margin-top: 32px;
+  font-size: 10px;
+  color: var(--inv-muted);
+  letter-spacing: 0.3px;
+}
+
+/* ─── Footer bar ─────────────────────────────────────────────────────────── */
+.inv-footer {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--inv-border);
+  text-align: center;
+  font-size: 9.5px;
+  color: #94a3b8;
+  letter-spacing: 0.4px;
+}
+
+/* ─── 3. @media print overrides ──────────────────────────────────────────── */
+@media print {
+  /* Reset browser default margins — controlled via @page */
+  body { margin: 0 !important; }
+
+  /* Remove preview chrome */
+  .invoice-print-root {
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  .invoice-page {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  /* Last page: don't add an empty trailing page */
+  .invoice-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Force table rows to stay intact */
+  .inv-table tbody tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Keep summary + signatures together */
+  .inv-bottom,
+  .inv-signatures,
+  .inv-remark,
+  .inv-notice,
+  .inv-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Hide any UI-only elements */
+  .no-print { display: none !important; }
+
+  /* Remove browser print header/footer by zeroing @page margin;
+     content padding is handled by .invoice-print-root below */
+  @page { size: A4 portrait; margin: 0; }
+
+  .invoice-print-root { padding: 10mm !important; }
+}
+
+@media print and (max-width: 149mm) {
+  @page { size: A5 portrait; margin: 0; }
+  .invoice-print-root { padding: 8mm !important; }
+}
+
+/* ─── POS Thermal Styles ─────────────────────────────────────────────────── */
+.invoice-page--pos-80mm,
+.invoice-page--pos-58mm {
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.inv-thermal .inv-company-name { font-size: 14px; text-align: center; }
+.inv-thermal .inv-header        { flex-direction: column; align-items: center; }
+.inv-thermal .inv-meta-number   { font-size: 12px; }
+.inv-thermal .inv-table th,
+.inv-thermal .inv-table td      { padding: 3px 4px; font-size: 9.5px; }
+.inv-thermal .inv-summary-row   { padding: 3px 6px; font-size: 10.5px; }
+.inv-thermal .inv-footer        { font-size: 8.5px; }

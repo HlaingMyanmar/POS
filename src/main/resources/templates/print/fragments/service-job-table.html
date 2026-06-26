@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: service-job-table
+  ═══════════════════════════════════════════════════════════════════════════
+  SERVICE VOUCHER (Intake Sheet) — Services & Parts table
+  Used by: service-job-a4.html · service-job-a5.html
+
+  Columns: # · Service / Part · Type · Qty · Est. Price · Est. Amount
+  This is an intake work order — values are estimates, not final charges.
+  Customise this file to change the Service Voucher table layout only.
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)" class="inv-table-wrap">
+  <table class="inv-table">
+    <thead>
+      <tr>
+        <th class="inv-table__col-center" style="width:5%">#</th>
+        <th style="width:50%">Service / Part</th>
+        <th style="width:15%">Type</th>
+        <th class="inv-table__col-center" style="width:7%">Qty</th>
+        <th class="inv-table__col-right"  style="width:11%">Est. Price</th>
+        <th class="inv-table__col-right"  style="width:12%">Est. Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="item : ${inv.pageItems}" class="inv-table__row">
+        <td class="inv-table__col-center"
+            style="color:#94a3b8; font-weight:600; font-size:11px;"
+            th:text="${item.rowNo}">1</td>
+        <td>
+          <div style="font-weight:500;" th:text="${item.productName}">Service Name</div>
+        </td>
+        <td class="inv-table__sub"
+            th:text="${not #strings.isEmpty(item.serialInfo) ? item.serialInfo : '—'}">Service</td>
+        <td class="inv-table__col-center" style="font-weight:600;" th:text="${item.qty}">1</td>
+        <td class="inv-table__col-right"  th:text="${item.unitPrice}">0</td>
+        <td class="inv-table__col-right"  style="font-weight:600;" th:text="${item.subtotal}">0</td>
+      </tr>
+      <tr th:if="${#lists.isEmpty(inv.pageItems)}">
+        <td colspan="6" class="inv-table__empty">No services or parts recorded yet</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

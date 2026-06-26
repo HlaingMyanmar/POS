@@ -1,0 +1,45 @@
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  SERVICE DONE VOUCHER — A5
+
+  Identical structure to service-done-a4.html; A5 sizing via print-base.css.
+
+  Customise this document type by editing:
+    • Service lines + Parts → fragments/invoice-table.html
+    • Financial totals      → fragments/invoice-summary.html  ← totals here
+    • Remark / Signatures   → fragments/invoice-footer.html :: last
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<div class="invoice-page invoice-page--a5" xmlns:th="http://www.thymeleaf.org">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div th:if="${inv.currentPage == 1}"
+       th:replace="~{print/fragments/invoice-header :: full(${inv}, ${layout})}"></div>
+  <div th:if="${inv.currentPage > 1}"
+       th:replace="~{print/fragments/invoice-header :: cont(${inv}, ${layout})}"></div>
+
+  <!-- ── Body ───────────────────────────────────────────────────────────── -->
+  <div class="inv-body">
+
+    <!-- Bill To + Invoice Details (first page) -->
+    <div th:if="${inv.currentPage == 1}"
+         th:replace="~{print/fragments/invoice-info-blocks :: render(${inv})}"></div>
+
+    <!-- Service lines + Parts table (all pages) -->
+    <div th:replace="~{print/fragments/service-done-table :: render(${inv})}"></div>
+
+    <!-- Last page: payment history + financial totals -->
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-summary :: render(${inv})}"></div>
+
+    <!-- Last page: remark + signatures + footer bar -->
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: last(${inv})}"></div>
+
+    <!-- Non-last pages: "continued" footer -->
+    <div th:if="${inv.currentPage < inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: cont(${inv})}"></div>
+
+  </div>
+
+</div>

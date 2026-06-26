@@ -1,0 +1,56 @@
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  A4 INVOICE PAGE TEMPLATE
+
+  Design layer only — this file controls layout structure (which fragments
+  appear and in what order). It contains no business logic.
+
+  To redesign:
+    • Header appearance   → fragments/invoice-header.html
+    • Info blocks         → fragments/invoice-info-blocks.html
+    • Items table         → fragments/invoice-table.html
+    • Totals / payments   → fragments/invoice-summary.html
+    • Footer / signatures → fragments/invoice-footer.html
+    • All CSS             → static served at /print/css/print-base.css
+
+  Template variables (provided by TemplateRenderingService):
+    inv    — PrintInvoiceData page snapshot
+    layout — PrintLayoutConfig for A4
+
+  NOTE: No <html>/<head>/<body> wrapper here — the preview shell and PDF
+  wrapper are added by TemplateRenderingService / HtmlPdfService.
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<div class="invoice-page invoice-page--a4" xmlns:th="http://www.thymeleaf.org">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div th:if="${inv.currentPage == 1}"
+       th:replace="~{print/fragments/invoice-header :: full(${inv}, ${layout})}"></div>
+  <div th:if="${inv.currentPage > 1}"
+       th:replace="~{print/fragments/invoice-header :: cont(${inv}, ${layout})}"></div>
+
+  <!-- ── Body ───────────────────────────────────────────────────────────── -->
+  <div class="inv-body">
+
+    <!-- Info blocks — first page only -->
+    <div th:if="${inv.currentPage == 1}"
+         th:replace="~{print/fragments/invoice-info-blocks :: render(${inv})}"></div>
+
+    <!-- Line items table for this page -->
+    <div th:replace="~{print/fragments/sale-table :: render(${inv})}"></div>
+
+    <!-- Last page: totals + notice -->
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-summary :: render(${inv})}"></div>
+
+    <!-- Last page: remark + signatures + footer bar -->
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: last(${inv})}"></div>
+
+    <!-- Non-last pages: "continued" footer -->
+    <div th:if="${inv.currentPage < inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: cont(${inv})}"></div>
+
+  </div><!-- /inv-body -->
+
+</div><!-- /invoice-page -->

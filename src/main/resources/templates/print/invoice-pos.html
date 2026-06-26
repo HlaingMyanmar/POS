@@ -1,0 +1,110 @@
+<!--
+  POS THERMAL RECEIPT TEMPLATE (58 mm / 80 mm)
+  No pagination — thermal rolls are one continuous page.
+  Compact, center-aligned receipt layout.
+
+  NOTE: No <html>/<head>/<body> wrapper — added by TemplateRenderingService / HtmlPdfService.
+-->
+<div th:class="${'invoice-page invoice-page--' + #strings.toLowerCase(layout.name).replace('_','-') + ' inv-thermal'}"
+     xmlns:th="http://www.thymeleaf.org">
+
+  <!-- Centered header -->
+  <div class="inv-thermal__header">
+    <img th:if="${not #strings.isEmpty(inv.logoBase64)}"
+         th:src="${inv.logoBase64}"
+         class="inv-thermal__logo" alt="logo"/>
+    <div class="inv-thermal__company" th:text="${inv.companyName}">Company</div>
+    <div class="inv-thermal__sub" th:if="${not #strings.isEmpty(inv.companyPhone)}"
+         th:text="${inv.companyPhone}"></div>
+    <div class="inv-thermal__sub" th:if="${not #strings.isEmpty(inv.companyAddress)}"
+         th:text="${inv.companyAddress}"></div>
+    <div class="inv-thermal__divider">--------------------------------</div>
+    <div class="inv-thermal__title" th:text="${inv.invoiceTitle}">RECEIPT</div>
+  </div>
+
+  <!-- Invoice meta -->
+  <div class="inv-thermal__meta">
+    <div><b>No:</b> <span th:text="${inv.invoiceNo}"></span></div>
+    <div><b>Date:</b> <span th:text="${inv.invoiceDate}"></span></div>
+    <div><b>Customer:</b> <span th:text="${inv.customerName ?: 'Walk-in'}"></span></div>
+    <div th:if="${not #strings.isEmpty(inv.cashierName)}">
+      <b>Staff:</b> <span th:text="${inv.cashierName}"></span>
+    </div>
+  </div>
+
+  <div class="inv-thermal__divider">--------------------------------</div>
+
+  <!-- ── Booking: Device Information ── -->
+  <div th:if="${inv.bookingReceipt}">
+    <div style="text-align:center; font-weight:700; font-size:11px; margin-bottom:4px;">Device Information</div>
+    <div th:each="dev, stat : ${inv.deviceRows}" style="margin-bottom:6px; padding-bottom:4px; border-bottom:1px dashed #ccc;">
+      <div><b>#<span th:text="${stat.count}">1</span></b>
+        <span th:text="${dev.brand}" style="font-weight:600;"></span>
+        <span th:text="${dev.model}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(dev.deviceType)}" style="font-size:10px; color:#666;">
+        Type: <span th:text="${dev.deviceType}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(dev.serialNo)}" style="font-size:10px; color:#666;">
+        S/N: <span th:text="${dev.serialNo}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(dev.color)}" style="font-size:10px; color:#666;">
+        Color: <span th:text="${dev.color}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(dev.problemDesc)}" style="font-size:10px; color:#b45309;">
+        Problem: <span th:text="${dev.problemDesc}"></span>
+      </div>
+    </div>
+    <div th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
+         style="text-align:center; color:#999; font-size:10px; padding:4px 0;">No device info</div>
+
+    <!-- Remark for booking -->
+    <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:4px;">
+      <div style="font-size:10px;"><b>Remark:</b> <span th:text="${inv.remark}"></span></div>
+    </div>
+  </div>
+
+  <!-- ── Non-Booking: Items table ── -->
+  <table th:if="${!inv.bookingReceipt}" class="inv-thermal__table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Item</th>
+        <th class="r">Qty</th>
+        <th class="r">Price</th>
+        <th class="r">Sub</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="item : ${inv.lineItems}">
+        <td th:text="${item.rowNo}">1</td>
+        <td th:text="${item.productName}">Product</td>
+        <td class="r" th:text="${item.qty}">1</td>
+        <td class="r" th:text="${item.unitPrice}">0</td>
+        <td class="r" th:text="${item.subtotal}">0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="inv-thermal__divider">--------------------------------</div>
+
+  <!-- Totals (hide for booking since no financial data) -->
+  <table th:if="${!inv.bookingReceipt}" class="inv-thermal__totals">
+    <tr><td>Total</td>      <td class="r" th:text="${inv.subtotal}">0</td></tr>
+    <tr><td>Discount</td>   <td class="r" th:text="${inv.discount}">0</td></tr>
+    <tr><td><b>Net</b></td> <td class="r"><b th:text="${inv.netAmount}">0</b></td></tr>
+    <tr><td>Paid</td>       <td class="r" th:text="${inv.paid}">0</td></tr>
+    <tr><td><b>Due</b></td> <td class="r"><b th:text="${inv.balanceDue}">0</b></td></tr>
+  </table>
+
+  <div class="inv-thermal__divider">--------------------------------</div>
+
+  <!-- Footer -->
+  <div class="inv-thermal__footer">
+    <div th:if="${not #strings.isEmpty(inv.footerNote)}" th:text="${inv.footerNote}">
+      Thank you for your business
+    </div>
+    <div th:text="${inv.companyName}"></div>
+  </div>
+
+</div>

@@ -702,6 +702,32 @@ export enum ManufacturingStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export interface ManufacturingFormulaItemDTO {
+  id?: number;
+  productId: number;
+  productName?: string;
+  productCode?: string;
+  hasSerial?: boolean;
+  qty: number;
+  unitCost?: number;
+}
+
+export interface ManufacturingFormulaDTO {
+  id?: number;
+  name: string;
+  description?: string;
+  finishedProductName?: string;
+  finishedProductBrandId?: number;
+  finishedProductBrandName?: string;
+  finishedProductCategoryId?: number;
+  finishedProductCategoryName?: string;
+  finishedProductUnitId?: number;
+  finishedProductUnitName?: string;
+  finishedProductType?: string;
+  finishedProductSellingPrice?: number;
+  items: ManufacturingFormulaItemDTO[];
+}
+
 export interface ManufacturingOrderItemDTO {
   id?: number;
   productId: number;

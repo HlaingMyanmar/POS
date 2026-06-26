@@ -1578,10 +1578,11 @@ const ProductManagement: React.FC = () => {
       )}
 
       {/* Primary Filters */}
-      <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
-        <div className="flex flex-col xl:flex-row gap-3 items-start">
-          <div className="relative flex-1 group flex items-center gap-2">
-            <div className="relative flex-1">
+      <div className="bg-white p-3 sm:p-4 rounded-lg border border-slate-200 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
+          {/* Search + Scan */}
+          <div className="relative flex-1 group flex items-center gap-2 min-w-0">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
               <input
                 type="text"
@@ -1594,128 +1595,132 @@ const ProductManagement: React.FC = () => {
             <button
               onClick={() => setShowScanSearch(true)}
               title="Scan barcode / QR to search"
-              className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase transition-colors"
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase transition-colors"
             >
-              <Camera size={15} /> စကမ်ဖတ်ရန်
+              <Camera size={15} />
+              <span className="hidden sm:inline">စကမ်ဖတ်ရန်</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setShowFilterTools(prev => !prev)}
-              className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-bold uppercase transition-colors ${
-                showFilterTools || activeFilterCount > 0
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Filter size={14} />
-              <span>စစ်ထုတ်မည့်ကိရိယာ</span>
-              {activeFilterCount > 0 && (
-                <span className="min-w-5 h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-black inline-flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-              {showFilterTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-          </div>
+          {/* Filter button */}
+          <button
+            type="button"
+            onClick={() => setShowFilterTools(prev => !prev)}
+            className={`shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-bold uppercase transition-colors ${
+              showFilterTools || activeFilterCount > 0
+                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Filter size={14} />
+            <span>စစ်ထုတ်မည့်ကိရိယာ</span>
+            {activeFilterCount > 0 && (
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-black inline-flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+            {showFilterTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
         </div>
 
         {showFilterTools && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-500 uppercase px-2">အခြေအနေ</span>
-              {[
-                { value: 'All',        label: 'အားလုံး' },
-                { value: 'New',        label: 'အသစ်' },
-                { value: 'Second',     label: 'အသုံးပြုပြီး' },
-                { value: 'Second_New', label: 'အသစ်နှင့်တူ' },
-              ].map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => setFilterCondition(value as any)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase ${
-                    filterCondition === value ? 'bg-white text-indigo-700 border border-slate-200' : 'text-slate-500 hover:text-indigo-700'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+            {/* Row 1: condition + status + tracking */}
+            <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
+                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">အခြေအနေ</span>
+                {[
+                  { value: 'All',        label: 'အားလုံး' },
+                  { value: 'New',        label: 'အသစ်' },
+                  { value: 'Second',     label: 'အသုံး' },
+                  { value: 'Second_New', label: 'အသစ်နှင့်တူ' },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setFilterCondition(value as any)}
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-bold uppercase whitespace-nowrap ${
+                      filterCondition === value ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
+                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">အဆင့်</span>
+                {[
+                  { value: 'All',          label: 'All' },
+                  { value: 'In Stock',     label: 'ရှိ' },
+                  { value: 'Out of Stock', label: 'ကုန်' },
+                ].map(({ value: status, label }) => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status as any)}
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-bold uppercase whitespace-nowrap ${
+                      filterStatus === status ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
+                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">Track</span>
+                {[
+                  { value: 'All',    label: 'All' },
+                  { value: 'Serial', label: 'Serial' },
+                  { value: 'Qty',    label: 'Qty' },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setFilterTracking(value as any)}
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-bold uppercase ${
+                      filterTracking === value ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-500 uppercase px-2">အဆင့်</span>
-              {[
-                { value: 'All', label: 'အားလုံး' },
-                { value: 'In Stock', label: 'ပစ္စည်းရှိ' },
-                { value: 'Out of Stock', label: 'ပစ္စည်းကုန်' },
-              ].map(({ value: status, label }) => (
-                <button
-                  key={status}
-                  onClick={() => setFilterStatus(status as any)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase ${
-                    filterStatus === status ? 'bg-white text-indigo-700 border border-slate-200' : 'text-slate-500 hover:text-indigo-700'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            {/* Row 2: selects + action buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={filterBrandId}
+                onChange={(e) => setFilterBrandId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
+                className="h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-500 max-w-[160px]"
+              >
+                <option value="All">Brand: All</option>
+                {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+              </select>
+
+              <select
+                value={filterCategoryId}
+                onChange={(e) => setFilterCategoryId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
+                className="h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-500 max-w-[180px]"
+              >
+                <option value="All">Category: All</option>
+                {flatCategoryOptions.map(category => <option key={category.id} value={category.id}>{category.displayName}</option>)}
+              </select>
+
+              <button
+                onClick={() => setFilterLowStockOnly(v => !v)}
+                className={`h-9 px-3 rounded-lg border inline-flex items-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap ${
+                  filterLowStockOnly
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                }`}
+              >
+                <AlertTriangle size={13} /> Low stock
+              </button>
+
+              <button onClick={resetProductFilters} className="h-9 px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 bg-white inline-flex items-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap">
+                <RotateCcw size={13} /> Reset
+              </button>
             </div>
-
-            <select
-              value={filterBrandId}
-              onChange={(e) => setFilterBrandId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-              className="h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-500"
-            >
-              <option value="All">Brand: All</option>
-              {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
-            </select>
-
-            <select
-              value={filterCategoryId}
-              onChange={(e) => setFilterCategoryId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-              className="h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-500 max-w-[220px]"
-            >
-              <option value="All">Category: All</option>
-              {flatCategoryOptions.map(category => <option key={category.id} value={category.id}>{category.displayName}</option>)}
-            </select>
-
-            <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Track</span>
-              {[
-                { value: 'All', label: 'All' },
-                { value: 'Serial', label: 'Serial' },
-                { value: 'Qty', label: 'Qty' },
-              ].map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => setFilterTracking(value as any)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase ${
-                    filterTracking === value ? 'bg-white text-indigo-700 border border-slate-200' : 'text-slate-500 hover:text-indigo-700'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setFilterLowStockOnly(v => !v)}
-              className={`px-3 py-2 rounded-lg border inline-flex items-center gap-2 text-xs font-bold uppercase ${
-                filterLowStockOnly
-                  ? 'bg-amber-500 text-white border-amber-500'
-                  : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
-              }`}
-            >
-              <AlertTriangle size={14} /> Low stock
-            </button>
-
-            <button onClick={resetProductFilters} className="px-3 py-2 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 bg-white inline-flex items-center gap-2 text-xs font-bold uppercase">
-              <RotateCcw size={14} /> ပြန်လည်သတ်မှတ်ရန်
-            </button>
-          </div>
           </div>
         )}
       </div>

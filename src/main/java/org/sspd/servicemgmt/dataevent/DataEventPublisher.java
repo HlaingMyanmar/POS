@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class DataEventPublisher {
@@ -11,9 +14,11 @@ public class DataEventPublisher {
     private final SimpMessagingTemplate messaging;
 
     public void broadcast(String entity, String action, String resourceId) {
-        messaging.convertAndSend(
-            "/topic/data-events",
-            new DataEventDTO(entity, action, resourceId)
-        );
+        Map<String, String> payload = new LinkedHashMap<>();
+        payload.put("entity", entity);
+        payload.put("action", action);
+        payload.put("resourceId", resourceId);
+
+        messaging.convertAndSend("/topic/data-events", payload);
     }
 }

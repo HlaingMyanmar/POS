@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 import java.lang.reflect.Method;
 
 /**
- * Broadcasts a lightweight DataEventDTO to /topic/data-events after any
+ * Broadcasts a lightweight data event payload to /topic/data-events after any
  * mutating service method (CREATE / UPDATE / DELETE / ACTION).
  *
  * Android clients subscribe once and call load() on the relevant screen

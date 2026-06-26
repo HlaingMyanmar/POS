@@ -22,6 +22,8 @@ import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.ProductSerialRepository;
+import org.sspd.servicemgmt.stockoptions.manufacturingoptions.enums.ManufacturingStatus;
+import org.sspd.servicemgmt.stockoptions.manufacturingoptions.repository.ManufacturingOrderRepository;
 import org.sspd.servicemgmt.unitsoptions.model.Unit;
 import org.sspd.servicemgmt.unitsoptions.repository.UnitRepository;
 
@@ -42,6 +44,7 @@ public class ProductService {
     private final BrandRepository brandRepository;
     private final UnitRepository unitRepository;
     private final ProductSerialRepository productSerialRepository;
+    private final ManufacturingOrderRepository manufacturingOrderRepository;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_CREATE')")
     @Transactional
@@ -143,9 +146,11 @@ public class ProductService {
     public void delete(Integer id){
         Product existingEntity = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
+        if (manufacturingOrderRepository.existsByFinishedProductIdAndStatus(id, ManufacturingStatus.COMPLETED)) {
+            throw new IllegalStateException("ထုတ်လုပ်ရေးမှ ဖန်တီးထားသော ကုန်ပစ္စည်းကို ဖျက်မရပါ။ ထုတ်လုပ်ရေး မှတ်တမ်းကို ဦးစွာ စစ်ဆေးပါ။");
+        }
         productRepository.delete(existingEntity);
         messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_DELETE");
-
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")

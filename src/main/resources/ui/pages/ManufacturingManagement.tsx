@@ -4,13 +4,13 @@ import {
   Plus, Loader2, Package, Trash2, CheckCircle2, X,
   ChevronDown, ChevronUp, Layers, Tag, Ruler,
   DollarSign, AlertTriangle, ArrowLeft, Hash,
-  ClipboardList, CheckCheck, Ban, Edit2
+  ClipboardList, CheckCheck, Ban, Edit2, BookOpen, FileText
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import {
   ProductDTO, BrandDTO, CategoryDTO, UnitDTO, ProductSerialDTO,
   SerialStatus, ManufacturingOrderDTO, ManufacturingOrderItemDTO,
-  ManufacturingStatus, ProductType, AppRoute
+  ManufacturingStatus, ManufacturingFormulaDTO, ManufacturingFormulaItemDTO
 } from '../types';
 import { productService } from '../services/productapiservice';
 import { brandService } from '../services/brandapiservice';
@@ -18,7 +18,9 @@ import { categoryService } from '../services/categoryapiservice';
 import { unitService } from '../services/unitapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { manufacturingService } from '../services/manufacturingapiservice';
+import { manufacturingFormulaService } from '../services/manufacturingformulaapiservice';
 
+/* ─── helpers ─── */
 const statusBadge = (status?: string) => {
   if (status === ManufacturingStatus.COMPLETED)
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100"><CheckCheck size={10} />ပြီးဆုံးပြီ</span>;
@@ -28,553 +30,542 @@ const statusBadge = (status?: string) => {
 };
 
 interface CategoryOption { id: number; displayName: string; }
-
 const flattenCategories = (nodes: CategoryDTO[], level = 0): CategoryOption[] =>
   nodes.reduce((acc: CategoryOption[], node) => {
-    const pad = '  '.repeat(level * 2);
-    const pre = level > 0 ? '↳ ' : '';
-    acc.push({ id: node.id, displayName: `${pad}${pre}${node.name}` });
+    acc.push({ id: node.id, displayName: `${'  '.repeat(level * 2)}${level > 0 ? '↳ ' : ''}${node.name}` });
     if (node.children?.length) acc.push(...flattenCategories(node.children, level + 1));
     return acc;
   }, []);
 
-const ManufacturingManagement: React.FC = () => {
-  const [orders, setOrders] = useState<ManufacturingOrderDTO[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState<ProductDTO[]>([]);
-  const [brands, setBrands] = useState<BrandDTO[]>([]);
-  const [categories, setCategories] = useState<CategoryDTO[]>([]);
-  const [units, setUnits] = useState<UnitDTO[]>([]);
-  const [allSerials, setAllSerials] = useState<ProductSerialDTO[]>([]);
+/* ═══════════════════════════════════════════════════════════
+   Shared component form (used by both Order form & Formula form)
+   ═══════════════════════════════════════════════════════════ */
+interface ComponentListProps {
+  items: ManufacturingOrderItemDTO[] | ManufacturingFormulaItemDTO[];
+  products: ProductDTO[];
+  allSerials: ProductSerialDTO[];
+  onChange: (items: any[]) => void;
+  showSerialPicker?: boolean;
+  onOpenSerialPicker?: (idx: number) => void;
+}
 
-  const [showForm, setShowForm] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<ManufacturingOrderDTO | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+const ComponentList: React.FC<ComponentListProps> = ({ items, products, allSerials, onChange, showSerialPicker, onOpenSerialPicker }) => {
+  const [productSearch, setProductSearch] = useState('');
+  const [productOpen, setProductOpen] = useState(false);
 
-  // Serial picker modal
-  const [serialPickerItem, setSerialPickerItem] = useState<{ itemIdx: number; product: ProductDTO } | null>(null);
+  const getAvailableSerials = (productId: number) =>
+    allSerials.filter(s => s.productId === productId && s.status === SerialStatus.AVAILABLE);
 
-  // Form state
-  const [formName, setFormName] = useState('');
-  const [formBrandId, setFormBrandId] = useState<number | undefined>();
-  const [formCategoryId, setFormCategoryId] = useState<number | undefined>();
-  const [formUnitId, setFormUnitId] = useState<number | undefined>();
-  const [formType, setFormType] = useState<string>('New');
-  const [formPrice, setFormPrice] = useState<number>(0);
-  const [formNotes, setFormNotes] = useState('');
-  const [formItems, setFormItems] = useState<ManufacturingOrderItemDTO[]>([]);
+  const addComponent = (product: ProductDTO) => {
+    if (items.some((i: any) => i.productId === product.id)) {
+      Swal.fire({ icon: 'info', title: 'ပါဝင်ပြီး', text: 'qty ကို တိုးပါ', timer: 1200, showConfirmButton: false });
+      return;
+    }
+    const isSerial = product.hasSerial !== false;
+    const avail = isSerial ? getAvailableSerials(product.id).length : (product.stockQty ?? product.currentStock ?? 0);
+    onChange([...items, {
+      productId: product.id, productName: product.name, productCode: product.productCode,
+      hasSerial: isSerial, qty: 1, unitCost: product.costPrice ?? 0,
+      selectedSerialIds: [], selectedSerialNumbers: [], availableQty: avail,
+    }]);
+    setProductSearch(''); setProductOpen(false);
+  };
 
+  return (
+    <div className="space-y-3">
+      {/* search */}
+      <div className="relative">
+        <input type="text" value={productSearch}
+          onFocus={() => setProductOpen(true)}
+          onChange={e => { setProductSearch(e.target.value); setProductOpen(true); }}
+          onBlur={() => setTimeout(() => setProductOpen(false), 150)}
+          placeholder="ပစ္စည်းရှာပြီး ထည့်ရန်..."
+          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
+        {productOpen && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+            {products.filter(p => {
+              const s = productSearch.toLowerCase();
+              return p.name.toLowerCase().includes(s) || (p.productCode || '').toLowerCase().includes(s);
+            }).slice(0, 30).map(p => {
+              const isSerial = p.hasSerial !== false;
+              const avail = isSerial ? getAvailableSerials(p.id).length : (p.stockQty ?? p.currentStock ?? 0);
+              return (
+                <div key={p.id} onMouseDown={() => addComponent(p)}
+                  className="px-4 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 flex items-center justify-between gap-2">
+                  <div><div>{p.name}</div><div className="text-[10px] text-slate-400">{p.productCode} · {isSerial ? 'Serial' : 'Qty'}</div></div>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${avail > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>{avail} ရှိ</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {items.length === 0 && (
+        <div className="text-center py-6 text-slate-400 text-xs font-bold"><Package size={28} className="mx-auto mb-2 opacity-30" />ပစ္စည်း မထည့်ရသေးပါ</div>
+      )}
+
+      {items.map((item: any, idx: number) => {
+        const isSerial = item.hasSerial !== false;
+        const selectedCount = item.selectedSerialIds?.length ?? 0;
+        const needed = item.qty ?? 1;
+        const serialOk = !isSerial || selectedCount >= needed;
+        return (
+          <div key={idx} className="border border-slate-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-black text-slate-800 truncate">{item.productName}</p>
+                <p className="text-[10px] text-slate-400">{item.productCode} · {isSerial ? 'Serial' : 'Qty'}{item.availableQty !== undefined ? ` · ရှိ: ${item.availableQty}` : ''}</p>
+              </div>
+              <button onClick={() => onChange(items.filter((_: any, i: number) => i !== idx))} className="text-rose-400 hover:text-rose-600 shrink-0"><X size={14} /></button>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[9px] text-slate-400 font-black uppercase">အရေအတွက်</label>
+                <input type="number" min="1" value={item.qty ?? 1}
+                  onChange={e => onChange(items.map((it: any, i: number) => i === idx ? { ...it, qty: Math.max(1, Number(e.target.value)) } : it))}
+                  className="w-full mt-0.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400" />
+              </div>
+              <div className="flex-1">
+                <label className="text-[9px] text-slate-400 font-black uppercase">ကုန်ကျစရိတ်</label>
+                <input type="number" min="0" value={Number(item.unitCost ?? 0)}
+                  onChange={e => onChange(items.map((it: any, i: number) => i === idx ? { ...it, unitCost: Number(e.target.value) } : it))}
+                  className="w-full mt-0.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400" />
+              </div>
+            </div>
+            {showSerialPicker && isSerial && (
+              <button type="button" onClick={() => onOpenSerialPicker?.(idx)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-bold transition-all ${serialOk ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                <span className="flex items-center gap-1.5"><Hash size={12} />Serial ရွေးရန် ({selectedCount}/{needed})</span>
+                {serialOk ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+              </button>
+            )}
+            {showSerialPicker && item.selectedSerialNumbers?.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {item.selectedSerialNumbers.map((sn: string) => (
+                  <span key={sn} className="text-[9px] font-black px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full">{sn}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   Shared finished-product fields panel
+   ═══════════════════════════════════════════════════════════ */
+interface ProductFieldsProps {
+  name: string; onNameChange: (v: string) => void;
+  type: string; onTypeChange: (v: string) => void;
+  brandId: number | undefined; onBrandChange: (v: number) => void;
+  categoryId: number | undefined; onCategoryChange: (v: number) => void;
+  unitId: number | undefined; onUnitChange: (v: number) => void;
+  price: number; onPriceChange: (v: number) => void;
+  brands: BrandDTO[]; flatCategories: CategoryOption[]; units: UnitDTO[];
+  totalCost: number;
+  extraFields?: React.ReactNode;
+}
+
+const ProductFields: React.FC<ProductFieldsProps> = ({
+  name, onNameChange, type, onTypeChange,
+  brandId, onBrandChange, categoryId, onCategoryChange,
+  unitId, onUnitChange, price, onPriceChange,
+  brands, flatCategories, units, totalCost, extraFields,
+}) => {
   const [brandSearch, setBrandSearch] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
   const [unitSearch, setUnitSearch] = useState('');
   const [brandOpen, setBrandOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [unitOpen, setUnitOpen] = useState(false);
-  const [productSearch, setProductSearch] = useState('');
-  const [productOpen, setProductOpen] = useState(false);
 
+  return (
+    <div className="space-y-4">
+      {extraFields}
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ထုတ်ကုန်နာမည် *</label>
+        <input type="text" value={name} onChange={e => onNameChange(e.target.value)}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
+          placeholder="ဥပမာ: Gaming Desktop i5-12400F" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ပစ္စည်းအမျိုးအစား</label>
+        <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+          {[['New', 'အသစ်'], ['Second', 'အသုံးပြုပြီး'], ['Second_New', 'အသစ်နှင့်တူ']].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => onTypeChange(v)}
+              className={`flex-1 py-2 rounded-lg text-xs font-black transition-all ${type === v ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {/* Category */}
+      <div className="space-y-1.5 relative">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">အမျိုးအစား *</label>
+        <div className="relative"><Layers className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" size={14} />
+          <input type="text"
+            value={categorySearch || (categoryId ? flatCategories.find(c => c.id === categoryId)?.displayName || '' : '')}
+            onFocus={() => { setCategoryOpen(true); setCategorySearch(''); }}
+            onChange={e => { setCategorySearch(e.target.value); setCategoryOpen(true); }}
+            onBlur={() => setTimeout(() => setCategoryOpen(false), 150)}
+            placeholder="အမျိုးအစား ရှာပါ..."
+            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
+        </div>
+        {categoryOpen && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+            {flatCategories.filter(c => c.displayName.toLowerCase().includes(categorySearch.toLowerCase())).map(c => (
+              <div key={c.id} onMouseDown={() => { onCategoryChange(c.id); setCategorySearch(''); setCategoryOpen(false); }}
+                className={`px-4 py-2 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 ${categoryId === c.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>{c.displayName}</div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Brand */}
+      <div className="space-y-1.5 relative">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ဘရန်း *</label>
+        <div className="relative"><Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" size={14} />
+          <input type="text"
+            value={brandSearch || (brandId ? brands.find(b => b.id === brandId)?.name || '' : '')}
+            onFocus={() => { setBrandOpen(true); setBrandSearch(''); }}
+            onChange={e => { setBrandSearch(e.target.value); setBrandOpen(true); }}
+            onBlur={() => setTimeout(() => setBrandOpen(false), 150)}
+            placeholder="ဘရန်း ရှာပါ..."
+            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
+        </div>
+        {brandOpen && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+            {brands.filter(b => b.name.toLowerCase().includes(brandSearch.toLowerCase())).map(b => (
+              <div key={b.id} onMouseDown={() => { onBrandChange(b.id); setBrandSearch(''); setBrandOpen(false); }}
+                className={`px-4 py-2 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 ${brandId === b.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>{b.name}</div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Unit */}
+      <div className="space-y-1.5 relative">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ယူနစ် *</label>
+        <div className="relative"><Ruler className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" size={14} />
+          <input type="text"
+            value={unitSearch || (unitId ? units.find(u => u.id === unitId)?.unitName || '' : '')}
+            onFocus={() => { setUnitOpen(true); setUnitSearch(''); }}
+            onChange={e => { setUnitSearch(e.target.value); setUnitOpen(true); }}
+            onBlur={() => setTimeout(() => setUnitOpen(false), 150)}
+            placeholder="ယူနစ် ရှာပါ..."
+            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
+        </div>
+        {unitOpen && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+            {units.filter(u => u.unitName.toLowerCase().includes(unitSearch.toLowerCase())).map(u => (
+              <div key={u.id} onMouseDown={() => { onUnitChange(u.id); setUnitSearch(''); setUnitOpen(false); }}
+                className={`px-4 py-2 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 ${unitId === u.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>{u.unitName}</div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ရောင်းဈေး</label>
+        <div className="relative"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+          <input type="number" min="0" value={price} onChange={e => onPriceChange(Number(e.target.value))}
+            className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-emerald-400 focus:bg-white transition-all" />
+        </div>
+      </div>
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex items-center justify-between">
+        <span className="text-xs font-black text-indigo-700">Component ကုန်ကျ စုစုပေါင်း</span>
+        <span className="text-sm font-black text-indigo-700 tabular-nums">{totalCost.toLocaleString()} Ks</span>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   Main Component
+   ═══════════════════════════════════════════════════════════ */
+const ManufacturingManagement: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'orders' | 'formulas'>('orders');
+  const [orders, setOrders] = useState<ManufacturingOrderDTO[]>([]);
+  const [formulas, setFormulas] = useState<ManufacturingFormulaDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<ProductDTO[]>([]);
+  const [brands, setBrands] = useState<BrandDTO[]>([]);
+  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [units, setUnits] = useState<UnitDTO[]>([]);
+  const [allSerials, setAllSerials] = useState<ProductSerialDTO[]>([]);
   const flatCategories = useMemo(() => flattenCategories(categories), [categories]);
 
+  /* ── view state ── */
+  type ViewMode = 'list' | 'order-form' | 'formula-form';
+  const [view, setView] = useState<ViewMode>('list');
+  const [editingOrder, setEditingOrder] = useState<ManufacturingOrderDTO | null>(null);
+  const [editingFormula, setEditingFormula] = useState<ManufacturingFormulaDTO | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  /* ── serial picker ── */
+  const [serialPickerItem, setSerialPickerItem] = useState<{ idx: number; productId: number } | null>(null);
+
+  /* ── shared form fields ── */
+  const [fName, setFName] = useState('');
+  const [fType, setFType] = useState('New');
+  const [fBrandId, setFBrandId] = useState<number | undefined>();
+  const [fCategoryId, setFCategoryId] = useState<number | undefined>();
+  const [fUnitId, setFUnitId] = useState<number | undefined>();
+  const [fPrice, setFPrice] = useState(0);
+  const [fNotes, setFNotes] = useState('');
+  const [fItems, setFItems] = useState<any[]>([]);
+  /* formula-only */
+  const [fFormulaName, setFFormulaName] = useState('');
+  const [fFormulaDesc, setFFormulaDesc] = useState('');
+  /* order-only: selected formula */
+  const [selectedFormulaId, setSelectedFormulaId] = useState<number | ''>('');
+
+  const totalCost = useMemo(() =>
+    fItems.reduce((s: number, i: any) => s + (Number(i.unitCost ?? 0) * (i.qty ?? 1)), 0), [fItems]);
+
+  /* ── fetch ── */
   const fetchAll = useCallback(async () => {
     try {
-      const [o, p, b, c, u, s] = await Promise.all([
+      const [o, f, p, b, c, u, s] = await Promise.all([
         manufacturingService.getAll(),
+        manufacturingFormulaService.getAll(),
         productService.getAll(),
         brandService.getAll(),
         categoryService.getTree(),
         unitService.getAll(),
         productSerialService.getAll(),
       ]);
-      setOrders(o);
-      setProducts(p);
-      setBrands(b.filter(x => x.isActive));
-      setCategories(c);
-      setUnits(u);
-      setAllSerials(s);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+      setOrders(o); setFormulas(f); setProducts(p);
+      setBrands(b.filter((x: BrandDTO) => x.isActive));
+      setCategories(c); setUnits(u); setAllSerials(s);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const openNew = () => {
-    setEditingOrder(null);
-    setFormName(''); setFormBrandId(undefined); setFormCategoryId(undefined);
-    setFormUnitId(undefined); setFormType('New'); setFormPrice(0);
-    setFormNotes(''); setFormItems([]);
-    setShowForm(true);
+  /* ── form helpers ── */
+  const resetForm = () => {
+    setFName(''); setFType('New'); setFBrandId(undefined); setFCategoryId(undefined);
+    setFUnitId(undefined); setFPrice(0); setFNotes('');
+    setFItems([]); setFFormulaName(''); setFFormulaDesc('');
+    setSelectedFormulaId(''); setEditingOrder(null); setEditingFormula(null);
   };
 
-  const openEdit = (order: ManufacturingOrderDTO) => {
-    setEditingOrder(order);
-    setFormName(order.finishedProductName);
-    setFormBrandId(order.finishedProductBrandId);
-    setFormCategoryId(order.finishedProductCategoryId);
-    setFormUnitId(order.finishedProductUnitId);
-    setFormType(order.finishedProductType || 'New');
-    setFormPrice(Number(order.finishedProductSellingPrice ?? 0));
-    setFormNotes(order.notes || '');
-    setFormItems((order.items || []).map(i => ({ ...i })));
-    setShowForm(true);
-  };
-
-  const getAvailableSerials = (productId: number) =>
-    allSerials.filter(s => s.productId === productId && s.status === SerialStatus.AVAILABLE);
-
-  const addComponent = (product: ProductDTO) => {
-    const existing = formItems.find(i => i.productId === product.id);
-    if (existing) {
-      Swal.fire({ icon: 'info', title: 'ပါဝင်ပြီးဖြစ်သည်', text: 'ဤပစ္စည်းကို ထပ်ထည့်ရန် qty ကို တိုးပါ', timer: 1500, showConfirmButton: false });
-      return;
+  const openOrderForm = (order?: ManufacturingOrderDTO) => {
+    resetForm();
+    if (order) {
+      setEditingOrder(order);
+      setFName(order.finishedProductName); setFType(order.finishedProductType || 'New');
+      setFBrandId(order.finishedProductBrandId); setFCategoryId(order.finishedProductCategoryId);
+      setFUnitId(order.finishedProductUnitId); setFPrice(Number(order.finishedProductSellingPrice ?? 0));
+      setFNotes(order.notes || ''); setFItems((order.items || []).map(i => ({ ...i })));
     }
-    const isSerial = product.hasSerial !== false;
-    const availQty = isSerial
-      ? getAvailableSerials(product.id).length
-      : (product.stockQty ?? product.currentStock ?? 0);
-
-    setFormItems(prev => [...prev, {
-      productId: product.id,
-      productName: product.name,
-      productCode: product.productCode,
-      hasSerial: isSerial,
-      qty: 1,
-      unitCost: product.costPrice ?? 0,
-      selectedSerialIds: [],
-      selectedSerialNumbers: [],
-      availableQty: availQty,
-    }]);
-    setProductSearch(''); setProductOpen(false);
+    setView('order-form');
   };
 
-  const removeComponent = (idx: number) =>
-    setFormItems(prev => prev.filter((_, i) => i !== idx));
+  const openFormulaForm = (formula?: ManufacturingFormulaDTO) => {
+    resetForm();
+    if (formula) {
+      setEditingFormula(formula);
+      setFFormulaName(formula.name); setFFormulaDesc(formula.description || '');
+      setFName(formula.finishedProductName || ''); setFType(formula.finishedProductType || 'New');
+      setFBrandId(formula.finishedProductBrandId); setFCategoryId(formula.finishedProductCategoryId);
+      setFUnitId(formula.finishedProductUnitId); setFPrice(Number(formula.finishedProductSellingPrice ?? 0));
+      setFItems((formula.items || []).map(i => ({ ...i })));
+    }
+    setView('formula-form');
+  };
 
-  const updateItemQty = (idx: number, qty: number) =>
-    setFormItems(prev => prev.map((item, i) => i === idx ? { ...item, qty: Math.max(1, qty) } : item));
+  /* Apply formula to order form */
+  const applyFormula = (formulaId: number | '') => {
+    setSelectedFormulaId(formulaId);
+    if (!formulaId) return;
+    const formula = formulas.find(f => f.id === formulaId);
+    if (!formula) return;
+    setFName(formula.finishedProductName || '');
+    setFType(formula.finishedProductType || 'New');
+    setFBrandId(formula.finishedProductBrandId);
+    setFCategoryId(formula.finishedProductCategoryId);
+    setFUnitId(formula.finishedProductUnitId);
+    setFPrice(Number(formula.finishedProductSellingPrice ?? 0));
+    setFItems(formula.items.map(i => ({
+      productId: i.productId, productName: i.productName, productCode: i.productCode,
+      hasSerial: i.hasSerial, qty: i.qty, unitCost: i.unitCost,
+      selectedSerialIds: [], selectedSerialNumbers: [],
+      availableQty: i.hasSerial !== false
+        ? allSerials.filter(s => s.productId === i.productId && s.status === SerialStatus.AVAILABLE).length
+        : (products.find(p => p.id === i.productId)?.stockQty ?? 0),
+    })));
+  };
 
-  const updateItemCost = (idx: number, cost: number) =>
-    setFormItems(prev => prev.map((item, i) => i === idx ? { ...item, unitCost: cost } : item));
-
-  const totalComponentCost = useMemo(() =>
-    formItems.reduce((s, i) => s + (Number(i.unitCost ?? 0) * (i.qty ?? 1)), 0),
-    [formItems]);
-
-  const handleSave = async () => {
-    if (!formName.trim()) { Swal.fire('စစ်ဆေးမှု', 'ထုတ်ကုန်နာမည် ဖြည့်ပါ', 'warning'); return; }
-    if (!formBrandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်း ရွေးပါ', 'warning'); return; }
-    if (!formCategoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစား ရွေးပါ', 'warning'); return; }
-    if (!formUnitId) { Swal.fire('စစ်ဆေးမှု', 'ယူနစ် ရွေးပါ', 'warning'); return; }
-    if (formItems.length === 0) { Swal.fire('စစ်ဆေးမှု', 'ပစ္စည်းများ ထည့်ပါ', 'warning'); return; }
-
+  /* ── save order ── */
+  const handleSaveOrder = async () => {
+    if (!fName.trim()) { Swal.fire('စစ်ဆေးမှု', 'ထုတ်ကုန်နာမည် ဖြည့်ပါ', 'warning'); return; }
+    if (!fBrandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်း ရွေးပါ', 'warning'); return; }
+    if (!fCategoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစား ရွေးပါ', 'warning'); return; }
+    if (!fUnitId) { Swal.fire('စစ်ဆေးမှု', 'ယူနစ် ရွေးပါ', 'warning'); return; }
+    if (fItems.length === 0) { Swal.fire('စစ်ဆေးမှု', 'ပစ္စည်းများ ထည့်ပါ', 'warning'); return; }
     setSaving(true);
     try {
       const dto: ManufacturingOrderDTO = {
-        finishedProductName: formName.trim(),
-        finishedProductBrandId: formBrandId,
-        finishedProductCategoryId: formCategoryId,
-        finishedProductUnitId: formUnitId,
-        finishedProductType: formType,
-        finishedProductSellingPrice: formPrice,
-        notes: formNotes,
-        items: formItems.map(i => ({
-          productId: i.productId,
-          qty: i.qty,
-          unitCost: i.unitCost,
-          selectedSerialIds: i.selectedSerialIds ?? [],
-        })),
+        finishedProductName: fName.trim(), finishedProductBrandId: fBrandId,
+        finishedProductCategoryId: fCategoryId, finishedProductUnitId: fUnitId,
+        finishedProductType: fType, finishedProductSellingPrice: fPrice, notes: fNotes,
+        items: fItems.map(i => ({ productId: i.productId, qty: i.qty, unitCost: i.unitCost, selectedSerialIds: i.selectedSerialIds ?? [] })),
       };
-      if (editingOrder?.id) {
-        await manufacturingService.update(editingOrder.id, dto);
-      } else {
-        await manufacturingService.create(dto);
-      }
-      setShowForm(false);
-      await fetchAll();
-      Swal.fire({ icon: 'success', title: 'သိမ်းဆည်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+      editingOrder?.id ? await manufacturingService.update(editingOrder.id, dto) : await manufacturingService.create(dto);
+      setView('list'); await fetchAll();
+      Swal.fire({ icon: 'success', title: 'သိမ်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
     } catch (e: any) {
       Swal.fire('Error', e?.response?.data?.message || e?.message || 'မအောင်မြင်ပါ', 'error');
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
+  /* ── save formula ── */
+  const handleSaveFormula = async () => {
+    if (!fFormulaName.trim()) { Swal.fire('စစ်ဆေးမှု', 'Formula နာမည် ဖြည့်ပါ', 'warning'); return; }
+    if (fItems.length === 0) { Swal.fire('စစ်ဆေးမှု', 'ပစ္စည်းများ ထည့်ပါ', 'warning'); return; }
+    setSaving(true);
+    try {
+      const dto: ManufacturingFormulaDTO = {
+        name: fFormulaName.trim(), description: fFormulaDesc,
+        finishedProductName: fName, finishedProductBrandId: fBrandId,
+        finishedProductCategoryId: fCategoryId, finishedProductUnitId: fUnitId,
+        finishedProductType: fType, finishedProductSellingPrice: fPrice,
+        items: fItems.map(i => ({ productId: i.productId, qty: i.qty, unitCost: i.unitCost })),
+      };
+      editingFormula?.id ? await manufacturingFormulaService.update(editingFormula.id, dto) : await manufacturingFormulaService.create(dto);
+      setView('list'); setActiveTab('formulas'); await fetchAll();
+      Swal.fire({ icon: 'success', title: 'သိမ်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+    } catch (e: any) {
+      Swal.fire('Error', e?.response?.data?.message || e?.message || 'မအောင်မြင်ပါ', 'error');
+    } finally { setSaving(false); }
+  };
+
+  /* ── complete / cancel / delete order ── */
   const handleComplete = async (order: ManufacturingOrderDTO) => {
-    const result = await Swal.fire({
-      title: 'ထုတ်လုပ်ရေး ပြီးဆုံးမည်',
-      html: `<p>Component တွေ stock မှ ဖြတ်တောက်ပြီး <strong>${order.finishedProductName}</strong> ကို ကုန်ပစ္စည်းမာစတာ ထဲ ထည့်သွင်းမည်။</p>`,
-      icon: 'question',
-      showCancelButton: true,
-      cancelButtonText: 'မလုပ်တော့',
-      confirmButtonText: 'Finish လုပ်မည်',
-      confirmButtonColor: '#16a34a',
-    });
-    if (!result.isConfirmed || !order.id) return;
-    try {
-      await manufacturingService.complete(order.id);
-      await fetchAll();
-      Swal.fire({ icon: 'success', title: 'ပြီးဆုံးပြီ! ကုန်ပစ္စည်းသစ် မာစတာ ထဲ ထည့်ပြီး', timer: 2500, showConfirmButton: false });
-    } catch (e: any) {
-      Swal.fire('Error', e?.response?.data?.message || e?.message || 'မအောင်မြင်ပါ', 'error');
-    }
+    const r = await Swal.fire({ title: 'ထုတ်လုပ်ရေး ပြီးဆုံးမည်', html: `Component stock ဖြတ်ပြီး <strong>${order.finishedProductName}</strong> ကို မာစတာ ထဲ ထည့်မည်။`, icon: 'question', showCancelButton: true, cancelButtonText: 'မလုပ်တော့', confirmButtonText: 'Finish', confirmButtonColor: '#16a34a' });
+    if (!r.isConfirmed || !order.id) return;
+    try { await manufacturingService.complete(order.id); await fetchAll(); Swal.fire({ icon: 'success', title: 'ပြီးဆုံးပြီ! ကုန်ပစ္စည်းသစ် မာစတာ ထဲ ထည့်ပြီး', timer: 2500, showConfirmButton: false }); }
+    catch (e: any) { Swal.fire('Error', e?.response?.data?.message || e?.message || 'မအောင်မြင်ပါ', 'error'); }
   };
 
-  const handleCancel = async (order: ManufacturingOrderDTO) => {
-    const result = await Swal.fire({
-      title: 'ပယ်ဖျက်မည်လား?',
-      icon: 'warning',
-      showCancelButton: true,
-      cancelButtonText: 'မလုပ်တော့',
-      confirmButtonText: 'ပယ်ဖျက်မည်',
-      confirmButtonColor: '#dc2626',
-    });
-    if (!result.isConfirmed || !order.id) return;
-    try {
-      await manufacturingService.cancel(order.id);
-      await fetchAll();
-      Swal.fire({ icon: 'success', title: 'ပယ်ဖျက်ပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
-    } catch (e: any) {
-      Swal.fire('Error', e?.response?.data?.message || e?.message || 'မအောင်မြင်ပါ', 'error');
-    }
+  const handleCancelOrder = async (order: ManufacturingOrderDTO) => {
+    const r = await Swal.fire({ title: 'ပယ်ဖျက်မည်လား?', icon: 'warning', showCancelButton: true, cancelButtonText: 'မလုပ်တော့', confirmButtonText: 'ပယ်ဖျက်မည်', confirmButtonColor: '#dc2626' });
+    if (!r.isConfirmed || !order.id) return;
+    try { await manufacturingService.cancel(order.id); await fetchAll(); }
+    catch (e: any) { Swal.fire('Error', e?.response?.data?.message || e?.message, 'error'); }
   };
 
-  const handleDelete = async (order: ManufacturingOrderDTO) => {
-    const result = await Swal.fire({
-      title: `"${order.orderCode}" ဖျက်မည်လား?`,
-      icon: 'warning',
-      showCancelButton: true,
-      cancelButtonText: 'မလုပ်တော့',
-      confirmButtonText: 'ဖျက်မည်',
-      confirmButtonColor: '#dc2626',
-    });
-    if (!result.isConfirmed || !order.id) return;
-    try {
-      await manufacturingService.delete(order.id);
-      await fetchAll();
-      Swal.fire({ icon: 'success', title: 'ဖျက်ပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
-    } catch (e: any) {
-      Swal.fire('Error', e?.response?.data?.message || e?.message || 'မဖျက်နိုင်ပါ', 'error');
-    }
+  const handleDeleteOrder = async (order: ManufacturingOrderDTO) => {
+    const r = await Swal.fire({ title: `"${order.orderCode}" ဖျက်မည်လား?`, icon: 'warning', showCancelButton: true, cancelButtonText: 'မလုပ်တော့', confirmButtonText: 'ဖျက်မည်', confirmButtonColor: '#dc2626' });
+    if (!r.isConfirmed || !order.id) return;
+    try { await manufacturingService.delete(order.id); await fetchAll(); }
+    catch (e: any) { Swal.fire('Error', e?.response?.data?.message || e?.message, 'error'); }
   };
 
-  // ────────── Serial Picker ──────────
-  const openSerialPicker = (idx: number) => {
-    const item = formItems[idx];
-    const product = products.find(p => p.id === item.productId);
-    if (!product) return;
-    setSerialPickerItem({ itemIdx: idx, product });
+  const handleDeleteFormula = async (formula: ManufacturingFormulaDTO) => {
+    const r = await Swal.fire({ title: `"${formula.name}" ဖျက်မည်လား?`, icon: 'warning', showCancelButton: true, cancelButtonText: 'မလုပ်တော့', confirmButtonText: 'ဖျက်မည်', confirmButtonColor: '#dc2626' });
+    if (!r.isConfirmed || !formula.id) return;
+    try { await manufacturingFormulaService.delete(formula.id); await fetchAll(); }
+    catch (e: any) { Swal.fire('Error', e?.response?.data?.message || e?.message, 'error'); }
   };
 
-  const toggleSerial = (serialId: number, serialNumber: string, itemIdx: number) => {
-    setFormItems(prev => prev.map((item, i) => {
-      if (i !== itemIdx) return item;
-      const ids = item.selectedSerialIds ?? [];
-      const nums = item.selectedSerialNumbers ?? [];
-      if (ids.includes(serialId)) {
-        return { ...item, selectedSerialIds: ids.filter(x => x !== serialId), selectedSerialNumbers: nums.filter(x => x !== serialNumber) };
-      }
-      const needed = item.qty ?? 1;
-      if (ids.length >= needed) {
-        Swal.fire({ icon: 'warning', title: `Serial ${needed} ခုသာ ရွေးနိုင်သည်`, toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
-        return item;
-      }
+  /* ── serial picker ── */
+  const getAvailableSerials = (productId: number) =>
+    allSerials.filter(s => s.productId === productId && s.status === SerialStatus.AVAILABLE);
+
+  const toggleSerial = (serialId: number, serialNumber: string, idx: number) => {
+    setFItems(prev => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const ids: number[] = item.selectedSerialIds ?? [];
+      const nums: string[] = item.selectedSerialNumbers ?? [];
+      if (ids.includes(serialId)) return { ...item, selectedSerialIds: ids.filter((x: number) => x !== serialId), selectedSerialNumbers: nums.filter((x: string) => x !== serialNumber) };
+      if (ids.length >= (item.qty ?? 1)) { Swal.fire({ icon: 'warning', title: `${item.qty} ခုသာ ရွေးနိုင်သည်`, toast: true, position: 'top-end', showConfirmButton: false, timer: 1200 }); return item; }
       return { ...item, selectedSerialIds: [...ids, serialId], selectedSerialNumbers: [...nums, serialNumber] };
     }));
   };
 
-  if (loading) return (
-    <div className="h-full flex items-center justify-center">
-      <Loader2 className="animate-spin text-indigo-600" size={32} />
-    </div>
-  );
+  if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
 
-  // ────────── FORM VIEW ──────────
-  if (showForm) return (
-    <div className="w-full max-w-none animate-in fade-in duration-200">
+  /* ══════════════════ ORDER FORM ══════════════════ */
+  if (view === 'order-form') return (
+    <div className="w-full animate-in fade-in duration-200">
       <div className="flex items-center gap-3 mb-6">
-        <button type="button" onClick={() => setShowForm(false)}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-500 hover:text-slate-800">
-          <ArrowLeft size={20} />
-        </button>
-        <div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white shrink-0">
-          <Package size={18} />
-        </div>
+        <button type="button" onClick={() => setView('list')} className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-500"><ArrowLeft size={20} /></button>
+        <div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white shrink-0"><Package size={18} /></div>
         <div>
-          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">
-            {editingOrder ? 'Order ပြင်ဆင်ရန်' : 'ထုတ်လုပ်ရေး Order အသစ်'}
-          </h2>
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{editingOrder ? 'Order ပြင်ဆင်ရန်' : 'Order အသစ်'}</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Manufacturing / Assembly</p>
         </div>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-        {/* LEFT — Finished Product details */}
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl">
             <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
               <Package size={13} className="text-indigo-500" />
               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ထုတ်ကုန်အသစ် သတ်မှတ်ချက်</span>
             </div>
-            <div className="p-5 space-y-4">
-
-              {/* Name */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ထုတ်ကုန်နာမည် *</label>
-                <input type="text" value={formName} onChange={e => setFormName(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                  placeholder="ဥပမာ: Gaming Desktop i5-12400F" />
-              </div>
-
-              {/* Type */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ပစ္စည်းအမျိုးအစား</label>
-                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                  {[['New', 'အသစ်'], ['Second', 'အသုံးပြုပြီး'], ['Second_New', 'အသစ်နှင့်တူ']] .map(([v, l]) => (
-                    <button key={v} type="button" onClick={() => setFormType(v)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-black transition-all ${formType === v ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Category */}
-              <div className="space-y-1.5 relative">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">အမျိုးအစား *</label>
-                <div className="relative">
-                  <Layers className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" size={14} />
-                  <input type="text"
-                    value={categorySearch || (formCategoryId ? flatCategories.find(c => c.id === formCategoryId)?.displayName || '' : '')}
-                    onFocus={() => { setCategoryOpen(true); setCategorySearch(''); }}
-                    onChange={e => { setCategorySearch(e.target.value); setCategoryOpen(true); }}
-                    onBlur={() => setTimeout(() => setCategoryOpen(false), 150)}
-                    placeholder="အမျိုးအစား ရှာပါ..."
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                </div>
-                {categoryOpen && (
-                  <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
-                    {flatCategories.filter(c => c.displayName.toLowerCase().includes(categorySearch.toLowerCase())).map(c => (
-                      <div key={c.id} onMouseDown={() => { setFormCategoryId(c.id); setCategorySearch(''); setCategoryOpen(false); }}
-                        className={`px-4 py-2 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 ${formCategoryId === c.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
-                        {c.displayName}
-                      </div>
-                    ))}
+            <div className="p-5">
+              <ProductFields
+                name={fName} onNameChange={setFName} type={fType} onTypeChange={setFType}
+                brandId={fBrandId} onBrandChange={setFBrandId} categoryId={fCategoryId} onCategoryChange={setFCategoryId}
+                unitId={fUnitId} onUnitChange={setFUnitId} price={fPrice} onPriceChange={setFPrice}
+                brands={brands} flatCategories={flatCategories} units={units} totalCost={totalCost}
+                extraFields={
+                  <div className="space-y-1.5 mb-4">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Formula ရွေးမည် (ရွေးချင်မှ)</label>
+                    <select value={selectedFormulaId} onChange={e => applyFormula(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all">
+                      <option value="">── Formula မရွေးပါ ──</option>
+                      {formulas.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                    {selectedFormulaId && <p className="text-[10px] text-indigo-600 font-bold">✓ Formula အရ data အားလုံး ဖြည့်ပြီး — လိုသလို ပြင်နိုင်သည်</p>}
                   </div>
-                )}
-              </div>
-
-              {/* Brand */}
-              <div className="space-y-1.5 relative">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ဘရန်း *</label>
-                <div className="relative">
-                  <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" size={14} />
-                  <input type="text"
-                    value={brandSearch || (formBrandId ? brands.find(b => b.id === formBrandId)?.name || '' : '')}
-                    onFocus={() => { setBrandOpen(true); setBrandSearch(''); }}
-                    onChange={e => { setBrandSearch(e.target.value); setBrandOpen(true); }}
-                    onBlur={() => setTimeout(() => setBrandOpen(false), 150)}
-                    placeholder="ဘရန်း ရှာပါ..."
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                </div>
-                {brandOpen && (
-                  <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
-                    {brands.filter(b => b.name.toLowerCase().includes(brandSearch.toLowerCase())).map(b => (
-                      <div key={b.id} onMouseDown={() => { setFormBrandId(b.id); setBrandSearch(''); setBrandOpen(false); }}
-                        className={`px-4 py-2 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 ${formBrandId === b.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
-                        {b.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Unit */}
-              <div className="space-y-1.5 relative">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ယူနစ် *</label>
-                <div className="relative">
-                  <Ruler className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" size={14} />
-                  <input type="text"
-                    value={unitSearch || (formUnitId ? units.find(u => u.id === formUnitId)?.unitName || '' : '')}
-                    onFocus={() => { setUnitOpen(true); setUnitSearch(''); }}
-                    onChange={e => { setUnitSearch(e.target.value); setUnitOpen(true); }}
-                    onBlur={() => setTimeout(() => setUnitOpen(false), 150)}
-                    placeholder="ယူနစ် ရှာပါ..."
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                </div>
-                {unitOpen && (
-                  <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
-                    {units.filter(u => u.unitName.toLowerCase().includes(unitSearch.toLowerCase())).map(u => (
-                      <div key={u.id} onMouseDown={() => { setFormUnitId(u.id); setUnitSearch(''); setUnitOpen(false); }}
-                        className={`px-4 py-2 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 ${formUnitId === u.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
-                        {u.unitName}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Selling price */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ရောင်းဈေး</label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                  <input type="number" min="0" value={formPrice} onChange={e => setFormPrice(Number(e.target.value))}
-                    className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-emerald-400 focus:bg-white transition-all" />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1.5">
+                }
+              />
+              <div className="mt-4 space-y-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">မှတ်ချက်</label>
-                <textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all resize-none"
-                  placeholder="မှတ်ချက်..." />
+                <textarea value={fNotes} onChange={e => setFNotes(e.target.value)} rows={2}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white resize-none" />
               </div>
             </div>
           </div>
-
-          {/* Cost summary */}
-          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex items-center justify-between">
-            <span className="text-xs font-black text-indigo-700">Component ကုန်ကျစရိတ် စုစုပေါင်း</span>
-            <span className="text-sm font-black text-indigo-700 tabular-nums">{totalComponentCost.toLocaleString()} Ks</span>
-          </div>
         </div>
-
-        {/* RIGHT — Component list */}
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl">
             <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
               <ClipboardList size={13} className="text-slate-500" />
               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Component ပစ္စည်းများ</span>
             </div>
-            <div className="p-4 space-y-3">
-
-              {/* Product search to add */}
-              <div className="relative">
-                <input type="text" value={productSearch}
-                  onFocus={() => setProductOpen(true)}
-                  onChange={e => { setProductSearch(e.target.value); setProductOpen(true); }}
-                  onBlur={() => setTimeout(() => setProductOpen(false), 150)}
-                  placeholder="ပစ္စည်းရှာပြီး ထည့်ရန်..."
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                {productOpen && (
-                  <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
-                    {products
-                      .filter(p => {
-                        const s = productSearch.toLowerCase();
-                        return (p.name.toLowerCase().includes(s) || (p.productCode || '').toLowerCase().includes(s));
-                      })
-                      .slice(0, 30)
-                      .map(p => {
-                        const isSerial = p.hasSerial !== false;
-                        const avail = isSerial
-                          ? getAvailableSerials(p.id).length
-                          : (p.stockQty ?? p.currentStock ?? 0);
-                        return (
-                          <div key={p.id} onMouseDown={() => addComponent(p)}
-                            className="px-4 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 flex items-center justify-between gap-2">
-                            <div>
-                              <div>{p.name}</div>
-                              <div className="text-[10px] text-slate-400 font-semibold">{p.productCode} · {isSerial ? 'Serial' : 'Qty'}</div>
-                            </div>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${avail > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
-                              {avail} ရှိ
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
-
-              {/* Component rows */}
-              {formItems.length === 0 && (
-                <div className="text-center py-8 text-slate-400 text-xs font-bold">
-                  <Package size={32} className="mx-auto mb-2 opacity-30" />
-                  ပစ္စည်းများ ထည့်ပါ
-                </div>
-              )}
-
-              {formItems.map((item, idx) => {
-                const isSerial = item.hasSerial !== false;
-                const selectedCount = item.selectedSerialIds?.length ?? 0;
-                const needed = item.qty ?? 1;
-                const serialOk = !isSerial || selectedCount >= needed;
-
-                return (
-                  <div key={idx} className="border border-slate-200 rounded-xl p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-800 truncate">{item.productName}</p>
-                        <p className="text-[10px] text-slate-400 font-semibold">{item.productCode} · {isSerial ? 'Serial' : 'Qty'} · ရှိ: {item.availableQty}</p>
-                      </div>
-                      <button onClick={() => removeComponent(idx)} className="text-rose-400 hover:text-rose-600 shrink-0">
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 space-y-1">
-                        <label className="text-[9px] text-slate-400 font-black uppercase">အရေအတွက်</label>
-                        <input type="number" min="1" value={item.qty ?? 1}
-                          onChange={e => updateItemQty(idx, Number(e.target.value))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 focus:bg-white" />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <label className="text-[9px] text-slate-400 font-black uppercase">ကုန်ကျစရိတ်</label>
-                        <input type="number" min="0" value={Number(item.unitCost ?? 0)}
-                          onChange={e => updateItemCost(idx, Number(e.target.value))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 focus:bg-white" />
-                      </div>
-                    </div>
-                    {isSerial && (
-                      <div>
-                        <button type="button" onClick={() => openSerialPicker(idx)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-bold transition-all ${serialOk ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-                          <span className="flex items-center gap-1.5">
-                            <Hash size={12} />
-                            Serial ရွေးရန် ({selectedCount}/{needed})
-                          </span>
-                          {serialOk ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                        </button>
-                        {selectedCount > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {item.selectedSerialNumbers?.map(sn => (
-                              <span key={sn} className="text-[9px] font-black px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full">{sn}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="p-4">
+              <ComponentList items={fItems} products={products} allSerials={allSerials} onChange={setFItems}
+                showSerialPicker onOpenSerialPicker={idx => {
+                  const item = fItems[idx];
+                  setSerialPickerItem({ idx, productId: item.productId });
+                }} />
             </div>
           </div>
-
-          {/* Save */}
-          <button onClick={handleSave} disabled={saving}
-            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black text-sm uppercase flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-60 transition-all">
+          <button onClick={handleSaveOrder} disabled={saving}
+            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black text-sm uppercase flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-60">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-            {editingOrder ? 'မွမ်းမံသိမ်းဆည်းမည်' : 'Draft သိမ်းဆည်းမည်'}
+            {editingOrder ? 'မွမ်းမံသိမ်းမည်' : 'Draft သိမ်းမည်'}
           </button>
         </div>
       </div>
 
-      {/* Serial Picker Modal */}
+      {/* Serial Picker */}
       {serialPickerItem && (() => {
-        const { itemIdx, product } = serialPickerItem;
-        const item = formItems[itemIdx];
-        const serials = getAvailableSerials(product.id);
+        const { idx, productId } = serialPickerItem;
+        const item = fItems[idx];
+        const serials = getAvailableSerials(productId);
+        const product = products.find(p => p.id === productId);
         return (
           <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-black text-slate-800">{product.name} · Serial ရွေးမည်</h3>
+                  <h3 className="text-sm font-black text-slate-800">{product?.name} · Serial ရွေးမည်</h3>
                   <p className="text-[10px] text-slate-400 font-bold">{item.qty} ခု ရွေးရမည် · ရွေးပြီး: {item.selectedSerialIds?.length ?? 0}</p>
                 </div>
                 <button onClick={() => setSerialPickerItem(null)} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
@@ -584,7 +575,7 @@ const ManufacturingManagement: React.FC = () => {
                 {serials.map(s => {
                   const selected = (item.selectedSerialIds ?? []).includes(s.id);
                   return (
-                    <div key={s.id} onClick={() => toggleSerial(s.id, s.serialNumber, itemIdx)}
+                    <div key={s.id} onClick={() => toggleSerial(s.id, s.serialNumber, idx)}
                       className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border cursor-pointer transition-all ${selected ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-200'}`}>
                       <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${selected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
                         {selected && <CheckCheck size={10} className="text-white" />}
@@ -595,10 +586,7 @@ const ManufacturingManagement: React.FC = () => {
                 })}
               </div>
               <div className="px-5 py-3 border-t border-slate-100">
-                <button onClick={() => setSerialPickerItem(null)}
-                  className="w-full bg-indigo-600 text-white py-2 rounded-xl text-sm font-black hover:bg-indigo-700">
-                  ပြီးပါပြီ
-                </button>
+                <button onClick={() => setSerialPickerItem(null)} className="w-full bg-indigo-600 text-white py-2 rounded-xl text-sm font-black hover:bg-indigo-700">ပြီးပါပြီ</button>
               </div>
             </div>
           </div>
@@ -607,117 +595,219 @@ const ManufacturingManagement: React.FC = () => {
     </div>
   );
 
-  // ────────── LIST VIEW ──────────
+  /* ══════════════════ FORMULA FORM ══════════════════ */
+  if (view === 'formula-form') return (
+    <div className="w-full animate-in fade-in duration-200">
+      <div className="flex items-center gap-3 mb-6">
+        <button type="button" onClick={() => { setView('list'); setActiveTab('formulas'); }} className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-500"><ArrowLeft size={20} /></button>
+        <div className="w-9 h-9 bg-violet-600 rounded-lg flex items-center justify-center text-white shrink-0"><BookOpen size={18} /></div>
+        <div>
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{editingFormula ? 'Formula ပြင်ဆင်ရန်' : 'Formula အသစ်'}</h2>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">BOM Template</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
+              <FileText size={13} className="text-violet-500" />
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Formula သတ်မှတ်ချက်</span>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Formula နာမည် *</label>
+                <input type="text" value={fFormulaName} onChange={e => setFFormulaName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-violet-500 focus:bg-white transition-all"
+                  placeholder="ဥပမာ: Gaming Desktop Standard Build" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ဖော်ပြချက်</label>
+                <textarea value={fFormulaDesc} onChange={e => setFFormulaDesc(e.target.value)} rows={2}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-violet-500 focus:bg-white resize-none" />
+              </div>
+              <hr className="border-slate-100" />
+              <ProductFields
+                name={fName} onNameChange={setFName} type={fType} onTypeChange={setFType}
+                brandId={fBrandId} onBrandChange={setFBrandId} categoryId={fCategoryId} onCategoryChange={setFCategoryId}
+                unitId={fUnitId} onUnitChange={setFUnitId} price={fPrice} onPriceChange={setFPrice}
+                brands={brands} flatCategories={flatCategories} units={units} totalCost={totalCost}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
+              <ClipboardList size={13} className="text-slate-500" />
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Component ပစ္စည်းများ</span>
+            </div>
+            <div className="p-4">
+              <ComponentList items={fItems} products={products} allSerials={allSerials} onChange={setFItems} />
+            </div>
+          </div>
+          <button onClick={handleSaveFormula} disabled={saving}
+            className="w-full bg-violet-600 text-white py-3 rounded-xl font-black text-sm uppercase flex items-center justify-center gap-2 hover:bg-violet-700 disabled:opacity-60">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+            {editingFormula ? 'မွမ်းမံသိမ်းမည်' : 'Formula သိမ်းမည်'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ══════════════════ LIST VIEW ══════════════════ */
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-800">ထုတ်လုပ်ရေး</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Manufacturing / Assembly</p>
         </div>
-        <button onClick={openNew}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-indigo-700">
-          <Plus size={14} /> Order အသစ်
+        <button onClick={() => activeTab === 'orders' ? openOrderForm() : openFormulaForm()}
+          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 text-white ${activeTab === 'orders' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-violet-600 hover:bg-violet-700'}`}>
+          <Plus size={14} /> {activeTab === 'orders' ? 'Order အသစ်' : 'Formula အသစ်'}
         </button>
       </div>
 
-      {orders.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl text-center py-16 text-slate-400">
-          <Package size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-bold">ထုတ်လုပ်ရေး Order မရှိသေးပါ</p>
-          <button onClick={openNew} className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 mx-auto hover:bg-indigo-700">
-            <Plus size={14} /> Order အသစ် ဖန်တီးမည်
-          </button>
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
+        <button onClick={() => setActiveTab('orders')}
+          className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${activeTab === 'orders' ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+          <span className="flex items-center gap-1.5"><ClipboardList size={13} />Orders ({orders.length})</span>
+        </button>
+        <button onClick={() => setActiveTab('formulas')}
+          className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${activeTab === 'formulas' ? 'bg-white text-violet-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+          <span className="flex items-center gap-1.5"><BookOpen size={13} />Formulas ({formulas.length})</span>
+        </button>
+      </div>
+
+      {/* ── ORDERS TAB ── */}
+      {activeTab === 'orders' && (
+        <div className="space-y-3">
+          {orders.length === 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl text-center py-16 text-slate-400">
+              <Package size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-bold">Order မရှိသေးပါ</p>
+              <button onClick={() => openOrderForm()} className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 mx-auto hover:bg-indigo-700">
+                <Plus size={14} /> Order အသစ်
+              </button>
+            </div>
+          )}
+          {orders.map(order => (
+            <div key={order.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-4 flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-slate-500">{order.orderCode}</span>
+                    {statusBadge(order.status)}
+                  </div>
+                  <p className="text-sm font-black text-slate-800 mt-0.5 truncate">{order.finishedProductName}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">
+                    {order.finishedProductBrandName} · {order.finishedProductCategoryName} · {order.finishedProductUnitName}
+                    {order.totalComponentCost ? ` · ကုန်ကျ: ${Number(order.totalComponentCost).toLocaleString()} Ks` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {order.status === ManufacturingStatus.DRAFT && <>
+                    <button onClick={() => openOrderForm(order)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Edit2 size={15} /></button>
+                    <button onClick={() => handleComplete(order)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-black uppercase flex items-center gap-1 hover:bg-emerald-700"><CheckCheck size={13} />Finish</button>
+                    <button onClick={() => handleCancelOrder(order)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Ban size={15} /></button>
+                  </>}
+                  {order.status !== ManufacturingStatus.COMPLETED && (
+                    <button onClick={() => handleDeleteOrder(order)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={15} /></button>
+                  )}
+                  <button onClick={() => setExpandedId(expandedId === order.id ? null : (order.id ?? null))} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
+                    {expandedId === order.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                </div>
+              </div>
+              {expandedId === order.id && (
+                <div className="border-t border-slate-100 px-5 py-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Component ပစ္စည်းများ</p>
+                  <div className="space-y-2">
+                    {(order.items || []).map((item, i) => (
+                      <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5 gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-slate-800 truncate">{item.productName}</p>
+                          <p className="text-[10px] text-slate-400">{item.productCode} · {item.hasSerial ? 'Serial' : 'Qty'}</p>
+                          {item.selectedSerialNumbers && item.selectedSerialNumbers.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.selectedSerialNumbers.map((sn: string) => (
+                                <span key={sn} className="text-[9px] font-black px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full">{sn}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-black text-slate-700">{item.qty} ခု</p>
+                          <p className="text-[10px] text-slate-400">{Number(item.unitCost ?? 0).toLocaleString()} Ks/ခု</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {order.notes && <p className="mt-3 text-xs text-slate-500 border-t border-slate-100 pt-3">{order.notes}</p>}
+                  {order.status === ManufacturingStatus.COMPLETED && order.finishedProductId && (
+                    <div className="mt-3 flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5">
+                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                      <p className="text-xs font-black text-emerald-700">မာစတာ ထဲ ထည့်ပြီး (ID: {order.finishedProductId}) · {order.completedAt?.slice(0, 10)}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      <div className="space-y-3">
-        {orders.map(order => (
-          <div key={order.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-            <div className="px-5 py-4 flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-black text-slate-500">{order.orderCode}</span>
-                  {statusBadge(order.status)}
-                </div>
-                <p className="text-sm font-black text-slate-800 mt-0.5 truncate">{order.finishedProductName}</p>
-                <p className="text-[10px] text-slate-400 font-semibold">
-                  {order.finishedProductBrandName} · {order.finishedProductCategoryName} · {order.finishedProductUnitName}
-                  {order.totalComponentCost ? ` · ကုန်ကျ: ${Number(order.totalComponentCost).toLocaleString()} Ks` : ''}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {order.status === ManufacturingStatus.DRAFT && (
-                  <>
-                    <button onClick={() => openEdit(order)}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="ပြင်ဆင်ရန်">
-                      <Edit2 size={15} />
-                    </button>
-                    <button onClick={() => handleComplete(order)}
-                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-black uppercase flex items-center gap-1 hover:bg-emerald-700">
-                      <CheckCheck size={13} /> Finish
-                    </button>
-                    <button onClick={() => handleCancel(order)}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="ပယ်ဖျက်ရန်">
-                      <Ban size={15} />
-                    </button>
-                  </>
-                )}
-                {order.status !== ManufacturingStatus.COMPLETED && (
-                  <button onClick={() => handleDelete(order)}
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="ဖျက်ရန်">
-                    <Trash2 size={15} />
-                  </button>
-                )}
-                <button onClick={() => setExpandedId(expandedId === order.id ? null : (order.id ?? null))}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
-                  {expandedId === order.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
-              </div>
+      {/* ── FORMULAS TAB ── */}
+      {activeTab === 'formulas' && (
+        <div className="space-y-3">
+          {formulas.length === 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl text-center py-16 text-slate-400">
+              <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-bold">Formula မရှိသေးပါ</p>
+              <button onClick={() => openFormulaForm()} className="mt-4 bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 mx-auto hover:bg-violet-700">
+                <Plus size={14} /> Formula အသစ်
+              </button>
             </div>
-
-            {expandedId === order.id && (
-              <div className="border-t border-slate-100 px-5 py-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Component ပစ္စည်းများ</p>
-                {(order.items || []).length === 0 && <p className="text-xs text-slate-400 font-bold">ပစ္စည်း မထည့်ရသေးပါ</p>}
-                <div className="space-y-2">
-                  {(order.items || []).map((item, i) => (
-                    <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5 gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-800 truncate">{item.productName}</p>
-                        <p className="text-[10px] text-slate-400 font-semibold">{item.productCode} · {item.hasSerial ? 'Serial' : 'Qty'}</p>
-                        {item.selectedSerialNumbers && item.selectedSerialNumbers.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {item.selectedSerialNumbers.map(sn => (
-                              <span key={sn} className="text-[9px] font-black px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full">{sn}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs font-black text-slate-700">{item.qty} ခု</p>
-                        <p className="text-[10px] text-slate-400 font-semibold">{Number(item.unitCost ?? 0).toLocaleString()} Ks/ခု</p>
-                      </div>
-                    </div>
+          )}
+          {formulas.map(formula => (
+            <div key={formula.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-4 flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-violet-50 text-violet-700 border border-violet-100"><BookOpen size={10} />Formula</span>
+                  </div>
+                  <p className="text-sm font-black text-slate-800 mt-0.5">{formula.name}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">
+                    ထုတ်ကုန်: {formula.finishedProductName || '—'} · {formula.items.length} ပစ္စည်း
+                    {formula.finishedProductBrandName ? ` · ${formula.finishedProductBrandName}` : ''}
+                  </p>
+                  {formula.description && <p className="text-[10px] text-slate-400 mt-0.5">{formula.description}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => { openOrderForm(); setTimeout(() => applyFormula(formula.id!), 0); setView('order-form'); }}
+                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-black uppercase flex items-center gap-1 hover:bg-indigo-700">
+                    <Plus size={13} />Order ဖန်တီး
+                  </button>
+                  <button onClick={() => openFormulaForm(formula)} className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all"><Edit2 size={15} /></button>
+                  <button onClick={() => handleDeleteFormula(formula)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={15} /></button>
+                </div>
+              </div>
+              <div className="border-t border-slate-100 px-5 py-3">
+                <div className="flex flex-wrap gap-2">
+                  {formula.items.map((item, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+                      <Package size={10} />{item.productName} × {item.qty}
+                    </span>
                   ))}
                 </div>
-                {order.notes && (
-                  <p className="mt-3 text-xs text-slate-500 font-semibold border-t border-slate-100 pt-3">{order.notes}</p>
-                )}
-                {order.status === ManufacturingStatus.COMPLETED && order.finishedProductId && (
-                  <div className="mt-3 flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5">
-                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                    <p className="text-xs font-black text-emerald-700">
-                      ကုန်ပစ္စည်းမာစတာ ထဲ ထည့်ပြီး (ID: {order.finishedProductId}) · {order.completedAt?.slice(0, 10)}
-                    </p>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

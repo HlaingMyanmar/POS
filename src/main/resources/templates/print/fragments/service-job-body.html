@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: service-job-body
+  ═══════════════════════════════════════════════════════════════════════════
+  SERVICE VOUCHER — Intake Sheet body content
+  Dedicated to SERVICE_JOB document type only. No cross-type conditionals.
+
+  Sections shown (all on page 1, before the items table):
+    1. Device block  (item name · accessories · estimated cost)
+    2. Problem Description block
+    3. Device Condition checklist table (Good / Fair / Poor / Broken)
+
+  The items table (service lines + parts) is included by the page template
+  after this fragment. No financial summary — it is an intake work order.
+
+  To customise: edit this file only. The page wrapper is service-job-a4/a5.html.
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)"
+     style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px dashed #d1d5db;">
+
+  <!-- ── Device + Problem Description (2-col grid) ──────────────────────── -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+
+    <!-- Device Info block -->
+    <div class="inv-block">
+      <div class="inv-block__title">Device</div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Item</span>
+        <span class="inv-block__value" th:text="${not #strings.isEmpty(inv.itemName) ? inv.itemName : '—'}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.accessories)}">
+        <span class="inv-block__label">Accessories</span>
+        <span class="inv-block__value" style="font-size:10px;" th:text="${inv.accessories}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.estimatedCost)}">
+        <span class="inv-block__label">Est. Cost</span>
+        <span class="inv-block__value" th:text="${inv.estimatedCost}">—</span>
+      </div>
+    </div>
+
+    <!-- Problem Description block -->
+    <div class="inv-block">
+      <div class="inv-block__title">Problem Description</div>
+      <p style="font-size:11px; color:#374151; margin:0; line-height:1.5;"
+         th:text="${not #strings.isEmpty(inv.problemDesc) ? inv.problemDesc : '—'}">—</p>
+    </div>
+
+  </div>
+
+  <!-- ── Device Condition checklist table ───────────────────────────────── -->
+  <div th:if="${inv.deviceConditionRows != null and not #lists.isEmpty(inv.deviceConditionRows)}">
+    <div class="inv-section-label">Device Condition on Intake</div>
+    <table style="width:100%; border-collapse:collapse; font-size:10px;">
+      <thead>
+        <tr style="background:#f8fafc;">
+          <th style="text-align:left;   padding:5px 8px; border:1px solid #e5e7eb; font-weight:600; color:#374151; font-size:9px;">Component</th>
+          <th style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb; font-weight:700; color:#059669; font-size:9px;">Good</th>
+          <th style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb; font-weight:700; color:#d97706; font-size:9px;">Fair</th>
+          <th style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb; font-weight:700; color:#ea580c; font-size:9px;">Poor</th>
+          <th style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb; font-weight:700; color:#dc2626; font-size:9px;">Broken</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr th:each="row, it : ${inv.deviceConditionRows}"
+            th:style="${it.index % 2 == 0 ? 'background:#fff;' : 'background:#f9fafb;'}">
+          <td style="padding:5px 8px; border:1px solid #e5e7eb; font-weight:500;"
+              th:text="${row.component}"></td>
+          <td style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb;">
+            <span th:if="${row.status == 'Good'}" style="color:#059669; font-weight:700; font-size:13px;">✓</span>
+          </td>
+          <td style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb;">
+            <span th:if="${row.status == 'Fair'}" style="color:#d97706; font-weight:700; font-size:13px;">✓</span>
+          </td>
+          <td style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb;">
+            <span th:if="${row.status == 'Poor'}" style="color:#ea580c; font-weight:700; font-size:13px;">✓</span>
+          </td>
+          <td style="text-align:center; padding:5px 8px; border:1px solid #e5e7eb;">
+            <span th:if="${row.status == 'Broken'}" style="color:#dc2626; font-weight:700; font-size:13px;">✓</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+</body>
+</html>

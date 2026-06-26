@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "SSPD Manager",
+    "slug": "servicemgmt-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#4F46E5"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.sspd.servicemgmt",
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Barcode scan အတွက် camera ခွင့်ပြုပါ"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "15c92712-3776-4140-a30c-650459ace34e"
+      }
+    },
+    "owner": "hlainghtun"
+  }
+}

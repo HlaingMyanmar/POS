@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="device_info_subreport"
+  pageWidth="555" pageHeight="842"
+  columnWidth="555" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0"
+  isFloatColumnFooter="true">
+
+  <field name="COMPONENT"   class="java.lang.String"/>
+  <field name="DESCRIPTION" class="java.lang.String"/>
+  <field name="STATUS"      class="java.lang.String"/>
+  <field name="NOTICE"      class="java.lang.String"/>
+
+  <columnHeader>
+    <band height="16">
+      <rectangle>
+        <reportElement x="0" y="0" width="555" height="16" backcolor="#F1F5F9" forecolor="#E2E8F0"/>
+        <graphicElement><pen lineWidth="0.5"/></graphicElement>
+      </rectangle>
+      <staticText>
+        <reportElement x="4" y="2" width="135" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[COMPONENT]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="139" y="2" width="180" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[DESCRIPTION]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="319" y="2" width="80" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[STATUS]]></text>
+      </staticText>
+      <staticText>
+        <reportElement x="399" y="2" width="153" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="6.5" isBold="true" forecolor="#475569"/></textElement>
+        <text><![CDATA[NOTICE]]></text>
+      </staticText>
+    </band>
+  </columnHeader>
+
+  <detail>
+    <band height="14">
+      <textField isBlankWhenNull="true">
+        <reportElement x="4" y="1" width="135" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$F{COMPONENT}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="139" y="1" width="180" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="7" forecolor="#475569"/></textElement>
+        <textFieldExpression><![CDATA[$F{DESCRIPTION}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="319" y="1" width="80" height="12"/>
+        <textElement textAlignment="Center"><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$F{STATUS}]]></textFieldExpression>
+      </textField>
+      <textField isBlankWhenNull="true">
+        <reportElement x="399" y="1" width="153" height="12"/>
+        <textElement><font fontName="DejaVu Sans" size="7" forecolor="#475569"/></textElement>
+        <textFieldExpression><![CDATA[$F{NOTICE}]]></textFieldExpression>
+      </textField>
+      <line>
+        <reportElement x="0" y="13" width="555" height="1" forecolor="#F1F5F9"/>
+      </line>
+    </band>
+  </detail>
+
+</jasperReport>

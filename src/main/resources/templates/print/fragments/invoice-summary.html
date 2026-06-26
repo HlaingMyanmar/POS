@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: invoice-summary
+  Customer notice (left) + totals summary box (right).
+  Rendered on the last page only.
+  Used by: SALE, SERVICE_DONE, PURCHASE.
+  Not included by booking or service-job page templates.
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)" class="inv-bottom">
+
+  <!-- Left: payment history + notice -->
+  <div class="inv-payment-col">
+
+    <!-- Payment history table -->
+    <div th:if="${inv.showPaymentHistory and not #lists.isEmpty(inv.payments)}">
+      <div class="inv-section-label">Payment History</div>
+      <div class="inv-table-wrap inv-table-wrap--sm">
+        <table class="inv-pay-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Method</th>
+              <th class="r">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="p : ${inv.payments}">
+              <td th:text="${p.date}">—</td>
+              <td>
+                <div th:text="${#strings.contains(p.method,'||') ? #strings.substringBefore(p.method,'||') : p.method}">—</div>
+                <div th:if="${#strings.contains(p.method,'||')}"
+                     style="font-size:9px; color:#64748b; margin-top:1px;"
+                     th:text="${'Txn: ' + #strings.substringAfter(p.method,'||')}"></div>
+              </td>
+              <td class="r" th:text="${p.amount}">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Customer notice -->
+    <div th:if="${not #strings.isEmpty(inv.customerNotice)}"
+         style="margin-top:10px;">
+      <div class="inv-section-label">Notice</div>
+      <div class="inv-notice" th:text="${inv.customerNotice}"></div>
+    </div>
+
+  </div>
+
+  <!-- Right: totals summary box -->
+  <div class="inv-summary-col">
+    <div class="inv-summary-box">
+      <div class="inv-summary-row">
+        <span class="inv-summary-row__label">Subtotal</span>
+        <span class="inv-summary-row__value" th:text="${inv.subtotal}">0</span>
+      </div>
+      <div class="inv-summary-row">
+        <span class="inv-summary-row__label">Discount</span>
+        <span class="inv-summary-row__value" th:text="${inv.discount}">0</span>
+      </div>
+      <div class="inv-summary-row inv-summary-row--sub">
+        <span class="inv-summary-row__label">Net Amount</span>
+        <span class="inv-summary-row__value" th:text="${inv.netAmount}">0</span>
+      </div>
+      <div class="inv-summary-row">
+        <span class="inv-summary-row__label">Paid</span>
+        <span class="inv-summary-row__value" th:text="${inv.paid}">0</span>
+      </div>
+      <div class="inv-summary-row inv-summary-row--highlight">
+        <span class="inv-summary-row__label">Balance Due</span>
+        <span class="inv-summary-row__value" th:text="${inv.balanceDue}">0</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: invoice-info-blocks
+  Bill To card + Invoice Details card — shared across all document types.
+  Document-specific sections live in dedicated body fragments:
+    Booking         → booking-body.html
+    Service Voucher → service-job-body.html
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)">
+
+  <!-- ── Standard 2-column grid ── -->
+  <div class="inv-info-grid">
+
+    <!-- Bill To card -->
+    <div class="inv-block">
+      <div class="inv-block__title">Bill To</div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Customer</span>
+        <span class="inv-block__value" th:text="${inv.customerName ?: '—'}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.customerPhone)}">
+        <span class="inv-block__label">Phone</span>
+        <span class="inv-block__value" th:text="${inv.customerPhone}"></span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.customerAddress)}">
+        <span class="inv-block__label">Address</span>
+        <span class="inv-block__value" th:text="${inv.customerAddress}"></span>
+      </div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Status</span>
+        <span class="inv-block__value">
+          <span th:class="${'inv-badge'
+                            + (#strings.equalsIgnoreCase(inv.paymentStatus, 'Partial') ? ' inv-badge--partial' : '')
+                            + (#strings.equalsIgnoreCase(inv.paymentStatus, 'Pending') ? ' inv-badge--neutral' : '')
+                            + (#strings.equalsIgnoreCase(inv.paymentStatus, 'Unpaid')  ? ' inv-badge--neutral' : '')}"
+                th:text="${inv.paymentStatus ?: '—'}">Paid</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Invoice Details card -->
+    <div class="inv-block">
+      <div class="inv-block__title">Invoice Details</div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Invoice No</span>
+        <span class="inv-block__value" th:text="${inv.invoiceNo}">—</span>
+      </div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Date</span>
+        <span class="inv-block__value" th:text="${inv.invoiceDate}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.dueDate)}">
+        <span class="inv-block__label">Due Date</span>
+        <span class="inv-block__value" th:text="${inv.dueDate}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.cashierName)}">
+        <span class="inv-block__label">Cashier</span>
+        <span class="inv-block__value" th:text="${inv.cashierName}">—</span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+</body>
+</html>

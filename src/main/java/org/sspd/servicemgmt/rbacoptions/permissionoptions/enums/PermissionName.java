@@ -1,0 +1,205 @@
+package org.sspd.servicemgmt.rbacoptions.permissionoptions.enums;
+
+import lombok.Getter;
+
+@Getter
+public enum PermissionName {
+
+    // User Management Permissions (အသုံးပြုသူ စီမံခန့်ခွဲမှု)
+    CAN_ACCESS_USERS_READ("အသုံးပြုသူစာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_USER_CREATE("အသုံးပြုသူအကောင့်အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_USER_UPDATE("ရှိပြီးသား အသုံးပြုသူအချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_USER_DELETE("အသုံးပြုသူအကောင့်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+    CAN_ACCESS_USER_ASSIGN_ROLES("အသုံးပြုသူအား Role (ရာထူးတာဝန်) သတ်မှတ်ခွင့်ပြုသည်"),
+    CAN_ACCESS_USER_REMOVE_ROLES("အသုံးပြုသူထံမှ Role (ရာထူးတာဝန်) ပြန်လည်ရုပ်သိမ်းခွင့်ပြုသည်"),
+
+    // Role Management Permissions (ရာထူးတာဝန် စီမံခန့်ခွဲမှု)
+    CAN_ACCESS_ROLES_READ("Role (ရာထူးတာဝန်) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_ROLE_CREATE("Role (ရာထူးတာဝန်) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_ROLE_UPDATE("ရှိပြီးသား Role (ရာထူးတာဝန်) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_ROLE_DELETE("Role (ရာထူးတာဝန်) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+    CAN_ACCESS_ROLE_ASSIGN_PERMISSIONS("Role များအား လုပ်ပိုင်ခွင့် (Permission) သတ်မှတ်ခွင့်ပြုသည်"),
+    CAN_ACCESS_ROLE_REMOVE_PERMISSIONS("Role များထံမှ လုပ်ပိုင်ခွင့် (Permission) ပြန်လည်ဖယ်ရှားခွင့်ပြုသည်"),
+
+    // Brand Management
+    CAN_ACCESS_BRAND_CREATE("တံဆိပ် (Brand) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_BRAND_READ("တံဆိပ် (Brand) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_BRAND_UPDATE("ရှိပြီးသား တံဆိပ် (Brand) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_BRAND_DELETE("တံဆိပ် (Brand) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Category Management
+    CAN_ACCESS_CATEGORY_CREATE("အမျိုးအစား (Category) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_CATEGORY_READ("အမျိုးအစား (Category) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_CATEGORY_UPDATE("ရှိပြီးသား အမျိုးအစား (Category) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_CATEGORY_DELETE("အမျိုးအစား (Category) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Unit Management
+    CAN_ACCESS_UNIT_CREATE("ယူနစ် (Unit) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_UNIT_READ("ယူနစ် (Unit) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_UNIT_UPDATE("ရှိပြီးသား ယူနစ် (Unit) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_UNIT_DELETE("ယူနစ် (Unit) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Product Management
+    CAN_ACCESS_PRODUCT_CREATE("ကုန်ပစ္စည်း (Product) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_READ("ကုန်ပစ္စည်း (Product) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_UPDATE("ရှိပြီးသား ကုန်ပစ္စည်း (Product) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_DELETE("ကုန်ပစ္စည်း (Product) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Product Serial Management
+    CAN_ACCESS_PRODUCT_SERIAL_CREATE("ကုန်ပစ္စည်း Serial Number အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_SERIAL_READ("ကုန်ပစ္စည်း Serial Number စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_SERIAL_UPDATE("ရှိပြီးသား Serial Number များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_SERIAL_DELETE("Serial Number များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Supplier Management
+    CAN_ACCESS_SUPPLIER_CREATE("ကုန်သွင်းသူ (Supplier) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_SUPPLIER_READ("ကုန်သွင်းသူ (Supplier) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_SUPPLIER_UPDATE("ရှိပြီးသား ကုန်သွင်းသူ (Supplier) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_SUPPLIER_DELETE("ကုန်သွင်းသူ (Supplier) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // COA (Chart of Accounts) Management
+    CAN_ACCESS_COA_CREATE("စာရင်းခေါင်းစဉ် (COA) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_COA_READ("စာရင်းခေါင်းစဉ် (COA) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_COA_UPDATE("ရှိပြီးသား စာရင်းခေါင်းစဉ် (COA) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_COA_DELETE("စာရင်းခေါင်းစဉ် (COA) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Payment Method Management
+    CAN_ACCESS_PAYMENT_METHOD_CREATE("ငွေပေးချေမှုစနစ် (Payment Method) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PAYMENT_METHOD_READ("ငွေပေးချေမှုစနစ် (Payment Method) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PAYMENT_METHOD_UPDATE("ရှိပြီးသား ငွေပေးချေမှုစနစ်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PAYMENT_METHOD_DELETE("ငွေပေးချေမှုစနစ်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Customer Management
+    CAN_ACCESS_CUSTOMER_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_CUSTOMER_READ("ဝယ်ယူသူ (Customer) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_CUSTOMER_UPDATE("ရှိပြီးသား ဝယ်ယူသူအချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_CUSTOMER_DELETE("ဝယ်ယူသူ (Customer) စာရင်းများကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_STAFF_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_STAFF_READ("ဝယ်ယူသူ (Customer) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_STAFF_UPDATE("ရှိပြီးသား ဝယ်ယူသူအချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_STAFF_DELETE("ဝယ်ယူသူ (Customer) စာရင်းများကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_JOURNAL_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_JOURNAL_READ("ဝယ်ယူသူ (Customer) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_JOURNAL_UPDATE("ရှိပြီးသား ဝယ်ယူသူအချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+
+    CAN_ACCESS_PAYMENT_TRANSACTION_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PAYMENT_TRANSACTION_READ("ဝယ်ယူသူ (Customer) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
+
+    CAN_ACCESS_ACCOUNT_BALANCE_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_ACCOUNT_BALANCE_UPDATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+
+
+
+    CAN_ACCESS_STOCK_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_STOCK_UPDATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+
+    CAN_ACCESS_STOCK_ADJUSTMENT_CREATE("Stock Adjustment ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_STOCK_ADJUSTMENT_READ("Stock Adjustment များကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_STOCK_ADJUSTMENT_UPDATE("Stock Adjustment ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_STOCK_ADJUSTMENT_DELETE("Stock Adjustment ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_EXPENSE_CREATE("Expense ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_EXPENSE_READ("Expense များကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_EXPENSE_UPDATE("Expense များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_EXPENSE_DELETE("Expense များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_INCOME_CREATE("Income ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_INCOME_READ("Income များကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_INCOME_UPDATE("Income များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_INCOME_DELETE("Income များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_PURCHASE_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_UPDATE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+
+    CAN_ACCESS_PURCHASE_RETURN_CREATE("Purchase Return အသစ် ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_READ("Purchase Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_UPDATE("Purchase Return အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_DELETE("Purchase Return အချက်အလက်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_PURCHASE_RETURN_DETAIL_CREATE("Purchase Return Detail အသစ် ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_DETAIL_READ("Purchase Return Detail အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_DETAIL_UPDATE("Purchase Return Detail အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_DETAIL_DELETE("Purchase Return Detail အချက်အလက်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+
+    CAN_ACCESS_SALE_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_DELETE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_UPDATE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_BACKDATE("Sale ကို နောက်ကျသောရက်စွဲဖြင့် သိမ်းခွင့်"),
+    CAN_ACCESS_SALE_RETURN_CREATE("Sale Return ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_RETURN_READ("Sale Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_RETURN_UPDATE("Sale Return အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_RETURN_DELETE("Sale Return အချက်အလက်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+
+    // Credit / AR controls
+    CAN_ACCESS_CREDIT_TERM_CREATE("Customer Credit Term ဖန်တီးခွင့်"),
+    CAN_ACCESS_CREDIT_TERM_READ("Customer Credit Term ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_CREDIT_TERM_HISTORY_READ("Credit Term History ကြည့်ရှုခွင့်"),
+
+    CAN_ACCESS_CREDIT_ALERT_READ("Credit Alert (Overdue/Due Soon/Limit) ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_CREDIT_ALERT_RESOLVE("Credit Alert ဖြေရှင်းခွင့်"),
+
+    CAN_ACCESS_CUSTOMER_PAYMENT_CREATE("Customer Payment (Advance/Invoice) ဖန်တီးခွင့်"),
+    CAN_ACCESS_CUSTOMER_PAYMENT_READ("Customer Payment ကြည့်ရှုခွင့်"),
+
+    CAN_ACCESS_CREDIT_OVERRIDE_APPROVE("Credit Limit Override (Manager) ခွင့်ပြုခြင်း"),
+    CAN_ACCESS_CREDIT_HOLD_UPDATE("Customer Credit Hold ချမှတ်/ဖျက် ခွင့်"),
+    CAN_ACCESS_CREDIT_BLACKLIST_UPDATE("Customer Credit Blacklist ချမှတ်/ဖယ်ရှား ခွင့်"),
+
+    // Permission Management Permissions
+    CAN_ACCESS_PERMISSIONS_READ("စနစ်အတွင်းရှိ လုပ်ပိုင်ခွင့် (Permission) အားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PERMISSION_CREATE("လုပ်ပိုင်ခွင့် (Permission) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PERMISSION_UPDATE("ရှိပြီးသား လုပ်ပိုင်ခွင့် (Permission) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PERMISSION_DELETE("လုပ်ပိုင်ခွင့် (Permission) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    // Service Module Permissions
+    CAN_ACCESS_SERVICE_CREATE("Service, Service Type, Sub Service Type အသစ်များ ဖန်တီးခွင့်"),
+    CAN_ACCESS_SERVICE_READ("Service, Service Type, Sub Service Type များကို ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_SERVICE_UPDATE("Service, Service Type, Sub Service Type များကို ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_SERVICE_DELETE("Service, Service Type, Sub Service Type များကို ဖျက်သိမ်းခွင့်"),
+
+    CAN_ACCESS_SERVICE_JOB_CREATE("Service Job အသစ်များ ဖန်တီးခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_READ("Service Job အချက်အလက်များကို ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_UPDATE("Service Job အချက်အလက်များနှင့် status များကို ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_DELETE("Service Job များကို ဖျက်သိမ်းခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_SETTLE("Service Job settlement ပြုလုပ်ခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_REWORK("Service Job rework ဖန်တီးခွင့်"),
+
+    CAN_ACCESS_BOOKING_CREATE("Booking အသစ်များ ဖန်တီးခွင့်"),
+    CAN_ACCESS_BOOKING_READ("Booking အချက်အလက်များကို ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_BOOKING_UPDATE("Booking အချက်အလက်များနှင့် status များကို ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_BOOKING_DELETE("Booking များကို ဖျက်သိမ်းခွင့်"),
+    CAN_ACCESS_BOOKING_CONVERT_JOB("Booking ကို Service Job သို့ပြောင်းလဲခွင့်"),
+
+    CAN_ACCESS_BACKUP_SETTINGS_READ("Backup settings ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_BACKUP_SETTINGS_UPDATE("Backup settings ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_BACKUP_RUN("Manual backup run ခွင့်"),
+    CAN_ACCESS_BACKUP_IMPORT("Backup SQL import/restore ခွင့်"),
+    CAN_ACCESS_BACKUP_FILES_READ("Backup file list ကြည့်ရှုခွင့်"),
+
+    CAN_ACCESS_REPORT_READ("အစီရင်ခံစာများကို ကြည့်ရှုခွင့်ပြုသည်"),
+
+    CAN_ACCESS_AUDIT_LOG_READ("Audit log မှတ်တမ်းများ ကြည့်ရှုခွင့်"),
+
+    // Shelf Location Management
+    CAN_ACCESS_SHELF_LOCATION_READ("Shelf Location စာရင်းများကို ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_SHELF_LOCATION_CREATE("Shelf Location အသစ်ဖန်တီးခွင့်"),
+    CAN_ACCESS_SHELF_LOCATION_UPDATE("Shelf Location ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_SHELF_LOCATION_DELETE("Shelf Location ဖျက်သိမ်းခွင့်");
+
+
+
+
+    private final String description;
+
+    // Constructor
+    PermissionName(String description) {
+        this.description = description;
+    }
+}
+

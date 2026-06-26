@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<!--
+  FRAGMENT: service-done-table
+  ═══════════════════════════════════════════════════════════════════════════
+  SERVICE DONE VOUCHER — Completed Services & Parts table
+  Used by: service-done-a4.html · service-done-a5.html
+
+  Columns: # · Service / Part · Serial / Info · Qty · Unit Price · Amount
+  These are final charges billed to the customer after job completion.
+  Customise this file to change the Service Done Voucher table layout only.
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+<head><title>fragment</title></head>
+<body>
+
+<div th:fragment="render(inv)" class="inv-table-wrap">
+  <table class="inv-table">
+    <thead>
+      <tr>
+        <th class="inv-table__col-center" style="width:5%">#</th>
+        <th th:style="${inv.showSerial} ? 'width:38%' : 'width:60%'">Service / Part</th>
+        <th th:if="${inv.showSerial}" style="width:21%">Serial / Info</th>
+        <th class="inv-table__col-center" style="width:7%">Qty</th>
+        <th class="inv-table__col-right"  style="width:14%">Unit Price</th>
+        <th class="inv-table__col-right"  style="width:15%">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="item : ${inv.pageItems}" class="inv-table__row">
+        <td class="inv-table__col-center"
+            style="color:#94a3b8; font-weight:600; font-size:11px;"
+            th:text="${item.rowNo}">1</td>
+        <td>
+          <div style="font-weight:500;" th:text="${item.productName}">Service Name</div>
+          <div th:if="${not #strings.isEmpty(item.warrantyLabel)}"
+               class="inv-table__sub" style="color:#4f46e5;"
+               th:text="${'🛡 ' + item.warrantyLabel}"></div>
+        </td>
+        <td th:if="${inv.showSerial}" class="inv-table__sub"
+            th:text="${not #strings.isEmpty(item.serialInfo) ? item.serialInfo : '—'}">SN</td>
+        <td class="inv-table__col-center" style="font-weight:600;" th:text="${item.qty}">1</td>
+        <td class="inv-table__col-right"  th:text="${item.unitPrice}">0</td>
+        <td class="inv-table__col-right"  style="font-weight:600;" th:text="${item.subtotal}">0</td>
+      </tr>
+      <tr th:if="${#lists.isEmpty(inv.pageItems)}">
+        <td th:colspan="${inv.showSerial ? 6 : 5}" class="inv-table__empty">No items on this page</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

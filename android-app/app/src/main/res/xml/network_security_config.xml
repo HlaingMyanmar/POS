@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+
+    <!--
+        Global rule: block all plain HTTP (cleartext) traffic.
+        HTTPS only for all connections.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+        Internal server override.
+        The server uses a self-signed TLS certificate, so we also
+        trust certificates installed by the user (enterprise MDM / manual install).
+
+        HOW TO DEPLOY PROPERLY:
+          1. Export your server's self-signed cert → server.crt
+          2. Copy it to  app/src/main/res/raw/server_cert.crt
+          3. Add  <certificates src="@raw/server_cert"/>  inside <trust-anchors>
+          4. Remove the <certificates src="user"/> line (safer for production)
+          5. Remove the TrustAll code from ApiClient.kt
+    -->
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- Add every server hostname / IP your app connects to -->
+        <domain includeSubdomains="false">192.168.20.253</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- user-installed certs — acceptable for internal enterprise app -->
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+
+</network-security-config>

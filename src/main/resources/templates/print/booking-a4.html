@@ -1,0 +1,43 @@
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  DEVICE INTAKE RECEIPT — A4
+
+  Customise this document type by editing:
+    • Header               → fragments/invoice-header.html  (shared)
+    • Bill To / Invoice    → fragments/invoice-info-blocks.html  (shared)
+    • Device Info + Remark → fragments/booking-body.html  ← main body here
+    • Signatures / Footer  → fragments/invoice-footer.html :: booking-last
+    • All CSS              → static/print/css/print-base.css
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<div class="invoice-page invoice-page--a4" xmlns:th="http://www.thymeleaf.org">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div th:if="${inv.currentPage == 1}"
+       th:replace="~{print/fragments/invoice-header :: full(${inv}, ${layout})}"></div>
+  <div th:if="${inv.currentPage > 1}"
+       th:replace="~{print/fragments/invoice-header :: cont(${inv}, ${layout})}"></div>
+
+  <!-- ── Body ───────────────────────────────────────────────────────────── -->
+  <div class="inv-body">
+
+    <!-- Bill To + Invoice Details (first page) -->
+    <div th:if="${inv.currentPage == 1}"
+         th:replace="~{print/fragments/invoice-info-blocks :: render(${inv})}"></div>
+
+    <!-- Device Information + Brief Remark -->
+    <div th:replace="~{print/fragments/booking-table :: render(${inv})}"></div>
+
+    <!-- No items table, no financial summary for booking receipts -->
+
+    <!-- Last page: signatures + footer bar (remark already shown in booking-body) -->
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: booking-last(${inv})}"></div>
+
+    <!-- Non-last pages: "continued" footer -->
+    <div th:if="${inv.currentPage < inv.totalPages}"
+         th:replace="~{print/fragments/invoice-footer :: cont(${inv})}"></div>
+
+  </div>
+
+</div>

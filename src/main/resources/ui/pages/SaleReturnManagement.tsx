@@ -1,6 +1,6 @@
 ﻿
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Eye, List, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Eye, FileText, List, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, User, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { saleReturnApiService } from '../services/salereturnapiservice';
@@ -554,58 +554,65 @@ const SaleReturnManagement: React.FC = () => {
       <div className="w-full max-w-none space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-800 text-left">{editingId ? 'Update Sale Return' : 'New Sale Return'}</h2>
-            <p className="text-xs text-slate-500 mt-1">Select customer first, then choose sale. Product/serial must belong to selected sale.</p>
+            <h2 className="text-xl font-bold text-slate-800 text-left">{editingId ? 'Sale Return ပြင်ရန်' : 'Sale Return အသစ်'}</h2>
+            <p className="text-xs text-slate-500 mt-1">ဖောက်သည်နှင့် မူရင်းအရောင်းဘောင်ချာကိုရွေးပြီး ပြန်လက်ခံမည့်ပစ္စည်း၊ refund ကိုမှတ်တမ်းတင်ပါ။</p>
           </div>
           <button onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex w-full sm:w-auto justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} /> နောက်သို့
           </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><User size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 1</p><p className="text-sm font-bold text-slate-800">ဖောက်သည် / Sale ရွေး</p></div></div></div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700"><PackageCheck size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 2</p><p className="text-sm font-bold text-slate-800">ပြန်ဝင်မည့် item စစ်</p></div></div></div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 3</p><p className="text-sm font-bold text-slate-800">Refund / Voucher သိမ်း</p></div></div></div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-2 space-y-5">
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-3"><FileText size={16} className="text-indigo-600" /><div><h3 className="text-sm font-bold text-slate-800">မူရင်းဘောင်ချာ အချက်အလက်</h3><p className="text-[11px] text-slate-500">Return လုပ်မည့် sale ကိုအရင်ရွေးပါ။</p></div></div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Customer</label>
-                  <input list="sr-customers" value={customerSearch} onChange={(e) => onCustomerSearch(e.target.value)} placeholder="Select customer..." className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${customerId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ဖောက်သည်</label>
+                  <input list="sr-customers" value={customerSearch} onChange={(e) => onCustomerSearch(e.target.value)} placeholder="ဖောက်သည် ရှာရန်..." className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${customerId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
                   <datalist id="sr-customers">{customers.map((c) => <option key={c.id} value={customerLabel(c)} />)}</datalist>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sale</label>
-                  <input list="sr-sales" value={saleSearch} onChange={(e) => onSaleSearch(e.target.value)} placeholder={customerId > 0 ? 'Select sale...' : 'Select customer first'} disabled={customerId <= 0} className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed ${saleId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">မူရင်း Sale</label>
+                  <input list="sr-sales" value={saleSearch} onChange={(e) => onSaleSearch(e.target.value)} placeholder={customerId > 0 ? 'မူရင်း sale ဘောင်ချာရွေးရန်...' : 'ဖောက်သည်အရင်ရွေးပါ'} disabled={customerId <= 0} className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed ${saleId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
                   <datalist id="sr-sales">{filteredSales.map((s) => <option key={s.id} value={saleLabel(s)} />)}</datalist>
                 </div>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return Date</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return ရက်စွဲ</label>
                   <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sale Info</label>
-                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">{saleLoading ? 'Loading sale details...' : saleId > 0 ? `${productOptions.length} product(s) available for return` : '-'}</div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ပြန်လက်ခံနိုင်သော Item</label>
+                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">{saleLoading ? 'Sale အချက်အလက် ဖတ်နေသည်...' : saleId > 0 ? `${productOptions.length}  item ပြန်လက်ခံနိုင်သည်` : '-'}</div>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Reason</label>
-                <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Optional reason..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ပြန်လက်ခံရသည့်အကြောင်းရင်း</label>
+                <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="ဥပမာ - ပစ္စည်းမှားဝယ် / defect / exchange / customer refund" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none" />
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-800 text-sm">Return Items</h3>
+                <h3 className="font-bold text-slate-800 text-sm">ပြန်လက်ခံမည့် ပစ္စည်းများ</h3>
                 <button onClick={() => setDetails((d) => [...d, emptyDetail()])} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"><Plus size={14} /> Add Row</button>
               </div>
               <div className="overflow-auto">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                     <tr>
-                      <th className="px-4 py-3 border-b border-slate-100">Product</th>
-                      <th className="px-4 py-3 border-b border-slate-100 w-24">Qty</th>
-                      <th className="px-4 py-3 border-b border-slate-100 w-32">Unit Price</th>
-                      <th className="px-4 py-3 border-b border-slate-100 w-36 text-right">Subtotal</th>
+                      <th className="px-4 py-3 border-b border-slate-100">ပစ္စည်း</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-24">အရေအတွက်</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-32">တစ်ခုဈေး</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-36 text-right">စုစုပေါင်း</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-12"></th>
                     </tr>
                   </thead>
@@ -617,7 +624,7 @@ const SaleReturnManagement: React.FC = () => {
                         <React.Fragment key={i}>
                           <tr className="hover:bg-slate-50/60">
                             <td className="px-4 py-3">
-                              <input list={`sr-products-${i}`} value={d.productSearch} onChange={(e) => onProductSearch(i, e.target.value)} placeholder={saleId > 0 ? 'Select product...' : 'Select sale first'} disabled={saleId <= 0 || productOptions.length === 0} className={`w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${d.productId > 0 ? 'text-slate-700' : 'text-rose-500'}`} />
+                              <input list={`sr-products-${i}`} value={d.productSearch} onChange={(e) => onProductSearch(i, e.target.value)} placeholder={saleId > 0 ? 'ပြန်လက်ခံမည့် product ရွေးပါ...' : 'Sale အရင်ရွေးပါ'} disabled={saleId <= 0 || productOptions.length === 0} className={`w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${d.productId > 0 ? 'text-slate-700' : 'text-rose-500'}`} />
                               <datalist id={`sr-products-${i}`}>{productOptions.map((p) => <option key={p.productId} value={productLabel(p)} />)}</datalist>
                             </td>
                             <td className="px-4 py-3"><input type="number" min="1" value={d.qty || ''} onChange={(e) => onDetailChange(i, 'qty', e.target.value)} className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none" /></td>
@@ -630,7 +637,7 @@ const SaleReturnManagement: React.FC = () => {
                               <td colSpan={5} className="px-4 py-3">
                                 {serialRequired ? (
                                   <div className="space-y-2">
-                                    <div className="flex items-center justify-between text-[10px] text-slate-500"><span className="font-bold uppercase tracking-wider">Serial Numbers ({d.qty})</span><span>{serialOptions.length} available</span></div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-500"><span className="font-bold uppercase tracking-wider">Serial နံပါတ်များ ({d.qty})</span><span>{serialOptions.length} ရနိုင်</span></div>
                                     <div className="flex flex-wrap gap-2">
                                       {ensureSerialCount(d.serialNumbers, d.qty).map((serial, serialIndex) => (
                                         <input key={serialIndex} list={`sr-serial-options-${i}`} type="text" value={serial} onChange={(e) => onSerialChange(i, serialIndex, e.target.value)} placeholder={`Serial #${serialIndex + 1}`} className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] w-36 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
@@ -638,7 +645,7 @@ const SaleReturnManagement: React.FC = () => {
                                       <datalist id={`sr-serial-options-${i}`}>{serialOptions.map((serial) => <option key={serial} value={serial} />)}</datalist>
                                     </div>
                                   </div>
-                                ) : <span className="inline-flex px-2.5 py-1 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">Qty Only</span>}
+                                ) : <span className="inline-flex px-2.5 py-1 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">Qty ဖြင့်ပြန်ဝင်</span>}
                               </td>
                             </tr>
                           )}
@@ -653,23 +660,23 @@ const SaleReturnManagement: React.FC = () => {
 
           <div className="space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 xl:sticky xl:top-20">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> Refund & Summary</h3>
-              <div className="flex justify-between items-center text-sm pb-2 border-b border-slate-100"><span className="text-slate-500">Total Return</span><span className="font-bold text-slate-800">{money(total)}</span></div>
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> Refund & စုစုပေါင်း</h3>
+              <div className="flex justify-between items-center text-sm pb-2 border-b border-slate-100"><span className="text-slate-500">Return စုစုပေါင်း</span><span className="font-bold text-slate-800">{money(total)}</span></div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Refund Amount</label>
-                <input type="number" min="0" step="0.01" value={refundAmount} onChange={(e) => { setRefundAmount(e.target.value); if (refundPayments.length > 0) setRefundPayments([]); }} placeholder="Leave blank for full refund" className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${validRefund ? 'border-slate-200' : 'border-rose-200'}`} />
-                <p className="text-[10px] text-slate-400">Blank means full refund from total return.</p>
-                {!Number.isNaN(effectiveRefund) && effectiveRefund > total && <p className="text-[10px] text-rose-500">Refund amount cannot exceed total return.</p>}
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ပြန်အမ်းငွေ</label>
+                <input type="number" min="0" step="0.01" value={refundAmount} onChange={(e) => { setRefundAmount(e.target.value); if (refundPayments.length > 0) setRefundPayments([]); }} placeholder="အပြည့်ပြန်အမ်းလျှင် blank ထားနိုင်" className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${validRefund ? 'border-slate-200' : 'border-rose-200'}`} />
+                <p className="text-[10px] text-slate-400">Blank ထားလျှင် return စုစုပေါင်းအတိုင်း refund လုပ်မည်။</p>
+                {!Number.isNaN(effectiveRefund) && effectiveRefund > total && <p className="text-[10px] text-rose-500">Refund amount သည် return စုစုပေါင်းထက် မကျော်ရပါ။</p>}
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Payment Method</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ငွေပြန်အမ်းနည်း</label>
                 <select value={paymentMethodId} onChange={(e) => setPaymentMethodId(Number(e.target.value))} className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${!paymentRequired || paymentMethodId > 0 ? 'border-slate-200' : 'border-rose-200'}`}>
-                  <option value={0}>Select payment method</option>
+                  <option value={0}>ငွေပြန်အမ်းနည်း ရွေးပါ</option>
                   {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.methodName}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-400">Required only if refund amount is greater than zero.</p>
+                <p className="text-[10px] text-slate-400">Refund amount ရှိမှသာလိုအပ်ပါသည်။</p>
               </div>
 
               <SplitPaymentEditor
@@ -684,8 +691,8 @@ const SaleReturnManagement: React.FC = () => {
               />
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Transaction No</label>
-                <input type="text" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)} placeholder="Optional transaction no" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Transaction No / မှတ်တမ်းနံပါတ်</label>
+                <input type="text" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)} placeholder="မဖြည့်လည်းရ" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
               </div>
 
               {!serialValidation.qtyMatchesSerialCount && <p className="text-[10px] text-rose-500">Each serial-tracked row must contain exactly `qty` serial numbers.</p>}
@@ -694,7 +701,7 @@ const SaleReturnManagement: React.FC = () => {
               {!serialValidation.belongsToSelectedProduct && serialValidation.strictCheckAvailable && <p className="text-[10px] text-rose-500">Serial number must belong to selected sale and product.</p>}
 
               <button onClick={onSave} disabled={!validForm || saving} className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${validForm && !saving ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-                <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update Return' : 'Create Return'}
+                <Save size={16} /> {saving ? 'သိမ်းနေသည်...' : editingId ? 'Sale Return ပြင်မည်' : 'Sale Return သိမ်းမည်'}
               </button>
             </div>
           </div>
@@ -707,8 +714,8 @@ const SaleReturnManagement: React.FC = () => {
     <div className="w-full max-w-none space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 text-left">Sale Return Management</h2>
-          <p className="text-xs text-slate-500 mt-1">Track returns, refunded amounts, and return voucher history.</p>
+          <h2 className="text-xl font-bold text-slate-800 text-left">Sale Return စီမံခန့်ခွဲမှု</h2>
+          <p className="text-xs text-slate-500 mt-1">ပြန်လက်ခံမှု၊ refund ငွေ၊ မူရင်း sale နှင့် return voucher history ကိုတစ်နေရာတည်းစစ်ပါ။</p>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh</button>
@@ -717,16 +724,16 @@ const SaleReturnManagement: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Vouchers</p><p className="text-2xl font-bold text-slate-800">{stats.count}</p></div><div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center"><List size={20} className="text-indigo-600" /></div></div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Returned</p><p className="text-2xl font-bold text-slate-800">{money(stats.total)}</p></div><div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center"><RotateCcw size={20} className="text-slate-600" /></div></div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Refunded</p><p className="text-2xl font-bold text-emerald-700">{money(stats.refund)}</p></div><div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center"><RotateCcw size={20} className="text-emerald-600" /></div></div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာအရေအတွက်</p><p className="text-2xl font-bold text-slate-800">{stats.count}</p></div><div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center"><List size={20} className="text-indigo-600" /></div></div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Return စုစုပေါင်းed</p><p className="text-2xl font-bold text-slate-800">{money(stats.total)}</p></div><div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center"><RotateCcw size={20} className="text-slate-600" /></div></div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Refund စုစုပေါင်း</p><p className="text-2xl font-bold text-emerald-700">{money(stats.refund)}</p></div><div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center"><RotateCcw size={20} className="text-emerald-600" /></div></div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search all data — return code, sale, customer..." className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Return no / sale no / customer ဖြင့်ရှာရန်..." className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
             {loading && search && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2">
                 <svg className="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -737,17 +744,17 @@ const SaleReturnManagement: React.FC = () => {
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
             <span className="hidden sm:block text-slate-300 text-xs">-</span>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-            <button onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); }} className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100">Clear</button>
+            <button onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); }} className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100">ရှင်းမည်</button>
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 text-sm">Sale Return Vouchers</h3>
+          <h3 className="font-bold text-slate-800 text-sm">Sale Return ဘောင်ချာများ</h3>
           <div className="flex items-center gap-3">
             {loadError && <span className="text-[11px] text-rose-500">{loadError}</span>}
-            {masterLoading && <span className="text-[11px] text-slate-400">Loading master data...</span>}
+            {masterLoading && <span className="text-[11px] text-slate-400">Master data ဖတ်နေသည်...</span>}
           </div>
         </div>
         <div className="overflow-auto max-h-[65vh] custom-scrollbar">
@@ -756,13 +763,13 @@ const SaleReturnManagement: React.FC = () => {
               <thead className="sticky top-0 bg-white z-10 shadow-sm">
                 <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                   <th className="px-4 py-3 border-b border-slate-100">Return No</th>
-                  <th className="px-4 py-3 border-b border-slate-100">Sale</th>
-                  <th className="px-4 py-3 border-b border-slate-100">Customer</th>
-                  <th className="px-4 py-3 border-b border-slate-100">Date</th>
-                  <th className="px-4 py-3 border-b border-slate-100 text-right">Total</th>
+                  <th className="px-4 py-3 border-b border-slate-100">မူရင်း Sale</th>
+                  <th className="px-4 py-3 border-b border-slate-100">ဖောက်သည်</th>
+                  <th className="px-4 py-3 border-b border-slate-100">ရက်စွဲ</th>
+                  <th className="px-4 py-3 border-b border-slate-100 text-right">စုစုပေါင်း</th>
                   <th className="px-4 py-3 border-b border-slate-100 text-right">Refund</th>
-                  <th className="px-4 py-3 border-b border-slate-100">Reason</th>
-                  <th className="px-4 py-3 border-b border-slate-100 text-right">Actions</th>
+                  <th className="px-4 py-3 border-b border-slate-100">ပြန်လက်ခံရသည့်အကြောင်းရင်း</th>
+                  <th className="px-4 py-3 border-b border-slate-100 text-right">လုပ်ဆောင်ချက်</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -780,7 +787,7 @@ const SaleReturnManagement: React.FC = () => {
                       <button onClick={() => r.id && handleDelete(r.id, r.returnCode || `#${r.id}`)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50" title="Void & Delete"><Trash2 size={15} /></button>
                     </td>
                   </tr>
-                )) : <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">No sale returns match the current filters.</td></tr>}
+                )) : <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">သတ်မှတ်ထားသော filter ဖြင့် Sale Return မတွေ့ပါ။</td></tr>}
               </tbody>
             </table>
           )}
@@ -827,12 +834,12 @@ const SaleReturnManagement: React.FC = () => {
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Sale:</span> {viewRow.saleId > 0 ? <Link to={`${AppRoute.SALES}?saleId=${viewRow.saleId}`} className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium">{saleLabelById(viewRow.saleId)}</Link> : '-'}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Customer:</span> {viewRow.customerName || customerLabelById(sales.find((s) => s.id === viewRow.saleId)?.customerId)}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Return Date:</span> {viewRow.returnDate ? new Date(viewRow.returnDate).toLocaleString() : '-'}</p>
-                <p className="text-slate-600"><span className="font-medium text-slate-500">Total Return:</span> {money(viewRow.totalReturnAmount || 0)}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Return စုစုပေါင်း:</span> {money(viewRow.totalReturnAmount || 0)}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Refund:</span> {money(viewRow.refundAmount ?? viewRow.totalReturnAmount ?? 0)}</p>
               </div>
               {viewRow.reason && <p className="text-sm text-slate-600"><span className="font-medium text-slate-500">Reason:</span> {viewRow.reason}</p>}
               <table className="w-full text-left border-collapse text-sm">
-                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">Product</th><th className="px-3 py-2 border-b w-16">Qty</th><th className="px-3 py-2 border-b text-right">Unit Price</th><th className="px-3 py-2 border-b text-right">Subtotal</th><th className="px-3 py-2 border-b">Serials</th></tr></thead>
+                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">ပစ္စည်း</th><th className="px-3 py-2 border-b w-16">အရေအတွက်</th><th className="px-3 py-2 border-b text-right">တစ်ခုဈေး</th><th className="px-3 py-2 border-b text-right">စုစုပေါင်း</th><th className="px-3 py-2 border-b">Serials</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `Product #${d.productId}`}</td><td className="px-3 py-2">{d.qty}</td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
               </table>
             </div>

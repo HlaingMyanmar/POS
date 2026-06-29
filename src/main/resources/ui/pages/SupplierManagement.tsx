@@ -141,7 +141,7 @@ const SupplierManagement: React.FC = () => {
             <Truck size={24} />
           </div>
           <div>
-            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase">Supplier Directory</h2>
+            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase">ပေးသွင်းသူစာရင်း</h2>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
               <ClipboardList size={10} className="text-indigo-400" /> Procurement Partners & Balances
             </p>
@@ -289,7 +289,7 @@ const SupplierManagement: React.FC = () => {
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl border border-slate-200 animate-in zoom-in-95 overflow-hidden">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="text-left">
-                <h3 className="text-[15px] font-black text-slate-800 uppercase tracking-tight">{editingSupplier ? 'Update Partner' : 'New Supplier Registry'}</h3>
+                <h3 className="text-[15px] font-black text-slate-800 uppercase tracking-tight">{editingSupplier ? 'ပါတနာပြင်မည်' : 'ပေးသွင်းသူအသစ် မှတ်ပုံတင်မည်'}</h3>
                 <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest italic">Procurement Identity & Finance</p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><X size={20} className="text-slate-400" /></button>

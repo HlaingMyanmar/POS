@@ -25,6 +25,10 @@ public class ManufacturingOrderDTO {
     private String finishedProductUnitName;
     private String finishedProductType;
     private BigDecimal finishedProductSellingPrice;
+    private Integer productionQty;
+    private BigDecimal laborCost;
+    private BigDecimal overheadCost;
+    private BigDecimal wasteCost;
     private Integer finishedProductId;
 
     private String notes;
@@ -34,4 +38,6 @@ public class ManufacturingOrderDTO {
     @Builder.Default
     private List<ManufacturingOrderItemDTO> items = new ArrayList<>();
     private BigDecimal totalComponentCost;
+    private BigDecimal totalProductionCost;
+    private BigDecimal unitProductionCost;
 }

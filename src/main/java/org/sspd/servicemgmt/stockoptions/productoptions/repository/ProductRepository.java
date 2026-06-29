@@ -20,6 +20,8 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
 
     Optional<Product> findByProductCode(String productCode);
 
+    Optional<Product> findByName(String name);
+
 
     boolean existsByProductCode(String productCode);
 

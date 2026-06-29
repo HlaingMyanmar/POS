@@ -40,6 +40,7 @@ import ShelfLocationManagement from './pages/ShelfLocationManagement';
 import AuditLogManagement from './pages/AuditLogManagement';
 import SalesRankingPage from './pages/SalesRankingPage';
 import DailyReport from './pages/reports/DailyReport';
+import DailySnapshotReport from './pages/reports/DailySnapshotReport';
 import SalesSummaryReport from './pages/reports/SalesSummaryReport';
 import PurchaseSummaryReport from './pages/reports/PurchaseSummaryReport';
 import ServiceSummaryReport from './pages/reports/ServiceSummaryReport';
@@ -66,6 +67,7 @@ const canAccess = (user: User, permission?: string): boolean => {
 };
 
 const THEME_STORAGE_KEY = 'sspd_theme';
+const INVISIBLE_ROUTE_CHARS = /[\u200B-\u200D\uFEFF]/g;
 
 const resolveInitialTheme = (): AppTheme => {
   if (typeof window === 'undefined') return 'light';
@@ -79,6 +81,19 @@ const App: React.FC = () => {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [language, setLanguage]     = useState<AppLanguage>(resolveInitialLanguage);
   const [theme, setTheme]           = useState<AppTheme>(resolveInitialTheme);
+
+  useEffect(() => {
+    const cleanHash = () => {
+      const clean = window.location.hash.replace(INVISIBLE_ROUTE_CHARS, '');
+      if (clean !== window.location.hash) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${clean}`);
+      }
+    };
+
+    cleanHash();
+    window.addEventListener('hashchange', cleanHash);
+    return () => window.removeEventListener('hashchange', cleanHash);
+  }, []);
 
   const checkSetup = async () => {
     try {
@@ -228,6 +243,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.APP_VERSION_SETTINGS} element={guard(<AppVersionSettingsPage />,   'CAN_ACCESS_USERS_READ')} />
           <Route path={AppRoute.AUDIT_LOGS}          element={guard(<AuditLogManagement />,         'CAN_ACCESS_AUDIT_LOG_READ')} />
           <Route path={AppRoute.INCOME_REPORT}       element={guard(<DailyReport />,                'CAN_ACCESS_REPORT_READ')} />
+          <Route path={AppRoute.DAILY_SNAPSHOT}     element={guard(<DailySnapshotReport />,        'CAN_ACCESS_REPORT_READ')} />
           <Route path={AppRoute.SALES_RANKING}       element={guard(<SalesRankingPage />,           'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.SALES_SUMMARY}       element={guard(<SalesSummaryReport />,         'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.PURCHASE_SUMMARY}    element={guard(<PurchaseSummaryReport />,      'CAN_ACCESS_PURCHASE_READ')} />

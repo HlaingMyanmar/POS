@@ -175,7 +175,8 @@ public class ProductService {
             dto.setAvailableSerialCount(available);
             dto.setStockQty(available);
             int rawQty = entity.getStockQty() != null ? entity.getStockQty() : 0;
-            dto.setUnlinkedQty(rawQty > 0 ? rawQty : 0);
+            long totalSerials = productSerialRepository.countByProductId(entity.getId());
+            dto.setUnlinkedQty(Math.max(0, rawQty - (int) totalSerials));
         } else {
             dto.setAvailableSerialCount(null);
             dto.setStockQty(entity.getStockQty());
@@ -190,8 +191,8 @@ public class ProductService {
     }
 
     /**
-     * Retroactively assign serial numbers to a qty-only product.
-     * Converts the product to serial-tracked and creates ProductSerial records.
+     * Retroactively assign serial numbers to stock that is not linked to serial records.
+     * Converts qty-only products to serial-tracked, or repairs serial-tracked products with leftover qty stock.
      */
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")
     @Transactional
@@ -199,13 +200,13 @@ public class ProductService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + productId));
 
-        if (Boolean.TRUE.equals(product.getHasSerial())) {
-            throw new RuntimeException("Product is already serial-tracked. Add serials via Serial Management instead.");
-        }
-
-        int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
+        int rawQty = product.getStockQty() != null ? product.getStockQty() : 0;
+        long totalSerials = Boolean.TRUE.equals(product.getHasSerial())
+                ? productSerialRepository.countByProductId(product.getId())
+                : 0;
+        int currentQty = Math.max(0, rawQty - (int) totalSerials);
         if (currentQty <= 0) {
-            throw new RuntimeException("Product has no stock to assign serials to.");
+            throw new RuntimeException("Product has no unlinked stock to assign serials to.");
         }
         if (serialNumbers == null || serialNumbers.size() != currentQty) {
             throw new RuntimeException("Serial count (" + (serialNumbers == null ? 0 : serialNumbers.size())

@@ -9,15 +9,24 @@ export interface PurchasePage {
   pageSize: number;
 }
 
+export interface PurchaseStats {
+  count: number;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+}
+
 export const purchaseApiService = {
   getAll: async (): Promise<PurchaseDTO[]> => {
     const res = await api.get<any, ApiResponse<any>>('/v1/purchases?page=0&size=500');
     return res.data?.content ?? res.data ?? [];
   },
 
-  getAllPaged: async (page = 0, size = 20, search = ''): Promise<PurchasePage> => {
+  getAllPaged: async (page = 0, size = 20, search = '', dateFrom = '', dateTo = ''): Promise<PurchasePage> => {
     const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-    const res = await api.get<any, ApiResponse<any>>(`/v1/purchases?page=${page}&size=${size}${q}`);
+    const df = dateFrom ? `&dateFrom=${dateFrom}` : '';
+    const dt = dateTo ? `&dateTo=${dateTo}` : '';
+    const res = await api.get<any, ApiResponse<any>>(`/v1/purchases?page=${page}&size=${size}${q}${df}${dt}`);
     const d = res.data ?? {};
     return {
       content: Array.isArray(d.content) ? d.content : [],
@@ -27,7 +36,22 @@ export const purchaseApiService = {
       pageSize: Number(d.pageSize) || size,
     };
   },
-  
+
+  getStats: async (dateFrom = '', dateTo = ''): Promise<PurchaseStats> => {
+    const params: string[] = [];
+    if (dateFrom) params.push(`dateFrom=${dateFrom}`);
+    if (dateTo) params.push(`dateTo=${dateTo}`);
+    const q = params.length ? `?${params.join('&')}` : '';
+    const res = await api.get<any, ApiResponse<any>>(`/v1/purchases/stats${q}`);
+    const d = res.data ?? {};
+    return {
+      count: Number(d.count) || 0,
+      totalAmount: Number(d.totalAmount) || 0,
+      paidAmount: Number(d.paidAmount) || 0,
+      dueAmount: Number(d.dueAmount) || 0,
+    };
+  },
+
   getById: async (id: number): Promise<PurchaseDTO> => {
     const res = await api.get<any, ApiResponse<PurchaseDTO>>(`/v1/purchases/${id}`);
     return res.data;

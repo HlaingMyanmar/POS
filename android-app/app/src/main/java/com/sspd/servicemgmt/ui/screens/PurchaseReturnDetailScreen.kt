@@ -123,6 +123,23 @@ fun PurchaseReturnDetailScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            if (!ret.payments.isNullOrEmpty()) {
+                item { Text("Refund payments (${ret.payments.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted) }
+                items(ret.payments) { payment ->
+                    Card(shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(payment.paymentMethodName ?: "Refund", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                                if (!payment.transactionNo.isNullOrBlank()) {
+                                    Text(payment.transactionNo, fontSize = 11.sp, color = TextMuted)
+                                }
+                            }
+                            Text(moneyDetail(payment.amount ?: 0.0), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = PurchaseReturnDetailColor)
+                        }
+                    }
+                }
+            }
+
             if (!ret.details.isNullOrEmpty()) {
                 item { Text("ပြန်ပို့ပစ္စည်းများ (${ret.details.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted) }
                 items(ret.details) { detail -> PurchaseReturnDetailCard(detail) }

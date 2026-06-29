@@ -38,7 +38,19 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
     }
 
     fun setPurchaseQuery(q: String) {
-        _uiState.update { it.copy(purchaseQuery = q, selectedPurchase = null, items = emptyList()) }
+        _uiState.update {
+            it.copy(
+                purchaseQuery = q,
+                selectedPurchase = null,
+                purchaseReturns = emptyList(),
+                items = emptyList(),
+                maxRefundAmount = 0.0,
+                returnContextLoaded = false,
+                refundAmountStr = "",
+                splitRefunds = emptyList(),
+                saveError = null
+            )
+        }
         if (q.length >= 2) searchPurchases(q)
     }
 
@@ -58,21 +70,65 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
                 selectedPurchase = purchase,
                 purchaseQuery = purchase.purchaseCode ?: "",
                 purchaseResults = emptyList(),
+                purchaseReturns = emptyList(),
                 refundAmountStr = "",
-                items = buildItems(purchase)
+                splitRefunds = emptyList(),
+                items = buildItems(purchase, emptyList()),
+                returnContextLoading = purchase.id != null,
+                returnContextLoaded = purchase.id == null,
+                saveError = null
             )
+        }
+        loadPurchaseReturnContext(purchase)
+    }
+
+    private fun loadPurchaseReturnContext(purchase: PurchaseDTO) {
+        val purchaseId = purchase.id ?: return
+        viewModelScope.launch {
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val returns = ApiClient.service.getPurchaseReturnsByPurchase(token, purchaseId).body()?.data ?: emptyList()
+                val confirmedReturns = returns.filterNot { it.status.equals("VOIDED", ignoreCase = true) }
+                _uiState.update {
+                    it.copy(
+                        purchaseReturns = confirmedReturns,
+                        items = buildItems(purchase, confirmedReturns),
+                        maxRefundAmount = calculateMaxRefund(purchase, confirmedReturns),
+                        returnContextLoading = false,
+                        returnContextLoaded = true,
+                        saveError = null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        returnContextLoading = false,
+                        returnContextLoaded = false,
+                        saveError = e.message ?: "Unable to load previous purchase returns"
+                    )
+                }
+            }
         }
     }
 
-    private fun buildItems(purchase: PurchaseDTO): List<ReturnItem> {
+    private fun buildItems(purchase: PurchaseDTO, returns: List<PurchaseReturnDTO>): List<ReturnItem> {
         val gross = purchase.totalAmount ?: 0.0
-        val net = purchase.netAmount ?: maxOf(0.0, gross - (purchase.discountAmount ?: 0.0))
-        val discountRatio = if (gross > 0.0) net / gross else 1.0
+        val originalNet = maxOf(0.0, gross - (purchase.discountAmount ?: 0.0)).takeIf { it > 0.0 }
+            ?: ((purchase.netAmount ?: 0.0) + (purchase.returnAmount ?: 0.0))
+        val discountRatio = if (gross > 0.0) originalNet / gross else 1.0
+        val returnedByProduct = returnedQtyByProduct(returns)
+        val returnedSerialsByProduct = returnedSerialsByProduct(returns)
+
         return (purchase.details ?: emptyList()).mapNotNull { line ->
             val productId = line.productId ?: return@mapNotNull null
-            val qty = line.qty ?: 0
-            val grossUnit = if (qty > 0 && (line.subtotal ?: 0.0) > 0.0) {
-                (line.subtotal ?: 0.0) / qty
+            val originalQty = line.qty ?: 0
+            val alreadyReturned = returnedByProduct[productId] ?: 0
+            val purchasedSerials = line.serialNumbers ?: emptyList()
+            val returnedSerials = returnedSerialsByProduct[productId] ?: emptySet()
+            val availableSerials = purchasedSerials.filterNot { returnedSerials.contains(it.trim().uppercase()) }
+            val maxQty = if (purchasedSerials.isNotEmpty()) availableSerials.size else (originalQty - alreadyReturned).coerceAtLeast(0)
+            val grossUnit = if (originalQty > 0 && (line.subtotal ?: 0.0) > 0.0) {
+                (line.subtotal ?: 0.0) / originalQty
             } else {
                 line.unitCost ?: 0.0
             }
@@ -80,12 +136,41 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
             ReturnItem(
                 productId = productId,
                 productName = line.productName ?: "",
-                maxQty = qty,
+                originalQty = originalQty,
+                alreadyReturned = alreadyReturned,
+                maxQty = maxQty,
                 unitPrice = effectiveUnit,
-                purchaseSerialNums = line.serialNumbers ?: emptyList(),
-                hasSerial = !(line.serialNumbers ?: emptyList()).isEmpty()
+                purchaseSerialNums = availableSerials,
+                hasSerial = purchasedSerials.isNotEmpty()
             )
         }
+    }
+
+    private fun returnedQtyByProduct(returns: List<PurchaseReturnDTO>): Map<Int, Int> =
+        returns.flatMap { it.details ?: emptyList() }
+            .groupBy { it.productId ?: 0 }
+            .filterKeys { it > 0 }
+            .mapValues { entry -> entry.value.sumOf { it.qty ?: 0 } }
+
+    private fun returnedSerialsByProduct(returns: List<PurchaseReturnDTO>): Map<Int, Set<String>> =
+        returns.flatMap { it.details ?: emptyList() }
+            .filter { it.productId != null }
+            .groupBy { it.productId!! }
+            .mapValues { entry ->
+                entry.value.flatMap { it.serialNumbers ?: emptyList() }
+                    .map { it.trim().uppercase() }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+
+    private fun calculateMaxRefund(purchase: PurchaseDTO, returns: List<PurchaseReturnDTO>): Double {
+        val originalNet = maxOf(0.0, (purchase.totalAmount ?: 0.0) - (purchase.discountAmount ?: 0.0)).takeIf { it > 0.0 }
+            ?: ((purchase.netAmount ?: 0.0) + (purchase.returnAmount ?: 0.0))
+        val previousReturnTotal = returns.sumOf { it.totalReturnAmount ?: 0.0 }
+        val previousRefund = returns.sumOf { it.refundAmount ?: 0.0 }
+        val currentNetAfterReturns = maxOf(0.0, originalNet - previousReturnTotal)
+        val supplierCredit = maxOf(0.0, (purchase.paidAmount ?: 0.0) - currentNetAfterReturns - previousRefund)
+        return supplierCredit
     }
 
     fun setItemQty(index: Int, qty: Int) {
@@ -98,7 +183,8 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
                 serialNumbers = if (item.hasSerial) item.purchaseSerialNums.take(clamped) else emptyList()
             )
             val total = items.sumOf { it.qty * it.unitPrice }
-            s.copy(items = items, refundAmountStr = String.format("%.0f", total), saveError = null)
+            val suggestedRefund = minOf(total, s.maxRefundAmount.takeIf { it > 0.0 } ?: total)
+            s.copy(items = items, refundAmountStr = suggestedRefund.formatMoneyInput(), saveError = null)
         }
     }
 
@@ -109,9 +195,13 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
 
     fun addSplitRefund() {
         val s = _uiState.value
-        val method = s.selectedPm ?: return _uiState.update { it.copy(saveError = "ငွေလက်ခံနည်း ရွေးပါ") }
+        val method = s.selectedPm ?: return _uiState.update { it.copy(saveError = "Choose refund method") }
         val amount = s.refundAmountStr.toDoubleOrNull() ?: 0.0
-        if (amount <= 0.0) return _uiState.update { it.copy(saveError = "Split refund amount ထည့်ပါ") }
+        if (amount <= 0.0) return _uiState.update { it.copy(saveError = "Enter split refund amount") }
+        val currentSplitTotal = splitTotal(s.splitRefunds)
+        if (currentSplitTotal + amount > s.maxRefundAmount && s.maxRefundAmount > 0.0) {
+            return _uiState.update { it.copy(saveError = "Refund exceeds supplier credit: ${s.maxRefundAmount.formatMoneyInput()} Ks") }
+        }
         val next = s.splitRefunds + PaymentTransactionDTO(
             paymentMethodId = method.id,
             paymentMethodName = method.methodName,
@@ -131,15 +221,21 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
         val purchase = s.selectedPurchase
         val selectedItems = s.items.filter { it.qty > 0 }
 
-        if (purchase == null) { _uiState.update { it.copy(saveError = "ဝယ်ယူမှုဘောင်ချာ ရွေးပါ") }; return }
-        if (selectedItems.isEmpty()) { _uiState.update { it.copy(saveError = "ပြန်ပို့မည့် ပစ္စည်း ရွေးပါ") }; return }
-        if (s.reason.isBlank()) { _uiState.update { it.copy(saveError = "အကြောင်းအရင်း ဖြည့်ပါ") }; return }
+        if (purchase == null) { _uiState.update { it.copy(saveError = "Choose purchase invoice") }; return }
+        if (s.returnContextLoading || !s.returnContextLoaded) { _uiState.update { it.copy(saveError = "Please wait until return history is loaded") }; return }
+        if (selectedItems.isEmpty()) { _uiState.update { it.copy(saveError = "Choose return items") }; return }
+        if (s.reason.isBlank()) { _uiState.update { it.copy(saveError = "Enter return reason") }; return }
 
         val total = selectedItems.sumOf { it.qty * it.unitPrice }
         val splitRefunds = normalizePayments(s.splitRefunds)
-        val refund = if (splitRefunds.isNotEmpty()) splitTotal(splitRefunds) else (s.refundAmountStr.toDoubleOrNull() ?: total)
-        if (refund > 0.0 && s.selectedPm == null) {
-            _uiState.update { it.copy(saveError = "Supplier ထံမှ ငွေလက်ခံနည်း ရွေးပါ") }
+        val refund = if (splitRefunds.isNotEmpty()) splitTotal(splitRefunds) else (s.refundAmountStr.toDoubleOrNull() ?: minOf(total, s.maxRefundAmount))
+        if (refund < 0.0) { _uiState.update { it.copy(saveError = "Refund cannot be negative") }; return }
+        if (refund > s.maxRefundAmount && s.maxRefundAmount >= 0.0) {
+            _uiState.update { it.copy(saveError = "Refund exceeds supplier credit: ${s.maxRefundAmount.formatMoneyInput()} Ks") }
+            return
+        }
+        if (refund > 0.0 && s.selectedPm == null && splitRefunds.isEmpty()) {
+            _uiState.update { it.copy(saveError = "Choose refund method") }
             return
         }
 
@@ -172,10 +268,10 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
                     _uiState.update { it.copy(saving = false) }
                     onSuccess(res.body()!!.data!!)
                 } else {
-                    _uiState.update { it.copy(saving = false, saveError = res.body()?.message ?: "သိမ်းမရပါ (${res.code()})") }
+                    _uiState.update { it.copy(saving = false, saveError = res.body()?.message ?: "Unable to save (${res.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(saving = false, saveError = e.message ?: "ချိတ်ဆက်မှု မအောင်မြင်ပါ") }
+                _uiState.update { it.copy(saving = false, saveError = e.message ?: "Connection failed") }
             }
         }
     }
@@ -183,6 +279,8 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
     data class ReturnItem(
         val productId: Int,
         val productName: String,
+        val originalQty: Int,
+        val alreadyReturned: Int,
         val maxQty: Int,
         val unitPrice: Double,
         val qty: Int = 0,
@@ -194,14 +292,18 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
     data class UiState(
         val loading: Boolean = true,
         val saving: Boolean = false,
+        val returnContextLoading: Boolean = false,
+        val returnContextLoaded: Boolean = false,
         val saveError: String? = null,
         val paymentMethods: List<PaymentMethodDTO> = emptyList(),
         val purchaseQuery: String = "",
         val purchaseResults: List<PurchaseDTO> = emptyList(),
         val selectedPurchase: PurchaseDTO? = null,
+        val purchaseReturns: List<PurchaseReturnDTO> = emptyList(),
         val items: List<ReturnItem> = emptyList(),
         val reason: String = "",
         val refundAmountStr: String = "",
+        val maxRefundAmount: Double = 0.0,
         val selectedPm: PaymentMethodDTO? = null,
         val splitRefunds: List<PaymentTransactionDTO> = emptyList(),
         val transactionNo: String = ""

@@ -4,6 +4,8 @@ import {
   Box,
   CheckCircle2,
   ChevronDown,
+  ClipboardPaste,
+  Download,
   Filter,
   Loader2,
   Lock,
@@ -35,9 +37,12 @@ interface StockRow {
 }
 
 type StatusFilter = 'ALL' | 'READY' | 'ENTERED' | 'EMPTY' | 'SERIAL' | 'EXISTING' | 'NO_COST' | 'INVALID';
+type EntryMode = 'EMPTY_ONLY' | 'TARGET_QTY';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
-const qty = (n: number, unit = 'pcs') => `${fmt(n)} ${unit || 'pcs'}`;
+const qty = (n: number, unit = 'pcs') => fmt(n) + ' ' + (unit || 'pcs');
+const today = () => new Date().toISOString().slice(0, 10);
+const defaultRef = () => 'OPN-STK-' + today().replace(/-/g, '');
 
 const parseQty = (value: string) => {
   if (value.trim() === '') return null;
@@ -77,6 +82,10 @@ const OpeningStockPage: React.FC = () => {
   const [rows, setRows] = useState<StockRow[]>([]);
   const [staffList, setStaffList] = useState<StaffDTO[]>([]);
   const [staffId, setStaffId] = useState<number | null>(null);
+  const [mode, setMode] = useState<EntryMode>('EMPTY_ONLY');
+  const [referenceNo, setReferenceNo] = useState(defaultRef);
+  const [countDate, setCountDate] = useState(today);
+  const [sessionNote, setSessionNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -95,6 +104,10 @@ const OpeningStockPage: React.FC = () => {
         staffService.getAllActive(),
       ]);
 
+      let draft = null as any;
+      try { draft = JSON.parse(localStorage.getItem('sspd.openingStock.draft.v1') || 'null'); } catch { draft = null; }
+      const draftEntries: Record<string, string> = draft?.entries || {};
+
       setRows(
         (products as ProductDTO[]).map((p) => ({
           productId: p.id,
@@ -105,11 +118,16 @@ const OpeningStockPage: React.FC = () => {
           unit: p.unitName ?? 'pcs',
           currentStock: Number(p.currentStock ?? p.stockQty ?? 0),
           costPrice: Number(p.costPrice ?? 0),
-          openingQty: '',
+          openingQty: draftEntries[String(p.id)] ?? '',
           hasSerial: p.hasSerial === true,
           saved: false,
         }))
       );
+
+      if (draft?.mode === 'EMPTY_ONLY' || draft?.mode === 'TARGET_QTY') setMode(draft.mode);
+      if (draft?.referenceNo) setReferenceNo(draft.referenceNo);
+      if (draft?.countDate) setCountDate(draft.countDate);
+      if (draft?.sessionNote) setSessionNote(draft.sessionNote);
 
       const staffRows = staff as StaffDTO[];
       setStaffList(staffRows);
@@ -123,8 +141,22 @@ const OpeningStockPage: React.FC = () => {
 
   useEffect(() => { void load(); }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    const entries = rows.reduce<Record<string, string>>((acc, row) => {
+      if (row.openingQty.trim()) acc[String(row.productId)] = row.openingQty;
+      return acc;
+    }, {});
+    localStorage.setItem('sspd.openingStock.draft.v1', JSON.stringify({ entries, mode, referenceNo, countDate, sessionNote }));
+  }, [countDate, loading, mode, referenceNo, rows, sessionNote]);
+
   const hasCost = (row: StockRow) => row.costPrice > 0;
-  const isEditable = (row: StockRow) => !row.hasSerial && row.currentStock === 0 && hasCost(row);
+  const isEditable = (row: StockRow) => !row.hasSerial && hasCost(row) && (mode === 'TARGET_QTY' || row.currentStock === 0);
+  const deltaQty = (row: StockRow) => {
+    const v = parseQty(row.openingQty);
+    if (v === null || Number.isNaN(v)) return 0;
+    return mode === 'TARGET_QTY' ? Number(v) - row.currentStock : Number(v);
+  };
 
   const categories = useMemo(() => Array.from(new Set(rows.map((r) => r.category))).sort(), [rows]);
 
@@ -182,8 +214,9 @@ const OpeningStockPage: React.FC = () => {
 
   const rowsToSave = useMemo(() => rows.filter((r) => {
     const v = parseQty(r.openingQty);
-    return isEditable(r) && v !== null && !Number.isNaN(v) && v > 0;
-  }), [rows]);
+    if (!isEditable(r) || v === null || Number.isNaN(v)) return false;
+    return mode === 'TARGET_QTY' ? Number(v) !== r.currentStock : Number(v) > 0;
+  }), [mode, rows]);
 
   const setQty = (productId: number, value: string) =>
     setRows((prev) => prev.map((r) => r.productId === productId ? { ...r, openingQty: value, saved: false } : r));
@@ -191,8 +224,10 @@ const OpeningStockPage: React.FC = () => {
   const clearEntry = (productId: number) =>
     setRows((prev) => prev.map((r) => r.productId === productId ? { ...r, openingQty: '', saved: false } : r));
 
-  const resetEntries = () =>
+  const resetEntries = () => {
     setRows((prev) => prev.map((r) => ({ ...r, openingQty: '', saved: false })));
+    localStorage.removeItem('sspd.openingStock.draft.v1');
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
@@ -205,6 +240,43 @@ const OpeningStockPage: React.FC = () => {
       const prev = [...filteredRows.slice(0, idx)].reverse().find(isEditable);
       if (prev) inputRefs.current.get(prev.productId)?.focus();
     }
+  };
+
+
+  const exportCountSheet = () => {
+    const header = ['Product Code', 'Product Name', 'Category', 'Brand', 'Unit', 'Current Stock', 'Cost Price', 'Counted Qty', 'Note'];
+    const csvRows = [header, ...filteredRows.map((row) => [row.productCode, row.productName, row.category, row.brand, row.unit, row.currentStock, row.costPrice, row.openingQty, row.hasSerial ? 'Serial product' : !hasCost(row) ? 'Cost price required' : ''])];
+    const csv = csvRows.map((line) => line.map((value) => {
+      const cell = String(value ?? '');
+      return /[",\n]/.test(cell) ? '"' + cell.replace(/"/g, '""') + '"' : cell;
+    }).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'opening_stock_count_' + (countDate || today()) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const pasteCounts = async () => {
+    const result = await Swal.fire({ title: 'Paste Count Sheet', input: 'textarea', inputPlaceholder: 'Product Code\tQty\nPRD-000001\t10', inputAttributes: { rows: '12' }, showCancelButton: true, confirmButtonText: 'Apply' });
+    if (!result.isConfirmed || !String(result.value || '').trim()) return;
+    const updates = new Map<number, string>();
+    const misses: string[] = [];
+    const locked: string[] = [];
+    String(result.value).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).forEach((line) => {
+      const cols = line.split(/\t|,/).map((col) => col.trim()).filter(Boolean);
+      if (cols.length < 2 || cols.some((col) => ['code', 'productcode', 'qty', 'quantity'].includes(col.toLowerCase()))) return;
+      const parsed = parseQty(cols[cols.length - 1]);
+      const key = cols[0].toLowerCase();
+      const row = rows.find((r) => r.productCode.toLowerCase() === key || r.productName.toLowerCase() === key);
+      if (!row || parsed === null || Number.isNaN(parsed)) { misses.push(cols[0]); return; }
+      if (!isEditable(row)) { locked.push(row.productName); return; }
+      updates.set(row.productId, String(parsed));
+    });
+    setRows((prev) => prev.map((row) => updates.has(row.productId) ? { ...row, openingQty: updates.get(row.productId)!, saved: false } : row));
+    Swal.fire({ icon: updates.size > 0 ? 'success' : 'info', title: updates.size + ' row applied', html: [misses.length ? 'Not found/invalid: ' + misses.slice(0, 8).join(', ') : '', locked.length ? 'Locked: ' + locked.slice(0, 8).join(', ') : ''].filter(Boolean).join('<br/>') });
   };
 
   const saveAll = async () => {
@@ -240,13 +312,14 @@ const OpeningStockPage: React.FC = () => {
     for (let i = 0; i < rowsToSave.length; i++) {
       const row = rowsToSave[i];
       const openingQty = Number(parseQty(row.openingQty));
+      const qtyChange = deltaQty(row);
       try {
         await stockAdjustmentApiService.create({
           productId: row.productId,
           adjustmentType: AdjustmentType.CORRECTION,
-          qtyChange: openingQty,
+          qtyChange,
           staffId,
-          reason: 'Opening Stock - Initial quantity at go-live',
+          reason: ['Opening Stock ' + (referenceNo || ''), 'Count date: ' + (countDate || today()), 'Physical: ' + openingQty, 'Before: ' + row.currentStock, sessionNote.trim() ? 'Note: ' + sessionNote.trim() : ''].filter(Boolean).join(' | '),
         });
         setRows((prev) => prev.map((r) =>
           r.productId === row.productId
@@ -264,6 +337,7 @@ const OpeningStockPage: React.FC = () => {
     setProgress(null);
 
     if (failed === 0) {
+      localStorage.removeItem('sspd.openingStock.draft.v1');
       Swal.fire({ icon: 'success', title: 'ကနဦး ကုန်လက်ကျန် သိမ်းပြီးပါပြီ', timer: 1400, showConfirmButton: false });
       setStatusFilter('READY');
     } else {
@@ -307,6 +381,22 @@ const OpeningStockPage: React.FC = () => {
             </div>
 
             <button
+              onClick={exportCountSheet}
+              className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-black uppercase inline-flex items-center gap-2"
+            >
+              <Download size={15} />
+              Count Sheet
+            </button>
+
+            <button
+              onClick={pasteCounts}
+              className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-black uppercase inline-flex items-center gap-2"
+            >
+              <ClipboardPaste size={15} />
+              Paste
+            </button>
+
+            <button
               onClick={load}
               disabled={loading}
               className="h-10 px-4 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-black uppercase inline-flex items-center gap-2 disabled:opacity-50"
@@ -343,6 +433,17 @@ const OpeningStockPage: React.FC = () => {
               ရောင်း/ဝယ် လည်ပတ်ပြီးသား stock ကိုပြင်ရန် Stock Adjustment ကိုသုံးပါ။ Serial product များကို Purchase မှ serial number ဖြင့်ထည့်ပါ။
             </p>
           </div>
+        </div>
+
+
+        <div className="rounded-lg bg-white border border-slate-200 p-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500" />
+          <input type="date" value={countDate} onChange={(e) => setCountDate(e.target.value)} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500" />
+          <select value={mode} onChange={(e) => setMode(e.target.value as EntryMode)} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500">
+            <option value="EMPTY_ONLY">Empty stock only</option>
+            <option value="TARGET_QTY">Target physical count</option>
+          </select>
+          <input value={sessionNote} onChange={(e) => setSessionNote(e.target.value)} placeholder="Session note" className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">

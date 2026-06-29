@@ -118,15 +118,38 @@ fun PurchaseReturnFormScreen(onBack: () -> Unit, onSuccess: (Int) -> Unit) {
                 }
             }
 
+            state.selectedPurchase?.let { purchase ->
+                Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(purchase.purchaseCode ?: "#${purchase.id}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = PurchaseReturnFormColor)
+                                Text(purchase.supplierName ?: "Supplier", fontSize = 12.sp, color = TextMain)
+                            }
+                            if (state.returnContextLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PurchaseReturnFormColor)
+                            } else {
+                                Text("${state.purchaseReturns.size} previous", fontSize = 11.sp, color = TextMuted)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MiniMetric("Invoice", moneyReturn((purchase.netAmount ?: 0.0) + (purchase.returnAmount ?: 0.0)), Modifier.weight(1f))
+                            MiniMetric("Returned", moneyReturn(purchase.returnAmount ?: 0.0), Modifier.weight(1f))
+                            MiniMetric("Max refund", moneyReturn(state.maxRefundAmount), Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
             if (state.items.isNotEmpty()) {
-                ReturnSection(Icons.Outlined.AssignmentReturn, "ပြန်ပို့မည့် ပစ္စည်းများ")
+                ReturnSection(Icons.Outlined.AssignmentReturn, "Return items")
                 state.items.forEachIndexed { i, item ->
                     Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, if (item.qty > 0) PurchaseReturnFormColor.copy(0.4f) else BorderColor)) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(item.productName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                                    Text("${moneyReturn(item.unitPrice)} x Max ${item.maxQty}", fontSize = 11.sp, color = TextMuted)
+                                    Text("Bought ${item.originalQty} | Returned ${item.alreadyReturned} | Can return ${item.maxQty}", fontSize = 11.sp, color = TextMuted)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     IconButton(onClick = { vm.setItemQty(i, item.qty - 1) }, modifier = Modifier.size(40.dp).background(if (item.qty > 0) PurchaseReturnFormBg else ScreenBg, RoundedCornerShape(8.dp))) {
@@ -162,6 +185,7 @@ fun PurchaseReturnFormScreen(onBack: () -> Unit, onSuccess: (Int) -> Unit) {
                     }
                 }
                 ReturnSection(Icons.Outlined.Payments, "Supplier Refund")
+                Text("Refund cannot exceed supplier credit: ${moneyReturn(state.maxRefundAmount)}", fontSize = 11.sp, color = TextMuted)
                 OutlinedTextField(
                     value = state.refundAmountStr,
                     onValueChange = { vm.setRefundAmount(it) },
@@ -237,7 +261,7 @@ fun PurchaseReturnFormScreen(onBack: () -> Unit, onSuccess: (Int) -> Unit) {
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = PurchaseReturnFormColor),
-                enabled = !state.saving
+                enabled = !state.saving && !state.returnContextLoading && state.returnContextLoaded
             ) {
                 if (state.saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp) else {
                     Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
@@ -246,6 +270,16 @@ fun PurchaseReturnFormScreen(onBack: () -> Unit, onSuccess: (Int) -> Unit) {
                 }
             }
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun MiniMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, color = PurchaseReturnFormBg, shape = RoundedCornerShape(8.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(label, fontSize = 10.sp, color = TextMuted, maxLines = 1)
+            Text(value, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = PurchaseReturnFormColor, maxLines = 1)
         }
     }
 }

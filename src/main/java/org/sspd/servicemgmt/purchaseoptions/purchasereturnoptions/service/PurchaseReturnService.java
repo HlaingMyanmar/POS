@@ -181,9 +181,7 @@ public class PurchaseReturnService {
         }
 
         BigDecimal previousReturns = safe(purchase.getReturnAmount());
-        BigDecimal purchaseTotal = purchase.getNetAmount() != null && purchase.getNetAmount().compareTo(BigDecimal.ZERO) > 0
-                ? safe(purchase.getNetAmount())
-                : safe(purchase.getTotalAmount()).subtract(safe(purchase.getDiscountAmount()));
+        BigDecimal purchaseTotal = originalPurchaseNet(purchase);
         BigDecimal paidAmount = safe(purchase.getPaidAmount());
         BigDecimal netAfterThisReturn = purchaseTotal.subtract(previousReturns.add(total));
         if (netAfterThisReturn.compareTo(BigDecimal.ZERO) < 0) {
@@ -244,7 +242,7 @@ public class PurchaseReturnService {
         }
 
         messagingTemplate.convertAndSend(PURCHASE_RETURN_TOPIC, "PURCHASE_RETURN_CREATED");
-        return mapper.toDto(savedEntity);
+        return toDto(savedEntity);
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_READ')")
@@ -252,7 +250,7 @@ public class PurchaseReturnService {
     public PageResponse<PurchaseReturnDTO> findAll(String search, int page, int size) {
         return PageResponse.of(
                 purchaseReturnRepository.findBySearch(search, PageRequest.of(page, size, Sort.by("id").descending()))
-                        .map(mapper::toDto)
+                        .map(this::toDto)
         );
     }
 
@@ -260,7 +258,7 @@ public class PurchaseReturnService {
     @Transactional(readOnly = true)
     public List<PurchaseReturnDTO> findByPurchaseId(Integer purchaseId) {
         return purchaseReturnRepository.findByPurchaseId(purchaseId).stream()
-                .map(mapper::toDto).toList();
+                .map(this::toDto).toList();
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_READ')")
@@ -268,7 +266,7 @@ public class PurchaseReturnService {
     public PurchaseReturnDTO findById(Integer id) {
         PurchaseReturn entity = purchaseReturnRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found with id: " + id));
-        return mapper.toDto(entity);
+        return toDto(entity);
     }
 
 
@@ -346,13 +344,48 @@ public class PurchaseReturnService {
         }
 
         messagingTemplate.convertAndSend(PURCHASE_RETURN_TOPIC, "PURCHASE_RETURN_VOIDED");
-        return mapper.toDto(saved);
+        return toDto(saved);
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_DELETE')")
     @Transactional
     public void delete(Integer id) {
         throw new RuntimeException("Confirmed purchase return cannot be deleted. Create a reversal/void workflow instead.");
+    }
+
+    private PurchaseReturnDTO toDto(PurchaseReturn entity) {
+        PurchaseReturnDTO dto = mapper.toDto(entity);
+        Purchase purchase = entity.getPurchase();
+        if (purchase != null) {
+            dto.setPurchaseCode(purchase.getPurchaseCode());
+            if (purchase.getSupplier() != null) {
+                dto.setSupplierName(purchase.getSupplier().getName());
+            }
+        }
+        List<PaymentTransaction> payments = paymentTransactionRepository
+                .findByReferenceIdAndReferenceType(entity.getId(), ReferenceType.Purchase_Return);
+        dto.setPayments(payments.stream().map(this::paymentToDto).toList());
+        if (!payments.isEmpty() && payments.get(0).getPaymentMethod() != null) {
+            dto.setPaymentMethodId(payments.get(0).getPaymentMethod().getId());
+            dto.setPaymentMethodName(payments.get(0).getPaymentMethod().getMethodName());
+            dto.setTransactionNo(payments.get(0).getTransactionNo());
+        }
+        return dto;
+    }
+
+    private PaymentTransactionDTO paymentToDto(PaymentTransaction payment) {
+        PaymentTransactionDTO dto = new PaymentTransactionDTO();
+        dto.setId(payment.getId());
+        dto.setReferenceId(payment.getReferenceId());
+        dto.setReferenceType(payment.getReferenceType() != null ? payment.getReferenceType().name() : null);
+        if (payment.getPaymentMethod() != null) {
+            dto.setPaymentMethodId(payment.getPaymentMethod().getId());
+            dto.setPaymentMethodName(payment.getPaymentMethod().getMethodName());
+        }
+        dto.setAmount(payment.getAmount());
+        dto.setTransactionNo(payment.getTransactionNo());
+        dto.setPaymentDate(payment.getPaymentDate());
+        return dto;
     }
 
     private void syncSupplierBalance(Supplier supplier) {
@@ -375,9 +408,7 @@ public class PurchaseReturnService {
                 .map(r -> safe(r.getRefundAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal total = purchase.getNetAmount() != null && purchase.getNetAmount().compareTo(BigDecimal.ZERO) > 0
-                ? safe(purchase.getNetAmount())
-                : safe(purchase.getTotalAmount()).subtract(safe(purchase.getDiscountAmount()));
+        BigDecimal total = originalPurchaseNet(purchase);
         BigDecimal paid = safe(purchase.getPaidAmount());
         BigDecimal net = total.subtract(returnAmount);
         if (net.compareTo(BigDecimal.ZERO) < 0) net = BigDecimal.ZERO;
@@ -408,6 +439,16 @@ public class PurchaseReturnService {
         return value != null ? value : BigDecimal.ZERO;
     }
 
+    private BigDecimal originalPurchaseNet(Purchase purchase) {
+        BigDecimal gross = safe(purchase.getTotalAmount());
+        BigDecimal discount = safe(purchase.getDiscountAmount());
+        BigDecimal originalNet = gross.subtract(discount);
+        if (originalNet.compareTo(BigDecimal.ZERO) > 0) {
+            return originalNet;
+        }
+        return safe(purchase.getNetAmount()).add(safe(purchase.getReturnAmount()));
+    }
+
     private int purchasedQty(Purchase purchase, Integer productId) {
         if (purchase.getDetails() == null) return 0;
         return purchase.getDetails().stream()
@@ -426,9 +467,7 @@ public class PurchaseReturnService {
                 .map(d -> safe(d.getSubtotal()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal purchaseGross = safe(purchase.getTotalAmount());
-        BigDecimal purchaseNet = purchase.getNetAmount() != null && purchase.getNetAmount().compareTo(BigDecimal.ZERO) > 0
-                ? safe(purchase.getNetAmount())
-                : purchaseGross.subtract(safe(purchase.getDiscountAmount()));
+        BigDecimal purchaseNet = originalPurchaseNet(purchase);
         if (purchaseGross.compareTo(BigDecimal.ZERO) <= 0) {
             return productGross.divide(BigDecimal.valueOf(qty), 2, java.math.RoundingMode.HALF_UP);
         }

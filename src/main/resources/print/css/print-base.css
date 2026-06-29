@@ -796,3 +796,161 @@ body {
   }
   .no-print { display: none !important; }
 }
+
+/* Final production voucher skin: plain, ink-friendly, and easy to read in shops. */
+:root {
+  --inv-primary: #111827;
+  --inv-primary-mid: #111827;
+  --inv-accent: #0f766e;
+  --inv-accent-dark: #0f766e;
+  --inv-text: #111827;
+  --inv-muted: #4b5563;
+  --inv-border: #9ca3af;
+  --inv-border-light: #d1d5db;
+  --inv-row-alt: #ffffff;
+  --inv-header-bg: #f3f4f6;
+  --inv-paid-bg: #ecfdf5;
+  --inv-paid-fg: #047857;
+  --inv-partial-bg: #fffbeb;
+  --inv-partial-fg: #92400e;
+  --inv-neutral-bg: #f3f4f6;
+  --inv-neutral-fg: #374151;
+}
+
+.invoice-page { color: var(--inv-text); }
+
+.inv-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  border: 1px solid var(--inv-border);
+  border-bottom: 0;
+  padding: 11px 14px 9px;
+}
+
+.inv-header__brand { max-width: none; }
+.inv-header__company-name { font-size: 17px; font-weight: 800; }
+.inv-header__company-sub { color: #374151; font-size: 9.5px; }
+
+.inv-header__meta {
+  min-width: 150px;
+  border-left: 1px solid var(--inv-border-light);
+  padding-left: 12px;
+}
+
+.inv-header__meta-title { color: #374151; font-size: 8.5px; font-weight: 800; }
+.inv-header__meta-number { font-size: 17px; font-weight: 900; }
+.inv-accent-bar { border-top: 2px solid var(--inv-accent); }
+.inv-body { border-color: var(--inv-border); padding: 12px 14px; }
+
+.inv-info-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.inv-block {
+  border-color: var(--inv-border-light);
+  border-left-color: var(--inv-accent);
+  padding: 7px 9px;
+}
+
+.inv-block__title,
+.inv-section-label {
+  color: var(--inv-primary);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .55px;
+}
+
+.inv-block__label { color: var(--inv-muted); }
+.inv-table-wrap, .inv-pay-table, .inv-summary-box { border-color: var(--inv-border); }
+.inv-table { font-size: 10.8px; }
+
+.inv-table th,
+.inv-pay-table th {
+  color: var(--inv-primary);
+  background: #f3f4f6;
+  border-bottom: 1px solid var(--inv-border);
+  font-weight: 800;
+}
+
+.inv-table td,
+.inv-pay-table td { border-bottom: 1px solid #e5e7eb; }
+.inv-table tbody tr:hover td { background: transparent; }
+
+.inv-bottom {
+  grid-template-columns: minmax(0, 1fr) 225px;
+  gap: 10px;
+}
+
+.inv-summary-box { width: 225px; }
+.inv-summary-row--highlight { background: var(--inv-primary); color: #ffffff; }
+.inv-remark, .inv-notice { border-color: var(--inv-border-light); border-left-color: var(--inv-accent); }
+.inv-sign__line { border-top-color: var(--inv-border); color: #374151; font-weight: 700; }
+.inv-footer { color: #4b5563; }
+.invoice-page--a5 .inv-header { grid-template-columns: 1fr auto; }
+.invoice-page--a5 .inv-info-grid, .invoice-page--a5 .inv-bottom { grid-template-columns: 1fr; }
+.invoice-page--a5 .inv-summary-box { width: 100%; }
+.invoice-page--pos-80mm, .invoice-page--pos-58mm { min-height: auto; }
+.inv-thermal { font-family: Pyidaungsu, 'Segoe UI', Arial, sans-serif; padding: 2mm; }
+.inv-thermal__divider { color: #111; letter-spacing: 0; }
+
+/* A5 compact voucher info area: keep Bill To / Invoice Details useful without eating the page. */
+.invoice-page--a5 .inv-header {
+  padding: 8px 10px 7px;
+  gap: 8px;
+}
+
+.invoice-page--a5 .inv-header__company-name { font-size: 14px; }
+.invoice-page--a5 .inv-header__company-sub { font-size: 8px; line-height: 1.25; }
+.invoice-page--a5 .inv-header__meta { min-width: 118px; padding-left: 8px; }
+.invoice-page--a5 .inv-header__meta-title { font-size: 7px; margin-bottom: 2px; }
+.invoice-page--a5 .inv-header__meta-number { font-size: 13px; }
+.invoice-page--a5 .inv-header__meta-date { font-size: 8px; }
+.invoice-page--a5 .inv-body { padding: 8px 10px 9px; }
+
+.invoice-page--a5 .inv-info-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 5px;
+  margin-bottom: 7px;
+  padding-bottom: 7px;
+}
+
+.invoice-page--a5 .inv-block {
+  padding: 4px 6px;
+  border-left-width: 2px;
+}
+
+.invoice-page--a5 .inv-block__title {
+  font-size: 6.8px;
+  letter-spacing: .35px;
+  padding-bottom: 2px;
+  margin-bottom: 3px;
+}
+
+.invoice-page--a5 .inv-block__row {
+  margin-top: 1px;
+  gap: 5px;
+}
+
+.invoice-page--a5 .inv-block__label {
+  font-size: 7.5px;
+}
+
+.invoice-page--a5 .inv-block__value {
+  font-size: 8.5px;
+  line-height: 1.2;
+}
+
+.invoice-page--a5 .inv-badge {
+  padding: 0 4px;
+  font-size: 7px;
+}
+
+.invoice-page--a5 .inv-table-wrap { margin-bottom: 8px; }
+.invoice-page--a5 .inv-table th,
+.invoice-page--a5 .inv-table td { padding: 3px 4px; font-size: 9px; }
+.invoice-page--a5 .inv-table__sub { font-size: 7.8px; }

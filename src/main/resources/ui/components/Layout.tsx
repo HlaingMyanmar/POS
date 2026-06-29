@@ -189,6 +189,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ငွေပေးချေနည်း', icon: <CreditCard size={18} />, path: AppRoute.PAYMENT_METHODS, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_PAYMENT_METHOD_READ' },
       { name: 'ငွေပေးချေမှတ်တမ်း', icon: <Wallet size={18} />, path: AppRoute.PAYMENT_TRANSACTIONS, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_COA_READ' },
       { name: 'Opening Balance', icon: <Building2 size={18} />, path: AppRoute.OPENING_BALANCE, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_COA_READ' },
+      { name: 'တစ်နေ့တာ Snapshot', icon: <ClipboardList size={18} />, path: AppRoute.DAILY_SNAPSHOT, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_REPORT_READ' },
       { name: 'ဝင်ငွေနှင့်အမြတ်', icon: <CalendarDays size={18} />, path: AppRoute.INCOME_REPORT, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_REPORT_READ' },
       { name: 'ရောင်းအားအကျဉ်း', icon: <TrendingUp size={18} />, path: AppRoute.SALES_SUMMARY, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ရောင်းအားအဆင့်', icon: <BarChart3 size={18} />, path: AppRoute.SALES_RANKING, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_SALE_READ' },

@@ -26,9 +26,21 @@ public class PurchaseController {
     public ResponseEntity<ApiResponse<PageResponse<PurchaseDTO>>> getAll(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "") String search) {
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
         return ResponseEntity.ok(
-                new ApiResponse<>(true, "Purchase List Retrieved Successfully", service.findAll(search, page, size))
+                new ApiResponse<>(true, "Purchase List Retrieved Successfully", service.findAll(search, dateFrom, dateTo, page, size))
+        );
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getStats(
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Purchase Stats", service.getStats(dateFrom, dateTo))
         );
     }
 

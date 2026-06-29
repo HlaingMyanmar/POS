@@ -1385,6 +1385,11 @@ const SaleManagement: React.FC = () => {
 
         {showCreateSaleForm ? (
           <div className="p-5 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><User size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 1</p><p className="text-sm font-bold text-slate-800">Customer / Staff</p></div></div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><PackageCheck size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 2</p><p className="text-sm font-bold text-slate-800">Barcode / Item ထည့်</p></div></div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><ReceiptText size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 3</p><p className="text-sm font-bold text-slate-800">ငွေရှင်း / Voucher</p></div></div></div>
+            </div>
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
@@ -1580,7 +1585,7 @@ const SaleManagement: React.FC = () => {
 
             <div className="flex flex-col lg:flex-row items-start gap-4">
               <button type="button" onClick={addRow} className="inline-flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
-                <Plus size={14} /> Add Item
+                <Plus size={14} /> Item ထည့်
               </button>
               <div className="flex-1 w-full lg:max-w-sm ml-auto rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
                 <div className="flex gap-2">
@@ -1635,7 +1640,7 @@ const SaleManagement: React.FC = () => {
               <div className="flex items-end justify-end gap-2">
                 <button type="button" onClick={resetCreateForm} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">Clear</button>
                 <button type="button" onClick={saveSale} disabled={saving} className="px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 inline-flex items-center gap-2">
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save Sale
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} အရောင်းသိမ်းမည်
                 </button>
               </div>
             </div>

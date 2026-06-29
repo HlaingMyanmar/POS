@@ -130,6 +130,7 @@ export interface StockAdjustmentDTO {
 export enum SerialStatus {
   AVAILABLE = 'Available',
   SOLD = 'Sold',
+  CONSUMED_IN_MANUFACTURING = 'Consumed_In_Manufacturing',
   USED_IN_SERVICE = 'Used_In_Service',
   DAMAGED = 'Damaged',
   LOST = 'Lost'
@@ -754,12 +755,18 @@ export interface ManufacturingOrderDTO {
   finishedProductUnitName?: string;
   finishedProductType?: string;
   finishedProductSellingPrice?: number;
+  productionQty?: number;
+  laborCost?: number;
+  overheadCost?: number;
+  wasteCost?: number;
   finishedProductId?: number;
   notes?: string;
   createdAt?: string;
   completedAt?: string;
   items: ManufacturingOrderItemDTO[];
   totalComponentCost?: number;
+  totalProductionCost?: number;
+  unitProductionCost?: number;
 }
 
 export enum AppRoute {
@@ -813,5 +820,6 @@ export enum AppRoute {
   OPENING_BALANCE          = '/accounting/opening-balance',
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',
-  MANUFACTURING            = '/inventory/manufacturing'
+  MANUFACTURING            = '/inventory/manufacturing',
+  DAILY_SNAPSHOT           = '/reports/daily-snapshot'
 }

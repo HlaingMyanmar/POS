@@ -41,10 +41,14 @@ type PaperKey = 'A4' | '4x6in' | '4x4in' | '2x4in' | 'custom';
 interface DesignerPreset {
   id: string; name: string;
   labelW: number; labelH: number;
+  paperType?: 'sheet' | 'roll';
   paperKey: PaperKey; customPaperW: number; customPaperH: number;
+  rollWidth?: number; rollGap?: number;
   marginTop: number; marginBottom: number; marginLeft: number; marginRight: number;
   gapH: number; gapV: number;
   useManualGrid: boolean; manualCols: number; manualRows: number;
+  startLabelIndex?: number;
+  printOffsetX?: number; printOffsetY?: number;
   elements: DesignEl[];
 }
 
@@ -61,6 +65,11 @@ interface PrinterProfile {
 }
 
 type SizeUnit = 'mm' | 'in';
+
+type UsbDeviceLike = { vendorId: number };
+type UsbLike = {
+  requestDevice: (options: { filters: Array<Record<string, never>> }) => Promise<UsbDeviceLike>;
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -306,6 +315,9 @@ const LabelDesigner: React.FC = () => {
   const [paperType,   setPaperType]   = useState<'sheet' | 'roll'>('sheet');
   const [rollWidth,   setRollWidth]   = useState(50);   // mm
   const [rollGap,     setRollGap]     = useState(3);    // mm gap between labels on roll
+  const [startLabelIndex, setStartLabelIndex] = useState(0);
+  const [printOffsetX, setPrintOffsetX] = useState(0);
+  const [printOffsetY, setPrintOffsetY] = useState(0);
   const [manualCols,    setManualCols]    = useState(3);
   const [manualRows,    setManualRows]    = useState(9);
 
@@ -455,14 +467,24 @@ const LabelDesigner: React.FC = () => {
     return out;
   }, [printIds, printCopies, printSerials, products, serials]);
 
-  const totalPages = printEntries.length > 0
-    ? Math.max(1, Math.ceil(printEntries.length / labelsPerPage.total))
+  const printSlots = useMemo<Array<PrintEntry | null>>(() => {
+    if (printEntries.length === 0) return [];
+    const skipCount = paperType === 'sheet' ? Math.max(0, Math.min(startLabelIndex, labelsPerPage.total - 1)) : 0;
+    return [...Array.from({ length: skipCount }, () => null), ...printEntries];
+  }, [paperType, startLabelIndex, labelsPerPage.total, printEntries]);
+
+  const totalPages = printSlots.length > 0
+    ? Math.max(1, Math.ceil(printSlots.length / labelsPerPage.total))
     : 1;
 
-  // Clamp currentPage when totalPages shrinks
+  // Clamp currentPage and first-label offset when the layout changes.
   useEffect(() => {
     setCurrentPage(p => Math.min(p, totalPages));
   }, [totalPages]);
+
+  useEffect(() => {
+    setStartLabelIndex(i => Math.max(0, Math.min(i, labelsPerPage.total - 1)));
+  }, [labelsPerPage.total]);
 
   const resizeLabelCanvas = (nextW: number, nextH: number, opts?: { syncRollWidth?: boolean }) => {
     const safeW = roundMm(Math.max(5, nextW));
@@ -534,17 +556,23 @@ const LabelDesigner: React.FC = () => {
   // ── Preset ops ───────────────────────────────────────────────────────────
   const handleSavePreset = () => {
     const name = newPresetName.trim(); if (!name) return;
-    const preset: DesignerPreset = { id: uid(), name, labelW, labelH, paperKey, customPaperW, customPaperH, marginTop, marginBottom, marginLeft, marginRight, gapH, gapV, useManualGrid, manualCols, manualRows, elements };
+    const preset: DesignerPreset = { id: uid(), name, labelW, labelH, paperType, paperKey, customPaperW, customPaperH, rollWidth, rollGap, marginTop, marginBottom, marginLeft, marginRight, gapH, gapV, useManualGrid, manualCols, manualRows, startLabelIndex, printOffsetX, printOffsetY, elements };
     const updated = [...presets, preset]; setPresets(updated); storePresets(updated);
     setShowSaveDlg(false); setNewPresetName('');
   };
   const handleLoadPreset = (p: DesignerPreset) => {
-    resizeLabelCanvas(p.labelW, p.labelH, { syncRollWidth: paperType === 'roll' });
+    const nextPaperType = p.paperType ?? paperType;
+    setPaperType(nextPaperType);
+    if (p.rollWidth) setRollWidth(p.rollWidth);
+    if (p.rollGap !== undefined) setRollGap(p.rollGap);
+    resizeLabelCanvas(p.labelW, p.labelH, { syncRollWidth: nextPaperType === 'roll' });
     setPaperKey(p.paperKey);
     setCustomPaperW(p.customPaperW); setCustomPaperH(p.customPaperH);
     setMarginTop(p.marginTop); setMarginBottom(p.marginBottom); setMarginLeft(p.marginLeft); setMarginRight(p.marginRight);
     setGapH(p.gapH); setGapV(p.gapV); setUseManualGrid(p.useManualGrid);
     setManualCols(p.manualCols); setManualRows(p.manualRows);
+    setStartLabelIndex(p.startLabelIndex ?? 0);
+    setPrintOffsetX(p.printOffsetX ?? 0); setPrintOffsetY(p.printOffsetY ?? 0);
     setElements(p.elements); setSelectedId(null);
   };
   const handleDeletePreset = (id: string) => { const u = presets.filter(p => p.id !== id); setPresets(u); storePresets(u); };
@@ -597,8 +625,9 @@ const LabelDesigner: React.FC = () => {
   const connectUsbPrinter = async () => {
     setPrinterError('');
     try {
-      const usb = (navigator as any).usb as USB;
-      const device: USBDevice = await usb.requestDevice({ filters: [] });
+      const usb = (navigator as Navigator & { usb?: UsbLike }).usb;
+      if (!usb) throw new Error('WebUSB is not available in this browser.');
+      const device = await usb.requestDevice({ filters: [] });
       const profile = PRINTER_DB.find(p => p.vendorId === device.vendorId) ?? null;
       setPrinterProfile(profile);
       setPrinterConnected(true);
@@ -746,8 +775,8 @@ const LabelDesigner: React.FC = () => {
     const HS = 7;
     const nodes: React.ReactNode[] = [];
 
-    const pageEntries = printEntries.length > 0
-      ? printEntries.slice((currentPage - 1) * labelsPerPage.total, currentPage * labelsPerPage.total)
+    const pageSlots = printSlots.length > 0
+      ? printSlots.slice((currentPage - 1) * labelsPerPage.total, currentPage * labelsPerPage.total)
       : null;
 
     // ── ROLL MODE ─────────────────────────────────────────────────────────
@@ -759,10 +788,10 @@ const LabelDesigner: React.FC = () => {
       for (let i = 0; i < ROLL_PREVIEW_COUNT; i++) {
         const oy = i * (lh + gapPx);
         const isFirst = i === 0;
-        const entry    = pageEntries ? pageEntries[i] : null;
+        const entry    = pageSlots ? pageSlots[i] : null;
         const cellProd = entry?.product ?? previewProduct;
         const cellSer  = entry?.serial  ?? (previewProduct?.hasSerial ? previewSerial : undefined);
-        const isEmpty  = pageEntries !== null && entry === undefined;
+        const isEmpty  = pageSlots !== null && !entry;
 
         // Gap strip between labels (represents the sensor gap on roll)
         if (i > 0) nodes.push(
@@ -832,10 +861,10 @@ const LabelDesigner: React.FC = () => {
         const lh = labelH * canvasScale;
         const isFirst = r === 0 && c === 0;
 
-        const entry    = pageEntries ? pageEntries[entryIdx] : null;
+        const entry    = pageSlots ? pageSlots[entryIdx] : null;
         const cellProd = entry?.product ?? previewProduct;
         const cellSer  = entry?.serial  ?? (previewProduct?.hasSerial ? previewSerial : undefined);
-        const isEmpty  = pageEntries !== null && entry === undefined;
+        const isEmpty  = pageSlots !== null && !entry;
         entryIdx++;
 
         if (gapH > 0 && c < labelsPerPage.cols - 1) nodes.push(
@@ -1011,6 +1040,37 @@ const LabelDesigner: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+
+        <hr className="border-slate-100"/>
+
+        {/* Print setup */}
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Print Setup</p>
+          {paperType === 'sheet' && (
+            <div className="space-y-2 mb-3">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-slate-400 text-xs">Start position on sheet</span>
+                <select
+                  className="border rounded px-1.5 py-1 text-xs w-full bg-white"
+                  value={startLabelIndex}
+                  onChange={e => setStartLabelIndex(Number(e.target.value))}
+                >
+                  {Array.from({ length: labelsPerPage.total }, (_, i) => (
+                    <option key={i} value={i}>
+                      {i === 0 ? 'First label' : 'Skip ' + i + ' used label' + (i === 1 ? '' : 's')} (row {Math.floor(i / labelsPerPage.cols) + 1}, col {(i % labelsPerPage.cols) + 1})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-[11px] text-slate-400">Use this when part of an A4 label sheet is already used.</p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-1.5">
+            <UF lbl="Move right" mm={printOffsetX} fn={setPrintOffsetX} unit={sizeUnit} minMm={-20} maxMm={20} stepMm={0.25}/>
+            <UF lbl="Move down" mm={printOffsetY} fn={setPrintOffsetY} unit={sizeUnit} minMm={-20} maxMm={20} stepMm={0.25}/>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1.5">Negative values move the print left or up. Save as a preset after calibration.</p>
         </div>
 
         <hr className="border-slate-100"/>
@@ -1416,7 +1476,7 @@ const LabelDesigner: React.FC = () => {
           @page { margin: 0; size: ${rollWidth}mm ${labelH}mm; }
           body * { visibility: hidden !important; }
           #ld-print-area, #ld-print-area * { visibility: visible !important; }
-          #ld-print-area { position: absolute !important; left: 0 !important; top: 0 !important; display: block !important; }
+          #ld-print-area { position: absolute !important; left: ${printOffsetX}mm !important; top: ${printOffsetY}mm !important; display: block !important; }
           .ld-label { width: ${rollWidth}mm !important; height: ${labelH}mm !important; position: relative !important; overflow: hidden !important; box-sizing: border-box !important; page-break-after: always !important; break-after: page !important; }
           .ld-print-hidden { display: none !important; }
         }
@@ -1426,7 +1486,7 @@ const LabelDesigner: React.FC = () => {
           body * { visibility: hidden !important; }
           #ld-print-area, #ld-print-area * { visibility: visible !important; }
           #ld-print-area {
-            position: absolute !important; left: 0 !important; top: 0 !important;
+            position: absolute !important; left: ${printOffsetX}mm !important; top: ${printOffsetY}mm !important;
             width: ${activePaper.w}mm !important;
             padding: ${marginTop}mm ${marginRight}mm ${marginBottom}mm ${marginLeft}mm !important;
             box-sizing: border-box !important;
@@ -1441,9 +1501,9 @@ const LabelDesigner: React.FC = () => {
 
       {/* Hidden print area */}
       <div id="ld-print-area" style={{ display:'none' }}>
-        {printEntries.map((entry, i) => (
+        {printSlots.map((entry, i) => (
           <div key={i} className="ld-label" style={{ position:'relative', width:`${paperType==='roll'?rollWidth:labelW}mm`, height:`${labelH}mm`, overflow:'hidden', boxSizing:'border-box' }}>
-            {elements.map(el => renderPrintEl(el, entry.product, entry.serial))}
+            {entry && elements.map(el => renderPrintEl(el, entry.product, entry.serial))}
           </div>
         ))}
       </div>

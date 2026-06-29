@@ -138,12 +138,7 @@ const StaffManagement: React.FC = () => {
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-100 shrink-0">
             <UserCheck size={24} />
           </div>
-          <div className="text-left">
-            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase">HR Directory</h2>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
-              <Briefcase size={10} className="text-indigo-400" /> Professional Staff Management
-            </p>
-          </div>
+
         </div>
         <button 
           onClick={() => handleOpenModal()} 

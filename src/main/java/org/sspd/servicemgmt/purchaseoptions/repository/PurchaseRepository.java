@@ -35,6 +35,20 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
     @Query("SELECT p FROM Purchase p WHERE (:search IS NULL OR :search = '' OR LOWER(p.purchaseCode) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.supplier.name) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.staff.name) LIKE LOWER(CONCAT('%',:search,'%')))")
     Page<Purchase> findBySearch(@Param("search") String search, Pageable pageable);
 
+    @Query("SELECT p FROM Purchase p WHERE " +
+        "(:search IS NULL OR :search = '' OR LOWER(p.purchaseCode) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.supplier.name) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.staff.name) LIKE LOWER(CONCAT('%',:search,'%'))) " +
+        "AND (:from IS NULL OR p.purchaseDate >= :from) " +
+        "AND (:to IS NULL OR p.purchaseDate <= :to)")
+    Page<Purchase> findBySearchAndDateRange(@Param("search") String search, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to, Pageable pageable);
+
+    @Query("""
+        SELECT COUNT(p), COALESCE(SUM(p.totalAmount), 0), COALESCE(SUM(p.paidAmount), 0), COALESCE(SUM(p.dueAmount), 0)
+        FROM Purchase p
+        WHERE (:from IS NULL OR p.purchaseDate >= :from)
+          AND (:to IS NULL OR p.purchaseDate <= :to)
+        """)
+    List<Object[]> findStatsByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     List<Purchase> findByDueAmountGreaterThan(BigDecimal amount);
 
     @Query("""

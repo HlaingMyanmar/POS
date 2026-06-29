@@ -113,11 +113,7 @@ public class PurchaseService {
                 if (dDto.getSerialNumbers().size() != dDto.getQty())
                     throw new RuntimeException("Serial count must match Qty for: " + product.getName());
             } else if (hasSerials) {
-                // User opted to assign internal serial numbers to a non-serialised product → convert it
-                if (dDto.getSerialNumbers().size() != dDto.getQty())
-                    throw new RuntimeException("Serial count must match Qty for: " + product.getName());
-                product.setHasSerial(true);
-                productRepository.save(product);
+                throw new RuntimeException("Product is non-serial. Purchase without serials, then use manual Assign Serials for: " + product.getName());
             }
 
             BigDecimal subtotal = dDto.getUnitCost().multiply(BigDecimal.valueOf(dDto.getQty()));
@@ -134,6 +130,8 @@ public class PurchaseService {
             LocalDate warrantyStart = (dto.getPurchaseDate() != null ? dto.getPurchaseDate() : LocalDateTime.now()).toLocalDate();
 
             if (hasSerials) {
+                updateAverageCost(product, dDto.getUnitCost(), dDto.getQty(),
+                        serialRepository.countByProductIdAndStatus(product.getId(), SerialStatus.Available).intValue());
                 for (int i = 0; i < dDto.getSerialNumbers().size(); i++) {
                     String sn = dDto.getSerialNumbers().get(i);
                     if (serialRepository.existsBySerialNumber(sn))
@@ -164,6 +162,7 @@ public class PurchaseService {
                 }
             } else if (!Boolean.TRUE.equals(product.getHasSerial())) {
                 int current = product.getStockQty() != null ? product.getStockQty() : 0;
+                updateAverageCost(product, dDto.getUnitCost(), dDto.getQty(), current);
                 product.setStockQty(current + dDto.getQty());
                 productRepository.save(product);
                 for (int i = 0; i < dDto.getQty(); i++) {
@@ -228,6 +227,17 @@ public class PurchaseService {
 
         messagingTemplate.convertAndSend(PURCHASE_TOPIC, "PURCHASE_CREATED");
         return enrichWarrantyItems(mapper.toDto(savedPurchase), savedPurchase);
+    }
+
+    private void updateAverageCost(Product product, BigDecimal purchaseUnitCost, Integer purchasedQty, int currentQty) {
+        int qty = purchasedQty != null ? purchasedQty : 0;
+        if (qty <= 0 || purchaseUnitCost == null) return;
+        BigDecimal oldCost = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
+        BigDecimal oldValue = oldCost.multiply(BigDecimal.valueOf(Math.max(0, currentQty)));
+        BigDecimal newValue = purchaseUnitCost.multiply(BigDecimal.valueOf(qty));
+        BigDecimal average = oldValue.add(newValue)
+                .divide(BigDecimal.valueOf(Math.max(1, currentQty + qty)), 2, java.math.RoundingMode.HALF_UP);
+        product.setCostPrice(average);
     }
 
     /**
@@ -457,10 +467,44 @@ public class PurchaseService {
     private record PaymentLine(PaymentMethod method, BigDecimal amount, String transactionNo) {}
 
     @Transactional(readOnly = true)
-    public PageResponse<PurchaseDTO> findAll(String search, int page, int size) {
+    public PageResponse<PurchaseDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
-        return PageResponse.of(purchaseRepository.findBySearch(search, pageable)
+        LocalDateTime from = parseDate(dateFrom, false);
+        LocalDateTime to = parseDate(dateTo, true);
+        return PageResponse.of(purchaseRepository.findBySearchAndDateRange(search, from, to, pageable)
                 .map(entity -> enrichWarrantyItems(mapper.toDto(entity), entity)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getStats(String dateFrom, String dateTo) {
+        LocalDateTime from = parseDate(dateFrom, false);
+        LocalDateTime to = parseDate(dateTo, true);
+        List<Object[]> rows = purchaseRepository.findStatsByDateRange(from, to);
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+        if (!rows.isEmpty()) {
+            Object[] row = rows.get(0);
+            stats.put("count", row[0]);
+            stats.put("totalAmount", row[1]);
+            stats.put("paidAmount", row[2]);
+            stats.put("dueAmount", row[3]);
+        } else {
+            stats.put("count", 0L);
+            stats.put("totalAmount", BigDecimal.ZERO);
+            stats.put("paidAmount", BigDecimal.ZERO);
+            stats.put("dueAmount", BigDecimal.ZERO);
+        }
+        return stats;
+    }
+
+    private LocalDateTime parseDate(String date, boolean endOfDay) {
+        if (date == null || date.isBlank()) return null;
+        try {
+            LocalDate d = LocalDate.parse(date);
+            return endOfDay ? d.atTime(23, 59, 59) : d.atStartOfDay();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")

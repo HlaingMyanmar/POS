@@ -314,8 +314,13 @@ const ProductManagement: React.FC = () => {
     return Array.from({ length: qty }, (_, i) => `${productCode}-${ds}-${String(i + 1).padStart(3, '0')}`);
   };
 
+  const getAssignableSerialQty = (product: ProductDTO) => {
+    if (product.hasSerial !== false) return Number(product.unlinkedQty ?? 0);
+    return Number(product.stockQty ?? product.currentStock ?? 0);
+  };
+
   const handleOpenAssignSerials = (product: ProductDTO) => {
-    const qty = product.stockQty ?? 0;
+    const qty = getAssignableSerialQty(product);
     setAssignSerialsProduct(product);
     setAssignSerialsInputs(genSerials(product.productCode || String(product.id), qty));
     setAssignSerialsWarranty(product.warrantyMonths ?? 0);
@@ -1751,6 +1756,8 @@ const ProductManagement: React.FC = () => {
                 const primaryProduct = group.products[0];
                 const singleProduct = group.products.length === 1;
                 const assignableQtyProduct = group.products.find(p => p.hasSerial === false && Number(p.stockQty ?? p.currentStock ?? 0) > 0);
+                const assignableSerialProduct = group.products.find(p => p.hasSerial !== false && Number(p.unlinkedQty ?? 0) > 0);
+                const assignableProduct = assignableQtyProduct || assignableSerialProduct;
                 return (
                   <React.Fragment key={group.groupId}>
                     <tr
@@ -1872,9 +1879,9 @@ const ProductManagement: React.FC = () => {
                           >
                             <Barcode size={14} />
                           </button>
-                          {assignableQtyProduct && (
+                          {assignableProduct && (
                             <button
-                              onClick={() => handleOpenAssignSerials(assignableQtyProduct)}
+                              onClick={() => handleOpenAssignSerials(assignableProduct)}
                               title="Assign serial numbers"
                               className="p-1.5 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-md"
                             >
@@ -1942,6 +1949,7 @@ const ProductManagement: React.FC = () => {
                                   const isSerialTracked = p.hasSerial !== false;
                                   const qtyStock = p.stockQty ?? p.currentStock ?? 0;
                                   const pSerials = allSerials.filter(sr => sr.productId === p.id);
+                                  const unlinkedQty = Number(p.unlinkedQty ?? 0);
 
                                   if (!isSerialTracked) {
                                     return (
@@ -2031,6 +2039,15 @@ const ProductManagement: React.FC = () => {
                                         <td className="px-4 py-3 text-right font-bold text-slate-800 text-xs">{p.sellingPrice.toLocaleString()}</td>
                                         <td className="px-4 py-3 text-right">
                                           <div className="flex justify-end gap-2">
+                                            {unlinkedQty > 0 && (
+                                              <button
+                                                onClick={() => handleOpenAssignSerials(p)}
+                                                title="Assign serial numbers to unlinked stock"
+                                                className="p-1.5 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-md"
+                                              >
+                                                <Hash size={14} />
+                                              </button>
+                                            )}
                                             <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
 
                                             {canDelete && (
@@ -2083,6 +2100,9 @@ const ProductManagement: React.FC = () => {
                                         <div className="flex justify-end gap-2">
                                           {idx === 0 ? (
                                             <>
+                                              {unlinkedQty > 0 && (
+                                                <button onClick={() => handleOpenAssignSerials(p)} title="Assign serial numbers to unlinked stock" className="p-1.5 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-md"><Hash size={14} /></button>
+                                              )}
                                               <button onClick={() => { setSelectedSerialGroup(group); startEditSerial(s); }} title="Edit Serial Warranty" className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white rounded-md"><Shield size={14} /></button>
                                               <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
                                               {canDelete && (
@@ -2407,7 +2427,7 @@ const ProductManagement: React.FC = () => {
               <div>
                 <h3 className="font-bold text-slate-800 text-sm">စီရီရယ်နံပါတ် သတ်မှတ်ရန်</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {assignSerialsProduct.name} · {assignSerialsProduct.productCode} · ပစ္စည်းတွင် {assignSerialsProduct.stockQty ?? 0} ခုရှိသည်
+                  {assignSerialsProduct.name} · {assignSerialsProduct.productCode} · ပစ္စည်းတွင် {getAssignableSerialQty(assignSerialsProduct)} ခုရှိသည်
                 </p>
               </div>
               <button onClick={() => setIsAssignSerialsOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
@@ -2436,7 +2456,7 @@ const ProductManagement: React.FC = () => {
               />
               <span className="text-xs text-slate-400">စီရီရယ်အားလုံးသို့ ပြုသည်။ မသိလျှင် ၀ ထည့်ပါ။</span>
               <button
-                onClick={() => setAssignSerialsInputs(genSerials(assignSerialsProduct.productCode || String(assignSerialsProduct.id), assignSerialsProduct.stockQty ?? 0))}
+                onClick={() => setAssignSerialsInputs(genSerials(assignSerialsProduct.productCode || String(assignSerialsProduct.id), getAssignableSerialQty(assignSerialsProduct)))}
                 className="ml-auto text-xs font-semibold text-indigo-600 hover:underline"
               >
                 ပြန်ထုတ်ရန်

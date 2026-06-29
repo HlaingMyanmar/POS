@@ -12,12 +12,15 @@ import java.util.List;
 public class PurchaseReturnDTO {
     private Integer id;
     private Integer purchaseId;
+    private String purchaseCode;
+    private String supplierName;
     private String returnNo;
     private LocalDateTime returnDate;
     private BigDecimal totalReturnAmount;
     // Amount actually refunded by supplier; defaults to totalReturnAmount when not provided
     private BigDecimal refundAmount;
     private Integer paymentMethodId;
+    private String paymentMethodName;
     private String transactionNo;
     private List<PaymentTransactionDTO> payments;
     private String status;

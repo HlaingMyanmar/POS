@@ -78,16 +78,28 @@ const ProductSerialManagement: React.FC = () => {
 
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
   const toDateOnly = (value?: string) => value ? String(value).slice(0, 10) : '';
-  const todayDateOnly = () => new Date().toISOString().slice(0, 10);
+  const dateOnlyToUtcMs = (value?: string) => {
+    const [year, month, day] = toDateOnly(value).split('-').map(Number);
+    if (!year || !month || !day) return NaN;
+    return Date.UTC(year, month - 1, day);
+  };
+  const utcMsToDateOnly = (value: number) => new Date(value).toISOString().slice(0, 10);
+  const todayDateOnly = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const addDays = (dateIso: string, days: number) => {
-    const date = new Date(`${dateIso}T00:00:00`);
-    date.setDate(date.getDate() + days);
-    return date.toISOString().slice(0, 10);
+    const startTime = dateOnlyToUtcMs(dateIso);
+    if (!Number.isFinite(startTime)) return toDateOnly(dateIso);
+    return utcMsToDateOnly(startTime + (days * MS_PER_DAY));
   };
   const countDays = (start?: string, end?: string) => {
     if (!start || !end) return 0;
-    const startTime = new Date(`${toDateOnly(start)}T00:00:00`).getTime();
-    const endTime = new Date(`${toDateOnly(end)}T00:00:00`).getTime();
+    const startTime = dateOnlyToUtcMs(start);
+    const endTime = dateOnlyToUtcMs(end);
     if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) return 0;
     return Math.round((endTime - startTime) / MS_PER_DAY);
   };

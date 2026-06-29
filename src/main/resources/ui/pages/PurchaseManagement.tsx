@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
-import { purchaseApiService, PurchasePage } from '../services/purchaseapiservice';
+import { purchaseApiService, PurchasePage, PurchaseStats } from '../services/purchaseapiservice';
 import { purchaseReturnApiService } from '../services/purchasereturnapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { accountingApiService } from '../services/accountingapiservice';
@@ -10,7 +10,7 @@ import { supplierService } from '../services/supplierapiservice';
 import { staffService } from '../services/staffapiservice';
 import { productService } from '../services/productapiservice';
 import { AppRoute, PurchaseDTO, PurchaseDetailDTO, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO } from '../types';
-import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera } from 'lucide-react';
+import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera, Share2 } from 'lucide-react';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
 import { getCachedCompanySettings } from '../utils/companySettings';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
@@ -43,6 +43,17 @@ const paymentTotal = (payments: PaymentTransactionDTO[]) => normalizePayments(pa
 
 const dateInput = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const parseDateInput = (date: string) => {
+  const [year, month, day] = date.split('-').map(Number);
+  return year && month && day ? new Date(year, month - 1, day) : new Date();
+};
+
+const addDaysInput = (date: string, days: number) => {
+  const base = date ? parseDateInput(date) : new Date();
+  base.setDate(base.getDate() + Math.max(0, Number(days) || 0));
+  return dateInput(base);
+};
 
 const getTodayRange = () => {
   const today = new Date();
@@ -86,6 +97,9 @@ const PurchaseManagement: React.FC = () => {
   const [staffSearch, setStaffSearch] = useState('');
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [staffOpen, setStaffOpen] = useState(false);
+  const [purchaseDate, setPurchaseDate] = useState(dateInput(new Date()));
+  const [paymentTermDays, setPaymentTermDays] = useState(30);
+  const [dueDate, setDueDate] = useState(addDaysInput(dateInput(new Date()), 30));
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [purchasePayments, setPurchasePayments] = useState<PaymentTransactionDTO[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
@@ -97,11 +111,16 @@ const PurchaseManagement: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filterStatus, setFilterStatus] = useState<'All' | 'Paid' | 'Partial' | 'Due'>('All');
-  const defaultDateRange = getThisMonthRange();
+  const defaultDateRange = getTodayRange();
   const [dateFrom, setDateFrom] = useState(defaultDateRange.from);
   const [dateTo, setDateTo] = useState(defaultDateRange.to);
-  const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'WEEK' | 'MONTH' | 'ALL' | 'CUSTOM'>('MONTH');
+  const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'WEEK' | 'MONTH' | 'ALL' | 'CUSTOM'>('TODAY');
+  const [serverStats, setServerStats] = useState<PurchaseStats>({ count: 0, totalAmount: 0, paidAmount: 0, dueAmount: 0 });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [previewPurchase, setPreviewPurchase] = useState<PurchaseDTO | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sendToPurchase, setSendToPurchase] = useState<PurchaseDTO | null>(null);
+  const [sendToLoading, setSendToLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
@@ -116,10 +135,10 @@ const PurchaseManagement: React.FC = () => {
     { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }
   ]);
 
-  const fetchPurchases = useCallback(async (page: number, size: number, search: string) => {
+  const fetchPurchases = useCallback(async (page: number, size: number, search: string, from: string, to: string) => {
     setPurchasesLoading(true);
     try {
-      const result: PurchasePage = await purchaseApiService.getAllPaged(page, size, search);
+      const result: PurchasePage = await purchaseApiService.getAllPaged(page, size, search, from, to);
       setPurchases(result.content);
       setPurchaseTotalElements(result.totalElements);
       setPurchaseTotalPages(result.totalPages);
@@ -127,6 +146,15 @@ const PurchaseManagement: React.FC = () => {
       console.error('Failed to load purchases', e);
     } finally {
       setPurchasesLoading(false);
+    }
+  }, []);
+
+  const fetchStats = useCallback(async (from: string, to: string) => {
+    try {
+      const stats = await purchaseApiService.getStats(from, to);
+      setServerStats(stats);
+    } catch (e) {
+      console.error('Failed to load stats', e);
     }
   }, []);
 
@@ -160,9 +188,13 @@ const PurchaseManagement: React.FC = () => {
   }, [searchTerm]);
 
   useEffect(() => {
-    fetchPurchases(purchasePage, purchasePageSize, debouncedSearch);
-  }, [fetchPurchases, purchasePage, purchasePageSize, debouncedSearch]);
-  useDataEvents(['Purchase'], () => fetchPurchases(purchasePage, purchasePageSize, debouncedSearch));
+    fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
+    fetchStats(dateFrom, dateTo);
+  }, [fetchPurchases, fetchStats, purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo]);
+  useDataEvents(['Purchase'], () => {
+    fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
+    fetchStats(dateFrom, dateTo);
+  });
 
   const generateSerialNumbers = (qty: number, existingAll: string[] = []): string[] => {
     const now = new Date();
@@ -308,6 +340,16 @@ const PurchaseManagement: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const serialEntries = details.flatMap((d) =>
+    (d.serialNumbers || [])
+      .map((serial) => serial.trim())
+      .filter((serial) => serial.length > 0)
+  );
+  const duplicateSerials = serialEntries.filter((serial, index, arr) =>
+    arr.findIndex((x) => x.toLowerCase() === serial.toLowerCase()) !== index
+  );
+  const hasDuplicateSerials = duplicateSerials.length > 0;
+
   const totalAmount = details.reduce((sum, d) => sum + d.subtotal, 0);
   const safeDiscountAmount = Math.min(Math.max(0, discountAmount || 0), totalAmount);
   const netAmount = Math.max(0, totalAmount - safeDiscountAmount);
@@ -327,6 +369,9 @@ const PurchaseManagement: React.FC = () => {
     })
     && safeDiscountAmount <= totalAmount
     && effectivePaidAmount <= netAmount
+    && !hasDuplicateSerials
+    && !!purchaseDate
+    && (dueAmount <= 0 || !!dueDate)
     && (effectivePaidAmount <= 0 || selectedPaymentMethodId > 0 || normalizedPurchasePayments.length > 0);
 
   const handleSave = async () => {
@@ -337,6 +382,8 @@ const PurchaseManagement: React.FC = () => {
       const payload: PurchaseDTO = {
         supplierId: selectedSupplierId,
         staffId: selectedStaffId,
+        purchaseDate: `${purchaseDate}T00:00:00`,
+        dueDate: dueAmount > 0 ? dueDate : undefined,
         totalAmount,
         discountAmount: safeDiscountAmount,
         netAmount,
@@ -377,12 +424,16 @@ const PurchaseManagement: React.FC = () => {
           timer: 2000,
           showConfirmButton: false
         });
-        fetchPurchases(purchasePage, purchasePageSize, debouncedSearch);
+        fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
+        fetchStats(dateFrom, dateTo);
         setShowNewVoucherForm(false);
         setSelectedSupplierId(0);
         setSelectedStaffId(0);
         setSupplierSearch('');
         setStaffSearch('');
+        setPurchaseDate(dateInput(new Date()));
+        setPaymentTermDays(30);
+        setDueDate(addDaysInput(dateInput(new Date()), 30));
         setPaidAmount(0);
         setPurchasePayments([]);
         setDiscountAmount(0);
@@ -462,6 +513,61 @@ const PurchaseManagement: React.FC = () => {
     if (!w) return;
     w.document.write(html);
     w.document.close();
+  };
+
+  const openVoucherPreview = async (id: number) => {
+    setPreviewLoading(true);
+    setPreviewPurchase(null);
+    try {
+      const purchase = await purchaseApiService.getById(id);
+      setPreviewPurchase(purchase);
+    } catch (e) {
+      Swal.fire('Error', 'Failed to load purchase', 'error');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const openSendTo = async (id: number) => {
+    setSendToLoading(true);
+    setSendToPurchase(null);
+    try {
+      const purchase = await purchaseApiService.getById(id);
+      setSendToPurchase(purchase);
+    } catch (e) {
+      Swal.fire('Error', 'Failed to load purchase', 'error');
+    } finally {
+      setSendToLoading(false);
+    }
+  };
+
+  const buildVoucherText = (purchase: PurchaseDTO): string => {
+    const fmt = (v: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(v || 0);
+    const lines: string[] = [
+      `=== Purchase Voucher ===`,
+      `Voucher : ${purchase.purchaseCode || `#${purchase.id}`}`,
+      `Supplier: ${purchase.supplierName || '-'}`,
+      `Staff   : ${purchase.staffName || '-'}`,
+      `Date    : ${purchase.purchaseDate ? new Date(purchase.purchaseDate).toLocaleDateString() : '-'}`,
+      `------------------------`,
+    ];
+    (purchase.details || []).forEach((d, i) => {
+      lines.push(`${i + 1}. ${d.productName || `Product #${d.productId}`}`);
+      lines.push(`   ${d.qty} × ${fmt(d.unitCost)} = ${fmt(d.subtotal)}`);
+      if (d.serialNumbers?.filter(s => s).length) {
+        lines.push(`   Serials: ${d.serialNumbers.filter(s => s).join(', ')}`);
+      }
+    });
+    lines.push(`------------------------`);
+    lines.push(`Total : ${fmt(purchase.totalAmount)}`);
+    if ((purchase.discountAmount || 0) > 0) {
+      lines.push(`Disc  : ${fmt(purchase.discountAmount || 0)}`);
+      lines.push(`Net   : ${fmt(purchase.netAmount ?? purchase.totalAmount)}`);
+    }
+    lines.push(`Paid  : ${fmt(purchase.paidAmount)}`);
+    if ((purchase.dueAmount || 0) > 0) lines.push(`Due   : ${fmt(purchase.dueAmount)}`);
+    if (purchase.remark) lines.push(`Remark: ${purchase.remark}`);
+    return lines.join('\n');
   };
 
   useEffect(() => {
@@ -571,7 +677,8 @@ const PurchaseManagement: React.FC = () => {
         });
       }
       setIsPaymentModalOpen(false);
-      fetchPurchases(purchasePage, purchasePageSize, debouncedSearch);
+      fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
+      fetchStats(dateFrom, dateTo);
       Swal.fire({ icon: 'success', title: 'Payment recorded', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
     } catch (err: any) {
       Swal.fire('Error', err.message || 'Failed to record payment', 'error');
@@ -612,26 +719,11 @@ const PurchaseManagement: React.FC = () => {
     return getStatusDisplay(p);
   };
 
-  const fromDate = dateFrom ? new Date(dateFrom) : null;
-  const toDate = dateTo ? new Date(dateTo) : null;
-  if (toDate) toDate.setHours(23, 59, 59, 999);
-
   const filteredPurchases = purchases.filter((p) => {
     const statusKey = getStatusKey(p);
-    const matchesStatus = filterStatus === 'All' || statusKey === filterStatus.toLowerCase();
-    const hasDateFilter = !!fromDate || !!toDate;
-    if (!hasDateFilter) return matchesStatus;
-    if (!p.purchaseDate) return false;
-    const purchaseDate = new Date(p.purchaseDate);
-    if (Number.isNaN(purchaseDate.getTime())) return false;
-    if (fromDate && purchaseDate < fromDate) return false;
-    if (toDate && purchaseDate > toDate) return false;
-    return matchesStatus;
+    return filterStatus === 'All' || statusKey === filterStatus.toLowerCase();
   });
 
-  const totalPurchaseAmount = filteredPurchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
-  const totalPaid = filteredPurchases.reduce((s, p) => s + (p.paidAmount || 0), 0);
-  const totalDue = filteredPurchases.reduce((s, p) => s + (p.dueAmount || 0), 0);
   const paidCount = filteredPurchases.filter((p) => getStatusKey(p) === 'paid').length;
   const statusStyles: Record<string, string> = {
     paid: 'bg-emerald-100 text-emerald-700',
@@ -668,7 +760,7 @@ const PurchaseManagement: React.FC = () => {
               <h2 className="text-xl font-bold text-slate-800 text-left">ဝယ်ယူမှု စီမံခန့်ခွဲမှု</h2>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-              <button onClick={() => fetchPurchases(purchasePage, purchasePageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
+              <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
                 <RefreshCw size={14} className={purchasesLoading ? 'animate-spin' : ''} />
                 ပြန်ဖတ်ရန်
               </button>
@@ -684,8 +776,8 @@ const PurchaseManagement: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာစုစုပေါင်း</p>
-                <p className="text-2xl font-bold text-slate-800">{filteredPurchases.length}</p>
-                <p className="text-[10px] text-slate-400 mt-1">အားလုံး: {purchases.length}</p>
+                <p className="text-2xl font-bold text-slate-800">{serverStats.count}</p>
+                <p className="text-[10px] text-slate-400 mt-1">ဤစာမျက်နှာ: {filteredPurchases.length}</p>
               </div>
               <div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center">
                 <FileText size={20} className="text-indigo-600" />
@@ -694,7 +786,7 @@ const PurchaseManagement: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဝယ်ယူမှု စုစုပေါင်း</p>
-                <p className="text-2xl font-bold text-slate-800">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(totalPurchaseAmount)}</p>
+                <p className="text-2xl font-bold text-slate-800">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(serverStats.totalAmount)}</p>
               </div>
               <div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center">
                 <DollarSign size={20} className="text-slate-600" />
@@ -703,7 +795,7 @@ const PurchaseManagement: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ပေးချေပြီး</p>
-                <p className="text-2xl font-bold text-emerald-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(totalPaid)}</p>
+                <p className="text-2xl font-bold text-emerald-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(serverStats.paidAmount)}</p>
               </div>
               <div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center">
                 <CheckCircle size={20} className="text-emerald-600" />
@@ -712,7 +804,7 @@ const PurchaseManagement: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ပေးရန်ကျန်</p>
-                <p className="text-2xl font-bold text-amber-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(totalDue)}</p>
+                <p className="text-2xl font-bold text-amber-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(serverStats.dueAmount)}</p>
               </div>
               <div className="w-11 h-11 rounded-lg bg-amber-50 flex items-center justify-center">
                 <AlertCircle size={20} className="text-amber-600" />
@@ -824,7 +916,7 @@ const PurchaseManagement: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => { setSearchTerm(''); setVoucherLookup(''); setFilterStatus('All'); setDateFrom(''); setDateTo(''); setDateShortcut('ALL'); }}
+                  onClick={() => { setSearchTerm(''); setVoucherLookup(''); setFilterStatus('All'); const r = getTodayRange(); setDateFrom(r.from); setDateTo(r.to); setDateShortcut('TODAY'); }}
                   className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100"
                 >
                   ရှင်းမည်
@@ -863,7 +955,7 @@ const PurchaseManagement: React.FC = () => {
                       <th className="px-4 py-3 text-right">စုစုပေါင်း</th>
                       <th className="px-4 py-3 text-right">ပေးရန်ကျန်</th>
                       <th className="px-4 py-3 text-center">အခြေအနေ</th>
-                      <th className="px-4 py-3 text-right w-24">လုပ်ဆောင်ချက်</th>
+                      <th className="px-4 py-3 text-right w-40">လုပ်ဆောင်ချက်</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -889,15 +981,30 @@ const PurchaseManagement: React.FC = () => {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <div className="inline-flex items-center gap-2 justify-end">
+                              <div className="inline-flex items-center gap-1 justify-end flex-wrap">
                                 {canPay && (
                                   <button
                                     onClick={() => openPaymentModal(p)}
                                     className="inline-flex items-center gap-1 px-2 py-1 text-emerald-600 hover:bg-emerald-50 rounded text-sm font-medium"
+                                    title="ငွေချေမည်"
                                   >
                                     <CreditCard size={14} /> ငွေချေ
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => openVoucherPreview(p.id!)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-violet-600 hover:bg-violet-50 rounded text-sm font-medium"
+                                  title="Voucher Preview"
+                                >
+                                  <Printer size={14} />
+                                </button>
+                                <button
+                                  onClick={() => openSendTo(p.id!)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-sky-600 hover:bg-sky-50 rounded text-sm font-medium"
+                                  title="Send To"
+                                >
+                                  <Share2 size={14} /> ပို့မည်
+                                </button>
                                 <button onClick={() => openView(p.id!)} className="inline-flex items-center gap-1 px-2 py-1 text-indigo-600 hover:bg-indigo-50 rounded text-sm font-medium">
                                   <Eye size={14} /> ကြည့်မည်
                                 </button>
@@ -965,41 +1072,63 @@ const PurchaseManagement: React.FC = () => {
         </>
       ) : (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <button onClick={() => setShowNewVoucherForm(false)} className="inline-flex w-full sm:w-auto justify-center sm:justify-start items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">
-              <ArrowLeft size={16} />
-              စာရင်းသို့ပြန်မည်
-            </button>
-            <div className="text-center sm:text-left">
-              <h2 className="text-xl font-bold text-slate-800">ဝယ်ယူမှုဘောင်ချာအသစ်</h2>
-              <p className="text-xs text-slate-500 mt-0.5">ပေးသွင်းသူ၊ ပစ္စည်း၊ serial/warranty၊ ငွေပေးချေမှုကို တစ်ချက်ချင်းပြီးအောင် စီမံပါ။</p>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 border-b border-slate-100">
+              <div className="flex items-start gap-3 min-w-0">
+                <button onClick={() => setShowNewVoucherForm(false)} className="mt-0.5 inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors" title="စာရင်းသို့ပြန်မည်">
+                  <ArrowLeft size={17} />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Purchase Voucher</p>
+                  <h2 className="text-xl font-black text-slate-900 mt-0.5">ဝယ်ယူမှုဘောင်ချာအသစ်</h2>
+                  <p className="text-xs text-slate-500 mt-1">ပေးသွင်းသူ၊ ပစ္စည်း၊ serial/warranty၊ ငွေပေးချေမှုကို တစ်နေရာတည်းမှာ စနစ်တကျဖြည့်ပါ။</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 w-full lg:w-auto lg:min-w-[360px]">
+                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Items</p>
+                  <p className="text-sm font-black text-slate-800">{details.filter(d => d.productId > 0).length}</p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Net</p>
+                  <p className="text-sm font-black text-indigo-700 truncate">{new Intl.NumberFormat('en-US').format(netAmount)}</p>
+                </div>
+                <div className={`rounded-lg border px-3 py-2 ${dueAmount > 0 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
+                  <p className={`text-sm font-black truncate ${dueAmount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{dueAmount > 0 ? 'Credit' : 'Paid'}</p>
+                </div>
+              </div>
             </div>
-            <div className="hidden sm:block w-24" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className={`rounded-xl border p-3 ${selectedSupplierId > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">1. Supplier</p>
-              <p className={`text-sm font-bold mt-1 ${selectedSupplierId > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>{selectedSupplierId > 0 ? 'ရွေးပြီး' : 'ရွေးရန်လို'}</p>
-            </div>
-            <div className={`rounded-xl border p-3 ${details.some(d => d.productId > 0) ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">2. Items</p>
-              <p className="text-sm font-bold mt-1 text-slate-700">{details.filter(d => d.productId > 0).length} line(s)</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">3. Net Amount</p>
-              <p className="text-sm font-bold mt-1 text-slate-800">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(netAmount)}</p>
-            </div>
-            <div className={`rounded-xl border p-3 ${dueAmount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">4. Payment</p>
-              <p className={`text-sm font-bold mt-1 ${dueAmount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{dueAmount > 0 ? 'ပေးရန်ကျန်ရှိ' : 'ငွေချေပြီး'}</p>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {[
+              { label: 'ပေးသွင်းသူ', value: selectedSupplierId > 0 ? 'ရွေးပြီး' : 'ရွေးရန်လို', ready: selectedSupplierId > 0 },
+              { label: 'ပစ္စည်းအတန်း', value: `${details.filter(d => d.productId > 0).length} line(s)`, ready: details.some(d => d.productId > 0) },
+              { label: 'Serial / Warranty', value: hasDuplicateSerials ? 'Serial ထပ်နေ' : 'စစ်ပြီး', ready: !hasDuplicateSerials },
+              { label: 'ငွေပေးချေမှု', value: dueAmount > 0 ? 'အကြွေးကျန်' : 'ရှင်းပြီး', ready: isValid }
+            ].map((step, idx) => (
+              <div key={step.label} className={`rounded-xl border p-3 flex items-center gap-3 ${step.ready ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${step.ready ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{idx + 1}</span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{step.label}</p>
+                  <p className={`text-sm font-black mt-0.5 truncate ${step.ready ? 'text-emerald-700' : 'text-slate-700'}`}>{step.value}</p>
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Form Details */}
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Voucher Info</p>
+                <h3 className="text-sm font-black text-slate-800 mt-0.5">ပေးသွင်းသူ၊ ဝန်ထမ်းနှင့်ရက်စွဲ</h3>
+              </div>
+              <span className="hidden sm:inline-flex px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-500">Step 1</span>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1069,7 +1198,66 @@ const PurchaseManagement: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-100 rounded-xl overflow-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3 sm:p-4">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <label className="flex h-4 items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <Calendar size={12} className="shrink-0" /> <span className="truncate">Purchase Date</span>
+                </label>
+                <input
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setPurchaseDate(next);
+                    if (paymentTermDays >= 0) setDueDate(addDaysInput(next, paymentTermDays));
+                  }}
+                  className="h-10 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+                <p className="h-4 text-[10px] leading-4 text-transparent select-none">.</p>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <label className="flex h-4 items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider"><span className="truncate">Payment Term</span></label>
+                <select
+                  value={paymentTermDays}
+                  onChange={(e) => {
+                    const days = Number(e.target.value);
+                    setPaymentTermDays(days);
+                    setDueDate(addDaysInput(purchaseDate, days));
+                  }}
+                  className="h-10 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                >
+                  <option value={-1}>Custom due date</option>
+                  <option value={0}>Cash / Same day</option>
+                  <option value={7}>Net 7 days</option>
+                  <option value={15}>Net 15 days</option>
+                  <option value={30}>Net 30 days</option>
+                  <option value={45}>Net 45 days</option>
+                  <option value={60}>Net 60 days</option>
+                </select>
+                <p className="h-4 text-[10px] leading-4 text-transparent select-none">.</p>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 xl:col-span-1">
+                <label className="flex h-4 items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider"><span className="truncate">Due Date</span></label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => { setDueDate(e.target.value); setPaymentTermDays(-1); }}
+                  disabled={dueAmount <= 0}
+                  className="h-10 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:bg-slate-100 disabled:text-slate-400"
+                />
+                <p className="h-4 text-[10px] text-slate-400 leading-4 truncate">Only required when credit remains.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Items</p>
+                <h3 className="text-sm font-black text-slate-800 mt-0.5">ဝယ်မည့်ပစ္စည်းများ</h3>
+              </div>
+              <p className="text-xs text-slate-500">Qty, ဝယ်ဈေး, warranty နှင့် serial ကို တစ်ကြောင်းချင်းဖြည့်ပါ။</p>
+            </div>
+
+            <div className="border border-slate-200 rounded-xl overflow-auto bg-white shadow-sm">
               <table className="w-full min-w-[760px] text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
@@ -1391,7 +1579,7 @@ const PurchaseManagement: React.FC = () => {
 
             <button 
               onClick={handleAddRow}
-              className="inline-flex w-full sm:w-auto justify-center items-center gap-2 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-bold transition-all"
+              className="inline-flex w-full sm:w-auto justify-center items-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-xl text-sm font-black transition-all"
             >
               <Plus size={16} />
               ပစ္စည်းအတန်းထပ်ထည့်
@@ -1402,10 +1590,18 @@ const PurchaseManagement: React.FC = () => {
         {/* Right Column: Summary & Payment */}
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6 lg:sticky lg:top-20">
-            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-              <DollarSign size={16} className="text-indigo-500" />
-              ငွေပေးချေမှုနှင့် စုစုပေါင်း
-            </h3>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Payment Summary</p>
+                <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 mt-0.5">
+                  <DollarSign size={16} className="text-indigo-500" />
+                  ငွေပေးချေမှုနှင့် စုစုပေါင်း
+                </h3>
+              </div>
+              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${dueAmount > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                {dueAmount > 0 ? 'Credit' : 'Paid'}
+              </span>
+            </div>
 
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm">
@@ -1484,6 +1680,12 @@ const PurchaseManagement: React.FC = () => {
 
                 {effectivePaidAmount > 0 && selectedPaymentMethodId === 0 && normalizedPurchasePayments.length === 0 && (
                   <p className="text-[10px] text-rose-500">Please select a payment method for paid amount.</p>
+                )}
+                {hasDuplicateSerials && (
+                  <p className="text-[10px] text-rose-500">Duplicate serial numbers in this purchase: {Array.from(new Set(duplicateSerials)).join(', ')}</p>
+                )}
+                {dueAmount > 0 && !dueDate && (
+                  <p className="text-[10px] text-rose-500">Please choose a due date for credit purchase.</p>
                 )}
                 <SplitPaymentEditor
                   methods={paymentMethods}
@@ -1639,6 +1841,7 @@ const PurchaseManagement: React.FC = () => {
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Supplier:</span> {viewPurchase.supplierName}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Staff:</span> {viewPurchase.staffName}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Date:</span> {viewPurchase.purchaseDate ? new Date(viewPurchase.purchaseDate).toLocaleString() : '-'}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">Due Date:</span> {viewPurchase.dueDate ? new Date(viewPurchase.dueDate).toLocaleDateString() : '-'}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Total:</span> {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(viewPurchase.totalAmount)}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Discount:</span> {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(viewPurchase.discountAmount || 0)}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Net:</span> {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(viewPurchase.netAmount ?? (viewPurchase.totalAmount - (viewPurchase.discountAmount || 0)))}</p>
@@ -1736,6 +1939,119 @@ const PurchaseManagement: React.FC = () => {
                   </table>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Voucher Preview Modal */}
+      {(previewLoading || previewPurchase) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <h3 className="font-bold text-slate-800">
+                {previewPurchase
+                  ? `Voucher Preview — ${previewPurchase.purchaseCode || `#${previewPurchase.id}`}`
+                  : 'ဖတ်နေသည်...'}
+              </h3>
+              <div className="flex items-center gap-2">
+                {previewPurchase && (
+                  <button
+                    onClick={() => printPurchaseVoucher(previewPurchase)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+                  >
+                    <Printer size={14} />
+                    Print
+                  </button>
+                )}
+                <button
+                  onClick={() => { setPreviewPurchase(null); setPreviewLoading(false); }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden min-h-0">
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-48 text-slate-400">ဖတ်နေသည်...</div>
+              ) : previewPurchase ? (
+                <iframe
+                  srcDoc={buildPurchaseVoucherHtml({ purchase: previewPurchase, settings: getCachedCompanySettings(), preview: true }).html}
+                  title="Purchase Voucher Preview"
+                  className="w-full border-0"
+                  style={{ height: '70vh' }}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send To Modal */}
+      {(sendToLoading || sendToPurchase) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-800">Voucher ပို့ရန်</h3>
+                {sendToPurchase && (
+                  <p className="text-xs text-slate-500 mt-0.5">{sendToPurchase.purchaseCode || `#${sendToPurchase.id}`} — {sendToPurchase.supplierName}</p>
+                )}
+              </div>
+              <button
+                onClick={() => { setSendToPurchase(null); setSendToLoading(false); }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              {sendToLoading ? (
+                <div className="flex items-center justify-center h-24 text-slate-400">ဖတ်နေသည်...</div>
+              ) : sendToPurchase ? (
+                <>
+                  <textarea
+                    readOnly
+                    value={buildVoucherText(sendToPurchase)}
+                    rows={10}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 resize-none focus:outline-none"
+                  />
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(buildVoucherText(sendToPurchase!));
+                        Swal.fire({ icon: 'success', title: 'ကူးယူပြီး!', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"
+                    >
+                      <FileText size={16} />
+                      Text ကူးယူမည်
+                    </button>
+                    {typeof navigator.share === 'function' && (
+                      <button
+                        onClick={() => {
+                          navigator.share({
+                            title: `Purchase Voucher ${sendToPurchase!.purchaseCode || `#${sendToPurchase!.id}`}`,
+                            text: buildVoucherText(sendToPurchase!),
+                          }).catch(() => {});
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700"
+                      >
+                        <Share2 size={16} />
+                        Share (Viber / Telegram / ...)
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { printPurchaseVoucher(sendToPurchase); setSendToPurchase(null); }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50"
+                    >
+                      <Printer size={16} />
+                      Print Voucher
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         </div>

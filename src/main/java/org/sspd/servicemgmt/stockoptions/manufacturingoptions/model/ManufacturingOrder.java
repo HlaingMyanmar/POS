@@ -50,6 +50,22 @@ public class ManufacturingOrder {
     @Builder.Default
     private BigDecimal finishedProductSellingPrice = BigDecimal.ZERO;
 
+    @Column(name = "production_qty", nullable = false)
+    @Builder.Default
+    private Integer productionQty = 1;
+
+    @Column(name = "labor_cost", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal laborCost = BigDecimal.ZERO;
+
+    @Column(name = "overhead_cost", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal overheadCost = BigDecimal.ZERO;
+
+    @Column(name = "waste_cost", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal wasteCost = BigDecimal.ZERO;
+
     @Column(name = "finished_product_id")
     private Integer finishedProductId;
 

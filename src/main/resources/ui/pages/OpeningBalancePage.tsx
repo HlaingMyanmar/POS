@@ -125,12 +125,14 @@ const OpeningBalancePage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [balances, coas, staff, pms] = await Promise.all([
+      const [balances, coas, pms] = await Promise.all([
         accountingApiService.getAllBalances(),
         coaService.getAll(),
-        staffService.getAllActive(),
         paymentMethodService.getAllActive(),
       ]);
+
+      // Staff lookup requires CAN_ACCESS_STAFF_READ; silently skip if not permitted
+      const staff = await staffService.getAllActive().catch(() => [] as StaffDTO[]);
 
       const merged: AccountRow[] = (coas as ChartOfAccountDTO[]).map(coa => {
         const bal = (balances as AccountBalanceDTO[]).find(b => b.accountId === coa.id);

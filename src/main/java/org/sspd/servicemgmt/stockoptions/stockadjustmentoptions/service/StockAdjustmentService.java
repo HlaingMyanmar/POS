@@ -145,8 +145,8 @@ public class StockAdjustmentService {
                         if (!serial.getProduct().getId().equals(product.getId())) {
                             throw new RuntimeException("Serial number '" + sn + "' does not belong to product: " + product.getName());
                         }
-                        if (serial.getStatus() == SerialStatus.Sold) {
-                            throw new RuntimeException("Serial '" + sn + "' is Sold and cannot be corrected. Please process a Sale Return first.");
+                        if (serial.getStatus() == SerialStatus.Sold || serial.getStatus() == SerialStatus.Consumed_In_Manufacturing) {
+                            throw new RuntimeException("Serial '" + sn + "' is " + serial.getStatus() + " and cannot be corrected back to stock.");
                         }
                         serial.setStatus(SerialStatus.Available);
                         productSerialRepository.save(serial);

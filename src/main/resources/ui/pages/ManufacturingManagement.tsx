@@ -1,4 +1,4 @@
-﻿
+
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Plus, Loader2, Package, Trash2, CheckCircle2, X,
@@ -312,16 +312,24 @@ const ManufacturingManagement: React.FC = () => {
   const [fCategoryId, setFCategoryId] = useState<number | undefined>();
   const [fUnitId, setFUnitId] = useState<number | undefined>();
   const [fPrice, setFPrice] = useState(0);
+  const [fProductionQty, setFProductionQty] = useState(1);
+  const [fLaborCost, setFLaborCost] = useState(0);
+  const [fOverheadCost, setFOverheadCost] = useState(0);
+  const [fWasteCost, setFWasteCost] = useState(0);
   const [fNotes, setFNotes] = useState('');
   const [fItems, setFItems] = useState<any[]>([]);
   /* formula-only */
   const [fFormulaName, setFFormulaName] = useState('');
   const [fFormulaDesc, setFFormulaDesc] = useState('');
-  /* order-only: selected formula */
+  /* order-only: selected formula / finished product */
   const [selectedFormulaId, setSelectedFormulaId] = useState<number | ''>('');
+  const [fFinishedProductId, setFFinishedProductId] = useState<number | undefined>();
 
   const totalCost = useMemo(() =>
     fItems.reduce((s: number, i: any) => s + (Number(i.unitCost ?? 0) * (i.qty ?? 1)), 0), [fItems]);
+  const extraCost = Number(fLaborCost || 0) + Number(fOverheadCost || 0) + Number(fWasteCost || 0);
+  const totalProductionCost = totalCost + extraCost;
+  const unitProductionCost = totalProductionCost / Math.max(1, Number(fProductionQty || 1));
 
   /* ── fetch ── */
   const fetchAll = useCallback(async () => {
@@ -348,18 +356,21 @@ const ManufacturingManagement: React.FC = () => {
   /* ── form helpers ── */
   const resetForm = () => {
     setFName(''); setFType('New'); setFBrandId(undefined); setFCategoryId(undefined);
-    setFUnitId(undefined); setFPrice(0); setFNotes('');
+    setFUnitId(undefined); setFPrice(0); setFProductionQty(1); setFLaborCost(0); setFOverheadCost(0); setFWasteCost(0); setFNotes('');
     setFItems([]); setFFormulaName(''); setFFormulaDesc('');
-    setSelectedFormulaId(''); setEditingOrder(null); setEditingFormula(null);
+    setSelectedFormulaId(''); setFFinishedProductId(undefined); setEditingOrder(null); setEditingFormula(null);
   };
 
   const openOrderForm = (order?: ManufacturingOrderDTO) => {
     resetForm();
     if (order) {
       setEditingOrder(order);
+      setFFinishedProductId(order.finishedProductId);
       setFName(order.finishedProductName); setFType(order.finishedProductType || 'New');
       setFBrandId(order.finishedProductBrandId); setFCategoryId(order.finishedProductCategoryId);
       setFUnitId(order.finishedProductUnitId); setFPrice(Number(order.finishedProductSellingPrice ?? 0));
+      setFProductionQty(Number(order.productionQty ?? 1)); setFLaborCost(Number(order.laborCost ?? 0));
+      setFOverheadCost(Number(order.overheadCost ?? 0)); setFWasteCost(Number(order.wasteCost ?? 0));
       setFNotes(order.notes || ''); setFItems((order.items || []).map(i => ({ ...i })));
     }
     setView('order-form');
@@ -382,6 +393,7 @@ const ManufacturingManagement: React.FC = () => {
   const applyFormula = (formulaId: number | '') => {
     setSelectedFormulaId(formulaId);
     if (!formulaId) return;
+    setFFinishedProductId(undefined);
     const formula = formulas.find(f => f.id === formulaId);
     if (!formula) return;
     setFName(formula.finishedProductName || '');
@@ -400,19 +412,33 @@ const ManufacturingManagement: React.FC = () => {
     })));
   };
 
+  const applyFinishedProduct = (productId: number | '') => {
+    if (productId === '') { setFFinishedProductId(undefined); return; }
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    setFFinishedProductId(product.id);
+    setFName(product.name || '');
+    setFType(product.productType || 'New');
+    setFBrandId(product.brandId);
+    setFCategoryId(product.categoryId);
+    setFUnitId(product.unitId);
+    setFPrice(Number(product.sellingPrice ?? 0));
+  };
+
   /* ── save order ── */
   const handleSaveOrder = async () => {
     if (!fName.trim()) { Swal.fire('စစ်ဆေးမှု', 'ထုတ်ကုန်နာမည် ဖြည့်ပါ', 'warning'); return; }
-    if (!fBrandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်း ရွေးပါ', 'warning'); return; }
-    if (!fCategoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစား ရွေးပါ', 'warning'); return; }
-    if (!fUnitId) { Swal.fire('စစ်ဆေးမှု', 'ယူနစ် ရွေးပါ', 'warning'); return; }
+    if (!fFinishedProductId && !fBrandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်း ရွေးပါ', 'warning'); return; }
+    if (!fFinishedProductId && !fCategoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစား ရွေးပါ', 'warning'); return; }
+    if (!fFinishedProductId && !fUnitId) { Swal.fire('စစ်ဆေးမှု', 'ယူနစ် ရွေးပါ', 'warning'); return; }
     if (fItems.length === 0) { Swal.fire('စစ်ဆေးမှု', 'ပစ္စည်းများ ထည့်ပါ', 'warning'); return; }
     setSaving(true);
     try {
       const dto: ManufacturingOrderDTO = {
-        finishedProductName: fName.trim(), finishedProductBrandId: fBrandId,
+        finishedProductId: fFinishedProductId, finishedProductName: fName.trim(), finishedProductBrandId: fBrandId,
         finishedProductCategoryId: fCategoryId, finishedProductUnitId: fUnitId,
-        finishedProductType: fType, finishedProductSellingPrice: fPrice, notes: fNotes,
+        finishedProductType: fType, finishedProductSellingPrice: fPrice, productionQty: Math.max(1, Number(fProductionQty || 1)),
+        laborCost: Number(fLaborCost || 0), overheadCost: Number(fOverheadCost || 0), wasteCost: Number(fWasteCost || 0), notes: fNotes,
         items: fItems.map(i => ({ productId: i.productId, qty: i.qty, unitCost: i.unitCost, selectedSerialIds: i.selectedSerialIds ?? [] })),
       };
       editingOrder?.id ? await manufacturingService.update(editingOrder.id, dto) : await manufacturingService.create(dto);
@@ -446,7 +472,7 @@ const ManufacturingManagement: React.FC = () => {
 
   /* ── complete / cancel / delete order ── */
   const handleComplete = async (order: ManufacturingOrderDTO) => {
-    const r = await Swal.fire({ title: 'ထုတ်လုပ်ရေး ပြီးဆုံးမည်', html: `Component stock ဖြတ်ပြီး <strong>${order.finishedProductName}</strong> ကို မာစတာ ထဲ ထည့်မည်။`, icon: 'question', showCancelButton: true, cancelButtonText: 'မလုပ်တော့', confirmButtonText: 'Finish', confirmButtonColor: '#16a34a' });
+    const r = await Swal.fire({ title: 'ထုတ်လုပ်ရေး ပြီးဆုံးမည်', html: `Component stock ဖြတ်ပြီး <strong>${order.finishedProductName}</strong> ကို <strong>${Number(order.productionQty ?? 1).toLocaleString()}</strong> ခု stock ထဲ ထည့်မည်။<br/>Total cost: <strong>${Number(order.totalProductionCost ?? order.totalComponentCost ?? 0).toLocaleString()} Ks</strong> · Unit cost: <strong>${Number(order.unitProductionCost ?? 0).toLocaleString()} Ks</strong>`, icon: 'question', showCancelButton: true, cancelButtonText: 'မလုပ်တော့', confirmButtonText: 'Finish', confirmButtonColor: '#16a34a' });
     if (!r.isConfirmed || !order.id) return;
     try { await manufacturingService.complete(order.id); await fetchAll(); Swal.fire({ icon: 'success', title: 'ပြီးဆုံးပြီ! ကုန်ပစ္စည်းသစ် မာစတာ ထဲ ထည့်ပြီး', timer: 2500, showConfirmButton: false }); }
     catch (e: any) { Swal.fire('Error', e?.response?.data?.message || e?.message || 'မအောင်မြင်ပါ', 'error'); }
@@ -515,7 +541,16 @@ const ManufacturingManagement: React.FC = () => {
                 unitId={fUnitId} onUnitChange={setFUnitId} price={fPrice} onPriceChange={setFPrice}
                 brands={brands} flatCategories={flatCategories} units={units} totalCost={totalCost}
                 extraFields={
-                  <div className="space-y-1.5 mb-4">
+                  <div className="space-y-3 mb-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Existing Finished Product</label>
+                      <select value={fFinishedProductId ?? ''} onChange={e => applyFinishedProduct(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all">
+                        <option value="">-- Product အသစ်အဖြစ် ထည့်မည် --</option>
+                        {products.filter(p => p.hasSerial === false).map(p => <option key={p.id} value={p.id}>{p.name} · Stock: {Number(p.stockQty ?? p.currentStock ?? 0).toLocaleString()}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Formula ရွေးမည် (ရွေးချင်မှ)</label>
                     <select value={selectedFormulaId} onChange={e => applyFormula(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all">
@@ -523,6 +558,17 @@ const ManufacturingManagement: React.FC = () => {
                       {formulas.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                     {selectedFormulaId && <p className="text-[10px] text-indigo-600 font-bold">✓ Formula အရ data အားလုံး ဖြည့်ပြီး — လိုသလို ပြင်နိုင်သည်</p>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ထုတ်လုပ်အရေအတွက် *</label><input type="number" min="1" value={fProductionQty} onChange={e => setFProductionQty(Math.max(1, Number(e.target.value)))} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all" /></div>
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">တစ်ခုချင်း ကုန်ကျ</label><div className="px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-xl text-sm font-black text-emerald-700 tabular-nums">{unitProductionCost.toLocaleString(undefined, { maximumFractionDigits: 2 })} Ks</div></div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">လုပ်အားခ</label><input type="number" min="0" value={fLaborCost} onChange={e => setFLaborCost(Math.max(0, Number(e.target.value)))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400" /></div>
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">အထွေထွေ</label><input type="number" min="0" value={fOverheadCost} onChange={e => setFOverheadCost(Math.max(0, Number(e.target.value)))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400" /></div>
+                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ဆုံးရှုံး</label><input type="number" min="0" value={fWasteCost} onChange={e => setFWasteCost(Math.max(0, Number(e.target.value)))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-indigo-400" /></div>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between"><span className="text-xs font-black text-slate-600">စုစုပေါင်း ထုတ်လုပ်ကုန်ကျ</span><span className="text-sm font-black text-slate-800 tabular-nums">{totalProductionCost.toLocaleString()} Ks</span></div>
                   </div>
                 }
               />
@@ -707,7 +753,9 @@ const ManufacturingManagement: React.FC = () => {
                   <p className="text-sm font-black text-slate-800 mt-0.5 truncate">{order.finishedProductName}</p>
                   <p className="text-[10px] text-slate-400 font-semibold">
                     {order.finishedProductBrandName} · {order.finishedProductCategoryName} · {order.finishedProductUnitName}
-                    {order.totalComponentCost ? ` · ကုန်ကျ: ${Number(order.totalComponentCost).toLocaleString()} Ks` : ''}
+                    {` · Qty: ${Number(order.productionQty ?? 1).toLocaleString()}`}
+                    {order.totalProductionCost ? ` · Total: ${Number(order.totalProductionCost).toLocaleString()} Ks` : ''}
+                    {order.unitProductionCost ? ` · Unit: ${Number(order.unitProductionCost).toLocaleString()} Ks` : ''}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -752,7 +800,7 @@ const ManufacturingManagement: React.FC = () => {
                   {order.status === ManufacturingStatus.COMPLETED && order.finishedProductId && (
                     <div className="mt-3 flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5">
                       <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                      <p className="text-xs font-black text-emerald-700">မာစတာ ထဲ ထည့်ပြီး (ID: {order.finishedProductId}) · {order.completedAt?.slice(0, 10)}</p>
+                      <p className="text-xs font-black text-emerald-700">မာစတာ ထဲ {Number(order.productionQty ?? 1).toLocaleString()} ခု ထည့်ပြီး (ID: {order.finishedProductId}) · {order.completedAt?.slice(0, 10)}</p>
                     </div>
                   )}
                 </div>

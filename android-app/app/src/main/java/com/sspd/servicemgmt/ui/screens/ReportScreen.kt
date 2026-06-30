@@ -3,6 +3,12 @@
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -23,11 +29,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sspd.servicemgmt.api.ProductDTO
 import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.viewmodel.ReportMode
@@ -40,6 +49,7 @@ import java.util.*
 fun ReportScreen(onBack: () -> Unit) {
     val vm: ReportViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     val monthNames = remember {
         arrayOf("ဇန်နဝါရီ","ဖေဖော်ဝါရီ","မတ်","ဧပြီ","မေ","ဇွန်","ဇူလိုင်","သြဂုတ်","စက်တင်ဘာ","အောက်တိုဘာ","နိုဝင်ဘာ","ဒီဇင်ဘာ")
@@ -71,8 +81,14 @@ fun ReportScreen(onBack: () -> Unit) {
     }
 
     val salesTotal = state.sales.sumOf { it.netAmount ?: 0.0 }
-    val jobsTotal  = state.jobs.sumOf  { it.netAmount ?: 0.0 }
+    val jobsTotal  = state.serviceJobs.sumOf  { it.netAmount ?: 0.0 }
     val grandTotal = salesTotal + jobsTotal
+    val purchaseTotal = state.summary?.netPurchaseCost ?: state.purchases.sumOf { it.netAmount ?: it.totalAmount ?: 0.0 }
+    val expenseTotal = state.summary?.totalExpenses ?: state.expenses.sumOf { it.amount.toDouble() }
+    val otherIncome = state.summary?.otherIncome ?: state.incomes.sumOf { it.amount.toDouble() }
+    val totalIncome = state.summary?.totalIncome ?: (grandTotal + otherIncome)
+    val netProfit = state.summary?.netProfit ?: (totalIncome - purchaseTotal - expenseTotal)
+    val lowStockCount = state.products.count { it.isLowStock() }
 
     Scaffold(
         topBar = {
@@ -160,6 +176,15 @@ fun ReportScreen(onBack: () -> Unit) {
                 }
             }
 
+            item {
+                val shareText = buildSnapshotShareText(state, state.fromDate ?: "")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ShareButton(Modifier.weight(1f), "Copy", Icons.Outlined.ContentCopy, TextMain, enabled = !state.loading) { copySnapshotText(context, shareText) }
+                    ShareButton(Modifier.weight(1f), "Share", Icons.Outlined.Share, Primary, enabled = !state.loading) { shareSnapshot(context, shareText) }
+                    ShareButton(Modifier.weight(1f), "Telegram", Icons.Outlined.Send, Color(0xFF229ED9), enabled = !state.loading) { shareSnapshotToApp(context, shareText, listOf("org.telegram.messenger", "org.telegram.messenger.web"), "https://t.me/share/url?url=&text=${Uri.encode(shareText)}") }
+                    ShareButton(Modifier.weight(1f), "Viber", Icons.Outlined.Forum, Color(0xFF7360F2), enabled = !state.loading) { shareSnapshotToApp(context, shareText, listOf("com.viber.voip"), "viber://forward?text=${Uri.encode(shareText)}") }
+                }
+            }
             // ── Loading ───────────────────────────────────────────────────────
             if (state.loading) {
                 item {
@@ -173,10 +198,24 @@ fun ReportScreen(onBack: () -> Unit) {
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         IncomeCard(Modifier.weight(1f), "အရောင်းရငွေ",     Icons.Outlined.Receipt, state.sales.size, salesTotal, Primary, PrimaryLight)
-                        IncomeCard(Modifier.weight(1f), "ဝန်ဆောင်မှုရငွေ", Icons.Outlined.Build,   state.jobs.size,  jobsTotal,  Violet,  VioletBg)
+                        IncomeCard(Modifier.weight(1f), "ဝန်ဆောင်မှုရငွေ", Icons.Outlined.Build,   state.serviceJobs.size,  jobsTotal,  Violet,  VioletBg)
                     }
                 }
 
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        IncomeCard(Modifier.weight(1f), "ဝယ်ယူမှု", Icons.Outlined.LocalShipping, state.purchases.size, purchaseTotal, Danger, DangerBg)
+                        IncomeCard(Modifier.weight(1f), "Net Profit", Icons.Outlined.TrendingUp, state.sales.size + state.serviceJobs.size, netProfit, if (netProfit >= 0) Success else Warning, if (netProfit >= 0) SuccessBg else WarningBg)
+                    }
+                }
+
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MiniStatCard(Modifier.weight(1f), "Bookings", state.bookings.size.toString(), Icons.Outlined.EventNote, Color(0xFF0284C7))
+                        MiniStatCard(Modifier.weight(1f), "Expenses", "${fmtD(expenseTotal)} Ks", Icons.Outlined.Payments, Danger)
+                        MiniStatCard(Modifier.weight(1f), "Low Stock", lowStockCount.toString(), Icons.Outlined.WarningAmber, Warning)
+                    }
+                }
                 // ── Donut chart ───────────────────────────────────────────────
                 item {
                     DonutChartCard(salesTotal = salesTotal, jobsTotal = jobsTotal, grandTotal = grandTotal)
@@ -197,13 +236,30 @@ fun ReportScreen(onBack: () -> Unit) {
                         ) {
                             Column {
                                 Text("စုစုပေါင်း ဝင်ငွေ", fontSize = 12.sp, color = Color.White.copy(0.75f))
-                                Text("${state.sales.size + state.jobs.size} ကြိမ်", fontSize = 11.sp, color = Color.White.copy(0.6f))
+                                Text("${state.sales.size + state.serviceJobs.size} ကြိမ်", fontSize = 11.sp, color = Color.White.copy(0.6f))
                             }
-                            Text("${fmtD(grandTotal)} Ks", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                            Text("${fmtD(totalIncome)} Ks", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                         }
                     }
                 }
 
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = CardBg),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Snapshot Operations", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.7.sp)
+                            DetailLine(Icons.Outlined.ShoppingCart, "Sales", "${state.sales.size} vouchers", Primary)
+                            DetailLine(Icons.Outlined.LocalShipping, "Purchases", "${state.purchases.size} vouchers", Violet)
+                            DetailLine(Icons.Outlined.Build, "Service Jobs", "${state.serviceJobs.size} jobs", Success)
+                            DetailLine(Icons.Outlined.EventNote, "Bookings", "${state.bookings.size} received", Color(0xFF0284C7))
+                            DetailLine(Icons.Outlined.Inventory2, "Products", "${state.products.size} items · $lowStockCount low stock", Warning)
+                        }
+                    }
+                }
                 // ── Rankings header ───────────────────────────────────────────
                 item {
                     Row(
@@ -434,3 +490,117 @@ private fun dateToMs(dateStr: String): Long = try {
     sdf.parse(dateStr)?.time ?: 0L
 } catch (_: Exception) { 0L }
 
+
+@Composable
+private fun DetailLine(icon: ImageVector, label: String, value: String, color: Color) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(color.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(label, modifier = Modifier.weight(1f), fontSize = 12.sp, color = TextMain, fontWeight = FontWeight.Bold)
+        Text(value, fontSize = 12.sp, color = color, fontWeight = FontWeight.ExtraBold)
+    }
+}
+@Composable
+private fun MiniStatCard(modifier: Modifier, label: String, value: String, icon: ImageVector, color: Color) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+            Text(label, fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(value, fontSize = 13.sp, color = color, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ShareButton(modifier: Modifier, label: String, icon: ImageVector, color: Color, enabled: Boolean, onClick: () -> Unit) {
+    OutlinedButton(
+        modifier = modifier.height(40.dp),
+        enabled = enabled,
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 4.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.25f)),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = color)
+    ) {
+        Icon(icon, null, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(3.dp))
+        Text(label, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+    }
+}
+
+private fun buildSnapshotShareText(state: ReportViewModel.ReportUiState, fallbackPeriod: String): String {
+    val salesTotal = state.sales.sumOf { it.netAmount ?: 0.0 }
+    val jobsTotal = state.serviceJobs.sumOf { it.netAmount ?: it.finalCost ?: 0.0 }
+    val otherIncome = state.summary?.otherIncome ?: state.incomes.sumOf { it.amount.toDouble() }
+    val totalIncome = state.summary?.totalIncome ?: (salesTotal + jobsTotal + otherIncome)
+    val purchaseTotal = state.summary?.netPurchaseCost ?: state.purchases.sumOf { it.netAmount ?: it.totalAmount ?: 0.0 }
+    val expenseTotal = state.summary?.totalExpenses ?: state.expenses.sumOf { it.amount.toDouble() }
+    val netProfit = state.summary?.netProfit ?: (totalIncome - purchaseTotal - expenseTotal)
+    val period = when (state.mode) {
+        ReportMode.TODAY -> "Today (${state.fromDate ?: fallbackPeriod})"
+        ReportMode.MONTHLY -> "${state.fromDate ?: ""} ~ ${state.toDate ?: ""}"
+        ReportMode.YEARLY -> "${state.selectedYear}"
+        ReportMode.CUSTOM -> "${state.fromDate ?: ""} ~ ${state.toDate ?: ""}"
+    }
+    return buildString {
+        appendLine("Daily Snapshot - $period")
+        appendLine("----------------------")
+        appendLine("Total Income   : ${fmtD(totalIncome)} Ks")
+        appendLine("Net Purchase   : ${fmtD(purchaseTotal)} Ks")
+        appendLine("Expenses       : ${fmtD(expenseTotal)} Ks")
+        appendLine("Net Profit     : ${fmtD(netProfit)} Ks")
+        appendLine("----------------------")
+        appendLine("Sales          : ${state.sales.size} vouchers")
+        appendLine("Purchases      : ${state.purchases.size} vouchers")
+        appendLine("Service Jobs   : ${state.serviceJobs.size}")
+        appendLine("Bookings       : ${state.bookings.size}")
+        appendLine("Products       : ${state.products.size} items")
+        val lowStock = state.products.count { it.isLowStock() }
+        if (lowStock > 0) appendLine("Low Stock      : $lowStock items")
+    }
+}
+
+private fun ProductDTO.isLowStock(): Boolean {
+    val min = reorderLevel ?: 0
+    return min > 0 && stockQty <= min
+}
+
+private fun copySnapshotText(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Daily Snapshot", text))
+    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+}
+
+private fun shareSnapshot(context: Context, text: String) {
+    copySnapshotText(context, text)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Daily Snapshot")
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share Snapshot"))
+}
+
+private fun shareSnapshotToApp(context: Context, text: String, packages: List<String>, fallbackUri: String) {
+    copySnapshotText(context, text)
+    val pm = context.packageManager
+    for (pkg in packages) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            setPackage(pkg)
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        if (intent.resolveActivity(pm) != null) {
+            context.startActivity(intent)
+            return
+        }
+    }
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUri))) }
+        .onFailure { shareSnapshot(context, text) }
+}

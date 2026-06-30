@@ -1,4 +1,4 @@
-package com.sspd.servicemgmt.api
+﻿package com.sspd.servicemgmt.api
 
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -117,7 +117,9 @@ interface ApiService {
         @Header("Authorization") auth: String,
         @Query("page") page: Int = 0,
         @Query("size") size: Int = 50,
-        @Query("search") search: String = ""
+        @Query("search") search: String = "",
+        @Query("dateFrom") dateFrom: String = "",
+        @Query("dateTo") dateTo: String = ""
     ): Response<ApiResponse<PagedResponse<SaleDTO>>>
 
     @GET("payment-transactions/reference/{refId}")
@@ -213,7 +215,9 @@ interface ApiService {
         @Header("Authorization") auth: String,
         @Query("page") page: Int = 0,
         @Query("size") size: Int = 50,
-        @Query("search") search: String = ""
+        @Query("search") search: String = "",
+        @Query("dateFrom") dateFrom: String = "",
+        @Query("dateTo") dateTo: String = ""
     ): Response<ApiResponse<PagedResponse<PurchaseDTO>>>
 
     @GET("purchases/{id}")

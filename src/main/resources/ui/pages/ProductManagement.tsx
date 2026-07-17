@@ -111,6 +111,60 @@ const InventoryMetricCard: React.FC<{
   );
 };
 
+type FilterSegmentOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+const FilterSegment = <T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: FilterSegmentOption<T>[];
+  onChange: (value: T) => void;
+}) => (
+  <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-2">
+    <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p>
+    <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`min-h-8 rounded-md px-2.5 text-xs font-bold transition-colors ${
+            value === option.value
+              ? 'border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm'
+              : 'border border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-indigo-700'
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+const FilterSelect: React.FC<{
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}> = ({ label, value, onChange, children }) => (
+  <label className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white p-2 sm:min-w-[210px]">
+    <span className="mb-1.5 block px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</span>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-colors focus:border-indigo-400 focus:bg-white"
+    >
+      {children}
+    </select>
+  </label>
+);
 const OpeningStockBadge: React.FC<{ product: ProductDTO }> = ({ product }) => {
   const qtyStock = Number(product.stockQty ?? product.currentStock ?? 0);
   const cost = Number(product.costPrice ?? 0);
@@ -1607,102 +1661,85 @@ const ProductManagement: React.FC = () => {
         </div>
 
         {showFilterTools && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
-            {/* Row 1: condition + status + tracking */}
-            <div className="flex flex-wrap gap-2">
-              <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">အခြေအနေ</span>
-                {[
-                  { value: 'All',        label: 'အားလုံး' },
-                  { value: 'New',        label: 'အသစ်' },
-                  { value: 'Second',     label: 'အသုံး' },
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 shadow-inner space-y-3">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)_minmax(0,0.8fr)]">
+              <FilterSegment
+                label="အခြေအနေ"
+                value={filterCondition}
+                onChange={(value) => setFilterCondition(value)}
+                options={[
+                  { value: 'All', label: 'အားလုံး' },
+                  { value: 'New', label: 'အသစ်' },
+                  { value: 'Second', label: 'အသုံး' },
                   { value: 'Second_New', label: 'အသစ်နှင့်တူ' },
-                ].map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() => setFilterCondition(value as any)}
-                    className={`px-2.5 py-1.5 rounded-md text-xs font-bold uppercase whitespace-nowrap ${
-                      filterCondition === value ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-700'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+                ]}
+              />
 
-              <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">အဆင့်</span>
-                {[
-                  { value: 'All',          label: 'All' },
-                  { value: 'In Stock',     label: 'ရှိ' },
+              <FilterSegment
+                label="လက်ကျန်"
+                value={filterStatus}
+                onChange={(value) => setFilterStatus(value)}
+                options={[
+                  { value: 'All', label: 'အားလုံး' },
+                  { value: 'In Stock', label: 'ရှိ' },
                   { value: 'Out of Stock', label: 'ကုန်' },
-                ].map(({ value: status, label }) => (
-                  <button
-                    key={status}
-                    onClick={() => setFilterStatus(status as any)}
-                    className={`px-2.5 py-1.5 rounded-md text-xs font-bold uppercase whitespace-nowrap ${
-                      filterStatus === status ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-700'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+                ]}
+              />
 
-              <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">Track</span>
-                {[
-                  { value: 'All',    label: 'All' },
+              <FilterSegment
+                label="မှတ်တမ်း"
+                value={filterTracking}
+                onChange={(value) => setFilterTracking(value)}
+                options={[
+                  { value: 'All', label: 'အားလုံး' },
                   { value: 'Serial', label: 'Serial' },
-                  { value: 'Qty',    label: 'Qty' },
-                ].map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() => setFilterTracking(value as any)}
-                    className={`px-2.5 py-1.5 rounded-md text-xs font-bold uppercase ${
-                      filterTracking === value ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-700'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+                  { value: 'Qty', label: 'Qty' },
+                ]}
+              />
             </div>
 
-            {/* Row 2: selects + action buttons */}
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={filterBrandId}
-                onChange={(e) => setFilterBrandId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-                className="h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-500 max-w-[160px]"
-              >
-                <option value="All">Brand: All</option>
-                {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
-              </select>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+                <FilterSelect
+                  label="ဘရန်း"
+                  value={filterBrandId}
+                  onChange={(value) => setFilterBrandId(value === 'All' ? 'All' : Number(value))}
+                >
+                  <option value="All">အားလုံး</option>
+                  {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+                </FilterSelect>
 
-              <select
-                value={filterCategoryId}
-                onChange={(e) => setFilterCategoryId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-                className="h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-500 max-w-[180px]"
-              >
-                <option value="All">Category: All</option>
-                {flatCategoryOptions.map(category => <option key={category.id} value={category.id}>{category.displayName}</option>)}
-              </select>
+                <FilterSelect
+                  label="အမျိုးအစား"
+                  value={filterCategoryId}
+                  onChange={(value) => setFilterCategoryId(value === 'All' ? 'All' : Number(value))}
+                >
+                  <option value="All">အားလုံး</option>
+                  {flatCategoryOptions.map(category => <option key={category.id} value={category.id}>{category.displayName}</option>)}
+                </FilterSelect>
+              </div>
 
-              <button
-                onClick={() => setFilterLowStockOnly(v => !v)}
-                className={`h-9 px-3 rounded-lg border inline-flex items-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap ${
-                  filterLowStockOnly
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
-                }`}
-              >
-                <AlertTriangle size={13} /> Low stock
-              </button>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end lg:pb-0.5">
+                <button
+                  type="button"
+                  onClick={() => setFilterLowStockOnly(v => !v)}
+                  className={`h-10 rounded-lg border px-3 inline-flex items-center justify-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap transition-colors ${
+                    filterLowStockOnly
+                      ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                      : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                  }`}
+                >
+                  <AlertTriangle size={13} /> လက်ကျန်နည်း
+                </button>
 
-              <button onClick={resetProductFilters} className="h-9 px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 bg-white inline-flex items-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap">
-                <RotateCcw size={13} /> Reset
-              </button>
+                <button
+                  type="button"
+                  onClick={resetProductFilters}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center justify-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap transition-colors"
+                >
+                  <RotateCcw size={13} /> Reset
+                </button>
+              </div>
             </div>
           </div>
         )}

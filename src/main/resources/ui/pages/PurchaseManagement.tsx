@@ -10,7 +10,7 @@ import { supplierService } from '../services/supplierapiservice';
 import { staffService } from '../services/staffapiservice';
 import { productService } from '../services/productapiservice';
 import { AppRoute, PurchaseDTO, PurchaseDetailDTO, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO } from '../types';
-import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera, Share2 } from 'lucide-react';
+import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp } from 'lucide-react';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
 import { getCachedCompanySettings } from '../utils/companySettings';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
@@ -115,6 +115,7 @@ const PurchaseManagement: React.FC = () => {
   const [dateFrom, setDateFrom] = useState(defaultDateRange.from);
   const [dateTo, setDateTo] = useState(defaultDateRange.to);
   const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'WEEK' | 'MONTH' | 'ALL' | 'CUSTOM'>('TODAY');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [serverStats, setServerStats] = useState<PurchaseStats>({ count: 0, totalAmount: 0, paidAmount: 0, dueAmount: 0 });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [previewPurchase, setPreviewPurchase] = useState<PurchaseDTO | null>(null);
@@ -757,7 +758,7 @@ const PurchaseManagement: React.FC = () => {
         <>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-bold text-slate-800 text-left">ဝယ်ယူမှု စီမံခန့်ခွဲမှု</h2>
+              <h2 className="text-xl font-bold text-slate-800 text-left">ပစ္စည်းလက်ခံ</h2>`r`n              <p className="mt-1 text-sm text-slate-500">ယနေ့ လက်ခံထားသောပစ္စည်းများ၊ ပေးသွင်းသူနှင့် ငွေပေးချေမှုအခြေအနေကို စနစ်တကျကြည့်ရန်။</p>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
               <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
@@ -766,7 +767,7 @@ const PurchaseManagement: React.FC = () => {
               </button>
               <button onClick={() => setShowNewVoucherForm(true)} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">
                 <Plus size={16} />
-                ဝယ်ယူမှုအသစ်
+                ပစ္စည်းလက်ခံအသစ်
               </button>
             </div>
           </div>
@@ -813,123 +814,174 @@ const PurchaseManagement: React.FC = () => {
           </div>
 
           {/* Filters */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-              <div className="relative w-full lg:w-72">
-                <Hash size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={voucherLookup}
-                  onChange={(e) => setVoucherLookup(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleVoucherLookup(); } }}
-                  placeholder="ဘောင်ချာနံပါတ် တိုက်ရိုက်ရှာပါ..."
-                  className="w-full pl-9 pr-20 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleVoucherLookup()}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700"
-                >
-                  ဖွင့်မည်
-                </button>
-              </div>
-              <div className="relative flex-1">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ဘောင်ချာနံပါတ်၊ ပေးသွင်းသူ၊ ဝယ်ယူသူ ရှာပါ..."
-                  className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-                {purchasesLoading && searchTerm && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <svg className="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                  </span>
-                )}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_0.85fr] gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Quick Search</label>
+                <div className="relative mt-1.5">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="ဘောင်ချာနံပါတ်၊ ပေးသွင်းသူ၊ လက်ခံသူ ရှာပါ..."
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                  />
+                  {purchasesLoading && searchTerm && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <svg className="animate-spin h-4 w-4 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto_1fr] gap-2 items-center">
-                  <Calendar size={16} className="text-slate-400" />
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => { setDateFrom(e.target.value); setDateShortcut('CUSTOM'); }}
-                    className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
-                  <span className="hidden sm:block text-slate-300 text-xs">-</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => { setDateTo(e.target.value); setDateShortcut('CUSTOM'); }}
-                    className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-100 border border-slate-200">
-                  {[
-                    { key: 'TODAY', label: 'Today' },
-                    { key: 'WEEK', label: 'This Week' },
-                    { key: 'MONTH', label: 'This Month' },
-                    { key: 'ALL', label: 'All' },
-                  ].map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => applyDateShortcut(item.key as 'TODAY' | 'WEEK' | 'MONTH' | 'ALL')}
-                      className={`px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-colors ${
-                        dateShortcut === item.key
-                          ? 'bg-white text-indigo-700 shadow-sm'
-                          : 'text-slate-500 hover:text-indigo-700'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Filter size={16} className="text-slate-400" />
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as any)}
-                    className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
+                <label className="text-[11px] font-bold text-indigo-600 uppercase tracking-wide">Voucher Direct Search</label>
+                <div className="mt-1.5 flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" />
+                    <input
+                      type="text"
+                      value={voucherLookup}
+                      onChange={(e) => setVoucherLookup(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleVoucherLookup(); } }}
+                      placeholder="ဥပမာ PUR-238"
+                      className="h-10 w-full rounded-lg border border-indigo-200 bg-white pl-9 pr-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleVoucherLookup()}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white hover:bg-indigo-700"
                   >
-                    <option value="All">အခြေအနေအားလုံး</option>
-                    <option value="Paid">ငွေချေပြီး</option>
-                    <option value="Partial">တစ်စိတ်တစ်ပိုင်း</option>
-                    <option value="Due">ပေးရန်ကျန်</option>
-                  </select>
+                    <Eye size={13} /> ဖွင့်
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus('Due')}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-bold ${
-                    filterStatus === 'Due'
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100'
-                  }`}
-                >
-                  ပေးရန်ကျန်
-                </button>
-
-                <button
-                  onClick={() => { setSearchTerm(''); setVoucherLookup(''); setFilterStatus('All'); const r = getTodayRange(); setDateFrom(r.from); setDateTo(r.to); setDateShortcut('TODAY'); }}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100"
-                >
-                  ရှင်းမည်
-                </button>
               </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <Filter size={14} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-700">စစ်ထုတ်ရန်</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-400">Today default ဖြင့် ပစ္စည်းလက်ခံမှတ်တမ်းများ</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFilterPanel(v => !v)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                {showFilterPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showFilterPanel ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {showFilterPanel && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(190px,0.6fr)_auto] xl:items-end">
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">လက်ခံရက်စွဲ</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <label className="min-w-0">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500">From</span>
+                        <input
+                          type="date"
+                          value={dateFrom}
+                          onChange={(e) => { setDateFrom(e.target.value); setDateShortcut('CUSTOM'); }}
+                          className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                        />
+                      </label>
+                      <label className="min-w-0">
+                        <span className="mb-1 block text-[10px] font-semibold text-slate-500">To</span>
+                        <input
+                          type="date"
+                          value={dateTo}
+                          onChange={(e) => { setDateTo(e.target.value); setDateShortcut('CUSTOM'); }}
+                          className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">ကာလရွေးရန်</p>
+                    <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+                      {[
+                        { key: 'TODAY', label: 'Today' },
+                        { key: 'WEEK', label: 'This Week' },
+                        { key: 'MONTH', label: 'This Month' },
+                        { key: 'ALL', label: 'All' },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => applyDateShortcut(item.key as 'TODAY' | 'WEEK' | 'MONTH' | 'ALL')}
+                          className={`min-h-9 rounded-md border px-2 text-[11px] font-bold transition-colors ${dateShortcut === item.key ? 'border-slate-800 bg-slate-800 text-white shadow-sm' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="rounded-lg border border-slate-200 bg-white p-2">
+                    <span className="mb-1.5 block px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">ငွေပေးချေမှု</span>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value as any)}
+                      className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                    >
+                      <option value="All">အခြေအနေအားလုံး</option>
+                      <option value="Paid">ငွေချေပြီး</option>
+                      <option value="Partial">တစ်စိတ်တစ်ပိုင်း</option>
+                      <option value="Due">ပေးရန်ကျန်</option>
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => { setSearchTerm(''); setVoucherLookup(''); setFilterStatus('All'); const r = getTodayRange(); setDateFrom(r.from); setDateTo(r.to); setDateShortcut('TODAY'); }}
+                    className="h-10 rounded-lg border border-rose-200 bg-white px-3 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 lg:flex-row lg:items-center">
+                  <span className="px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">အမြန်ရွေးရန်</span>
+                  <div className="flex flex-1 flex-wrap gap-1.5">
+                    {([
+                      ['All', 'အားလုံး'],
+                      ['Paid', 'ငွေချေပြီး'],
+                      ['Partial', 'တစ်စိတ်တစ်ပိုင်း'],
+                      ['Due', 'ပေးရန်ကျန်'],
+                    ] as ['All' | 'Paid' | 'Partial' | 'Due', string][]).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setFilterStatus(key)}
+                        className={`min-h-8 rounded-md border px-3 text-[11px] font-bold transition-colors ${filterStatus === key ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-indigo-700'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="shrink-0 rounded-md bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400">
+                    {purchaseTotalElements === 0 ? 0 : purchasePage * purchasePageSize + 1}–{Math.min((purchasePage + 1) * purchasePageSize, purchaseTotalElements)} / {purchaseTotalElements.toLocaleString()} ခု
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <List size={18} className="text-indigo-500 shrink-0" />
-                <span className="font-semibold text-slate-800">ဝယ်ယူမှု ဘောင်ချာစာရင်း</span>
+                <span className="font-semibold text-slate-800">ပစ္စည်းလက်ခံ ဘောင်ချာစာရင်း</span>
                 {!purchasesLoading && purchaseTotalElements > 0 && (
                   <span className="text-sm text-slate-500">
                     {purchasePage * purchasePageSize + 1} မှ {Math.min((purchasePage + 1) * purchasePageSize, purchaseTotalElements)} / {purchaseTotalElements.toLocaleString()} ခု ပြနေသည် — ဤစာမျက်နှာတွင် {paidCount} ခု ငွေချေပြီး
@@ -940,22 +992,33 @@ const PurchaseManagement: React.FC = () => {
                 နောက်ဆုံးဖတ်ချိန် {new Date().toLocaleDateString()}
               </div>
             </div>
-            <div className="overflow-auto max-h-[45vh] custom-scrollbar">
+            <div className="overflow-auto max-h-[58vh] custom-scrollbar">
               {purchasesLoading ? (
                 <div className="p-8 text-center text-slate-400">ဖတ်နေသည်...</div>
               ) : (
-                <table className="w-full min-w-[980px] text-left border-collapse">
-                  <thead className="sticky top-0 bg-slate-50 z-10 border-b border-slate-200">
-                    <tr className="text-slate-600 text-xs font-semibold uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left w-12">#</th>
-                      <th className="px-4 py-3 text-left">ဘောင်ချာ</th>
-                      <th className="px-4 py-3 text-left">ပေးသွင်းသူ</th>
-                      <th className="px-4 py-3 text-left">ဝယ်ယူသူ</th>
-                      <th className="px-4 py-3 text-left">ရက်စွဲ</th>
-                      <th className="px-4 py-3 text-right">စုစုပေါင်း</th>
-                      <th className="px-4 py-3 text-right">ပေးရန်ကျန်</th>
-                      <th className="px-4 py-3 text-center">အခြေအနေ</th>
-                      <th className="px-4 py-3 text-right w-40">လုပ်ဆောင်ချက်</th>
+                <table className="w-full min-w-[1180px] table-fixed border-collapse text-sm">
+                  <colgroup>
+                    <col className="w-[54px]" />
+                    <col className="w-[132px]" />
+                    <col className="w-[190px]" />
+                    <col className="w-[160px]" />
+                    <col className="w-[132px]" />
+                    <col className="w-[132px]" />
+                    <col className="w-[124px]" />
+                    <col className="w-[126px]" />
+                    <col className="w-[230px]" />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                    <tr className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      <th className="px-3 py-3 text-left">#</th>
+                      <th className="px-3 py-3 text-left">ဘောင်ချာ</th>
+                      <th className="px-3 py-3 text-left">ပေးသွင်းသူ</th>
+                      <th className="px-3 py-3 text-left">ဝယ်ယူသူ</th>
+                      <th className="px-3 py-3 text-left">ရက်စွဲ</th>
+                      <th className="px-3 py-3 text-right">စုစုပေါင်း</th>
+                      <th className="px-3 py-3 text-right">ပေးရန်ကျန်</th>
+                      <th className="px-3 py-3 text-center">အခြေအနေ</th>
+                      <th className="px-3 py-3 text-right">လုပ်ဆောင်ချက်</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -965,27 +1028,27 @@ const PurchaseManagement: React.FC = () => {
                         const statusLabel = getStatusLabel(p);
                         const canPay = statusKey !== 'paid' && p.dueAmount > 0;
                         return (
-                          <tr key={p.id!} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="px-4 py-3 text-slate-400 text-sm">{purchasePage * purchasePageSize + index + 1}</td>
-                            <td className="px-4 py-3 font-mono font-medium text-slate-800">{p.purchaseCode || `#${p.id}`}</td>
-                            <td className="px-4 py-3 text-slate-700">{p.supplierName || '-'}</td>
-                            <td className="px-4 py-3 text-slate-700">{p.staffName || '-'}</td>
-                            <td className="px-4 py-3 text-slate-600 text-sm">{p.purchaseDate ? new Date(p.purchaseDate).toLocaleDateString() : '-'}</td>
-                            <td className="px-4 py-3 text-right font-medium text-slate-800">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(p.totalAmount)}</td>
-                            <td className={`px-4 py-3 text-right font-semibold ${(p.dueAmount || 0) > 0 ? 'text-rose-700' : 'text-slate-400'}`}>
+                          <tr key={p.id!} className="h-[58px] hover:bg-slate-50/80 transition-colors">
+                            <td className="px-3 py-3 text-xs font-semibold tabular-nums text-slate-400">{purchasePage * purchasePageSize + index + 1}</td>
+                            <td className="px-3 py-3 font-mono text-xs font-bold text-slate-800"><span className="block truncate">{p.purchaseCode || `#${p.id}`}</span></td>
+                            <td className="px-3 py-3 font-semibold text-slate-700"><span className="block truncate">{p.supplierName || '-'}</span></td>
+                            <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{p.staffName || '-'}</span></td>
+                            <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{p.purchaseDate ? new Date(p.purchaseDate).toLocaleDateString() : '-'}</span></td>
+                            <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-800">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(p.totalAmount)}</td>
+                            <td className={`px-3 py-3 text-right font-bold tabular-nums ${(p.dueAmount || 0) > 0 ? 'text-rose-700' : 'text-slate-300'}`}>
                               {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(p.dueAmount || 0)}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${statusStyles[statusKey] || 'bg-slate-100 text-slate-600'}`}>
+                            <td className="px-3 py-3 text-center">
+                              <span className={`inline-flex min-w-[92px] justify-center rounded-md px-2.5 py-1 text-[10px] font-bold ${statusStyles[statusKey] || 'bg-slate-100 text-slate-600'}`}>
                                 {statusLabel}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="inline-flex items-center gap-1 justify-end flex-wrap">
+                            <td className="px-3 py-3 text-right">
+                              <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
                                 {canPay && (
                                   <button
                                     onClick={() => openPaymentModal(p)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 text-emerald-600 hover:bg-emerald-50 rounded text-sm font-medium"
+                                    className="inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 px-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
                                     title="ငွေချေမည်"
                                   >
                                     <CreditCard size={14} /> ငွေချေ
@@ -993,19 +1056,19 @@ const PurchaseManagement: React.FC = () => {
                                 )}
                                 <button
                                   onClick={() => openVoucherPreview(p.id!)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-violet-600 hover:bg-violet-50 rounded text-sm font-medium"
+                                  className="inline-flex h-8 items-center gap-1 rounded-md border border-violet-200 px-2.5 text-xs font-bold text-violet-700 hover:bg-violet-50"
                                   title="Voucher Preview"
                                 >
                                   <Printer size={14} />
                                 </button>
                                 <button
                                   onClick={() => openSendTo(p.id!)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-sky-600 hover:bg-sky-50 rounded text-sm font-medium"
+                                  className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-200 px-2.5 text-xs font-bold text-sky-700 hover:bg-sky-50"
                                   title="Send To"
                                 >
                                   <Share2 size={14} /> ပို့မည်
                                 </button>
-                                <button onClick={() => openView(p.id!)} className="inline-flex items-center gap-1 px-2 py-1 text-indigo-600 hover:bg-indigo-50 rounded text-sm font-medium">
+                                <button onClick={() => openView(p.id!)} className="inline-flex h-8 items-center gap-1 rounded-md border border-indigo-200 px-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50">
                                   <Eye size={14} /> ကြည့်မည်
                                 </button>
                               </div>
@@ -1334,7 +1397,7 @@ const PurchaseManagement: React.FC = () => {
                         <td className="px-4 py-3 text-right font-bold text-slate-700">
                           {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(detail.subtotal)}
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 py-3 text-center">
                           <button 
                             onClick={() => handleRemoveRow(dIndex)}
                             className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"

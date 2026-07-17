@@ -7,12 +7,17 @@ import {
   Ban,
   Camera,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
   Eye,
+  Filter,
   Loader2,
   Printer,
   Plus,
+  PackageCheck,
   RefreshCw,
+  ReceiptText,
   Save,
   Search,
   ShieldAlert,
@@ -189,11 +194,12 @@ const SaleManagement: React.FC = () => {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filter, setFilter] = useState<ListFilter>('ALL');
   const todayStr = dateInput(new Date());
-  const defaultDateRange = getThisMonthRange();
+  const defaultDateRange = getTodayRange();
   const [dateFrom, setDateFrom] = useState(defaultDateRange.from);
   const [dateTo, setDateTo] = useState(defaultDateRange.to);
-  const [dateShortcut, setDateShortcut] = useState<DateShortcut>('MONTH');
+  const [dateShortcut, setDateShortcut] = useState<DateShortcut>('TODAY');
   const [staffFilter, setStaffFilter] = useState(0);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
 
   const [customerId, setCustomerId] = useState(0);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -1342,7 +1348,7 @@ const SaleManagement: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800">ရောင်းချမှု စီမံခန့်ခွဲမှု</h2>
-          <p className="text-sm text-slate-500 mt-0.5">ယခုလ ရောင်းချမှုများကိုကြည့်ပြီး ဘောင်ချာ၊ ဖောက်သည်၊ ပေးရန်ကျန်များကို လျင်မြန်စွာစစ်ဆေးပါ။</p>
+          <p className="text-sm text-slate-500 mt-0.5">ယနေ့ ရောင်းချမှုများကိုကြည့်ပြီး ဘောင်ချာ၊ ဖောက်သည်၊ ပေးရန်ကျန်များကို လျင်မြန်စွာစစ်ဆေးပါ။</p>
         </div>
         <div className="flex w-full sm:w-auto gap-2">
           <button onClick={() => loadSales(salePage, salePageSize, debouncedSearch, dateFrom, dateTo)} className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50">
@@ -1684,96 +1690,149 @@ const SaleManagement: React.FC = () => {
                 </div>
               </div>
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <Filter size={14} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-700">စစ်ထုတ်ရန်</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-400">ရက်စွဲ၊ ရောင်းသူ၊ အခြေအနေ filter များ</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFilterPanel(v => !v)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                {showFilterPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showFilterPanel ? 'Hide' : 'Show'}
+              </button>
+            </div>
             {/* Filter row */}
-            <div className="flex flex-wrap gap-2 items-end">
-              {/* Search */}
-              <div className="hidden">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search all sales..."
-                  className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
-                {loading && search && (
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                    <svg className="animate-spin h-3.5 w-3.5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                  </span>
-                )}
-              </div>
-              {/* Date From */}
-              <div className="flex flex-col gap-0.5">
-                <label className="text-[10px] font-semibold text-slate-500">From</label>
-                <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateShortcut('CUSTOM'); }}
-                  className="border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:border-indigo-400" />
-              </div>
-              {/* Date To */}
-              <div className="flex flex-col gap-0.5">
-                <label className="text-[10px] font-semibold text-slate-500">To</label>
-                <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateShortcut('CUSTOM'); }}
-                  className="border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:border-indigo-400" />
-              </div>
-              {/* Staff */}
-              <div className="flex flex-col gap-0.5">
-                <label className="text-[10px] font-semibold text-slate-500">Staff</label>
-                <select value={staffFilter} onChange={e => setStaffFilter(Number(e.target.value))}
-                  className="border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:border-indigo-400">
-                  <option value={0}>ရောင်းသူအားလုံး</option>
-                  {staffs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { key: 'TODAY', label: 'Today' },
-                  { key: 'WEEK', label: 'This Week' },
-                  { key: 'MONTH', label: 'This Month' },
-                  { key: 'ALL', label: 'All' }
-                ].map((item) => (
-                  <button key={item.key} type="button"
-                    onClick={() => applyDateShortcut(item.key as Exclude<DateShortcut, 'CUSTOM'>)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border ${dateShortcut === item.key ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              {/* Clear */}
-              {(dateShortcut !== 'MONTH' || staffFilter > 0 || search || voucherLookup || filter !== 'ALL') && (
-                <button onClick={() => { const range = getThisMonthRange(); setDateFrom(range.from); setDateTo(range.to); setDateShortcut('MONTH'); setStaffFilter(0); setSearch(''); setVoucherLookup(''); setFilter('ALL'); }}
-                  className="text-xs text-rose-500 hover:text-rose-700 font-semibold px-2 py-1.5 border border-rose-200 rounded bg-rose-50">
+            {showFilterPanel && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(190px,0.55fr)_minmax(0,1.1fr)_auto] xl:items-end">
+                <div className="rounded-lg border border-slate-200 bg-white p-2">
+                  <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">ရက်စွဲ</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-[10px] font-semibold text-slate-500">From</span>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={e => { setDateFrom(e.target.value); setDateShortcut('CUSTOM'); }}
+                        className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                      />
+                    </label>
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-[10px] font-semibold text-slate-500">To</span>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={e => { setDateTo(e.target.value); setDateShortcut('CUSTOM'); }}
+                        className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <label className="rounded-lg border border-slate-200 bg-white p-2">
+                  <span className="mb-1.5 block px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">ရောင်းသူ</span>
+                  <select
+                    value={staffFilter}
+                    onChange={e => setStaffFilter(Number(e.target.value))}
+                    className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                  >
+                    <option value={0}>ရောင်းသူအားလုံး</option>
+                    {staffs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </label>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-2">
+                  <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">ကာလရွေးရန်</p>
+                  <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+                    {[
+                      { key: 'TODAY', label: 'Today' },
+                      { key: 'WEEK', label: 'This Week' },
+                      { key: 'MONTH', label: 'This Month' },
+                      { key: 'ALL', label: 'All' }
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => applyDateShortcut(item.key as Exclude<DateShortcut, 'CUSTOM'>)}
+                        className={`min-h-9 rounded-md border px-2 text-[11px] font-bold transition-colors ${dateShortcut === item.key ? 'border-slate-800 bg-slate-800 text-white shadow-sm' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { const range = getTodayRange(); setDateFrom(range.from); setDateTo(range.to); setDateShortcut('TODAY'); setStaffFilter(0); setSearch(''); setVoucherLookup(''); setFilter('ALL'); }}
+                  disabled={dateShortcut === 'TODAY' && staffFilter === 0 && !search && !voucherLookup && filter === 'ALL'}
+                  className="h-10 rounded-lg border border-rose-200 bg-white px-3 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-50 disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white"
+                >
                   Reset
                 </button>
-              )}
-            </div>
-            {/* Status filter pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {([
-                ['ALL', 'အားလုံး'],
-                ['DUE', 'ရရန်ကျန်'],
-                ['PENDING', 'မပေးရသေး'],
-                ['PARTIAL', 'တချို့ပေးပြီး'],
-                ['PAID', 'ပေးပြီး'],
-                ['OVERDUE', 'ရက်ကျော်']
-              ] as [ListFilter, string][]).map(([key, label]) => (
-                <button key={key} onClick={() => setFilter(key)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-bold border ${filter === key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
-                  {label}
-                </button>
-              ))}
-              <span className="ml-auto text-[10px] text-slate-400 self-center">
-                Showing {saleTotalElements === 0 ? 0 : salePage * salePageSize + 1}–{Math.min((salePage + 1) * salePageSize, saleTotalElements)} of {saleTotalElements.toLocaleString()}
-              </span>
-            </div>
+              </div>
 
-            <div className="border border-slate-200 rounded-lg overflow-auto max-h-[68vh]">
-              <table className="w-full min-w-[920px] text-sm">
-                <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+              <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 lg:flex-row lg:items-center">
+                <div className="flex items-center gap-2 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">အခြေအနေ</span>
+                </div>
+                <div className="flex flex-1 flex-wrap gap-1.5">
+                  {([
+                    ['ALL', 'အားလုံး'],
+                    ['DUE', 'ရရန်ကျန်'],
+                    ['PENDING', 'မပေးရသေး'],
+                    ['PARTIAL', 'တချို့ပေးပြီး'],
+                    ['PAID', 'ပေးပြီး'],
+                    ['OVERDUE', 'ရက်ကျော်']
+                  ] as [ListFilter, string][]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setFilter(key)}
+                      className={`min-h-8 rounded-md border px-3 text-[11px] font-bold transition-colors ${filter === key ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-indigo-700'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <span className="shrink-0 rounded-md bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400">
+                  Showing {saleTotalElements === 0 ? 0 : salePage * salePageSize + 1}–{Math.min((salePage + 1) * salePageSize, saleTotalElements)} of {saleTotalElements.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            )}
+            <div className="overflow-auto max-h-[68vh] rounded-xl border border-slate-200 bg-white">
+              <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
+                <colgroup>
+                  <col className="w-[132px]" />
+                  <col className="w-[164px]" />
+                  <col className="w-[190px]" />
+                  <col className="w-[160px]" />
+                  <col className="w-[132px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[124px]" />
+                  <col className="w-[118px]" />
+                  <col className="w-[180px]" />
+                </colgroup>
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-4 py-3 text-left">ဘောင်ချာ</th>
-                    <th className="px-4 py-3 text-left">ရက်စွဲ</th>
-                    <th className="px-4 py-3 text-left">ဖောက်သည်</th>
-                    <th className="px-4 py-3 text-left">ရောင်းသူ</th>
-                    <th className="px-4 py-3 text-right">စုစုပေါင်း</th>
-                    <th className="px-4 py-3 text-right">ရပြီး</th>
-                    <th className="px-4 py-3 text-right">ရရန်ကျန်</th>
-                    <th className="px-4 py-3 text-center">အခြေအနေ</th>
-                    <th className="px-4 py-3 text-right">လုပ်ဆောင်ချက်</th>
+                    <th className="px-3 py-3 text-left">ဘောင်ချာ</th>
+                    <th className="px-3 py-3 text-left">ရက်စွဲ</th>
+                    <th className="px-3 py-3 text-left">ဖောက်သည်</th>
+                    <th className="px-3 py-3 text-left">ရောင်းသူ</th>
+                    <th className="px-3 py-3 text-right">စုစုပေါင်း</th>
+                    <th className="px-3 py-3 text-right">ရပြီး</th>
+                    <th className="px-3 py-3 text-right">ရရန်ကျန်</th>
+                    <th className="px-3 py-3 text-center">အခြေအနေ</th>
+                    <th className="px-3 py-3 text-right">လုပ်ဆောင်ချက်</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1783,24 +1842,24 @@ const SaleManagement: React.FC = () => {
                     const state = getSaleState(r);
                     const isDue = (Number(r.dueAmount) || 0) > 0;
                     return (
-                      <tr key={r.id || r.saleCode} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-semibold text-slate-800">{r.saleCode || `#${r.id}`}</td>
-                        <td className="px-4 py-3 text-xs text-slate-500">{fmtDate(r.saleDate)}</td>
-                        <td className="px-4 py-3 font-medium text-slate-700">{r.customerName || '—'}</td>
-                        <td className="px-4 py-3 text-xs text-slate-500">{r.staffName || '—'}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-700">{money(Number(r.netAmount) || 0)}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-emerald-600">{money(Number(r.paidAmount) || 0)}</td>
-                        <td className={`px-4 py-3 text-right font-bold ${isDue ? 'text-rose-600' : 'text-slate-300'}`}>{isDue ? money(Number(r.dueAmount) || 0) : '—'}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${badgeByState[state]}`}>{saleStateLabel[state]}</span>
+                      <tr key={r.id || r.saleCode} className="h-[58px] hover:bg-slate-50/80 transition-colors">
+                        <td className="px-3 py-3 font-mono text-xs font-bold text-slate-800"><span className="block truncate">{r.saleCode || `#${r.id}`}</span></td>
+                        <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{fmtDate(r.saleDate)}</span></td>
+                        <td className="px-3 py-3 font-semibold text-slate-700"><span className="block truncate">{r.customerName || '—'}</span></td>
+                        <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{r.staffName || '—'}</span></td>
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-700">{money(Number(r.netAmount) || 0)}</td>
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-emerald-600">{money(Number(r.paidAmount) || 0)}</td>
+                        <td className={`px-3 py-3 text-right font-bold tabular-nums ${isDue ? 'text-rose-600' : 'text-slate-300'}`}>{isDue ? money(Number(r.dueAmount) || 0) : '—'}</td>
+                        <td className="px-3 py-3 text-center">
+                          <span className={`inline-flex min-w-[78px] justify-center rounded-md px-2.5 py-1 text-[10px] font-bold ${badgeByState[state]}`}>{saleStateLabel[state]}</span>
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button onClick={() => r.id && openDetail(r.id)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50">
+                        <td className="px-3 py-3">
+                          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                            <button onClick={() => r.id && openDetail(r.id)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50">
                               <Eye size={12} /> ကြည့်ရန်
                             </button>
                             {isDue && (
-                              <button onClick={() => r.id && openDetail(r.id)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-50">
+                              <button onClick={() => r.id && openDetail(r.id)} className="inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 px-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50">
                                 <CreditCard size={12} /> ငွေသွင်း
                               </button>
                             )}

@@ -1560,28 +1560,6 @@ const ProductManagement: React.FC = () => {
         <InventoryMetricCard label="Stock Value" value={`${stockSummary.value.toLocaleString()} Ks`} icon={<Wallet size={16} />} tone="teal" />
       </div>
 
-      {lowStockProducts.length > 0 && !filterLowStockOnly && (
-        <button
-          type="button"
-          onClick={() => setFilterLowStockOnly(true)}
-          className="shrink-0 w-full flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-left hover:bg-amber-100 transition-colors"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-md bg-amber-500 text-white flex items-center justify-center shrink-0">
-              <AlertTriangle size={16} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-black text-amber-800 uppercase tracking-wide">Reorder attention needed</p>
-              <p className="text-[11px] text-amber-700 truncate">
-                {lowStockProducts.slice(0, 4).map(p => p.name).join(', ')}
-                {lowStockProducts.length > 4 ? ` +${lowStockProducts.length - 4} more` : ''}
-              </p>
-            </div>
-          </div>
-          <span className="text-[11px] font-black text-amber-800 uppercase whitespace-nowrap">Show low stock</span>
-        </button>
-      )}
-
       {/* Primary Filters */}
       <div className="bg-white p-3 sm:p-4 rounded-lg border border-slate-200 space-y-3">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">

@@ -1,5 +1,7 @@
 package com.sspd.servicemgmt.navigation
 
+import android.net.Uri
+
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -606,6 +608,19 @@ fun AppNavigation() {
                         )
                     }
 
+                    composable(
+                        route = Screen.WebModule.route,
+                        arguments = listOf(
+                            navArgument("title") { type = NavType.StringType },
+                            navArgument("endpoint") { type = NavType.StringType }
+                        )
+                    ) { entry ->
+                        WebModuleScreen(
+                            title = Uri.decode(entry.arguments?.getString("title") ?: "Web Module"),
+                            endpoint = Uri.decode(entry.arguments?.getString("endpoint") ?: ""),
+                            onBack = { nav.popBackStack() }
+                        )
+                    }
                     // ── Other screens ───────────────────────────────────────
                     screen(Screen.Customers.route)      { CustomerManagementScreen { nav.popBackStack() } }
                     screen(Screen.CreditDesk.route)     { CreditOperationsScreen    { nav.popBackStack() } }

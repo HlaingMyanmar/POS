@@ -1,10 +1,16 @@
-﻿package com.sspd.servicemgmt.api
+package com.sspd.servicemgmt.api
 
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
 interface ApiService {
+
+    @GET
+    suspend fun getRaw(
+        @Header("Authorization") auth: String,
+        @Url url: String
+    ): Response<ResponseBody>
 
     @GET("app/version")
     suspend fun getAppVersion(): Response<ApiResponse<AppVersionDTO>>

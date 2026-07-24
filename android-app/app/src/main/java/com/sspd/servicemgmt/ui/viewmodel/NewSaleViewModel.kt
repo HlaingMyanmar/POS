@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import kotlin.math.roundToLong
 
 data class CartItem(
     val product:        ProductDTO,
@@ -81,7 +82,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
                 cart.add(CartItem(
                     product       = product,
                     qty           = 1,
-                    unitPrice     = product.sellingPrice,
+                    unitPrice     = product.sellingPrice.roundToLong(),
                     serialNumbers = if (serial != null) listOf(serial) else emptyList()
                 ))
             }

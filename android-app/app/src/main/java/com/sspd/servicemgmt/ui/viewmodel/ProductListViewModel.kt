@@ -38,12 +38,31 @@ class ProductListViewModel(application: Application) : AndroidViewModel(applicat
 
     fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
+            _uiState.update { it.copy(loading = true, error = null) }
             try {
                 val res = ApiClient.service.getProducts(ApiClient.bearer(prefs.authToken))
-                if (res.isSuccessful) _uiState.update { it.copy(items = res.body()?.data ?: emptyList()) }
-            } catch (_: Exception) {}
-            _uiState.update { it.copy(loading = false) }
+                val body = res.body()
+                if (res.isSuccessful && body?.success == true) {
+                    _uiState.update { it.copy(items = body.data.orEmpty(), loading = false, error = null) }
+                } else {
+                    val message = when (res.code()) {
+                        401 -> "Login သက်တမ်းကုန်နေပါသည်။ ပြန်လည် Login ဝင်ပါ။"
+                        403 -> "ကုန်ပစ္စည်းစာရင်း ကြည့်ရှုခွင့် မရှိပါ။"
+                        else -> body?.message?.takeIf(String::isNotBlank)
+                            ?: "ကုန်ပစ္စည်းစာရင်း ရယူ၍မရပါ (HTTP ${res.code()})"
+                    }
+                    _uiState.update { it.copy(loading = false, error = message) }
+                }
+            } catch (e: Exception) {
+                val message = when {
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
+                        "Server တုံ့ပြန်ချိန် ကျော်လွန်သွားပါသည်။"
+                    e.message?.contains("Unable to resolve host", ignoreCase = true) == true ->
+                        "Server ကို မတွေ့ပါ။ Wi-Fi နှင့် Server IP ကို စစ်ပါ။"
+                    else -> "ကုန်ပစ္စည်း data ဖတ်၍မရပါ: ${e.message ?: e.javaClass.simpleName}"
+                }
+                _uiState.update { it.copy(loading = false, error = message) }
+            }
         }
     }
 
@@ -83,6 +102,7 @@ class ProductListViewModel(application: Application) : AndroidViewModel(applicat
     data class ProductListUiState(
         val items:            List<ProductDTO>   = emptyList(),
         val loading:          Boolean            = true,
+        val error:            String?            = null,
         val search:           String             = "",
         val filter:           ProductFilter      = ProductFilter.ALL,
         val showScanner:      Boolean            = false,

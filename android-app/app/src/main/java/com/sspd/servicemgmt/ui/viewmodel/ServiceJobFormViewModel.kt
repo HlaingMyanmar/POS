@@ -92,7 +92,7 @@ class ServiceJobFormViewModel(
                             parts            = j.productParts?.map { p ->
                                 PartDraft(
                                     product       = productList.find { pr -> pr.id == p.productId }
-                                        ?: ProductDTO(id = p.productId ?: 0, productCode = p.productCode ?: "", name = p.productName ?: "", stockQty = 0, productType = "", sellingPrice = p.unitPrice?.toLong() ?: 0),
+                                        ?: ProductDTO(id = p.productId ?: 0, productCode = p.productCode ?: "", name = p.productName ?: "", stockQty = 0, productType = "", sellingPrice = p.unitPrice?.toDouble() ?: 0.0),
                                     qty           = p.qty?.toString() ?: "1",
                                     unitPrice     = p.unitPrice?.let { v -> String.format("%.0f", v) } ?: "",
                                     discount      = p.discountAmount?.let { v -> String.format("%.0f", v) } ?: "0",

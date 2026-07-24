@@ -78,7 +78,13 @@
     <tbody>
       <tr th:each="item : ${inv.lineItems}">
         <td th:text="${item.rowNo}">1</td>
-        <td th:text="${item.productName}">Product</td>
+        <td>
+          <div th:text="${item.productName}">Product</div>
+          <div th:if="${item.foc}" style="font-size:9px; font-weight:bold;">FOC</div>
+          <div th:if="${!item.foc and item.discount != null and item.discount != '0' and item.discount != '0.00'}"
+               style="font-size:9px;"
+               th:text="${'Disc: ' + item.discount}">Disc: 0</div>
+        </td>
         <td class="r" th:text="${item.qty}">1</td>
         <td class="r" th:text="${item.unitPrice}">0</td>
         <td class="r" th:text="${item.subtotal}">0</td>

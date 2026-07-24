@@ -19,6 +19,7 @@ data class CartItem(
     val qty:            Int           = 1,
     val unitPrice:      Long          = 0,
     val discountAmount: Long          = 0,
+    val foc:            Boolean       = false,
     val serialNumbers:  List<String>  = emptyList()
 )
 
@@ -170,6 +171,14 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { state ->
             state.copy(cart = state.cart.mapIndexed { i, ci ->
                 if (i == idx) ci.copy(discountAmount = amt) else ci
+            })
+        }
+    }
+
+    fun updateFoc(idx: Int, foc: Boolean) {
+        _uiState.update { state ->
+            state.copy(cart = state.cart.mapIndexed { i, item ->
+                if (i == idx) item.copy(foc = foc, discountAmount = if (foc) 0 else item.discountAmount) else item
             })
         }
     }
@@ -361,9 +370,10 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
 
         // Compute totals once (Long for validation, Double for API body)
         val grossL    = state.cart.sumOf { it.unitPrice * it.qty.toLong() }
-        val lineDiscL = state.cart.sumOf { it.discountAmount }
+        val lineDiscL = state.cart.filterNot { it.foc }.sumOf { it.discountAmount }
+        val focAmountL = state.cart.filter { it.foc }.sumOf { it.unitPrice * it.qty.toLong() }
         val overallDL = state.overallDiscount.toLongOrNull() ?: 0L
-        val netL      = maxOf(0L, grossL - lineDiscL - overallDL)
+        val netL      = maxOf(0L, grossL - focAmountL - lineDiscL - overallDL)
         val splitPayments = normalizePayments(state.splitPayments)
         val paidL     = if (splitPayments.isNotEmpty()) splitTotal(splitPayments).toLong() else (state.paidAmount.toLongOrNull() ?: netL)
         val dueL      = maxOf(0L, netL - paidL)
@@ -399,7 +409,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val gross    = grossL.toDouble()
         val lineDisc = lineDiscL.toDouble()
         val overallD = overallDL.toDouble()
-        val subtotal = maxOf(0.0, gross - lineDisc)
+        val subtotal = maxOf(0.0, gross - focAmountL.toDouble() - lineDisc)
         val net      = maxOf(0.0, subtotal - overallD)
         val paid     = if (splitPayments.isNotEmpty()) splitTotal(splitPayments) else (state.paidAmount.toDoubleOrNull() ?: net)
         val due      = maxOf(0.0, net - paid)
@@ -429,8 +439,9 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
                     productName    = item.product.name,
                     qty            = item.qty,
                     unitPrice      = item.unitPrice.toDouble(),
-                    subtotal       = (item.unitPrice * item.qty - item.discountAmount).toDouble(),
+                    subtotal       = if (item.foc) 0.0 else (item.unitPrice * item.qty - item.discountAmount).toDouble(),
                     discountAmount = item.discountAmount.toDouble(),
+                    foc            = item.foc,
                     serialNumbers  = item.serialNumbers.ifEmpty { null }
                 )
             }

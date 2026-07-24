@@ -32,6 +32,11 @@
             th:text="${item.rowNo}">1</td>
         <td>
           <div style="font-weight:500;" th:text="${item.productName}">Product Name</div>
+          <div th:if="${item.foc}"
+               class="inv-table__sub" style="color:#047857; font-weight:700;">FOC</div>
+          <div th:if="${!item.foc and item.discount != null and item.discount != '0' and item.discount != '0.00'}"
+               class="inv-table__sub" style="color:#b45309; font-weight:600;"
+               th:text="${'Line Discount: ' + item.discount}">Line Discount: 0</div>
           <div th:if="${not #strings.isEmpty(item.warrantyLabel)}"
                class="inv-table__sub" style="color:#4f46e5;"
                th:text="${'Warranty: ' + item.warrantyLabel}"></div>

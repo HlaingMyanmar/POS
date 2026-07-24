@@ -140,7 +140,8 @@ public class InvoiceAssemblerService {
                         .qty(d.getQty() != null ? d.getQty() : 0)
                         .unitPrice(fmt(d.getUnitPrice()))
                         .subtotal(fmt(d.getSubtotal()))
-                        .discount("0")
+                        .discount(fmt(d.getDiscountAmount()))
+                        .foc(Boolean.TRUE.equals(d.getFoc()))
                         .warrantyLabel(fmtWarrantyLabel(d.getWarrantyMonths(), d.getWarrantyExpiryDate()))
                         .build());
             }

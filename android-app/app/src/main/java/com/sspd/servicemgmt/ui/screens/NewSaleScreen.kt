@@ -1,4 +1,4 @@
-﻿package com.sspd.servicemgmt.ui.screens
+package com.sspd.servicemgmt.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -102,8 +102,9 @@ fun NewSaleScreen(
 
     // Computed totals
     val gross    = state.cart.sumOf { it.unitPrice * it.qty.toLong() }
-    val lineDisc = state.cart.sumOf { it.discountAmount }
-    val subtotal = maxOf(0L, gross - lineDisc)
+    val lineDisc = state.cart.filterNot { it.foc }.sumOf { it.discountAmount }
+    val focAmount = state.cart.filter { it.foc }.sumOf { it.unitPrice * it.qty.toLong() }
+    val subtotal = maxOf(0L, gross - focAmount - lineDisc)
     val overallD = state.overallDiscount.toLongOrNull() ?: 0L
     val net      = maxOf(0L, subtotal - overallD)
     val paid     = state.paidAmount.toLongOrNull() ?: net
@@ -377,6 +378,7 @@ fun NewSaleScreen(
                                     onQtyPlus  = { vm.updateQty(idx, 1) },
                                     onQtyMinus = { vm.updateQty(idx, -1) },
                                     onDiscount = { v -> vm.updateDiscount(idx, v) },
+                                    onFoc      = { checked -> vm.updateFoc(idx, checked) },
                                     onSerialScan   = { vm.showSerialScanner(idx) },
                                     onSerialRemove = { sn -> vm.removeSerial(idx, sn) },
                                     onSerialAdd    = { sn -> vm.addSerial(idx, sn) }
@@ -590,6 +592,7 @@ private fun CartItemRow(
     onQtyPlus:     () -> Unit,
     onQtyMinus:    () -> Unit,
     onDiscount:    (String) -> Unit,
+    onFoc:         (Boolean) -> Unit,
     onSerialScan:  () -> Unit,
     onSerialRemove:(String) -> Unit,
     onSerialAdd:   (String) -> Unit
@@ -614,13 +617,30 @@ private fun CartItemRow(
                 Spacer(Modifier.height(4.dp))
                 Text("${item.unitPrice.fmtL()} Ks × ${item.qty} = ${(item.unitPrice * item.qty).fmtL()} Ks",
                     fontSize = 12.sp, color = TextMuted)
-                // Per-line discount
+                // FOC and per-line discount
                 Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("FOC", fontSize = 12.sp, color = TextMain, fontWeight = FontWeight.ExtraBold)
+                        Text("အခမဲ့ပေးမည့်ပစ္စည်း", fontSize = 10.sp, color = TextMuted)
+                    }
+                    Switch(
+                        checked = item.foc,
+                        onCheckedChange = onFoc,
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Success)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Discount (Ks)", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         value           = if (item.discountAmount > 0) item.discountAmount.toString() else "",
                         onValueChange   = onDiscount,
+                        enabled         = !item.foc,
                         modifier        = Modifier.width(120.dp),
                         placeholder     = { Text("0", color = TextMuted) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -632,7 +652,9 @@ private fun CartItemRow(
                         )
                     )
                 }
-                if (item.discountAmount > 0) {
+                if (item.foc) {
+                    Text("FOC • Net: 0 Ks", fontSize = 11.sp, color = Success, fontWeight = FontWeight.ExtraBold)
+                } else if (item.discountAmount > 0) {
                     Text("Net: ${(item.unitPrice * item.qty - item.discountAmount).fmtL()} Ks",
                         fontSize = 11.sp, color = Success, fontWeight = FontWeight.Bold)
                 }

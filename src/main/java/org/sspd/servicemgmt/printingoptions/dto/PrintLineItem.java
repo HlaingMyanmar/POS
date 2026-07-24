@@ -19,4 +19,6 @@ public class PrintLineItem {
     private String subtotal;
     /** Optional: discount per line, shown when non-zero */
     private String discount;
+    /** True when this sale line was given free of charge. */
+    private boolean foc;
 }

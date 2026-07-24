@@ -132,6 +132,115 @@ const SearchableSelect: React.FC<{
   );
 };
 
+/* ── CustomerPicker ───────────────────────────────────────────── */
+const CustomerPicker: React.FC<{
+  customers: any[];
+  value: string;
+  onChange: (id: string) => void;
+  onCreated: (customer: any) => void;
+}> = ({ customers, value, onChange, onCreated }) => {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [qForm, setQForm] = useState({ name: '', phone: '', address: '' });
+  const [creating, setCreating] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+
+  useEffect(() => {
+    const c = safeCustomers.find(item => String(item.id) === String(value));
+    setSearch(c ? (c.name ?? '') : '');
+  }, [value, safeCustomers]);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const filtered = safeCustomers.filter(c => {
+    if (!c) return false;
+    const txt = (search || '').toLowerCase();
+    const label = [c.name, c.phone, c.address].filter(Boolean).join(' ').toLowerCase();
+    return label.includes(txt);
+  }).slice(0, 20);
+
+  const select = (c: any) => {
+    onChange(String(c.id));
+    setSearch(c.name ?? '');
+    setOpen(false);
+    setShowAdd(false);
+  };
+
+  const handleAdd = async () => {
+    const name = qForm.name.trim();
+    if (!name) {
+      Swal.fire('အမှား', 'ဖောက်သည်အမည်ထည့်ပါ', 'warning');
+      return;
+    }
+    setCreating(true);
+    try {
+      const created = await customerService.create({
+        name,
+        phone: qForm.phone.trim(),
+        address: qForm.address.trim(),
+      });
+      if (created?.id) {
+        onCreated(created);
+        select(created);
+        setQForm({ name: '', phone: '', address: '' });
+      }
+    } catch (e: any) {
+      Swal.fire('အမှား', e?.message || 'ဖောက်သည်အသစ်ဖန်တီးမရပါ', 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); onChange(''); }}
+        onFocus={() => setOpen(true)}
+        placeholder="ဖောက်သည်ရှာရန်..."
+        className="w-full border rounded-xl px-3 py-2 text-sm bg-white"
+      />
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-xl shadow-xl max-h-56 overflow-y-auto">
+          {filtered.map(c => (
+            <div key={c.id} onClick={() => select(c)} className="px-3 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 flex justify-between items-center">
+              <span className="font-semibold text-slate-800">{c.name}</span>
+              <span className="text-xs text-slate-400">{c.phone || ''}</span>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="px-3 py-2 text-sm text-slate-400 italic">ဖောက်သည်မတွေ့ပါ</div>
+          )}
+          {!showAdd && (
+            <div onClick={() => { setShowAdd(true); setQForm({ name: search.trim(), phone: '', address: '' }); }} className="px-3 py-2 text-sm text-indigo-600 font-bold cursor-pointer hover:bg-indigo-50 border-t">
+              + ဖောက်သည်အသစ်ထည့်
+            </div>
+          )}
+          {showAdd && (
+            <div className="p-3 border-t bg-slate-50 space-y-2">
+              <p className="text-xs font-bold text-slate-600">ဖောက်သည်အသစ်</p>
+              <input placeholder="အမည် *" value={qForm.name} onChange={e => setQForm(p => ({ ...p, name: e.target.value }))} className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+              <input placeholder="ဖုန်း" value={qForm.phone} onChange={e => setQForm(p => ({ ...p, phone: e.target.value }))} className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+              <input placeholder="လိပ်စာ" value={qForm.address} onChange={e => setQForm(p => ({ ...p, address: e.target.value }))} className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+              <button onClick={handleAdd} disabled={creating} className="w-full py-1.5 text-xs bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-60">
+                {creating ? 'လုပ်နေပါသည်...' : 'Save Customer'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Main Page ─────────────────────────────────────────────────── */
 export default function ServiceJobManagement() {
   const [jobs, setJobs]           = useState<any[]>([]);
@@ -149,6 +258,7 @@ export default function ServiceJobManagement() {
   const [creditTerms, setCreditTerms] = useState<any[]>([]);
 
   const [showEdit, setShowEdit]   = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [editId, setEditId]       = useState<number | null>(null);
   const [editJobNo, setEditJobNo] = useState('');
   const [origStatus, setOrigStatus] = useState('');
@@ -173,24 +283,46 @@ export default function ServiceJobManagement() {
     }
   };
 
-  useEffect(() => { load(); }, [page, search, dateFrom, dateTo]);
-  useRefreshOnTabActivate(load);
-  useDataEvents(['Service Job', 'Booking'], load);
+  const loadReferenceData = async () => {
+    try {
+      const [staffRes, serviceItemRes, productRes, payMethodRes, customerRes, creditTermRes] = await Promise.allSettled([
+        staffService.getAllActive(),
+        serviceItemService.getActive(),
+        productService.getAll(),
+        paymentMethodService.getAllActive(),
+        customerService.getAll(),
+        creditTermService.getAll(),
+      ]);
+
+      if (staffRes.status === 'fulfilled') setStaffList(Array.isArray(staffRes.value) ? staffRes.value : []);
+      if (serviceItemRes.status === 'fulfilled') {
+        const data = serviceItemRes.value as any;
+        setServiceItems(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
+      }
+      if (productRes.status === 'fulfilled') {
+        const data = productRes.value as any;
+        setProducts(Array.isArray(data) ? data : []);
+      }
+      if (payMethodRes.status === 'fulfilled') setPayMethods(Array.isArray(payMethodRes.value) ? payMethodRes.value : []);
+      if (customerRes.status === 'fulfilled') setCustomers(Array.isArray(customerRes.value) ? customerRes.value : []);
+      if (creditTermRes.status === 'fulfilled') setCreditTerms(Array.isArray(creditTermRes.value) ? creditTermRes.value : []);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
-    staffService.getAllActive()
-      .then(list => setStaffList(list ?? []))
-      .catch(() => {});
-    serviceItemService.getActive()
-      .then((r: any) => setServiceItems(Array.isArray(r?.data) ? r.data : Array.isArray(r) ? r : []))
-      .catch(() => {});
-    productService.getAll()
-      .then((r: any) => setProducts(Array.isArray(r) ? r : []))
-      .catch(() => {});
-    paymentMethodService.getAllActive().then(setPayMethods).catch(() => {});
-    customerService.getAll().then(setCustomers).catch(() => {});
-    creditTermService.getAll().then(t => setCreditTerms(Array.isArray(t) ? t : [])).catch(() => {});
-  }, []);
+    void load();
+    void loadReferenceData();
+  }, [page, search, dateFrom, dateTo]);
+  useRefreshOnTabActivate(() => {
+    void load();
+    void loadReferenceData();
+  });
+  useDataEvents(['Service Job', 'Booking', 'Customer', 'Staff', 'Service', 'Product', 'Payment', 'Credit'], () => {
+    void load();
+    void loadReferenceData();
+  });
 
   /* ── Filtering ─────────────────────────────────────────────── */
   const filteredJobs = jobs.filter(j => {
@@ -265,6 +397,54 @@ export default function ServiceJobManagement() {
         }).catch(() => {});
       }
     });
+  };
+
+  const handleCreate = async () => {
+    const serialMismatch = form.productParts.find(p => p.hasSerial && p.productId && p.serialNumbers.length !== p.qty);
+    if (serialMismatch) {
+      Swal.fire('Serial Number လိုအပ်ပါ', `"${serialMismatch.productName}" အတွက် serial number ${serialMismatch.qty} ခု လိုအပ်သော်လည်း ${serialMismatch.serialNumbers.length} ခု ရွေးထားပါသည်`, 'warning');
+      return;
+    }
+    if (!form.customerId) {
+      Swal.fire('အမှား', 'ဖောက်သည်ရွေးပါ', 'error');
+      return;
+    }
+    if (!form.itemName?.trim()) {
+      Swal.fire('အမှား', 'ပစ္စည်း / ကိရိယာ အမည် ထည့်ပါ', 'error');
+      return;
+    }
+
+    const payload = {
+      customerId:          form.customerId ? Number(form.customerId) : undefined,
+      assignedStaffId:     form.assignedStaffId ? Number(form.assignedStaffId) : null,
+      itemName:            form.itemName || null,
+      problemDesc:         form.problemDesc || null,
+      diagnosisNotes:      form.diagnosisNotes || null,
+      deviceConditions:    form.deviceConditions || null,
+      estimatedCompletion: form.estimatedCompletion ? form.estimatedCompletion + ':00' : null,
+      estimatedCost:       form.estimatedCost ? Number(form.estimatedCost) : null,
+      remark:              form.remark || null,
+      status:              form.status,
+      lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => ({
+        serviceItemId: Number(l.serviceItemId),
+        qty: Number(l.qty || 1),
+        warrantyMonths: 0,
+      })),
+      productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
+        productId: Number(p.productId),
+        qty: p.qty,
+        unitPrice: p.unitPrice,
+        discountAmount: p.discountAmount || 0,
+        serialNumbers: p.hasSerial ? p.serialNumbers : [],
+      })),
+    };
+
+    const res = await serviceJobService.create(payload);
+    if (!res.success) { Swal.fire('အမှား', res.message, 'error'); return; }
+
+    setShowCreate(false);
+    setForm(emptyForm);
+    load();
   };
 
   const handleSave = async () => {
@@ -432,6 +612,11 @@ export default function ServiceJobManagement() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  const openCreate = () => {
+    setForm({ ...emptyForm, lines: [], productParts: [] });
+    setShowCreate(true);
+  };
+
   /* ── Tabs config ───────────────────────────────────────────── */
   const tabDef: { key: typeof tab; label: string; count: number; active: string; inactive: string }[] = [
     { key: 'active',   label: 'ဝန်ဆောင်မှု အမှာစာ ⚡', count: counts.active,   active: 'border-blue-500 text-blue-700 bg-blue-50',    inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
@@ -467,6 +652,10 @@ export default function ServiceJobManagement() {
             className="border rounded-lg px-2.5 py-1.5 text-sm bg-white" />
           <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0); }}
             className="border rounded-lg px-2.5 py-1.5 text-sm bg-white" />
+          <button type="button" onClick={openCreate}
+            className="ml-auto px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
+            + Service Job အသစ်
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -590,6 +779,152 @@ export default function ServiceJobManagement() {
           </div>
         )}
       </div>
+
+      {/* ─── Create Modal ─── */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl">
+            <div className="flex items-center justify-between px-6 py-4 bg-indigo-600 rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-white">➕ ဝန်ဆောင်မှု Job အသစ်</h2>
+                <p className="text-xs text-indigo-200 mt-0.5">ဖောက်သည်၊ ပစ္စည်းအချက်အလက်၊ ဝန်ဆောင်မှုစာရင်းကို ထည့်ပါ</p>
+              </div>
+              <button onClick={() => setShowCreate(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ဖောက်သည်</label>
+                  <CustomerPicker
+                    customers={customers}
+                    value={form.customerId}
+                    onChange={(id) => setForm(p => ({ ...p, customerId: id }))}
+                    onCreated={(c) => setCustomers(prev => prev.some(item => item.id === c.id) ? prev : [c, ...prev])}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ကျွမ်းကျင်သူ</label>
+                  <select value={form.assignedStaffId} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
+                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                    <option value="">— မရှိ —</option>
+                    {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">ပစ္စည်း / ကိရိယာ အမည် *</label>
+                <input value={form.itemName} onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
+                  placeholder="ဥပမာ - Apple iPhone 14 Pro"
+                  className="w-full border rounded-xl px-3 py-2 text-sm" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">ပြဿနာ ဖော်ပြချက်</label>
+                  <textarea value={form.problemDesc} onChange={e => setForm(p => ({ ...p, problemDesc: e.target.value }))}
+                    rows={3} placeholder="ဝယ်သူ၏ တိုင်ကြားချက်..."
+                    className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">စစ်ဆေးတွေ့ရှိချက်</label>
+                  <textarea value={form.diagnosisNotes} onChange={e => setForm(p => ({ ...p, diagnosisNotes: e.target.value }))}
+                    rows={3} placeholder="ကျွမ်းကျင်သူ တွေ့ရှိချက်..."
+                    className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">ပစ္စည်းအခြေအနေ</label>
+                <textarea value={form.deviceConditions} onChange={e => setForm(p => ({ ...p, deviceConditions: e.target.value }))}
+                  rows={2} placeholder="ပစ္စည်း၏ လက်ရှိ အခြေအနေ..."
+                  className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">ခန့်မှန်းပြီးစီးရက်</label>
+                  <input type="datetime-local" value={form.estimatedCompletion}
+                    onChange={e => setForm(p => ({ ...p, estimatedCompletion: e.target.value }))}
+                    className="w-full border rounded-xl px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">ခန့်မှန်းကုန်ကျစရိတ် (Ks)</label>
+                  <input type="number" min={0} value={form.estimatedCost}
+                    onChange={e => setForm(p => ({ ...p, estimatedCost: e.target.value }))}
+                    placeholder="0" className="w-full border rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
+                  <button type="button"
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0 }] }))}
+                    className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
+                </div>
+                {form.lines.length > 0 ? (
+                  <div className="space-y-2">
+                    {form.lines.map((line: any, li: number) => (
+                      <div key={li} className="border rounded-xl p-3 bg-slate-50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">ဝန်ဆောင်မှု #{li + 1}</span>
+                          <button type="button"
+                            onClick={() => setForm(p => ({ ...p, lines: p.lines.filter((_: any, idx: number) => idx !== li) }))}
+                            className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
+                          <SearchableSelect
+                            items={serviceItems}
+                            value={line.serviceItemId}
+                            displayField="item"
+                            subField="code"
+                            placeholder="ဝန်ဆောင်မှု ရှာရန်..."
+                            onChange={(si) => {
+                              setForm(p => {
+                                const lines = [...p.lines];
+                                if (si) {
+                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0) };
+                                } else {
+                                  lines[li] = { ...lines[li], serviceItemId: '', serviceItemName: '', price: 0 };
+                                }
+                                return { ...p, lines };
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
+                            <input type="number" min={1} value={line.qty}
+                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], qty: Number(e.target.value) }; return { ...p, lines }; })}
+                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-center" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">ဈေးနှုန်း (Ks)</label>
+                            <input type="number" min={0} value={line.price}
+                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], price: Number(e.target.value) }; return { ...p, lines }; })}
+                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">ဝန်ဆောင်မှု မရှိသေးပါ</p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 border rounded-lg text-sm font-semibold text-slate-600">ပယ်ဖျက်</button>
+                <button type="button" onClick={handleCreate} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create Service Job</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Edit Modal ─── */}
       {showEdit && (

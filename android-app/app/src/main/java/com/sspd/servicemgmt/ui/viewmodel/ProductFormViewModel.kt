@@ -58,7 +58,7 @@ class ProductFormViewModel(
                             stockQty = (product.stockQty).toString(),
                             productType = product.productType.ifBlank { "New" },
                             sellingPrice = product.sellingPrice.toString(),
-                            costPrice = (product.costPrice ?: 0L).toString(),
+                            costPrice = (product.costPrice ?: 0.0).toString(),
                             reorderLevel = (product.reorderLevel ?: 0).toString(),
                             warrantyMonths = (product.warrantyMonths ?: 0).toString(),
                             warrantyTerms = product.warrantyTerms.orEmpty(),
@@ -88,12 +88,18 @@ class ProductFormViewModel(
     private fun unitLabel(unit: UnitDTO): String =
         unit.unitName?.takeIf { it.isNotBlank() } ?: unit.name
 
+    private fun decimalInput(value: String): String {
+        val filtered = value.filter { it.isDigit() || it == '.' }
+        val firstDot = filtered.indexOf('.')
+        return if (firstDot < 0) filtered
+        else filtered.substring(0, firstDot + 1) + filtered.substring(firstDot + 1).replace(".", "")
+    }
     fun setName(v: String) = _uiState.update { it.copy(name = v, error = null) }
     fun setHasSerial(v: Boolean) = _uiState.update { it.copy(hasSerial = v) }
     fun setStockQty(v: String) = _uiState.update { it.copy(stockQty = v.filter(Char::isDigit)) }
     fun setProductType(v: String) = _uiState.update { it.copy(productType = v) }
-    fun setSellingPrice(v: String) = _uiState.update { it.copy(sellingPrice = v.filter(Char::isDigit)) }
-    fun setCostPrice(v: String) = _uiState.update { it.copy(costPrice = v.filter(Char::isDigit)) }
+    fun setSellingPrice(v: String) = _uiState.update { it.copy(sellingPrice = decimalInput(v)) }
+    fun setCostPrice(v: String) = _uiState.update { it.copy(costPrice = decimalInput(v)) }
     fun setReorderLevel(v: String) = _uiState.update { it.copy(reorderLevel = v.filter(Char::isDigit)) }
     fun setWarrantyMonths(v: String) = _uiState.update { it.copy(warrantyMonths = v.filter(Char::isDigit)) }
     fun setWarrantyTerms(v: String) = _uiState.update { it.copy(warrantyTerms = v) }
@@ -173,8 +179,8 @@ class ProductFormViewModel(
                     hasSerial = s.hasSerial,
                     stockQty = if (s.hasSerial) 0 else s.stockQty.toIntOrNull() ?: 0,
                     productType = s.productType,
-                    sellingPrice = s.sellingPrice.toLongOrNull() ?: 0L,
-                    costPrice = s.costPrice.toLongOrNull(),
+                    sellingPrice = s.sellingPrice.toDoubleOrNull() ?: 0.0,
+                    costPrice = s.costPrice.toDoubleOrNull(),
                     categoryId = s.selectedCategory.id,
                     brandId = s.selectedBrand.id,
                     unitId = s.selectedUnit.id,

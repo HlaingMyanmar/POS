@@ -1,4 +1,4 @@
-﻿package com.sspd.servicemgmt.ui.screens
+package com.sspd.servicemgmt.ui.screens
 
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -46,7 +46,10 @@ fun ProductListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
-        while (true) { vm.load(); delay(30_000) }
+        while (true) {
+            delay(30_000)
+            vm.load()
+        }
     }
 
     LaunchedEffect(state.scanError) {
@@ -75,8 +78,8 @@ fun ProductListScreen(
             ProductFilter.ALL -> true
             ProductFilter.LOW_STOCK -> qty <= (it.reorderLevel ?: 0) || qty <= 0
             ProductFilter.SERIAL -> it.hasSerial == true
-            ProductFilter.NO_COST -> (it.costPrice ?: 0L) <= 0L
-            ProductFilter.NO_SELLING_PRICE -> it.sellingPrice <= 0L
+            ProductFilter.NO_COST -> (it.costPrice ?: 0.0) <= 0.0
+            ProductFilter.NO_SELLING_PRICE -> it.sellingPrice <= 0.0
         }
         matchesSearch && matchesFilter
     }
@@ -159,6 +162,20 @@ fun ProductListScreen(
                 if (state.loading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         AppLoading()
+                    }
+                } else if (state.error != null && state.items.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                            Icon(Icons.Outlined.CloudOff, null, tint = Danger, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text(state.error.orEmpty(), color = TextMain, fontSize = 13.sp)
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = vm::load, colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
+                                Icon(Icons.Outlined.Refresh, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("ပြန်လည်ရယူမည်")
+                            }
+                        }
                     }
                 } else if (filtered.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -267,8 +284,8 @@ private fun ProductCard(p: ProductDTO, onClick: () -> Unit = {}) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
                     if (p.hasSerial == true) ProductMiniBadge("Serial", Violet, Violet.copy(0.10f))
-                    if ((p.costPrice ?: 0L) <= 0L) ProductMiniBadge("No Cost", Danger, DangerBg)
-                    if (p.sellingPrice <= 0L) ProductMiniBadge("No Price", Danger, DangerBg)
+                    if ((p.costPrice ?: 0.0) <= 0.0) ProductMiniBadge("No Cost", Danger, DangerBg)
+                    if (p.sellingPrice <= 0.0) ProductMiniBadge("No Price", Danger, DangerBg)
                 }
             }
 
@@ -326,7 +343,7 @@ private fun ProductMiniBadge(label: String, color: Color, bg: Color) {
     }
 }
 
-private fun Long.fmt() = String.format("%,d", this)
+private fun Double.fmt() = if (this % 1.0 == 0.0) String.format("%,.0f", this) else String.format("%,.2f", this)
 
 
 @androidx.compose.ui.tooling.preview.Preview(showBackground = true, widthDp = 360)
@@ -339,8 +356,8 @@ fun UIPrevice(modifier: Modifier = Modifier) {
         stockQty = 15,
         availableSerialCount = 12,
         productType = "New",
-        sellingPrice = 850000,
-        costPrice = 720000,
+        sellingPrice = 850000.0,
+        costPrice = 720000.0,
         categoryName = "မိုဘိုင်းဖုန်း",
         brandName = "Samsung",
         unitName = "လုံး",

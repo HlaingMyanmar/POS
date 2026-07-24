@@ -225,6 +225,7 @@ export default function BookingManagement() {
   const [form, setForm]           = useState({ ...emptyForm, devices: [emptyDevice()] });
   const [printId, setPrintId]     = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [step, setStep]           = useState<'customer' | 'device' | 'review'>('customer');
   const PAGE_SIZE = 20;
 
   const load = async () => {
@@ -235,23 +236,42 @@ export default function BookingManagement() {
     }
   };
 
-  useEffect(() => { load(); }, [page, search, dateFrom, dateTo]);
-  useRefreshOnTabActivate(load);
-  useDataEvents(['Booking'], load);
+  const loadReferenceData = async () => {
+    try {
+      const [customerRes, staffRes, shelfRes] = await Promise.allSettled([
+        api.get<any, any>('/v1/customers?size=999'),
+        staffService.getAllActive(),
+        shelfLocationService.getActive(),
+      ]);
+
+      if (customerRes.status === 'fulfilled') {
+        const payload = customerRes.value as any;
+        setCustomers(payload?.data?.content ?? payload?.data ?? payload ?? []);
+      }
+      if (staffRes.status === 'fulfilled') setStaffList(Array.isArray(staffRes.value) ? staffRes.value : []);
+      if (shelfRes.status === 'fulfilled') setShelves(Array.isArray(shelfRes.value) ? shelfRes.value : []);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
-    api.get<any, any>('/v1/customers?size=999')
-      .then((r: any) => setCustomers(r.data?.content ?? r.data ?? []))
-      .catch(() => {});
-    staffService.getAllActive()
-      .then(list => setStaffList(list ?? []))
-      .catch(() => {});
-    shelfLocationService.getActive().then(setShelves).catch(() => {});
-  }, []);
+    void load();
+    void loadReferenceData();
+  }, [page, search, dateFrom, dateTo]);
+  useRefreshOnTabActivate(() => {
+    void load();
+    void loadReferenceData();
+  });
+  useDataEvents(['Booking', 'Customer', 'Staff', 'Service', 'Service Job'], () => {
+    void load();
+    void loadReferenceData();
+  });
 
   const openNew = () => {
     setForm({ ...emptyForm, devices: [emptyDevice()] });
     setEditId(null);
+    setStep('customer');
     setShowModal(true);
   };
 
@@ -285,6 +305,7 @@ export default function BookingManagement() {
       devices,
     });
     setEditId(b.id);
+    setStep('review');
     setShowModal(true);
   };
 
@@ -307,7 +328,9 @@ export default function BookingManagement() {
   const handleSave = async () => {
     if (!form.customerId) { Swal.fire('Error', 'Customer ရွေးပါ', 'error'); return; }
     const hasEmptyBrand = form.devices.some(d => !d.brand.trim());
+    const hasEmptyProblem = form.devices.some(d => !d.problemDesc.trim());
     if (hasEmptyBrand) { Swal.fire('Error', 'Device တိုင်းအတွက် Brand ဖြည့်ပါ', 'error'); return; }
+    if (hasEmptyProblem) { Swal.fire('Error', 'Device တိုင်းအတွက် ပြဿနာဖော်ပြချက် ဖြည့်ပါ', 'error'); return; }
 
     // Use first device's fields as the booking-level device info (legacy compat)
     const first = form.devices[0];
@@ -337,7 +360,11 @@ export default function BookingManagement() {
       ? await bookingService.update(editId, payload)
       : await bookingService.create(payload);
 
-    if (res.success) { setShowModal(false); load(); }
+    if (res.success) {
+      setShowModal(false);
+      setStep('customer');
+      load();
+    }
     else Swal.fire('Error', res.message, 'error');
   };
 
@@ -551,100 +578,137 @@ export default function BookingManagement() {
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Customer */}
-              <section>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ဖောက်သည် *</p>
-                <CustomerCombo
-                  customers={customers}
-                  value={form.customerId}
-                  onChange={id => setForm(p => ({ ...p, customerId: id }))}
-                  onCreated={c => setCustomers(prev => [...prev, c])}
-                />
-              </section>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <button type="button" onClick={() => setStep('customer')} className={`px-3 py-1.5 rounded-full ${step === 'customer' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>1. Customer</button>
+                <button type="button" onClick={() => form.customerId && setStep('device')} className={`px-3 py-1.5 rounded-full ${step === 'device' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId}>2. Device</button>
+                <button type="button" onClick={() => form.devices.every(d => d.brand.trim() && d.problemDesc.trim()) && setStep('review')} className={`px-3 py-1.5 rounded-full ${step === 'review' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || !form.devices.every(d => d.brand.trim() && d.problemDesc.trim())}>3. Review</button>
+              </div>
 
-              {/* Devices */}
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    ပစ္စည်း(များ) * &nbsp;
-                    <span className="text-indigo-500 font-normal normal-case">
-                      ({form.devices.length} ခု → Job Order {form.devices.length} ခု ဖန်တီးမည်)
-                    </span>
-                  </p>
-                  <button onClick={addDevice}
-                    className="text-xs font-bold text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">
-                    + ပစ္စည်းထပ်ထည့်
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {form.devices.map((device, idx) => (
-                    <DeviceCard
-                      key={idx}
-                      index={idx}
-                      device={device}
-                      total={form.devices.length}
-                      onChange={updateDevice}
-                      onRemove={removeDevice}
+              {step === 'customer' && (
+                <section className="space-y-4">
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ဖောက်သည် *</p>
+                    <CustomerCombo
+                      customers={customers}
+                      value={form.customerId}
+                      onChange={id => setForm(p => ({ ...p, customerId: id }))}
+                      onCreated={(c) => {
+                        setCustomers(prev => prev.some(x => x.id === c.id) ? prev : [c, ...prev]);
+                      }}
                     />
-                  ))}
-                </div>
-              </section>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-700">လုပ်ငန်းစဉ်</p>
+                    <ul className="list-disc ml-5 mt-2 space-y-1">
+                      <li>ဖောက်သည်ကို ရွေးပါ</li>
+                      <li>ပစ္စည်းအချက်အလက်ကို ဖြည့်ပါ</li>
+                      <li>ပြဿနာနှင့် အခြေအနေကို review လုပ်ပြီး save လုပ်ပါ</li>
+                    </ul>
+                  </div>
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => form.customerId && setStep('device')} disabled={!form.customerId} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">Next</button>
+                  </div>
+                </section>
+              )}
 
-              {/* Cost / Shelf / Staff */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">ခန့်မှန်းကုန်ကျ (Ks)</label>
-                  <input type="number" min={0} value={form.totalAmount}
-                    onChange={e => setForm(p => ({ ...p, totalAmount: e.target.value }))}
-                    placeholder="0"
-                    className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">ကဏ်တည်နေရာ</label>
-                  <select value={form.shelfLocation}
-                    onChange={e => setForm(p => ({ ...p, shelfLocation: e.target.value }))}
-                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
-                    <option value="">— ရွေးပါ —</option>
-                    {shelves.map((s: any) => (
-                      <option key={s.id} value={s.code}>
-                        {s.label ? `${s.code} - ${s.label}` : s.code}
-                      </option>
+              {step === 'device' && (
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      ပစ္စည်း(များ) * &nbsp;
+                      <span className="text-indigo-500 font-normal normal-case">
+                        ({form.devices.length} ခု → Job Order {form.devices.length} ခု ဖန်တီးမည်)
+                      </span>
+                    </p>
+                    <button onClick={addDevice} className="text-xs font-bold text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">
+                      + ပစ္စည်းထပ်ထည့်
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {form.devices.map((device, idx) => (
+                      <DeviceCard key={idx} index={idx} device={device} total={form.devices.length} onChange={updateDevice} onRemove={removeDevice} />
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">နည်းပညာဆရာ</label>
-                  <select value={form.staffId}
-                    onChange={e => setForm(p => ({ ...p, staffId: e.target.value }))}
-                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
-                    <option value="">— မရှိ —</option>
-                    {staffList.map((s: any) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}{s.role ? ` (${s.role})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                  </div>
+                  <div className="flex justify-between">
+                    <button type="button" onClick={() => setStep('customer')} className="px-4 py-2 rounded-lg border text-sm font-semibold text-slate-600">Back</button>
+                    <button type="button" onClick={() => form.devices.every(d => d.brand.trim() && d.problemDesc.trim()) && setStep('review')} disabled={!form.devices.every(d => d.brand.trim() && d.problemDesc.trim())} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">Review</button>
+                  </div>
+                </section>
+              )}
 
-              {/* Remark */}
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">မှတ်ချက်</label>
-                <input value={form.remark} onChange={e => setForm(p => ({ ...p, remark: e.target.value }))}
-                  placeholder="နောက်ထပ်မှတ်ချက်..."
-                  className="w-full border rounded-xl px-3 py-2 text-sm" />
-              </div>
-            </div>
+              {step === 'review' && (
+                <section className="space-y-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Review</p>
+                      <span className="text-xs text-slate-500">{form.devices.length} device(s)</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-slate-500">ဖောက်သည်</p>
+                        <p className="font-semibold text-slate-800">{customers.find(c => String(c.id) === String(form.customerId))?.name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">ဝန်ထမ်း</p>
+                        <p className="font-semibold text-slate-800">{staffList.find(s => String(s.id) === String(form.staffId))?.name || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {form.devices.map((device, idx) => (
+                        <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
+                          <p className="font-semibold text-slate-800">{idx + 1}. {device.brand || 'Brand not set'}</p>
+                          <p className="text-xs text-slate-500 mt-1">{device.problemDesc || 'Problem not entered'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-slate-50 rounded-b-2xl">
-              <button onClick={() => setShowModal(false)}
-                className="px-5 py-2 text-sm border rounded-xl text-slate-600 hover:bg-slate-100 font-medium">
-                မလုပ်တော့ပါ
-              </button>
-              <button onClick={handleSave}
-                className="px-6 py-2 text-sm bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow">
-                {editId ? 'ပြင်ဆင်မည်' : 'သိမ်းဆည်းမည်'}
-              </button>
+                  <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ဝန်ထမ်း</label>
+                      <select value={form.staffId} onChange={e => setForm(p => ({ ...p, staffId: e.target.value }))}
+                        className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                        <option value="">— မရွေးထား —</option>
+                        {staffList.map((s: any) => (
+                          <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">အခြေအနေ</label>
+                      <select value={form.shelfLocation} onChange={e => setForm(p => ({ ...p, shelfLocation: e.target.value }))}
+                        className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                        <option value="">— မရွေးထား —</option>
+                        <option value="IN_STORAGE">In Storage</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                  </section>
+
+                  <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">စုစုပေါင်းငွေ</label>
+                      <input type="number" min={0} value={form.totalAmount} onChange={e => setForm(p => ({ ...p, totalAmount: e.target.value }))}
+                        placeholder="0" className="w-full border rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">မှတ်ချက်</label>
+                      <input value={form.remark} onChange={e => setForm(p => ({ ...p, remark: e.target.value }))}
+                        placeholder="နောက်ထပ်မှတ်ချက်..." className="w-full border rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </section>
+
+                  <div className="flex justify-between gap-2 pt-2">
+                    <button type="button" onClick={() => setStep('device')} className="px-4 py-2 rounded-lg border text-sm font-semibold text-slate-600">Back</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowModal(false)} className="px-5 py-2 text-sm border rounded-xl text-slate-600 hover:bg-slate-100 font-medium">မလုပ်တော့ပါ</button>
+                      <button onClick={handleSave} className="px-6 py-2 text-sm bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow">{editId ? 'ပြင်ဆင်မည်' : 'သိမ်းဆည်းမည်'}</button>
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
           </div>
         </div>

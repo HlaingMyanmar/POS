@@ -1,4 +1,4 @@
-﻿package com.sspd.servicemgmt.ui.screens
+package com.sspd.servicemgmt.ui.screens
 
 import android.content.Context
 import android.content.Intent
@@ -657,4 +657,4 @@ private fun SerialCard(
     }
 }
 
-private fun Long.fmt() = String.format("%,d", this)
+private fun Double.fmt() = if (this % 1.0 == 0.0) String.format("%,.0f", this) else String.format("%,.2f", this)

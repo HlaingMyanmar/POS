@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { AlertCircle, ArrowLeft, CheckCircle2, CreditCard, Eye, List, PackageCheck, Plus, ReceiptText, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Eye, List, Plus, ReceiptText, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { purchaseReturnApiService, PurchaseReturnPage } from '../services/purchasereturnapiservice';
@@ -97,6 +97,7 @@ const PurchaseReturnManagement: React.FC = () => {
   const [dateTo, setDateTo] = useState('');
 
   const [showForm, setShowForm] = useState(false);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [viewRow, setViewRow] = useState<PurchaseReturnDTO | null>(null);
 
@@ -604,50 +605,21 @@ const PurchaseReturnManagement: React.FC = () => {
     return (
       <div className="w-full max-w-none space-y-5">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/70 p-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
+          <div className="flex flex-col gap-4 border-b border-slate-100 bg-white p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <button onClick={() => { setShowForm(false); resetForm(); }} className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" title="နောက်သို့"><ArrowLeft size={16} /></button>
+              <div className="min-w-0">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 <ReceiptText size={14} /> ဝယ်ယူပြန်ပို့ ဘောင်ချာ
               </div>
               <h2 className="mt-1 text-xl font-bold text-slate-800 text-left">{editingId ? 'ဝယ်ယူပြန်ပို့ဘောင်ချာ ပြင်ရန်' : 'ဝယ်ယူပြန်ပို့ဘောင်ချာ အသစ်'}</h2>
-              <p className="mt-1 text-xs text-slate-500">ဝယ်ယူမှုဘောင်ချာထဲရှိ ပစ္စည်းကိုသာ ပြန်ပို့နိုင်သည်။ Serial item ဖြစ်ပါက အဲဒီဘောင်ချာထဲက serial ကိုရွေးပါ။</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ရွေးထားသော အရေအတွက်</p>
-                <p className="font-black text-slate-800">{totalSelectedQty}</p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ပြန်ပို့စုစုပေါင်း</p>
-                <p className="font-black text-slate-800">{money(total)}</p>
-              </div>
-              <button onClick={() => { setShowForm(false); resetForm(); }} className="col-span-2 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 sm:col-span-1 sm:w-auto">
-                <ArrowLeft size={14} /> နောက်သို့
-              </button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-4">
-            <div className={`rounded-lg border p-3 ${supplierId > 0 ? 'border-emerald-100 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
-              <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Supplier</span>{supplierId > 0 ? <CheckCircle2 size={15} className="text-emerald-600" /> : <AlertCircle size={15} className="text-slate-400" />}</div>
-              <p className="mt-1 truncate text-xs font-semibold text-slate-700">{supplierId > 0 ? supplierSearch : 'မရွေးရသေးပါ'}</p>
-            </div>
-            <div className={`rounded-lg border p-3 ${purchaseId > 0 ? 'border-emerald-100 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
-              <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">ဝယ်ယူမှု</span>{purchaseId > 0 ? <CheckCircle2 size={15} className="text-emerald-600" /> : <AlertCircle size={15} className="text-slate-400" />}</div>
-              <p className="mt-1 truncate text-xs font-semibold text-slate-700">{purchaseId > 0 ? purchaseSearch : 'ဘောင်ချာရွေးပါ'}</p>
-            </div>
-            <div className={`rounded-lg border p-3 ${totalSelectedQty > 0 ? 'border-emerald-100 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
-              <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Items</span><PackageCheck size={15} className={totalSelectedQty > 0 ? 'text-emerald-600' : 'text-slate-400'} /></div>
-              <p className="mt-1 text-xs font-semibold text-slate-700">{totalSelectedQty} / {totalReturnableQty} qty</p>
-            </div>
-            <div className={`rounded-lg border p-3 ${validRefund ? 'border-emerald-100 bg-emerald-50/60' : 'border-rose-100 bg-rose-50/70'}`}>
-              <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">ပြန်အမ်းငွေ</span><CreditCard size={15} className={validRefund ? 'text-emerald-600' : 'text-rose-500'} /></div>
-              <p className="mt-1 truncate text-xs font-semibold text-slate-700">{refundMode}</p>
-            </div>
+            <button type="button" onClick={() => setIsRefundModalOpen(true)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 lg:w-auto"><CreditCard size={16} /> ပြန်အမ်းငွေ ဖွင့်မည်</button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-5">
+        <div className="grid grid-cols-1 gap-5">
           <div className="min-w-0 space-y-5">
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
@@ -658,8 +630,8 @@ const PurchaseReturnManagement: React.FC = () => {
                 {purchaseLoading && <span className="text-[11px] font-semibold text-indigo-600">ဖတ်နေသည်...</span>}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <div className="flex min-w-0 flex-col gap-1.5 xl:col-span-3">
                   <label className="h-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supplier</label>
                   <input
                     list="pr-suppliers"
@@ -672,7 +644,7 @@ const PurchaseReturnManagement: React.FC = () => {
                     {suppliers.map((s) => <option key={s.id} value={supplierLabel(s)} />)}
                   </datalist>
                 </div>
-                <div className="flex min-w-0 flex-col gap-1.5">
+                <div className="flex min-w-0 flex-col gap-1.5 xl:col-span-3">
                   <label className="h-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">ဝယ်ယူမှုဘောင်ချာ</label>
                   <input
                     list="pr-purchases"
@@ -837,9 +809,14 @@ const PurchaseReturnManagement: React.FC = () => {
             </div>
           </div>
 
-          <div className="space-y-5">
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 space-y-4 xl:sticky xl:top-20">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> ပြန်အမ်းငွေ နှင့် စာရင်း</h3>
+          {isRefundModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" onMouseDown={() => setIsRefundModalOpen(false)}>
+              <div className="h-[100dvh] w-full overflow-y-auto rounded-none bg-white shadow-xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:rounded-2xl" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="min-h-full bg-white p-4 pb-8 space-y-4 sm:min-h-0 sm:rounded-2xl sm:p-5">
+              <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 pt-4 pb-4 sm:static sm:mx-0 sm:mt-0 sm:p-0 sm:pb-0 sm:border-0">
+                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> ပြန်အမ်းငွေ နှင့် စာရင်း</h3>
+                <button type="button" onClick={() => setIsRefundModalOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="ပိတ်မည်"><X size={18} /></button>
+              </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
                 <div className="flex justify-between items-center text-sm"><span className="text-slate-500">ယခုပြန်ပို့ငွေ</span><span className="font-black text-slate-800">{money(total)}</span></div>
                 <div className="flex justify-between items-center text-xs"><span className="text-slate-500">ပြန်ပို့ပြီး ကျန်ငွေ</span><span className="font-bold text-slate-700">{money(dueAfterReturn)}</span></div>
@@ -894,7 +871,9 @@ const PurchaseReturnManagement: React.FC = () => {
                 <Save size={16} /> {saving ? 'Saving...' : editingId ? 'ပြန်ပို့ဘောင်ချာ ပြင်မည်' : 'ဝယ်ယူပြန်ပို့မှု အတည်ပြုမည်'}
               </button>
             </div>
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

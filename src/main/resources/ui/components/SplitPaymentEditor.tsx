@@ -28,8 +28,8 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-700">{label}</p>
           <p className="text-[11px] text-slate-500">Cash, KPay, Bank စသည်ဖြင့် တစ်ကြောင်းချင်းခွဲပေးနိုင်သည်။</p>
         </div>
@@ -44,7 +44,7 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
       </div>
 
       {rows.map((row, index) => (
-        <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_150px_1fr_34px] gap-2">
+        <div key={index} className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_130px_minmax(0,1fr)_34px]">
           <select
             value={row.paymentMethodId || 0}
             disabled={disabled}
@@ -77,7 +77,7 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
             type="button"
             disabled={disabled || rows.length <= 1}
             onClick={() => remove(index)}
-            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-500 disabled:opacity-40"
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-500 disabled:opacity-40 xl:min-h-0"
           >
             <Trash2 size={14} />
           </button>

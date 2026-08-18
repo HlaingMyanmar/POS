@@ -118,6 +118,10 @@ const PurchaseManagement: React.FC = () => {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [serverStats, setServerStats] = useState<PurchaseStats>({ count: 0, totalAmount: 0, paidAmount: 0, dueAmount: 0 });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isQuickSupplierModalOpen, setIsQuickSupplierModalOpen] = useState(false);
+  const [quickSupplierSaving, setQuickSupplierSaving] = useState(false);
+  const [quickSupplierForm, setQuickSupplierForm] = useState({ name: '', phone: '', address: '' });
+  const [isVoucherPaymentModalOpen, setIsVoucherPaymentModalOpen] = useState(false);
   const [previewPurchase, setPreviewPurchase] = useState<PurchaseDTO | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sendToPurchase, setSendToPurchase] = useState<PurchaseDTO | null>(null);
@@ -612,6 +616,36 @@ const PurchaseManagement: React.FC = () => {
     setSupplierOpen(false);
   };
 
+  const openQuickSupplierModal = () => {
+    setQuickSupplierForm({ name: supplierSearch.trim(), phone: '', address: '' });
+    setSupplierOpen(false);
+    setIsQuickSupplierModalOpen(true);
+  };
+
+  const handleQuickSupplierSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = quickSupplierForm.name.trim();
+    if (!name || quickSupplierSaving) return;
+
+    setQuickSupplierSaving(true);
+    try {
+      const created = await supplierService.create({
+        name,
+        phone: quickSupplierForm.phone.trim() || undefined,
+        address: quickSupplierForm.address.trim() || undefined,
+        openingBalance: 0
+      });
+      setSuppliers((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      handleSupplierSelect(created);
+      setIsQuickSupplierModalOpen(false);
+      Swal.fire({ icon: 'success', title: 'Supplier created', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+    } catch (error: any) {
+      Swal.fire('Error', error.message || 'Failed to create supplier', 'error');
+    } finally {
+      setQuickSupplierSaving(false);
+    }
+  };
+
   const handleStaffSelect = (staff: StaffDTO) => {
     setSelectedStaffId(staff.id);
     setStaffSearch(getStaffLabel(staff));
@@ -757,17 +791,14 @@ const PurchaseManagement: React.FC = () => {
       {!showNewVoucherForm ? (
         <>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800 text-left">ပစ္စည်းလက်ခံ</h2>`r`n              <p className="mt-1 text-sm text-slate-500">ယနေ့ လက်ခံထားသောပစ္စည်းများ၊ ပေးသွင်းသူနှင့် ငွေပေးချေမှုအခြေအနေကို စနစ်တကျကြည့်ရန်။</p>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+            <div className="ml-auto flex flex-col sm:flex-row sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
               <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
                 <RefreshCw size={14} className={purchasesLoading ? 'animate-spin' : ''} />
                 ပြန်ဖတ်ရန်
               </button>
               <button onClick={() => setShowNewVoucherForm(true)} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">
                 <Plus size={16} />
-                ပစ္စည်းလက်ခံအသစ်
+                ဝယ်ယူမှုအသစ်
               </button>
             </div>
           </div>
@@ -867,7 +898,7 @@ const PurchaseManagement: React.FC = () => {
                 </span>
                 <div className="min-w-0">
                   <p className="text-xs font-black text-slate-700">စစ်ထုတ်ရန်</p>
-                  <p className="truncate text-[10px] font-semibold text-slate-400">Today default ဖြင့် ပစ္စည်းလက်ခံမှတ်တမ်းများ</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-400">Today default ဖြင့် ဝယ်ယူမှုမှတ်တမ်းများ</p>
                 </div>
               </div>
               <button
@@ -981,7 +1012,7 @@ const PurchaseManagement: React.FC = () => {
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <List size={18} className="text-indigo-500 shrink-0" />
-                <span className="font-semibold text-slate-800">ပစ္စည်းလက်ခံ ဘောင်ချာစာရင်း</span>
+                <span className="font-semibold text-slate-800">ဝယ်ယူမှု ဘောင်ချာစာရင်း</span>
                 {!purchasesLoading && purchaseTotalElements > 0 && (
                   <span className="text-sm text-slate-500">
                     {purchasePage * purchasePageSize + 1} မှ {Math.min((purchasePage + 1) * purchasePageSize, purchaseTotalElements)} / {purchaseTotalElements.toLocaleString()} ခု ပြနေသည် — ဤစာမျက်နှာတွင် {paidCount} ခု ငွေချေပြီး
@@ -1144,46 +1175,23 @@ const PurchaseManagement: React.FC = () => {
                 <div className="min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Purchase Voucher</p>
                   <h2 className="text-xl font-black text-slate-900 mt-0.5">ဝယ်ယူမှုဘောင်ချာအသစ်</h2>
-                  <p className="text-xs text-slate-500 mt-1">ပေးသွင်းသူ၊ ပစ္စည်း၊ serial/warranty၊ ငွေပေးချေမှုကို တစ်နေရာတည်းမှာ စနစ်တကျဖြည့်ပါ။</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 w-full lg:w-auto lg:min-w-[360px]">
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Items</p>
-                  <p className="text-sm font-black text-slate-800">{details.filter(d => d.productId > 0).length}</p>
-                </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Net</p>
-                  <p className="text-sm font-black text-indigo-700 truncate">{new Intl.NumberFormat('en-US').format(netAmount)}</p>
-                </div>
-                <div className={`rounded-lg border px-3 py-2 ${dueAmount > 0 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
-                  <p className={`text-sm font-black truncate ${dueAmount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{dueAmount > 0 ? 'Credit' : 'Paid'}</p>
-                </div>
+              <div className="w-full lg:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsVoucherPaymentModalOpen(true)}
+                  className="w-full lg:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors"
+                >
+                  <CreditCard size={16} /> ငွေပေးချေမှု ဖွင့်မည်
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            {[
-              { label: 'ပေးသွင်းသူ', value: selectedSupplierId > 0 ? 'ရွေးပြီး' : 'ရွေးရန်လို', ready: selectedSupplierId > 0 },
-              { label: 'ပစ္စည်းအတန်း', value: `${details.filter(d => d.productId > 0).length} line(s)`, ready: details.some(d => d.productId > 0) },
-              { label: 'Serial / Warranty', value: hasDuplicateSerials ? 'Serial ထပ်နေ' : 'စစ်ပြီး', ready: !hasDuplicateSerials },
-              { label: 'ငွေပေးချေမှု', value: dueAmount > 0 ? 'အကြွေးကျန်' : 'ရှင်းပြီး', ready: isValid }
-            ].map((step, idx) => (
-              <div key={step.label} className={`rounded-xl border p-3 flex items-center gap-3 ${step.ready ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${step.ready ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{idx + 1}</span>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{step.label}</p>
-                  <p className={`text-sm font-black mt-0.5 truncate ${step.ready ? 'text-emerald-700' : 'text-slate-700'}`}>{step.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Form Details */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6">
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
@@ -1192,8 +1200,8 @@ const PurchaseManagement: React.FC = () => {
               </div>
               <span className="hidden sm:inline-flex px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-500">Step 1</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6 2xl:grid-cols-8">
+              <div className="space-y-1.5 xl:col-span-3 2xl:col-span-3">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <ShoppingCart size={12} /> ပေးသွင်းသူ
                 </label>
@@ -1221,12 +1229,24 @@ const PurchaseManagement: React.FC = () => {
                           <p className="text-sm font-semibold text-slate-800">{s.name}</p>
                           <p className="text-xs text-slate-500">{s.code || '-'} {s.phone ? `| ${s.phone}` : ''}</p>
                         </button>
-                      )) : <p className="px-3 py-2 text-xs text-slate-400">ပေးသွင်းသူ မတွေ့ပါ။</p>}
+                      )) : (
+                        <div className="p-3 text-center">
+                          <p className="text-xs text-slate-400">ပေးသွင်းသူ မတွေ့ပါ။</p>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={openQuickSupplierModal}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
+                          >
+                            <Plus size={13} /> ပေးသွင်းသူအသစ် ဖန်တီးမည်
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 xl:col-span-3 2xl:col-span-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <User size={12} /> ဝယ်ယူသူ / ဝန်ထမ်း
                 </label>
@@ -1259,10 +1279,9 @@ const PurchaseManagement: React.FC = () => {
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3 sm:p-4">
-              <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="contents">
+              <div className="flex min-w-0 flex-col gap-1.5 xl:col-span-2 2xl:col-span-1">
                 <label className="flex h-4 items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   <Calendar size={12} className="shrink-0" /> <span className="truncate">Purchase Date</span>
                 </label>
@@ -1276,9 +1295,8 @@ const PurchaseManagement: React.FC = () => {
                   }}
                   className="h-10 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                 />
-                <p className="h-4 text-[10px] leading-4 text-transparent select-none">.</p>
               </div>
-              <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex min-w-0 flex-col gap-1.5 xl:col-span-2 2xl:col-span-1">
                 <label className="flex h-4 items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider"><span className="truncate">Payment Term</span></label>
                 <select
                   value={paymentTermDays}
@@ -1297,9 +1315,8 @@ const PurchaseManagement: React.FC = () => {
                   <option value={45}>Net 45 days</option>
                   <option value={60}>Net 60 days</option>
                 </select>
-                <p className="h-4 text-[10px] leading-4 text-transparent select-none">.</p>
               </div>
-              <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 xl:col-span-1">
+              <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 xl:col-span-2 2xl:col-span-1">
                 <label className="flex h-4 items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider"><span className="truncate">Due Date</span></label>
                 <input
                   type="date"
@@ -1308,7 +1325,7 @@ const PurchaseManagement: React.FC = () => {
                   disabled={dueAmount <= 0}
                   className="h-10 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:bg-slate-100 disabled:text-slate-400"
                 />
-                <p className="h-4 text-[10px] text-slate-400 leading-4 truncate">Only required when credit remains.</p>
+              </div>
               </div>
             </div>
 
@@ -1650,24 +1667,30 @@ const PurchaseManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Summary & Payment */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6 lg:sticky lg:top-20">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
-              <div>
+        {isVoucherPaymentModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 p-0 sm:p-4" onMouseDown={() => setIsVoucherPaymentModalOpen(false)}>
+            <div className="h-[100dvh] w-full overflow-y-auto rounded-none bg-white shadow-xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:rounded-2xl" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="min-h-full bg-white p-4 pb-8 space-y-5 sm:min-h-0 sm:rounded-2xl sm:p-6 sm:space-y-6">
+            <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-4 pt-4 pb-4 sm:static sm:mx-0 sm:mt-0 sm:p-0 sm:pb-4">
+              <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Payment Summary</p>
                 <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 mt-0.5">
                   <DollarSign size={16} className="text-indigo-500" />
                   ငွေပေးချေမှုနှင့် စုစုပေါင်း
                 </h3>
               </div>
-              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${dueAmount > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                {dueAmount > 0 ? 'Credit' : 'Paid'}
-              </span>
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <span className={`hidden sm:inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black border ${dueAmount > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                  {dueAmount > 0 ? 'Credit' : 'Paid'}
+                </span>
+                <button type="button" onClick={() => setIsVoucherPaymentModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="ပိတ်မည်">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-1 text-sm">
                 <span className="text-slate-500">ကုန်ဖိုးစုစုပေါင်း</span>
                 <span className="font-bold text-slate-800">
                   {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalAmount)}
@@ -1688,7 +1711,7 @@ const PurchaseManagement: React.FC = () => {
                 <p className="text-[10px] text-slate-400">Return amount will use discounted net cost.</p>
               </div>
 
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-1 text-sm">
                 <span className="text-slate-500">Discount ပြီးကျသင့်ငွေ</span>
                 <span className="font-bold text-indigo-700">
                   {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netAmount)}
@@ -1714,7 +1737,7 @@ const PurchaseManagement: React.FC = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Paid Amount</label>
                     <div className="flex items-center gap-1">
                       <button type="button" onClick={() => { setPaidAmount(netAmount); setPurchasePayments([]); }} className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-bold hover:bg-emerald-700">Full</button>
@@ -1762,7 +1785,7 @@ const PurchaseManagement: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-1 text-sm pt-2 border-t border-slate-100">
                 <span className="text-slate-500">ပေးရန်ကျန်</span>
                 <span className={`font-bold ${dueAmount > 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
                   {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(dueAmount)}
@@ -1801,10 +1824,44 @@ const PurchaseManagement: React.FC = () => {
                 )}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
         </>
+      )}
+
+      {isQuickSupplierModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" onMouseDown={() => setIsQuickSupplierModalOpen(false)}>
+          <form onSubmit={handleQuickSupplierSave} onMouseDown={(e) => e.stopPropagation()} className="w-full rounded-t-2xl bg-white p-5 shadow-xl sm:max-w-md sm:rounded-2xl">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Quick Supplier</p>
+                <h3 className="mt-0.5 text-base font-black text-slate-800">ပေးသွင်းသူအသစ် ဖန်တီးမည်</h3>
+              </div>
+              <button type="button" onClick={() => setIsQuickSupplierModalOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="ပိတ်မည်"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">ပေးသွင်းသူအမည် *</label>
+                <input autoFocus required value={quickSupplierForm.name} onChange={(e) => setQuickSupplierForm((form) => ({ ...form, name: e.target.value }))} placeholder="ပေးသွင်းသူအမည်" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">ဖုန်းနံပါတ်</label>
+                <input value={quickSupplierForm.phone} onChange={(e) => setQuickSupplierForm((form) => ({ ...form, phone: e.target.value }))} placeholder="Optional" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">လိပ်စာ</label>
+                <input value={quickSupplierForm.address} onChange={(e) => setQuickSupplierForm((form) => ({ ...form, address: e.target.value }))} placeholder="Optional" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={() => setIsQuickSupplierModalOpen(false)} className="flex-1 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100">မလုပ်တော့ပါ</button>
+              <button disabled={quickSupplierSaving || !quickSupplierForm.name.trim()} className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300">{quickSupplierSaving ? 'ဖန်တီးနေသည်...' : 'ဖန်တီးမည်'}</button>
+            </div>
+          </form>
+        </div>
       )}
 
       {isPaymentModalOpen && (

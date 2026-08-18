@@ -4,9 +4,9 @@ import { supplierService } from '../services/supplierapiservice';
 import { SupplierDTO } from '../types';
 import { 
   Loader2, Plus, Search, Trash2, Edit2, X, 
-  Truck, Phone, MapPin, DollarSign,
+  Truck, Phone, MapPin,
   ChevronLeft, ChevronRight, ChevronDown, Save,
-  AlertCircle, ClipboardList, RefreshCw
+  ClipboardList, RefreshCw
 } from 'lucide-react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
@@ -134,87 +134,88 @@ const SupplierManagement: React.FC = () => {
   );
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-400 h-full flex flex-col overflow-hidden text-left">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 px-1">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-100 shrink-0">
-            <Truck size={24} />
+    <div className="flex h-full flex-col space-y-3 overflow-hidden text-left animate-in fade-in duration-400">
+      <div className="flex shrink-0 flex-col justify-between gap-3 px-1 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-100">
+            <Truck size={22} />
           </div>
           <div>
-            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase">ပေးသွင်းသူစာရင်း</h2>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
-              <ClipboardList size={10} className="text-indigo-400" /> Procurement Partners & Balances
+            <h2 className="text-base font-black tracking-tight text-slate-800">ပေးသွင်းသူစာရင်း</h2>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+              <ClipboardList size={12} className="text-indigo-500" /> ပေးသွင်းသူများနှင့် ပေးရန်ကျန်ငွေစာရင်း
             </p>
           </div>
         </div>
         <button 
           onClick={() => handleOpenModal()} 
-          className="bg-indigo-600 text-white px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-indigo-100 active:scale-95 transition-all flex items-center gap-2 hover:bg-indigo-700"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700 active:scale-95"
         >
-          <Plus size={18} /> New Supplier
+          <Plus size={17} /> ပေးသွင်းသူအသစ်
         </button>
       </div>
 
-      <div className="bg-white p-5 rounded-[2rem] border border-slate-200 shadow-sm mx-1">
-        <div className="flex flex-col lg:flex-row gap-5">
+      <div className="mx-1 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
             <input 
               type="text" 
-              placeholder="Search by name or code..." 
+              placeholder="အမည် သို့မဟုတ် ကုဒ်ဖြင့် ရှာပါ..." 
               value={searchTerm}
               onChange={handleSearch}
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-[13px] font-bold focus:bg-white focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
             />
           </div>
           <button 
             onClick={() => fetchPaginatedData()}
-            className="p-3.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-transparent hover:border-indigo-100 bg-white shadow-sm"
+            title="ပြန်ဖတ်ရန်"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-slate-500 transition-all hover:border-indigo-100 hover:bg-indigo-50 hover:text-indigo-600"
           >
-            <RefreshCw size={20} />
+            <RefreshCw size={17} />
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-200 flex flex-col flex-1 overflow-hidden mx-1">
+      <div className="mx-1 flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex-1 overflow-auto custom-scrollbar relative">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
-            <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <thead className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 shadow-sm backdrop-blur-sm">
               <tr>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Partner Identity</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Info</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Location</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Outstanding Balance</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-slate-500">ပေးသွင်းသူ အချက်အလက်</th>
+                <th className="px-4 py-3 text-[11px] font-bold text-slate-500">ဆက်သွယ်ရန်</th>
+                <th className="px-4 py-3 text-[11px] font-bold text-slate-500">လိပ်စာ</th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold text-slate-500">ပေးရန်ကျန်ငွေ</th>
+                <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500">လုပ်ဆောင်ရန်</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {suppliers.length > 0 ? suppliers.map((supplier) => (
-                <tr key={supplier.id} className="hover:bg-slate-50/50 transition-all group">
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4">
-                      <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                        <Truck size={22} />
+                <tr key={supplier.id} className="group border-b border-slate-100 last:border-0 transition-colors hover:bg-indigo-50/30">
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-600 transition-all group-hover:bg-indigo-600 group-hover:text-white">
+                        <Truck size={19} />
                       </div>
                       <div className="text-left">
-                        <p className="text-[14px] font-black text-slate-800 tracking-tight">{supplier.name}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{supplier.code}</p>
+                        <p className="text-sm font-bold tracking-tight text-slate-800">{supplier.name}</p>
+                        <p className="mt-0.5 text-[10px] font-semibold tracking-wide text-slate-400">{supplier.code}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-5">
+                  <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
                       <Phone size={14} className="text-slate-300" />
-                      <span className="text-[12px] font-bold text-slate-600">{supplier.phone || 'N/A'}</span>
+                      <span className="text-xs font-medium text-slate-600">{supplier.phone || 'မရှိသေးပါ'}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-left">
-                    <div className="flex items-center gap-2 max-w-[200px]">
+                  <td className="px-4 py-3.5 text-left">
+                    <div className="flex max-w-[220px] items-center gap-2">
                       <MapPin size={14} className="text-slate-300 shrink-0" />
-                      <span className="text-[11px] font-medium text-slate-500 truncate">{supplier.address || 'Address not registered'}</span>
+                      <span className="truncate text-xs text-slate-500">{supplier.address || 'လိပ်စာမထည့်ရသေးပါ'}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-right">
+                  <td className="px-4 py-3.5 text-right">
                     <div className="flex flex-col items-end">
                       <span className={`text-[14px] font-black tabular-nums ${supplier.currentBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                         {supplier.currentBalance.toLocaleString()} <span className="text-[10px] ml-0.5 font-bold uppercase">Ks</span>
@@ -224,13 +225,13 @@ const SupplierManagement: React.FC = () => {
                       )}
                     </div>
                   </td>
-                  <td className="px-8 py-5 text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                      <button onClick={() => handleOpenModal(supplier)} className="p-2.5 bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-xl transition-all shadow-sm">
-                        <Edit2 size={16} />
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex justify-end gap-1.5">
+                      <button title="ပြင်မည်" onClick={() => handleOpenModal(supplier)} className="rounded-lg border border-indigo-100 bg-indigo-50 p-2 text-indigo-600 transition-all hover:bg-indigo-600 hover:text-white">
+                        <Edit2 size={15} />
                       </button>
-                      <button onClick={() => handleDelete(supplier.id)} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm">
-                        <Trash2 size={16} />
+                      <button title="ဖျက်မည်" onClick={() => handleDelete(supplier.id)} className="rounded-lg border border-rose-100 bg-rose-50 p-2 text-rose-600 transition-all hover:bg-rose-600 hover:text-white">
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </td>

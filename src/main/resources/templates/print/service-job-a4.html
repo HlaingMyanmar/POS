@@ -37,12 +37,6 @@
 
     <!-- No financial summary — intake form, not a payment receipt -->
 
-    <!-- Customer-facing notice from Voucher Print Settings -->
-    <div th:if="${inv.currentPage == inv.totalPages and not #strings.isEmpty(inv.customerNotice)}"
-         style="margin-top:14px;">
-      <div class="inv-section-label">Notice</div>
-      <div class="inv-notice" th:text="${inv.customerNotice}"></div>
-    </div>
 
     <!-- Last page: remark + signatures + footer bar -->
     <div th:if="${inv.currentPage == inv.totalPages}"

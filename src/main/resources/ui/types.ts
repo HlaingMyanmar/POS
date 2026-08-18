@@ -816,6 +816,7 @@ export enum AppRoute {
   SALES_SUMMARY     = '/reports/sales-summary',
   PURCHASE_SUMMARY  = '/reports/purchase-summary',
   SERVICE_SUMMARY   = '/reports/service-summary',
+  CUSTOMER_HISTORY  = '/reports/customer-history',
   STAFF_PERFORMANCE = '/reports/staff-performance',
   STOCK_REPORT      = '/reports/stock',
   VOUCHER_SETTINGS     = '/settings/voucher',

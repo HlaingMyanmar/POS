@@ -13,4 +13,5 @@ public class ServiceJobLineDTO {
     private BigDecimal price;
     private BigDecimal subtotal;
     private Integer warrantyMonths;
+    private Boolean warrantyCovered;
 }

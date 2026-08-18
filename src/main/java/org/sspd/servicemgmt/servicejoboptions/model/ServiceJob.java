@@ -111,6 +111,15 @@ public class ServiceJob {
     @Column(name = "rework_type", length = 20)
     private ReworkType reworkType;
 
+    @Column(name = "replacement_item_name", length = 200)
+    private String replacementItemName;
+
+    @Column(name = "replacement_serial_no", length = 120)
+    private String replacementSerialNo;
+
+    @Column(name = "replacement_reason", columnDefinition = "TEXT")
+    private String replacementReason;
+
     @Builder.Default
     @Column(name = "discount_amount", precision = 15, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;

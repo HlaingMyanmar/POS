@@ -6,13 +6,26 @@
  */
 
 export const saveToSession = (name: string, value: string) => {
-  sessionStorage.setItem(name, value);
+  try {
+    window.sessionStorage.setItem(name, value);
+  } catch (_error) {
+    // Storage can be disabled by browser privacy settings. Authentication can
+    // still continue in memory for the current page.
+  }
 };
 
 export const getFromSession = (name: string): string | null => {
-  return sessionStorage.getItem(name);
+  try {
+    return window.sessionStorage.getItem(name);
+  } catch (_error) {
+    return null;
+  }
 };
 
 export const removeFromSession = (name: string) => {
-  sessionStorage.removeItem(name);
+  try {
+    window.sessionStorage.removeItem(name);
+  } catch (_error) {
+    // Nothing to remove when browser storage is unavailable.
+  }
 };

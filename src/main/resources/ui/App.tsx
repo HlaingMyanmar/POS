@@ -46,6 +46,7 @@ import PurchaseSummaryReport from './pages/reports/PurchaseSummaryReport';
 import ServiceSummaryReport from './pages/reports/ServiceSummaryReport';
 import StockReport from './pages/reports/StockReport';
 import StaffPerformanceReport from './pages/reports/StaffPerformanceReport';
+import CustomerHistoryReport from './pages/reports/CustomerHistoryReport';
 import SetupWizardPage from './pages/SetupWizardPage';
 import ScanPage from './pages/ScanPage';
 import OpeningBalancePage from './pages/OpeningBalancePage';
@@ -71,8 +72,12 @@ const INVISIBLE_ROUTE_CHARS = /[\u200B-\u200D\uFEFF]/g;
 
 const resolveInitialTheme = (): AppTheme => {
   if (typeof window === 'undefined') return 'light';
-  const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return savedTheme === 'dark' ? 'dark' : 'light';
+  try {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return savedTheme === 'dark' ? 'dark' : 'light';
+  } catch (_error) {
+    return 'light';
+  }
 };
 
 const App: React.FC = () => {
@@ -139,7 +144,11 @@ const App: React.FC = () => {
   useEffect(() => {
     document.body.classList.remove('theme-light', 'theme-dark');
     document.body.classList.add(theme === 'dark' ? 'theme-dark' : 'theme-light');
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (_error) {
+      // Keep the selected theme for this page when storage is unavailable.
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -248,6 +257,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.SALES_SUMMARY}       element={guard(<SalesSummaryReport />,         'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.PURCHASE_SUMMARY}    element={guard(<PurchaseSummaryReport />,      'CAN_ACCESS_PURCHASE_READ')} />
           <Route path={AppRoute.SERVICE_SUMMARY}     element={guard(<ServiceSummaryReport />,       'CAN_ACCESS_SERVICE_JOB_READ')} />
+          <Route path={AppRoute.CUSTOMER_HISTORY}    element={guard(<CustomerHistoryReport />,      'CAN_ACCESS_CUSTOMER_READ')} />
           <Route path={AppRoute.STAFF_PERFORMANCE}   element={guard(<StaffPerformanceReport />,     'CAN_ACCESS_STAFF_READ')} />
           <Route path={AppRoute.STOCK_REPORT}        element={guard(<StockReport />,                'CAN_ACCESS_PRODUCT_READ')} />
           <Route path="*" element={<Navigate to={AppRoute.DASHBOARD} />} />

@@ -52,6 +52,9 @@ public class ServiceJobDTO {
     private Integer parentJobId;
     private String parentJobNo;
     private ReworkType reworkType;
+    private String replacementItemName;
+    private String replacementSerialNo;
+    private String replacementReason;
     private String remark;
     private List<ServiceJobLineDTO> lines;
     private List<ServiceJobPartDTO> productParts;

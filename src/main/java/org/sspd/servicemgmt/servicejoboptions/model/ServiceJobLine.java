@@ -35,4 +35,8 @@ public class ServiceJobLine {
 
     @Column(name = "warranty_months")
     private Integer warrantyMonths;
+
+    @Builder.Default
+    @Column(name = "warranty_covered")
+    private Boolean warrantyCovered = Boolean.FALSE;
 }

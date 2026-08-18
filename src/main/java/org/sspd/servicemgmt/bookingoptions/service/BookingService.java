@@ -111,7 +111,12 @@ public class BookingService {
             .color(dto.getColor())
             .accessories(dto.getAccessories())
             .shelfLocation(dto.getShelfLocation())
+            .reworkReturn(Boolean.TRUE.equals(dto.getReworkReturn()))
+            .parentServiceJobId(dto.getParentServiceJobId())
+            .reworkType(dto.getReworkType())
             .build();
+
+        validateReworkLink(dto);
 
         if (dto.getStaffId() != null)
             booking.setStaff(staffRepository.findById(dto.getStaffId()).orElse(null));
@@ -152,6 +157,10 @@ public class BookingService {
         booking.setColor(dto.getColor());
         booking.setAccessories(dto.getAccessories());
         booking.setShelfLocation(dto.getShelfLocation());
+        validateReworkLink(dto);
+        booking.setReworkReturn(Boolean.TRUE.equals(dto.getReworkReturn()));
+        booking.setParentServiceJobId(Boolean.TRUE.equals(dto.getReworkReturn()) ? dto.getParentServiceJobId() : null);
+        booking.setReworkType(Boolean.TRUE.equals(dto.getReworkReturn()) ? dto.getReworkType() : null);
 
         if (dto.getDeviceInfos() != null) {
             booking.getDeviceInfos().clear();
@@ -229,7 +238,9 @@ public class BookingService {
                     .finalCost(BigDecimal.ZERO)
                     .status(ServiceJobStatus.RECEIVED)
                     .bookingId(bookingId)
-                    .rework(false)
+                    .rework(Boolean.TRUE.equals(booking.getReworkReturn()))
+                    .reworkType(booking.getReworkType())
+                    .parentJobId(booking.getParentServiceJobId())
                     .lines(new ArrayList<>())
                     .build();
                 jobs.add(serviceJobRepository.save(job));
@@ -254,7 +265,9 @@ public class BookingService {
                 .finalCost(BigDecimal.ZERO)
                 .status(ServiceJobStatus.RECEIVED)
                 .bookingId(bookingId)
-                .rework(false)
+                .rework(Boolean.TRUE.equals(booking.getReworkReturn()))
+                .reworkType(booking.getReworkType())
+                .parentJobId(booking.getParentServiceJobId())
                 .lines(new ArrayList<>())
                 .build();
             jobs.add(serviceJobRepository.save(job));
@@ -325,6 +338,22 @@ public class BookingService {
         return String.format("SJ-%06d", next);
     }
 
+    private void validateReworkLink(BookingDTO dto) {
+        if (!Boolean.TRUE.equals(dto.getReworkReturn())) return;
+        if (dto.getParentServiceJobId() == null)
+            throw new IllegalArgumentException("Original service job is required for a rework return");
+        if (dto.getReworkType() == null)
+            throw new IllegalArgumentException("Rework type is required");
+
+        ServiceJob parent = serviceJobRepository.findById(dto.getParentServiceJobId())
+            .orElseThrow(() -> new ResourceNotFoundException("Original service job not found"));
+        if (parent.getStatus() != ServiceJobStatus.DELIVERED)
+            throw new IllegalStateException("Only closed service jobs can be linked as rework returns");
+        if (dto.getCustomerId() != null && parent.getCustomer() != null
+                && !parent.getCustomer().getId().equals(dto.getCustomerId()))
+            throw new IllegalArgumentException("Original service job belongs to a different customer");
+    }
+
     private BookingDTO toDto(Booking b) {
         BookingDTO dto = new BookingDTO();
         dto.setId(b.getId());
@@ -348,6 +377,13 @@ public class BookingService {
         dto.setColor(b.getColor());
         dto.setAccessories(b.getAccessories());
         dto.setShelfLocation(b.getShelfLocation());
+        dto.setReworkReturn(Boolean.TRUE.equals(b.getReworkReturn()));
+        dto.setParentServiceJobId(b.getParentServiceJobId());
+        dto.setReworkType(b.getReworkType());
+        if (b.getParentServiceJobId() != null) {
+            serviceJobRepository.findById(b.getParentServiceJobId())
+                .ifPresent(job -> dto.setParentServiceJobNo(job.getJobNo()));
+        }
         dto.setDeviceInfos(b.getDeviceInfos() != null
             ? b.getDeviceInfos().stream().map(d -> {
                 BookingDeviceInfoDTO dd = new BookingDeviceInfoDTO();

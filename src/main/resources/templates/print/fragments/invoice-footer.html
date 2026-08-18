@@ -42,6 +42,12 @@
 <!-- ═══ Last-page footer (BOOKING — remark already shown in booking-body) ═ -->
 <div th:fragment="booking-last(inv)">
 
+  <!-- Customer-facing notice from BOOKING Voucher Print Settings -->
+  <div th:if="${not #strings.isEmpty(inv.customerNotice)}" style="margin-top:10px;">
+    <div class="inv-section-label">Notice</div>
+    <div class="inv-notice" th:text="${inv.customerNotice}"></div>
+  </div>
+
   <!-- Signature lines -->
   <div th:if="${inv.showSignatures}" class="inv-signatures">
     <div class="inv-sign">

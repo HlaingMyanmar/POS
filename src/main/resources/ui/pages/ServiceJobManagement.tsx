@@ -1248,8 +1248,8 @@ export default function ServiceJobManagement() {
 
       {/* ─── Settle Modal ─── */}
       {showSettle && settleJob && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-0 sm:p-4">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:rounded-2xl">
             <div className="px-6 py-4 bg-amber-500 rounded-t-2xl flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-white">💰 ငွေရှင်းရန်</h2>
@@ -1258,7 +1258,7 @@ export default function ServiceJobManagement() {
               <button onClick={() => setShowSettle(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-6">
               {/* Device */}
               <div className="bg-slate-50 rounded-xl px-4 py-3">
                 <span className="text-xs text-slate-500">ပစ္စည်း: </span>
@@ -1280,7 +1280,7 @@ export default function ServiceJobManagement() {
               {!settleForm.foc && (
                 <>
                   {/* Final Cost + Discount */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">အပြီးသတ်ကုန်ကျစရိတ် (Ks)</label>
                       <input type="number" min={0} value={settleForm.finalCost}
@@ -1304,7 +1304,7 @@ export default function ServiceJobManagement() {
                   {/* Paid Amount — Full / Credit quick buttons */}
                   <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 space-y-3">
                     <label className="block text-[11px] font-bold text-amber-700 uppercase tracking-wide">ပေးချေပမာဏ (Ks)</label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <input
                         type="number" min={0}
                         value={settleForm.paidAmount}
@@ -1315,7 +1315,7 @@ export default function ServiceJobManagement() {
                             ...(Number(val) === 0 ? { paymentMethodId: '', transactionNo: '' } : {}),
                           }));
                         }}
-                        className="flex-1 w-0 px-3 py-2.5 rounded-lg border-2 border-amber-300 bg-white text-lg font-bold text-amber-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                        className="w-full min-w-0 flex-1 rounded-lg border-2 border-amber-300 bg-white px-3 py-2.5 text-lg font-bold text-amber-900 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200 sm:w-0"
                       />
                       <button type="button"
                         onClick={() => setSettleForm(p => ({ ...p, paidAmount: sNetAmt > 0 ? String(sNetAmt) : '0' }))}
@@ -1434,7 +1434,7 @@ export default function ServiceJobManagement() {
               )}
             </div>
 
-            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-slate-50 rounded-b-2xl">
+            <div className="grid shrink-0 grid-cols-2 gap-3 border-t bg-slate-50 px-4 py-3 sm:flex sm:justify-end sm:rounded-b-2xl sm:px-6 sm:py-4">
               <button onClick={() => setShowSettle(false)}
                 className="px-5 py-2 text-sm border rounded-xl text-slate-600 hover:bg-slate-100 font-medium">မလုပ်တော့</button>
               <button onClick={handleSettle}

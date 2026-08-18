@@ -70,11 +70,11 @@ public class JasperVoucherService {
         params.put("CUSTOMER_ADDR",   sale.getCustomer() != null ? nullSafe(sale.getCustomer().getAddress()) : "");
         params.put("CASHIER_NAME",    sale.getStaff() != null ? sale.getStaff().getName() : "");
         params.put("REMARK",          nullSafe(sale.getRemark()));
-        params.put("SUBTOTAL_STR",    formatMoney(sale.getTotalAmount()));
-        params.put("DISCOUNT_STR",    formatMoney(sale.getDiscountAmount()));
-        params.put("NET_TOTAL_STR",   formatMoney(sale.getNetAmount()));
-        params.put("PAID_STR",        formatMoney(sale.getPaidAmount()));
-        params.put("DUE_STR",         formatMoney(sale.getDueAmount()));
+        params.put("SUBTOTAL_STR",    formatMoney(voucherDisplayTotal(sale)));
+        params.put("DISCOUNT_STR",    formatMoney(voucherDisplayDiscount(sale)));
+        params.put("NET_TOTAL_STR",   formatMoney(voucherDisplayNet(sale)));
+        params.put("PAID_STR",        formatMoney(hasCustomVoucherPrice(sale) ? voucherDisplayTotal(sale) : sale.getPaidAmount()));
+        params.put("DUE_STR",         formatMoney(hasCustomVoucherPrice(sale) ? BigDecimal.ZERO : sale.getDueAmount()));
         params.put("ITEMS_SOURCE",    new JRBeanCollectionDataSource(items));
         params.put("PAYMENT_SOURCE",  new JRBeanCollectionDataSource(payments));
         params.put("ITEMS_SUBREPORT", itemsReport);
@@ -102,11 +102,11 @@ public class JasperVoucherService {
         params.put("CUSTOMER_NAME",   sale.getCustomer() != null ? sale.getCustomer().getName() : "Walk-in");
         params.put("CASHIER_NAME",    sale.getStaff() != null ? sale.getStaff().getName() : "");
         params.put("PAYMENT_STATUS",  sale.getPaymentStatus() != null ? sale.getPaymentStatus().name() : "");
-        params.put("SUBTOTAL_STR",    formatMoney(sale.getTotalAmount()));
-        params.put("DISCOUNT_STR",    formatMoney(sale.getDiscountAmount()));
-        params.put("NET_TOTAL_STR",   formatMoney(sale.getNetAmount()));
-        params.put("PAID_STR",        formatMoney(sale.getPaidAmount()));
-        params.put("DUE_STR",         formatMoney(sale.getDueAmount()));
+        params.put("SUBTOTAL_STR",    formatMoney(voucherDisplayTotal(sale)));
+        params.put("DISCOUNT_STR",    formatMoney(voucherDisplayDiscount(sale)));
+        params.put("NET_TOTAL_STR",   formatMoney(voucherDisplayNet(sale)));
+        params.put("PAID_STR",        formatMoney(hasCustomVoucherPrice(sale) ? voucherDisplayTotal(sale) : sale.getPaidAmount()));
+        params.put("DUE_STR",         formatMoney(hasCustomVoucherPrice(sale) ? BigDecimal.ZERO : sale.getDueAmount()));
         params.put("ITEMS_SUBREPORT", loadReport("service_parts_subreport"));
 
         JRBeanCollectionDataSource ds = new JRBeanCollectionDataSource(items);
@@ -301,10 +301,47 @@ public class JasperVoucherService {
         for (SaleDetail d : sale.getDetails()) {
             String productName = d.getProduct() != null ? d.getProduct().getName() : "";
             String serial = d.getSerialNumber() != null ? d.getSerialNumber() : "";
+            boolean useCustomVoucherPrice = d.getCustomVoucherPrice() != null
+                    && d.getCustomVoucherPrice().compareTo(BigDecimal.ZERO) > 0;
+            BigDecimal displayUnitPrice = useCustomVoucherPrice ? d.getCustomVoucherPrice() : d.getUnitPrice();
+            BigDecimal displaySubtotal = useCustomVoucherPrice
+                    ? displayUnitPrice.multiply(BigDecimal.valueOf(d.getQty() != null ? d.getQty() : 0))
+                    : d.getSubtotal();
             rows.add(new SaleLineRow(i++, productName, serial, d.getQty(),
-                    formatMoney(d.getUnitPrice()), formatMoney(d.getSubtotal())));
+                    formatMoney(displayUnitPrice), formatMoney(displaySubtotal)));
         }
         return rows;
+    }
+
+    private boolean hasCustomVoucherPrice(Sale sale) {
+        return sale.getDetails() != null && sale.getDetails().stream().anyMatch(d ->
+                d.getCustomVoucherPrice() != null && d.getCustomVoucherPrice().compareTo(BigDecimal.ZERO) > 0);
+    }
+
+    private BigDecimal voucherDisplayTotal(Sale sale) {
+        if (!hasCustomVoucherPrice(sale)) return sale.getTotalAmount();
+        return sale.getDetails().stream().map(d -> {
+            if (d.getCustomVoucherPrice() != null && d.getCustomVoucherPrice().compareTo(BigDecimal.ZERO) > 0) {
+                return d.getCustomVoucherPrice().multiply(BigDecimal.valueOf(d.getQty() != null ? d.getQty() : 0));
+            }
+            return d.getSubtotal() != null ? d.getSubtotal() : BigDecimal.ZERO;
+        }).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal voucherDisplayNet(Sale sale) {
+        if (!hasCustomVoucherPrice(sale)) return sale.getNetAmount();
+        return voucherDisplayTotal(sale).subtract(voucherDisplayDiscount(sale)).max(BigDecimal.ZERO);
+    }
+
+    private BigDecimal voucherDisplayDiscount(Sale sale) {
+        BigDecimal discount = sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO;
+        if (!hasCustomVoucherPrice(sale)) return discount;
+        if (sale.getDetails() != null) {
+            discount = discount.add(sale.getDetails().stream()
+                    .map(d -> d.getDiscountAmount() != null ? d.getDiscountAmount() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
+        }
+        return discount;
     }
 
     private List<PaymentRow> buildPaymentRows(Integer referenceId, ReferenceType type) {

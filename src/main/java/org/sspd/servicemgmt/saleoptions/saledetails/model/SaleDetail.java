@@ -34,6 +34,15 @@ public class SaleDetail {
     @Column(name = "unit_price", precision = 15, scale = 2, nullable = false)
     private BigDecimal unitPrice;
 
+    /** Voucher-only unit price. It never participates in sale totals or payments. */
+    @Column(name = "custom_voucher_price", precision = 15, scale = 2)
+    private BigDecimal customVoucherPrice;
+
+    /** Stored separately so reseller/customer margin does not alter revenue or profit. */
+    @Builder.Default
+    @Column(name = "customer_margin", precision = 15, scale = 2)
+    private BigDecimal customerMargin = BigDecimal.ZERO;
+
     private BigDecimal subtotal;
 
     @Column(name = "serial_number")

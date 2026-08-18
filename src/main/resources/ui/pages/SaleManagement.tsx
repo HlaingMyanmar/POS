@@ -344,6 +344,13 @@ const SaleManagement: React.FC = () => {
   const effectivePaid = normalizedSalePayments.length > 0 ? splitPaid : paid;
   const totalAmount = useMemo(() => details.reduce((sum, d) => sum + (d.subtotal || 0), 0), [details]);
   const netAmount = useMemo(() => Math.max(0, totalAmount - discount), [totalAmount, discount]);
+  const hasCustomVoucherPrice = useMemo(() => details.some((d) => Number(d.customVoucherPrice) > 0), [details]);
+  const voucherDisplayAmount = useMemo(() => details.reduce((sum, d) => {
+    const customPrice = Number(d.customVoucherPrice);
+    return sum + (customPrice > 0 ? customPrice * (d.qty || 0) : (d.subtotal || 0));
+  }, 0), [details]);
+  const customerMargin = useMemo(() => hasCustomVoucherPrice ? voucherDisplayAmount - netAmount : 0,
+    [hasCustomVoucherPrice, voucherDisplayAmount, netAmount]);
   const dueAmount = useMemo(() => Math.max(0, netAmount - effectivePaid), [netAmount, effectivePaid]);
 
   const outstandingByCustomer = useMemo(() => {
@@ -688,6 +695,8 @@ const SaleManagement: React.FC = () => {
           productId: d.productId,
           qty: d.qty,
           unitPrice: d.unitPrice,
+          customVoucherPrice: d.customVoucherPrice == null || d.customVoucherPrice === 0
+            ? undefined : Number(d.customVoucherPrice),
           subtotal: Number((Math.max(0, Boolean((d as any).foc) ? 0 : ((d.qty * d.unitPrice) - Number((d as any).discountAmount || 0)))).toFixed(2)),
           discountAmount: (d as any).discountAmount || 0,
           foc: !!(d as any).foc,
@@ -899,28 +908,8 @@ const SaleManagement: React.FC = () => {
           </button>
           <div className="text-center sm:text-left">
             <h2 className="text-xl font-bold text-slate-800">ရောင်းချမှုဘောင်ချာအသစ်</h2>
-            <p className="text-xs text-slate-500 mt-0.5">ဖောက်သည်ရွေး၊ barcode/serial ဖြင့်ပစ္စည်းထည့်၊ cash/credit ကို checkout မှာသတ်မှတ်ပါ။</p>
           </div>
           <div className="hidden sm:block w-24" />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className={`rounded-xl border p-3 ${customerId > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">1. Customer</p>
-            <p className={`text-sm font-bold mt-1 ${customerId > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>{customerId > 0 ? 'ရွေးပြီး' : 'ရွေးရန်လို'}</p>
-          </div>
-          <div className={`rounded-xl border p-3 ${details.some(d => d.productId > 0) ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">2. Items</p>
-            <p className="text-sm font-bold mt-1 text-slate-700">{details.filter(d => d.productId > 0).length} line(s)</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">3. Net Amount</p>
-            <p className="text-sm font-bold mt-1 text-slate-800">{money(netAmount)}</p>
-          </div>
-          <div className={`rounded-xl border p-3 ${dueAmount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">4. Payment</p>
-            <p className={`text-sm font-bold mt-1 ${dueAmount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{dueAmount > 0 ? 'ရရန်ကျန်ရှိ' : 'ငွေရပြီး'}</p>
-          </div>
         </div>
 
         <div>
@@ -1033,6 +1022,7 @@ const SaleManagement: React.FC = () => {
                   <th className="px-3 py-2.5 text-left w-20">Qty</th>
                   <th className="px-3 py-2.5 text-left w-32">ရောင်းဈေး</th>
                   <th className="px-3 py-2.5 text-left w-28">Line Discount</th>
+                  <th className="px-3 py-2.5 text-left w-32">ဘောင်ချာဈေး</th>
                   <th className="px-3 py-2.5 text-center w-14">FOC</th>
                   <th className="px-3 py-2.5 text-left w-28">လက်ကျန်</th>
                   <th className="px-3 py-2.5 text-right w-32">စုစုပေါင်း</th>
@@ -1069,6 +1059,14 @@ const SaleManagement: React.FC = () => {
                             placeholder="0"
                             className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white focus:outline-none focus:border-indigo-400" />
                         </td>
+                        <td className="px-3 py-2">
+                          <input type="number" min="0" step="0.01"
+                            value={row.customVoucherPrice ?? ''}
+                            onChange={(e) => changeDetail(rowIndex, { customVoucherPrice: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })}
+                            placeholder="ပုံမှန်ဈေး"
+                            title="Voucher / invoice တွင်သာ ပြမည့်ဈေး"
+                            className="w-full px-2 py-1.5 rounded border border-violet-200 bg-violet-50/40 focus:outline-none focus:border-violet-400" />
+                        </td>
                         <td className="px-3 py-2 text-center">
                           <input type="checkbox"
                             checked={!!(row as any).foc}
@@ -1090,7 +1088,7 @@ const SaleManagement: React.FC = () => {
                         </td>
                       </tr>
                       <tr className="bg-slate-50/60 border-b border-slate-100">
-                        <td colSpan={8} className="px-4 py-2.5">
+                        <td colSpan={9} className="px-4 py-2.5">
                           {serialRequired ? (
                             <>
                               <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -1154,10 +1152,10 @@ const SaleManagement: React.FC = () => {
         </div>
 
         {payModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={() => setPayModalOpen(false)}>
+            <div className="flex h-[100dvh] w-full flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:rounded-2xl" onMouseDown={(e) => e.stopPropagation()}>
               {/* Modal header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5 sm:py-4">
                 <div className="flex items-center gap-2">
                   <CreditCard size={18} className="text-emerald-600" />
                   <h3 className="text-base font-bold text-slate-800">ငွေရှင်းခြင်း</h3>
@@ -1167,7 +1165,7 @@ const SaleManagement: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-5">
                 {/* Items summary */}
                 <div className="rounded-xl border border-slate-200 overflow-hidden">
                   <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
@@ -1207,21 +1205,25 @@ const SaleManagement: React.FC = () => {
 
                 {/* Totals summary */}
                 <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-semibold text-slate-800">{money(totalAmount)}</span></div>
-                  {discount > 0 && <div className="flex justify-between text-slate-600"><span>Discount</span><span className="font-semibold text-rose-600">- {money(discount)}</span></div>}
-                  <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-1.5 text-base"><span>ကျသင့်ငွေ</span><span>{money(netAmount)}</span></div>
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-slate-600"><span>Subtotal</span><span className="font-semibold text-slate-800">{money(totalAmount)}</span></div>
+                  {discount > 0 && <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-slate-600"><span>Discount</span><span className="font-semibold text-rose-600">- {money(discount)}</span></div>}
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-t border-slate-200 pt-1.5 text-base font-bold text-slate-900"><span>ကျသင့်ငွေ</span><span>{money(netAmount)}</span></div>
+                  {hasCustomVoucherPrice && <>
+                    <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-violet-700"><span>ဘောင်ချာစုစုပေါင်း</span><span className="font-semibold">{money(voucherDisplayAmount)}</span></div>
+                    <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-violet-700"><span>Customer Margin</span><span className="font-semibold">{money(customerMargin)}</span></div>
+                  </>}
                 </div>
 
                 {/* Paid Amount */}
                 <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 px-4 py-3 space-y-3">
                   <label className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wide">ရရှိငွေ</label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <input
                       type="number" min="0" step="0.01"
                       value={paidInput}
                       onChange={(e) => setPaidInput(e.target.value)}
                       placeholder="0.00"
-                      className="flex-1 w-0 px-3 py-2.5 rounded-lg border-2 border-emerald-300 bg-white text-lg font-bold text-emerald-900 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
+                      className="min-w-[140px] flex-1 px-3 py-2.5 rounded-lg border-2 border-emerald-300 bg-white text-lg font-bold text-emerald-900 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
                     />
                     <button type="button" onClick={() => setPaidInput(netAmount > 0 ? String(netAmount.toFixed(2)) : '0')}
                       className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shrink-0">Full</button>
@@ -1257,8 +1259,8 @@ const SaleManagement: React.FC = () => {
 
                   {/* Paid / Due summary */}
                   <div className="border-t border-emerald-200 pt-2 space-y-1 text-sm">
-                    <div className="flex justify-between text-slate-600"><span>ရရှိငွေ</span><span className="font-semibold text-emerald-700">{money(paid)}</span></div>
-                    <div className={`flex justify-between font-bold text-base ${dueAmount > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-slate-600"><span>ရရှိငွေ</span><span className="font-semibold text-emerald-700">{money(paid)}</span></div>
+                    <div className={`flex flex-wrap justify-between gap-x-3 gap-y-1 text-base font-bold ${dueAmount > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                       <span>ရရန်ကျန်</span><span>{money(dueAmount)}</span>
                     </div>
                   </div>
@@ -1282,15 +1284,15 @@ const SaleManagement: React.FC = () => {
               </div>
 
               {/* Modal footer */}
-              <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
-                <button type="button" onClick={() => setPayModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">
+              <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:flex-row sm:gap-3 sm:px-5 sm:py-4">
+                <button type="button" onClick={() => setPayModalOpen(false)} className="w-full flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
                   ပယ်ဖျက်
                 </button>
                 <button
                   type="button"
                   onClick={saveSale}
                   disabled={saving}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  className="inline-flex w-full flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ဘောင်ချာသိမ်းမည်
                 </button>
@@ -1345,22 +1347,8 @@ const SaleManagement: React.FC = () => {
 
   return (
     <div className="w-full max-w-none space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">ရောင်းချမှု စီမံခန့်ခွဲမှု</h2>
-          <p className="text-sm text-slate-500 mt-0.5">ယနေ့ ရောင်းချမှုများကိုကြည့်ပြီး ဘောင်ချာ၊ ဖောက်သည်၊ ပေးရန်ကျန်များကို လျင်မြန်စွာစစ်ဆေးပါ။</p>
-        </div>
-        <div className="flex w-full sm:w-auto gap-2">
-          <button onClick={() => loadSales(salePage, salePageSize, debouncedSearch, dateFrom, dateTo)} className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            <RefreshCw size={14} /> ပြန်တင်
-          </button>
-          <button onClick={openCreateSale} className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700">
-            <Plus size={14} /> ရောင်းချမှုအသစ်
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
+      <div className="grid flex-1 grid-cols-2 gap-3 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">ဘောင်ချာအရေအတွက်</p>
           <p className="text-2xl font-bold text-slate-800 mt-1">{stats.count}</p>
@@ -1377,6 +1365,15 @@ const SaleManagement: React.FC = () => {
           <p className="text-[11px] font-semibold text-rose-400 uppercase tracking-wide">ရက်ကျော်ဘောင်ချာ</p>
           <p className="text-2xl font-bold text-rose-700 mt-1">{stats.overdue}</p>
         </div>
+      </div>
+      <div className="flex w-full shrink-0 gap-2 sm:w-auto 2xl:order-2">
+        <button onClick={() => loadSales(salePage, salePageSize, debouncedSearch, dateFrom, dateTo)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 sm:flex-none">
+          <RefreshCw size={14} /> ပြန်တင်
+        </button>
+        <button onClick={openCreateSale} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 sm:flex-none">
+          <Plus size={14} /> ရောင်းချမှုအသစ်
+        </button>
+      </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -1998,10 +1995,14 @@ const SaleManagement: React.FC = () => {
             <div className="overflow-auto flex-1">
               <div className="p-5 space-y-5">
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-xs text-slate-500 font-medium">Net Amount</p>
                     <p className="text-lg font-bold text-slate-800 mt-1">{money(Number(viewSale.netAmount) || 0)}</p>
+                  </div>
+                  <div className="rounded-lg border border-rose-100 bg-rose-50 p-3">
+                    <p className="text-xs text-rose-600 font-medium">Discount</p>
+                    <p className="text-lg font-bold text-rose-700 mt-1">{money(Number(viewSale.discountAmount) || 0)}</p>
                   </div>
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
                     <p className="text-xs text-emerald-600 font-medium">Paid</p>
@@ -2015,17 +2016,24 @@ const SaleManagement: React.FC = () => {
                     <p className="text-xs text-slate-500 font-medium">Due Date</p>
                     <p className="text-base font-bold text-slate-800 mt-1">{viewSale.dueDate || '—'}</p>
                   </div>
+                  <div className="rounded-lg border border-violet-100 bg-violet-50 p-3">
+                    <p className="text-xs text-violet-600 font-medium">Commission</p>
+                    <p className="text-lg font-bold text-violet-700 mt-1">{money((viewSale.details || []).reduce((sum, d) => sum + (Number(d.customerMargin) || 0), 0))}</p>
+                  </div>
                 </div>
 
                 <div>
                   <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">Items Sold</h4>
                   <div className="border border-slate-200 rounded-lg overflow-auto">
-                    <table className="w-full min-w-[820px] text-sm">
+                    <table className="w-full min-w-[1050px] text-sm">
                       <thead className="bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                           <th className="px-4 py-2.5 text-left">Product</th>
                           <th className="px-4 py-2.5 text-center w-16">Qty</th>
                           <th className="px-4 py-2.5 text-right w-28">Unit Price</th>
+                          <th className="px-4 py-2.5 text-right w-28">Discount</th>
+                          <th className="px-4 py-2.5 text-right w-32">Voucher Price</th>
+                          <th className="px-4 py-2.5 text-right w-28">Commission</th>
                           <th className="px-4 py-2.5 text-left">Serial #</th>
                           <th className="px-4 py-2.5 text-center w-24">Warranty</th>
                           <th className="px-4 py-2.5 text-center w-28">Expiry</th>
@@ -2038,6 +2046,9 @@ const SaleManagement: React.FC = () => {
                             <td className="px-4 py-3 font-medium text-slate-700">{d.productName || `Product #${d.productId}`}</td>
                             <td className="px-4 py-3 text-center text-slate-600">{d.qty}</td>
                             <td className="px-4 py-3 text-right text-slate-700">{money(Number(d.unitPrice) || 0)}</td>
+                            <td className="px-4 py-3 text-right text-rose-600">{Number(d.discountAmount) ? money(Number(d.discountAmount)) : '—'}</td>
+                            <td className="px-4 py-3 text-right text-violet-700">{Number(d.customVoucherPrice) > 0 ? money(Number(d.customVoucherPrice)) : '—'}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-violet-700">{Number(d.customerMargin) ? money(Number(d.customerMargin)) : '—'}</td>
                             <td className="px-4 py-3 text-xs text-slate-500">{isSerialProduct(d.productId) ? (d.serialNumbers?.length ? d.serialNumbers.join(', ') : '—') : <span className="text-slate-400">Qty only</span>}</td>
                             <td className="px-4 py-3 text-center text-xs text-slate-500">{Number(d.warrantyMonths || 0) > 0 ? `${d.warrantyMonths} mo.` : '—'}</td>
                             <td className="px-4 py-3 text-center text-xs text-slate-500">{d.warrantyExpiryDate || '—'}</td>

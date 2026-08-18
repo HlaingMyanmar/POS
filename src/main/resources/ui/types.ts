@@ -279,6 +279,10 @@ export interface SaleDetailDTO {
   productName?: string;
   qty: number;
   unitPrice: number;
+  /** Optional display-only unit price used on the printed voucher. */
+  customVoucherPrice?: number;
+  /** Stored separately; actual sales totals continue to use subtotal/netAmount. */
+  customerMargin?: number;
   subtotal: number;
   discountAmount?: number;
   foc?: boolean;

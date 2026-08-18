@@ -57,6 +57,10 @@ const normalizeDetail = (detail: AnyRecord): SaleDetailDTO => {
     productId: Number(detail?.productId) || 0,
     qty,
     unitPrice,
+    customVoucherPrice: detail?.customVoucherPrice == null || detail?.customVoucherPrice === ''
+      ? undefined : Number(detail.customVoucherPrice),
+    customerMargin: detail?.customerMargin == null || detail?.customerMargin === ''
+      ? undefined : Number(detail.customerMargin),
     subtotal: Number(detail?.subtotal) || qty * unitPrice,
     serialNumbers
   };

@@ -98,10 +98,9 @@ public class JournalWriter {
                 .findByAccountIdAndFiscalYear(account.getId(), year)
                 .orElse(new AccountBalance(null, account, year, BigDecimal.ZERO, BigDecimal.ZERO, LocalDateTime.now()));
 
-        BigDecimal netChange = switch (account.getAccountType()) {
-            case Asset, Expense             -> debit.subtract(credit);
-            case Liability, Equity, Income  -> credit.subtract(debit);
-        };
+        String accountType = String.valueOf(account.getAccountType());
+        boolean debitNormal = "Asset".equals(accountType) || "Expense".equals(accountType);
+        BigDecimal netChange = debitNormal ? debit.subtract(credit) : credit.subtract(debit);
 
         balance.setCurrentBalance(balance.getCurrentBalance().add(netChange));
         balance.setLastUpdated(LocalDateTime.now());
@@ -111,10 +110,9 @@ public class JournalWriter {
     private void reverseAccountBalance(ChartOfAccount account, BigDecimal debit, BigDecimal credit) {
         String year = String.valueOf(LocalDateTime.now().getYear());
         balanceRepository.findByAccountIdAndFiscalYear(account.getId(), year).ifPresent(balance -> {
-            BigDecimal netChange = switch (account.getAccountType()) {
-                case Asset, Expense            -> credit.subtract(debit);
-                case Liability, Equity, Income -> debit.subtract(credit);
-            };
+            String accountType = String.valueOf(account.getAccountType());
+            boolean debitNormal = "Asset".equals(accountType) || "Expense".equals(accountType);
+            BigDecimal netChange = debitNormal ? credit.subtract(debit) : debit.subtract(credit);
             balance.setCurrentBalance(balance.getCurrentBalance().add(netChange));
             balance.setLastUpdated(LocalDateTime.now());
             balanceRepository.save(balance);

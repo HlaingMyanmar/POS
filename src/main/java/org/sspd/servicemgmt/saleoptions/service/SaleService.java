@@ -344,9 +344,13 @@ public class SaleService {
             java.time.LocalDate saleLocalDate = parent.getSaleDate() != null
                     ? parent.getSaleDate().toLocalDate() : java.time.LocalDate.now();
             BigDecimal lineDiscount = d.getDiscountAmount() != null ? d.getDiscountAmount() : BigDecimal.ZERO;
+            BigDecimal customVoucherPrice = d.getCustomVoucherPrice();
             boolean isFoc = Boolean.TRUE.equals(d.getFoc());
             if (lineDiscount.compareTo(BigDecimal.ZERO) < 0) {
                 throw new RuntimeException("Line discount cannot be negative");
+            }
+            if (customVoucherPrice != null && customVoucherPrice.compareTo(BigDecimal.ZERO) < 0) {
+                throw new RuntimeException("Custom voucher price cannot be negative");
             }
 
             List<String> serials = d.getSerialNumbers() == null ? List.of() : d.getSerialNumbers();
@@ -392,6 +396,8 @@ public class SaleService {
                             .product(product)
                             .qty(1)
                             .unitPrice(d.getUnitPrice())
+                            .customVoucherPrice(customVoucherPrice)
+                            .customerMargin(BigDecimal.ZERO)
                             .subtotal(subtotal)
                             .serialNumber(sn)
                             .costPriceSnapshot(product.getCostPrice())
@@ -431,6 +437,8 @@ public class SaleService {
                         .product(product)
                         .qty(d.getQty())
                         .unitPrice(d.getUnitPrice())
+                        .customVoucherPrice(customVoucherPrice)
+                        .customerMargin(BigDecimal.ZERO)
                         .subtotal(subtotal)
                         .serialNumber(null)
                         .costPriceSnapshot(product.getCostPrice())
@@ -457,6 +465,9 @@ public class SaleService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal safeDiscount = discount != null ? discount : BigDecimal.ZERO;
+        if (safeDiscount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Discount cannot be negative");
+        }
         BigDecimal net = total.subtract(safeDiscount);
         if (net.compareTo(BigDecimal.ZERO) < 0) {
             net = BigDecimal.ZERO;
@@ -478,6 +489,27 @@ public class SaleService {
         sale.setPaymentStatus(calculateStatus(net, safePaid));
         sale.setDueDate(due.compareTo(BigDecimal.ZERO) > 0 ? dueDate : null);
         sale.setCreditStatus(calculateCreditStatus(due, sale.getDueDate()));
+
+        // Allocate any sale-level discount across lines before saving the voucher-only margin.
+        // Neither this value nor customVoucherPrice changes subtotal, netAmount, payments, or profit.
+        BigDecimal effectiveDiscount = safeDiscount.min(total);
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int index = 0; index < details.size(); index++) {
+            SaleDetail detail = details.get(index);
+            BigDecimal lineSubtotal = detail.getSubtotal() != null ? detail.getSubtotal() : BigDecimal.ZERO;
+            BigDecimal lineDiscount = index == details.size() - 1
+                    ? effectiveDiscount.subtract(allocated)
+                    : (total.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
+                    : effectiveDiscount.multiply(lineSubtotal).divide(total, 2, java.math.RoundingMode.HALF_UP));
+            allocated = allocated.add(lineDiscount);
+            if (detail.getCustomVoucherPrice() == null) {
+                detail.setCustomerMargin(BigDecimal.ZERO);
+                continue;
+            }
+            BigDecimal voucherAmount = detail.getCustomVoucherPrice()
+                    .multiply(BigDecimal.valueOf(detail.getQty() != null ? detail.getQty() : 0));
+            detail.setCustomerMargin(voucherAmount.subtract(lineSubtotal.subtract(lineDiscount)));
+        }
     }
 
     private PaymentStatus calculateStatus(BigDecimal net, BigDecimal paid) {

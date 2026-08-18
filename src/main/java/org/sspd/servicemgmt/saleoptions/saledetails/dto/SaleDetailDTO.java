@@ -12,6 +12,8 @@ public class SaleDetailDTO {
     private String productName;
     private Integer qty;
     private BigDecimal unitPrice;
+    private BigDecimal customVoucherPrice;
+    private BigDecimal customerMargin;
     private BigDecimal subtotal;
     private BigDecimal discountAmount;
     private Boolean foc;

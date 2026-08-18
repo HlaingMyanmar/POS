@@ -129,17 +129,31 @@ public class InvoiceAssemblerService {
                 .orElseThrow(() -> new NoSuchElementException("Sale not found: " + saleId));
 
         List<PrintLineItem> items = new ArrayList<>();
+        BigDecimal voucherTotal = BigDecimal.ZERO;
+        BigDecimal voucherLineDiscount = BigDecimal.ZERO;
+        BigDecimal commission = BigDecimal.ZERO;
+        boolean hasCustomVoucherPrice = false;
         if (sale.getDetails() != null) {
             int i = 1;
             for (SaleDetail d : sale.getDetails()) {
                 String serial = d.getSerialNumber() != null ? d.getSerialNumber() : "";
+                boolean useCustomVoucherPrice = d.getCustomVoucherPrice() != null
+                        && d.getCustomVoucherPrice().compareTo(BigDecimal.ZERO) > 0;
+                BigDecimal displayUnitPrice = useCustomVoucherPrice ? d.getCustomVoucherPrice() : d.getUnitPrice();
+                BigDecimal displaySubtotal = useCustomVoucherPrice
+                        ? displayUnitPrice.multiply(BigDecimal.valueOf(d.getQty() != null ? d.getQty() : 0))
+                        : d.getSubtotal();
+                hasCustomVoucherPrice |= useCustomVoucherPrice;
+                voucherTotal = voucherTotal.add(displaySubtotal != null ? displaySubtotal : BigDecimal.ZERO);
+                voucherLineDiscount = voucherLineDiscount.add(d.getDiscountAmount() != null ? d.getDiscountAmount() : BigDecimal.ZERO);
+                commission = commission.add(d.getCustomerMargin() != null ? d.getCustomerMargin() : BigDecimal.ZERO);
                 items.add(PrintLineItem.builder()
                         .rowNo(i++)
                         .productName(safe(d.getProduct() != null ? d.getProduct().getName() : ""))
                         .serialInfo(serial)
                         .qty(d.getQty() != null ? d.getQty() : 0)
-                        .unitPrice(fmt(d.getUnitPrice()))
-                        .subtotal(fmt(d.getSubtotal()))
+                        .unitPrice(fmt(displayUnitPrice))
+                        .subtotal(fmt(displaySubtotal))
                         .discount(fmt(d.getDiscountAmount()))
                         .foc(Boolean.TRUE.equals(d.getFoc()))
                         .warrantyLabel(fmtWarrantyLabel(d.getWarrantyMonths(), d.getWarrantyExpiryDate()))
@@ -169,11 +183,12 @@ public class InvoiceAssemblerService {
                 .cashierName(sale.getStaff() != null ? sale.getStaff().getName() : "")
                 .lineItems(items)
                 .payments(payments)
-                .subtotal(fmt(sale.getTotalAmount()))
-                .discount(fmt(sale.getDiscountAmount()))
-                .netAmount(fmt(sale.getNetAmount()))
-                .paid(fmt(sale.getPaidAmount()))
-                .balanceDue(fmt(sale.getDueAmount()))
+                .subtotal(fmt(hasCustomVoucherPrice ? voucherTotal : sale.getTotalAmount()))
+                .discount(fmt(hasCustomVoucherPrice ? voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO) : sale.getDiscountAmount()))
+                .netAmount(fmt(hasCustomVoucherPrice ? voucherTotal.subtract(voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO)).max(BigDecimal.ZERO) : sale.getNetAmount()))
+                .commission(fmt(commission))
+                .paid(fmt(hasCustomVoucherPrice ? voucherTotal.subtract(voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO)).max(BigDecimal.ZERO) : sale.getPaidAmount()))
+                .balanceDue(fmt(hasCustomVoucherPrice ? BigDecimal.ZERO : sale.getDueAmount()))
                 .remark(safe(sale.getRemark()))
                 .customerNotice("")
                 .build();

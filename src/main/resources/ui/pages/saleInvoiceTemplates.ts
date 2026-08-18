@@ -85,19 +85,33 @@ export const buildSaleVoucherHtml = ({
 
   // Try every known field name variant, then fall back to calculating from details
   const detailsSum = (sale.details || []).reduce((s, d) => s + (Number(d.subtotal) || Number(d.qty) * Number(d.unitPrice) || 0), 0);
+  const hasCustomVoucherPrice = (sale.details || []).some((d) => d.customVoucherPrice != null && Number(d.customVoucherPrice) > 0);
+  const voucherDetailsSum = (sale.details || []).reduce((s, d) => {
+    const customPrice = Number(d.customVoucherPrice);
+    return s + (customPrice > 0 ? (Number(d.qty) || 0) * customPrice : (Number(d.subtotal) || (Number(d.qty) || 0) * (Number(d.unitPrice) || 0)));
+  }, 0);
+  const lineDiscountTotal = (sale.details || []).reduce((s, d) => s + (Number(d.discountAmount) || 0), 0);
 
   const total    = Number(raw.totalAmount    ?? raw.total        ?? raw.grandTotal    ?? raw.saleTotal    ?? raw.totalPrice)    || detailsSum;
   const discount = Number(raw.discountAmount ?? raw.discount     ?? raw.totalDiscount ?? raw.discountTotal ?? raw.discAmt)       || 0;
   const net      = Number(raw.netAmount      ?? raw.net          ?? raw.netTotal      ?? raw.subTotal      ?? raw.netSale       ?? raw.finalAmount ?? raw.payable) || (total - discount) || 0;
   const paid     = Number(raw.paidAmount     ?? raw.paid         ?? raw.totalPaid     ?? raw.amountPaid    ?? raw.paidTotal)     || 0;
   const due      = Number(raw.dueAmount      ?? raw.due          ?? raw.balance       ?? raw.dueBalance    ?? raw.remaining      ?? raw.outstanding ?? raw.balanceDue) || (net - paid) || 0;
+  // These values are presentation-only. Actual payment and revenue stay on the sale's net amount.
+  const voucherTotal = hasCustomVoucherPrice ? voucherDetailsSum : total;
+  const voucherDiscount = hasCustomVoucherPrice ? discount + lineDiscountTotal : discount;
+  const voucherNet = hasCustomVoucherPrice ? Math.max(0, voucherDetailsSum - voucherDiscount) : net;
+  const voucherPaid = hasCustomVoucherPrice ? voucherNet : paid;
+  const voucherDue = hasCustomVoucherPrice ? 0 : due;
 
   const itemRows = (sale.details || []).map((d, idx) => {
     const name = escapeHtml(d.productName || `Product #${d.productId}`);
     const productCode = escapeHtml((d as any).productCode || '');
     const qty = Number(d.qty) || 0;
-    const unit = money(Number(d.unitPrice) || 0);
-    const sub = money(Number(d.subtotal) || 0);
+    const customPrice = Number(d.customVoucherPrice);
+    const useCustomVoucherPrice = customPrice > 0;
+    const unit = money(useCustomVoucherPrice ? customPrice : Number(d.unitPrice) || 0);
+    const sub = money(useCustomVoucherPrice ? qty * customPrice : Number(d.subtotal) || 0);
     const serialText = isSerialProduct(d.productId)
       ? (d.serialNumbers?.length ? d.serialNumbers.join(', ') : '-')
       : 'Qty Only';
@@ -209,11 +223,11 @@ export const buildSaleVoucherHtml = ({
 
     <div class="line"></div>
     <table class="summary">
-      <tr><td>Total</td><td class="num">${money(total)}</td></tr>
-      <tr><td>Discount</td><td class="num">${money(discount)}</td></tr>
-      <tr><td><b>Net</b></td><td class="num"><b>${money(net)}</b></td></tr>
-      <tr><td>Paid</td><td class="num">${money(paid)}</td></tr>
-      <tr><td><b>Due</b></td><td class="num"><b>${money(due)}</b></td></tr>
+      <tr><td>${hasCustomVoucherPrice ? 'Voucher Total' : 'Total'}</td><td class="num">${money(voucherTotal)}</td></tr>
+      <tr><td>Discount</td><td class="num">${money(voucherDiscount)}</td></tr>
+      <tr><td><b>${hasCustomVoucherPrice ? 'Actual Net' : 'Net'}</b></td><td class="num"><b>${money(voucherNet)}</b></td></tr>
+      <tr><td>Paid</td><td class="num">${money(voucherPaid)}</td></tr>
+      <tr><td><b>Due</b></td><td class="num"><b>${money(voucherDue)}</b></td></tr>
     </table>
 
     ${paymentRows ? `
@@ -590,11 +604,11 @@ export const buildSaleVoucherHtml = ({
         ` : '<div style="color:#94a3b8;font-size:11px;">No payment records.</div>'}
       </div>
       <div class="summary-box">
-        <div class="s-row"><span class="s-label">Total</span><span class="s-val">${money(total)}</span></div>
-        <div class="s-row"><span class="s-label">Discount</span><span class="s-val">${money(discount)}</span></div>
-        <div class="s-row sub-highlight"><span class="s-label">Net Amount</span><span class="s-val">${money(net)}</span></div>
-        <div class="s-row"><span class="s-label">Paid</span><span class="s-val">${money(paid)}</span></div>
-        <div class="s-row highlight"><span class="s-label">Balance Due</span><span class="s-val">${money(due)}</span></div>
+        <div class="s-row"><span class="s-label">${hasCustomVoucherPrice ? 'Voucher Total' : 'Total'}</span><span class="s-val">${money(voucherTotal)}</span></div>
+        <div class="s-row"><span class="s-label">Discount</span><span class="s-val">${money(voucherDiscount)}</span></div>
+        <div class="s-row sub-highlight"><span class="s-label">${hasCustomVoucherPrice ? 'Actual Net Amount' : 'Net Amount'}</span><span class="s-val">${money(voucherNet)}</span></div>
+        <div class="s-row"><span class="s-label">Paid</span><span class="s-val">${money(voucherPaid)}</span></div>
+        <div class="s-row highlight"><span class="s-label">Balance Due</span><span class="s-val">${money(voucherDue)}</span></div>
       </div>
     </div>
 

@@ -44,7 +44,7 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
       </div>
 
       {rows.map((row, index) => (
-        <div key={index} className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_130px_minmax(0,1fr)_34px]">
+        <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_120px_36px]">
           <select
             value={row.paymentMethodId || 0}
             disabled={disabled}
@@ -71,13 +71,13 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
             disabled={disabled}
             onChange={(e) => update(index, { transactionNo: e.target.value })}
             placeholder="Transaction No"
-            className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 disabled:opacity-50"
+            className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 disabled:opacity-50 sm:col-span-2"
           />
           <button
             type="button"
             disabled={disabled || rows.length <= 1}
             onClick={() => remove(index)}
-            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-500 disabled:opacity-40 xl:min-h-0"
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-500 disabled:opacity-40 sm:col-start-3 sm:row-span-2 sm:row-start-1 sm:min-h-0"
           >
             <Trash2 size={14} />
           </button>

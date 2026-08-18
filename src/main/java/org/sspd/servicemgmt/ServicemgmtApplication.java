@@ -13,7 +13,5 @@ public class  ServicemgmtApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(ServicemgmtApplication.class, args);
 	}
-
-
-
+	
 }

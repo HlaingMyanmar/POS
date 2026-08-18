@@ -790,8 +790,8 @@ const PurchaseManagement: React.FC = () => {
     <div className="w-full max-w-none space-y-6">
       {!showNewVoucherForm ? (
         <>
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="ml-auto flex flex-col sm:flex-row sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center">
+            <div className="ml-auto flex w-full flex-shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center 2xl:order-2 2xl:ml-0">
               <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
                 <RefreshCw size={14} className={purchasesLoading ? 'animate-spin' : ''} />
                 ပြန်ဖတ်ရန်
@@ -801,10 +801,8 @@ const PurchaseManagement: React.FC = () => {
                 ဝယ်ယူမှုအသစ်
               </button>
             </div>
-          </div>
-
           {/* Purchase Dashboard - Stat cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:order-1">
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာစုစုပေါင်း</p>
@@ -842,6 +840,7 @@ const PurchaseManagement: React.FC = () => {
                 <AlertCircle size={20} className="text-amber-600" />
               </div>
             </div>
+          </div>
           </div>
 
           {/* Filters */}

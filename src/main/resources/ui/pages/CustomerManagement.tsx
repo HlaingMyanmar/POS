@@ -5,6 +5,8 @@ import {
   Ban,
   Bell,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   CreditCard,
   DollarSign,
@@ -73,6 +75,8 @@ const CustomerManagement: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [customerPage, setCustomerPage] = useState(0);
+  const [customerPageSize, setCustomerPageSize] = useState(20);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>('basic');
@@ -181,6 +185,26 @@ const CustomerManagement: React.FC = () => {
       return matchesSearch && matchesStatus;
     });
   }, [customers, dueByCustomer, overdueByCustomer, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    setCustomerPage(0);
+  }, [searchTerm, statusFilter, customerPageSize]);
+
+  const customerTotalPages = Math.max(1, Math.ceil(filteredCustomers.length / customerPageSize));
+  const safeCustomerPage = Math.min(customerPage, customerTotalPages - 1);
+  const pagedCustomers = useMemo(
+    () => filteredCustomers.slice(safeCustomerPage * customerPageSize, (safeCustomerPage + 1) * customerPageSize),
+    [customerPageSize, filteredCustomers, safeCustomerPage]
+  );
+  const customerPageItems = useMemo(() => {
+    const pages: Array<number | 'ellipsis'> = [];
+    for (let page = 0; page < customerTotalPages; page += 1) {
+      const visible = page === 0 || page === customerTotalPages - 1 || Math.abs(page - safeCustomerPage) <= 2;
+      if (visible) pages.push(page);
+      else if (pages[pages.length - 1] !== 'ellipsis') pages.push('ellipsis');
+    }
+    return pages;
+  }, [customerTotalPages, safeCustomerPage]);
 
   const statusMeta = (customer: CustomerDTO) => {
     if (customer.blacklisted) {
@@ -444,20 +468,8 @@ const CustomerManagement: React.FC = () => {
 
   return (
     <div className="w-full max-w-none space-y-5">
-      <div className="flex flex-wrap justify-between items-start gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">ဖောက်သည်စီမံခန့်ခွဲမှု</h2>
-          <p className="text-sm text-slate-500 mt-1">ဖောက်သည်စာရင်း၊ အကြွေးထိန်းချုပ်မှု၊ ပရိုဖိုင်ပြင်ဆင်မှု</p>
-        </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
-        >
-          <Plus size={16} /> ဖောက်သည်အသစ်
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3">
+      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
+      <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-7">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500 uppercase">စုစုပေါင်း</p>
           <p className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</p>
@@ -486,6 +498,13 @@ const CustomerManagement: React.FC = () => {
           <p className="text-xs text-slate-500 uppercase">Alerts</p>
           <p className="text-2xl font-bold text-indigo-700 mt-1">{stats.alerts}</p>
         </div>
+      </div>
+      <button
+        onClick={openCreateModal}
+        className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 sm:w-auto"
+      >
+        <Plus size={16} /> ဖောက်သည်အသစ်
+      </button>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -543,7 +562,7 @@ const CustomerManagement: React.FC = () => {
                   <td colSpan={9} className="px-4 py-12 text-center text-slate-400">ဖောက်သည် ရှာမတွေ့ပါ</td>
                 </tr>
               )}
-              {filteredCustomers.map((customer) => {
+              {pagedCustomers.map((customer) => {
                 const status = statusMeta(customer);
                 const saleCount = customerSaleCount.get(customer.id) || 0;
                 const due = dueByCustomer.get(customer.id) || 0;
@@ -603,6 +622,31 @@ const CustomerManagement: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {filteredCustomers.length > 0 && (
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 bg-white px-4 py-3 sm:flex-row">
+            <p className="text-xs font-medium text-slate-500">
+              Showing {safeCustomerPage * customerPageSize + 1}–{Math.min((safeCustomerPage + 1) * customerPageSize, filteredCustomers.length)} of {filteredCustomers.length}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <select
+                value={customerPageSize}
+                onChange={(e) => setCustomerPageSize(Number(e.target.value))}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 outline-none focus:border-indigo-400"
+              >
+                <option value={10}>Show 10</option>
+                <option value={20}>Show 20</option>
+                <option value={50}>Show 50</option>
+              </select>
+              <button type="button" disabled={safeCustomerPage === 0} onClick={() => setCustomerPage((page) => Math.max(0, page - 1))} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft size={16} /></button>
+              {customerPageItems.map((item, index) => item === 'ellipsis' ? (
+                <span key={`ellipsis-${index}`} className="px-1 text-sm text-slate-400">…</span>
+              ) : (
+                <button key={item} type="button" onClick={() => setCustomerPage(item)} className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-xs font-bold ${item === safeCustomerPage ? 'bg-indigo-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{item + 1}</button>
+              ))}
+              <button type="button" disabled={safeCustomerPage >= customerTotalPages - 1} onClick={() => setCustomerPage((page) => Math.min(customerTotalPages - 1, page + 1))} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight size={16} /></button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isModalOpen && (

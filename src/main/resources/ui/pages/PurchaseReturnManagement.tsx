@@ -881,21 +881,16 @@ const PurchaseReturnManagement: React.FC = () => {
 
   return (
     <div className="w-full max-w-none space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 text-left">ဝယ်ယူပြန်ပို့မှု စီမံခန့်ခွဲမှု</h2>
-          <p className="text-xs text-slate-500 mt-1">ပြန်ပို့ဘောင်ချာများ၊ ပြန်အမ်းငွေများနှင့် မှတ်တမ်းများကို စီမံပါ။</p>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center">
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center 2xl:order-2">
           <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်ရန်</button>
           <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> ဝယ်ယူပြန်ပို့ဘောင်ချာ အသစ်</button>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 2xl:order-1">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာစုစုပေါင်း</p><p className="text-2xl font-bold text-slate-800">{stats.count}</p></div><div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center"><List size={20} className="text-indigo-600" /></div></div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">စုစုပေါင်း ပြန်ပို့ပြီး</p><p className="text-2xl font-bold text-slate-800">{money(stats.total)}</p></div><div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center"><RotateCcw size={20} className="text-slate-600" /></div></div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ပြန်အမ်းငွေစုစုပေါင်း</p><p className="text-2xl font-bold text-emerald-700">{money(stats.refund)}</p></div><div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center"><RotateCcw size={20} className="text-emerald-600" /></div></div>
+      </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">

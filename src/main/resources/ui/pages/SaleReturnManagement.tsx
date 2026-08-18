@@ -104,6 +104,7 @@ const SaleReturnManagement: React.FC = () => {
   const [dateTo, setDateTo] = useState('');
 
   const [showForm, setShowForm] = useState(false);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [viewRow, setViewRow] = useState<SaleReturnDTO | null>(null);
 
@@ -552,39 +553,36 @@ const SaleReturnManagement: React.FC = () => {
   if (showForm) {
     return (
       <div className="w-full max-w-none space-y-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800 text-left">{editingId ? 'Sale Return ပြင်ရန်' : 'Sale Return အသစ်'}</h2>
-            <p className="text-xs text-slate-500 mt-1">ဖောက်သည်နှင့် မူရင်းအရောင်းဘောင်ချာကိုရွေးပြီး ပြန်လက်ခံမည့်ပစ္စည်း၊ refund ကိုမှတ်တမ်းတင်ပါ။</p>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-slate-100 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <button onClick={() => { setShowForm(false); resetForm(); }} className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" title="နောက်သို့"><ArrowLeft size={16} /></button>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Sale Return Voucher</p>
+              <h2 className="mt-0.5 text-xl font-black text-slate-900">{editingId ? 'Sale Return ပြင်ရန်' : 'Sale Return အသစ်'}</h2>
+            </div>
           </div>
-          <button onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex w-full sm:w-auto justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
-            <ArrowLeft size={14} /> နောက်သို့
-          </button>
+          <button type="button" onClick={() => setIsRefundModalOpen(true)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 lg:w-auto"><CreditCard size={16} /> ပြန်အမ်းငွေ ဖွင့်မည်</button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><User size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 1</p><p className="text-sm font-bold text-slate-800">ဖောက်သည် / Sale ရွေး</p></div></div></div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700"><PackageCheck size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 2</p><p className="text-sm font-bold text-slate-800">ပြန်ဝင်မည့် item စစ်</p></div></div></div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard size={17} /></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step 3</p><p className="text-sm font-bold text-slate-800">Refund / Voucher သိမ်း</p></div></div></div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-5">
+        <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-5">
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
               <div className="flex items-center gap-2 border-b border-slate-100 pb-3"><FileText size={16} className="text-indigo-600" /><div><h3 className="text-sm font-bold text-slate-800">မူရင်းဘောင်ချာ အချက်အလက်</h3><p className="text-[11px] text-slate-500">Return လုပ်မည့် sale ကိုအရင်ရွေးပါ။</p></div></div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <div className="space-y-1.5 xl:col-span-3">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ဖောက်သည်</label>
                   <input list="sr-customers" value={customerSearch} onChange={(e) => onCustomerSearch(e.target.value)} placeholder="ဖောက်သည် ရှာရန်..." className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${customerId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
                   <datalist id="sr-customers">{customers.map((c) => <option key={c.id} value={customerLabel(c)} />)}</datalist>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 xl:col-span-3">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">မူရင်း Sale</label>
                   <input list="sr-sales" value={saleSearch} onChange={(e) => onSaleSearch(e.target.value)} placeholder={customerId > 0 ? 'မူရင်း sale ဘောင်ချာရွေးရန်...' : 'ဖောက်သည်အရင်ရွေးပါ'} disabled={customerId <= 0} className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed ${saleId > 0 ? 'border-slate-200' : 'border-rose-200'}`} />
                   <datalist id="sr-sales">{filteredSales.map((s) => <option key={s.id} value={saleLabel(s)} />)}</datalist>
                 </div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return ရက်စွဲ</label>
                   <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
@@ -658,9 +656,14 @@ const SaleReturnManagement: React.FC = () => {
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 xl:sticky xl:top-20">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> Refund & စုစုပေါင်း</h3>
+          {isRefundModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" onMouseDown={() => setIsRefundModalOpen(false)}>
+              <div className="h-[100dvh] w-full overflow-y-auto rounded-none bg-white shadow-xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:rounded-2xl" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="min-h-full bg-white p-4 pb-8 space-y-5 sm:min-h-0 sm:rounded-2xl sm:p-6">
+              <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 pt-4 pb-4 sm:static sm:mx-0 sm:mt-0 sm:p-0 sm:pb-0 sm:border-0">
+                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><RotateCcw size={16} className="text-indigo-500" /> Refund & စုစုပေါင်း</h3>
+                <button type="button" onClick={() => setIsRefundModalOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="ပိတ်မည်"><X size={18} /></button>
+              </div>
               <div className="flex justify-between items-center text-sm pb-2 border-b border-slate-100"><span className="text-slate-500">Return စုစုပေါင်း</span><span className="font-bold text-slate-800">{money(total)}</span></div>
 
               <div className="space-y-1.5">
@@ -704,7 +707,9 @@ const SaleReturnManagement: React.FC = () => {
                 <Save size={16} /> {saving ? 'သိမ်းနေသည်...' : editingId ? 'Sale Return ပြင်မည်' : 'Sale Return သိမ်းမည်'}
               </button>
             </div>
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -712,21 +717,16 @@ const SaleReturnManagement: React.FC = () => {
 
   return (
     <div className="w-full max-w-none space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 text-left">Sale Return စီမံခန့်ခွဲမှု</h2>
-          <p className="text-xs text-slate-500 mt-1">ပြန်လက်ခံမှု၊ refund ငွေ၊ မူရင်း sale နှင့် return voucher history ကိုတစ်နေရာတည်းစစ်ပါ။</p>
+      <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center">
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center 2xl:order-2">
+          <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်ရန်</button>
+          <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> အရောင်းပြန်လက်ခံမှုအသစ်</button>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-          <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh</button>
-          <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> New Sale Return</button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 2xl:order-1">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာအရေအတွက်</p><p className="text-2xl font-bold text-slate-800">{stats.count}</p></div><div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center"><List size={20} className="text-indigo-600" /></div></div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Return စုစုပေါင်းed</p><p className="text-2xl font-bold text-slate-800">{money(stats.total)}</p></div><div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center"><RotateCcw size={20} className="text-slate-600" /></div></div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Refund စုစုပေါင်း</p><p className="text-2xl font-bold text-emerald-700">{money(stats.refund)}</p></div><div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center"><RotateCcw size={20} className="text-emerald-600" /></div></div>
+      </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">

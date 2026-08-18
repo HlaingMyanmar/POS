@@ -173,6 +173,7 @@ public class PaginationService {
                 .subtotal(base.getSubtotal())
                 .discount(base.getDiscount())
                 .netAmount(base.getNetAmount())
+                .commission(base.getCommission())
                 .paid(base.getPaid())
                 .balanceDue(base.getBalanceDue())
                 // ── Extra ─────────────────────────────────────────────────────

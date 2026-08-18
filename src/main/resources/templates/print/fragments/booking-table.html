@@ -1,73 +1,84 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
-<!--
-  FRAGMENT: booking-table
-  ═══════════════════════════════════════════════════════════════════════════
-  DEVICE INTAKE RECEIPT — Device Items Table + Remark
-  Used by: booking-a4.html · booking-a5.html
-  ═══════════════════════════════════════════════════════════════════════════
--->
-<head><title>fragment</title></head>
+<head><title>Device intake receipt</title></head>
 <body>
 
 <div th:fragment="render(inv)" style="margin-bottom:16px;">
 
-  <!-- ── Device Information Table ─────────────────────────────────────── -->
-  <div style="font-size:9px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
-              color:#334155; border-bottom:2px solid #334155; padding-bottom:3px; margin-bottom:6px;">
-    Device Information
-  </div>
-
-  <table style="width:100%; border-collapse:collapse; font-size:10.5px;">
-    <thead>
-      <tr style="background:#f1f5f9; color:#475569; font-weight:700; font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px;">
-        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:center; width:5%;">#</th>
-        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left; width:25%;">Device / Brand</th>
-        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left; width:18%;">Model</th>
-        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left; width:15%;">Serial No</th>
-        <th style="border:1px solid #cbd5e1; padding:5px 7px; text-align:left;">Problem</th>
-      </tr>
-    </thead>
-    <tbody>
-
-      <!-- Populated rows -->
-      <tr th:each="dev, stat : ${inv.deviceRows}"
-          th:style="${stat.odd} ? 'background:#ffffff;' : 'background:#f8fafc;'">
-        <td style="border:1px solid #cbd5e1; padding:6px 7px; text-align:center; font-weight:600; color:#64748b;"
-            th:text="${stat.count}">1</td>
-        <td style="border:1px solid #cbd5e1; padding:6px 7px;">
-          <div style="font-weight:600;" th:text="${not #strings.isEmpty(dev.brand) ? dev.brand : '—'}">—</div>
-          <div style="font-size:9px; color:#64748b; margin-top:1px;"
-               th:text="${not #strings.isEmpty(dev.deviceType) ? dev.deviceType : ''}"></div>
-          <div style="font-size:9px; color:#94a3b8; margin-top:1px;"
-               th:text="${not #strings.isEmpty(dev.color) ? dev.color : ''}"></div>
-        </td>
-        <td style="border:1px solid #cbd5e1; padding:6px 7px;"
-            th:text="${not #strings.isEmpty(dev.model) ? dev.model : '—'}">—</td>
-        <td style="border:1px solid #cbd5e1; padding:6px 7px; font-family:monospace; font-size:9.5px;"
-            th:text="${not #strings.isEmpty(dev.serialNo) ? dev.serialNo : '—'}">—</td>
-        <td style="border:1px solid #cbd5e1; padding:6px 7px; color:#b45309;"
-            th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}">—</td>
-      </tr>
-
-      <!-- Empty placeholder row when no device data -->
-      <tr th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
-          style="background:#ffffff;">
-        <td style="border:1px solid #cbd5e1; padding:8px 7px; text-align:center; color:#94a3b8;">1</td>
-        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
-        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
-        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
-        <td style="border:1px solid #cbd5e1; padding:8px 7px; color:#94a3b8;">—</td>
-      </tr>
-
-    </tbody>
+  <!-- Fast-scan summary: the two facts staff need most often. -->
+  <table th:if="${false}" style="width:100%; border-collapse:separate; border-spacing:0; margin-bottom:10px;">
+    <tr>
+      <td style="width:50%; background:#1e3a5f; color:#ffffff; padding:9px 12px; border-radius:5px 0 0 5px;">
+        <div style="font-size:8px; font-weight:700; letter-spacing:1.5px; opacity:.78; text-transform:uppercase;">Intake Number</div>
+        <div style="font-size:16px; font-weight:800; letter-spacing:.5px; margin-top:2px;" th:text="${inv.invoiceNo ?: '—'}">—</div>
+      </td>
+      <td style="width:50%; background:#e0f2fe; color:#0c4a6e; padding:9px 12px; border:1px solid #7dd3fc; border-left:0; border-radius:0 5px 5px 0;">
+        <div style="font-size:8px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;">Storage Location</div>
+        <div style="font-size:14px; font-weight:800; margin-top:2px;" th:text="${not #strings.isEmpty(inv.shelfLocation) ? inv.shelfLocation : 'NOT ASSIGNED'}">NOT ASSIGNED</div>
+      </td>
+    </tr>
   </table>
 
-  <!-- ── Brief Remark (optional) ────────────────────────────────────────── -->
-  <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:10px;">
-    <div class="inv-section-label">Brief Remark</div>
-    <div class="inv-remark" th:text="${inv.remark}"></div>
+  <div style="font-size:10px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:#1e3a5f; border-bottom:3px solid #1e3a5f; padding-bottom:4px; margin-bottom:7px;">
+    Device Details
   </div>
+
+  <!-- A card per device keeps the complaint and condition readable at a glance. -->
+  <div th:each="dev, stat : ${inv.deviceRows}"
+       style="border:1.5px solid #94a3b8; border-radius:5px; margin-bottom:8px; page-break-inside:avoid; overflow:hidden;">
+    <div style="background:#f1f5f9; border-bottom:1px solid #cbd5e1; padding:6px 9px;">
+      <span style="display:inline-block; background:#1e3a5f; color:white; border-radius:10px; padding:2px 7px; font-size:9px; font-weight:800; margin-right:6px;"
+            th:text="${'DEVICE ' + stat.count}">DEVICE 1</span>
+      <span style="font-size:13px; font-weight:800; color:#0f172a;"
+            th:text="${(#strings.isEmpty(dev.brand) ? '' : dev.brand) + (#strings.isEmpty(dev.model) ? '' : ' ' + dev.model)}">Device</span>
+      <span th:if="${not #strings.isEmpty(dev.deviceType)}" style="font-size:9px; color:#64748b; margin-left:5px;"
+            th:text="${'(' + dev.deviceType + ')'}"></span>
+    </div>
+
+    <table style="width:100%; border-collapse:collapse; font-size:10px;">
+      <tr>
+        <td style="width:50%; padding:6px 9px; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:8px; font-weight:700; color:#64748b; letter-spacing:.8px; text-transform:uppercase;">Serial Number</div>
+          <div style="font-family:monospace; font-size:11px; font-weight:700; color:#0f172a; margin-top:2px;" th:text="${not #strings.isEmpty(dev.serialNo) ? dev.serialNo : '—'}">—</div>
+        </td>
+        <td style="width:50%; padding:6px 9px; border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:8px; font-weight:700; color:#64748b; letter-spacing:.8px; text-transform:uppercase;">Color / Accessories</div>
+          <div style="font-size:10px; font-weight:600; color:#0f172a; margin-top:2px;"
+               th:text="${(#strings.isEmpty(dev.color) ? '—' : dev.color) + (#strings.isEmpty(dev.accessories) ? '' : '  |  ' + dev.accessories)}">—</div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding:7px 9px; background:#fff7ed; border-bottom:1px solid #fed7aa;">
+          <div style="font-size:8px; font-weight:800; color:#9a3412; letter-spacing:1px; text-transform:uppercase;">Reported Problem</div>
+          <div style="font-size:12px; line-height:1.45; font-weight:700; color:#7c2d12; margin-top:2px;" th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}">—</div>
+        </td>
+      </tr>
+      <tr th:if="${not #strings.isEmpty(dev.deviceConditions)}">
+        <td colspan="2" style="padding:6px 9px; background:#f8fafc;">
+          <span style="font-size:8px; font-weight:800; color:#475569; letter-spacing:.8px; text-transform:uppercase;">Condition at Intake: </span>
+          <span style="font-size:9.5px; color:#334155;" th:text="${dev.deviceConditions}"></span>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
+       style="border:1px dashed #94a3b8; padding:14px; color:#64748b; text-align:center; font-size:10px; margin-bottom:8px;">
+    No device information recorded
+  </div>
+
+  <table style="width:100%; border-collapse:collapse; margin-top:8px;" th:if="${not #strings.isEmpty(inv.remark) or (inv.estimatedCost != null and inv.estimatedCost != '0')}">
+    <tr>
+      <td th:if="${not #strings.isEmpty(inv.remark)}" style="padding:7px 9px; border:1px solid #cbd5e1; background:#f8fafc;">
+        <div style="font-size:8px; font-weight:800; color:#475569; letter-spacing:1px; text-transform:uppercase;">Remark</div>
+        <div style="font-size:10px; font-weight:600; color:#0f172a; margin-top:2px;" th:text="${inv.remark}"></div>
+      </td>
+      <td th:if="${inv.estimatedCost != null and inv.estimatedCost != '0'}" style="width:34%; padding:7px 9px; border:1px solid #86efac; background:#f0fdf4; text-align:right;">
+        <div style="font-size:8px; font-weight:800; color:#166534; letter-spacing:1px; text-transform:uppercase;">Estimated Cost</div>
+        <div style="font-size:13px; font-weight:800; color:#14532d; margin-top:2px;" th:text="${inv.estimatedCost + ' Ks'}">0 Ks</div>
+      </td>
+    </tr>
+  </table>
 
 </div>
 

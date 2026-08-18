@@ -1,12 +1,13 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { bookingService, api } from '../services/api';
+import { bookingService, serviceJobService, api } from '../services/api';
 import { shelfLocationService } from '../services/shelfLocationApiService';
 import { staffService } from '../services/staffapiservice';
 import { ApiResponse } from '../types';
 import Swal from 'sweetalert2';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { BriefcaseBusiness, Pencil, Printer, Trash2 } from 'lucide-react';
 
 const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'Other'];
 
@@ -36,6 +37,7 @@ const emptyDevice = (): DeviceEntry => ({
 const emptyForm = {
   customerId: '', staffId: '',
   totalAmount: '', shelfLocation: '', remark: '',
+  reworkReturn: false, parentServiceJobId: '', reworkType: 'WARRANTY',
   devices: [emptyDevice()] as DeviceEntry[],
 };
 
@@ -131,6 +133,55 @@ const CustomerCombo: React.FC<{
   );
 };
 
+/* ── SearchableSelect ─────────────────────────────────────────────────── */
+const SearchableSelect: React.FC<{
+  value: string;
+  options: { value: string; label: string; searchText?: string }[];
+  placeholder: string;
+  onChange: (value: string) => void;
+}> = ({ value, options, placeholder, onChange }) => {
+  const selected = options.find(option => option.value === value);
+  const [search, setSearch] = useState(selected?.label || '');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setSearch(selected?.label || ''), [value, selected?.label]);
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  // When the input is merely displaying the selected label, opening it must
+  // show every choice. Filtering starts only after the user actually types.
+  const showingSelectedLabel = Boolean(selected && search === selected.label);
+  const needle = showingSelectedLabel ? '' : search.trim().toLowerCase();
+  const filtered = options.filter(option =>
+    `${option.label} ${option.searchText || ''}`.toLowerCase().includes(needle)
+  ).slice(0, 30);
+
+  return <div ref={ref} className="relative">
+    <div className="relative">
+      <input value={search} onFocus={() => setOpen(true)}
+        onChange={event => { setSearch(event.target.value); setOpen(true); onChange(''); }}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-amber-300 bg-white py-2 pl-3 pr-9 text-sm focus:ring-2 focus:ring-amber-400" />
+      {(search || value) && <button type="button" onClick={() => { setSearch(''); onChange(''); setOpen(true); }}
+        className="absolute right-2 top-1/2 -translate-y-1/2 px-1 text-lg text-slate-400 hover:text-rose-500">×</button>}
+    </div>
+    {open && <div className="absolute z-[70] mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-amber-200 bg-white shadow-xl">
+      {filtered.map(option => <button type="button" key={option.value}
+        onClick={() => { onChange(option.value); setSearch(option.label); setOpen(false); }}
+        className={`block w-full border-b border-slate-100 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-amber-50 ${option.value === value ? 'bg-amber-50 font-bold text-amber-900' : 'text-slate-700'}`}>
+        {option.label}
+      </button>)}
+      {filtered.length === 0 && <p className="px-3 py-3 text-sm text-slate-400">ရှာဖွေမှုနှင့် ကိုက်ညီသည့်အချက်အလက် မတွေ့ပါ</p>}
+    </div>}
+  </div>;
+};
+
 /* ── DeviceCard ───────────────────────────────────────────────────────── */
 const DeviceCard: React.FC<{
   index: number;
@@ -217,6 +268,7 @@ export default function BookingManagement() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [shelves, setShelves]     = useState<any[]>([]);
+  const [closedJobs, setClosedJobs] = useState<any[]>([]);
   const [search, setSearch]       = useState('');
   const [dateFrom, setDateFrom]   = useState('');
   const [dateTo, setDateTo]       = useState('');
@@ -238,10 +290,11 @@ export default function BookingManagement() {
 
   const loadReferenceData = async () => {
     try {
-      const [customerRes, staffRes, shelfRes] = await Promise.allSettled([
+      const [customerRes, staffRes, shelfRes, jobRes] = await Promise.allSettled([
         api.get<any, any>('/v1/customers?size=999'),
         staffService.getAllActive(),
         shelfLocationService.getActive(),
+        serviceJobService.getAll(0, 500),
       ]);
 
       if (customerRes.status === 'fulfilled') {
@@ -250,6 +303,11 @@ export default function BookingManagement() {
       }
       if (staffRes.status === 'fulfilled') setStaffList(Array.isArray(staffRes.value) ? staffRes.value : []);
       if (shelfRes.status === 'fulfilled') setShelves(Array.isArray(shelfRes.value) ? shelfRes.value : []);
+      if (jobRes.status === 'fulfilled') {
+        const payload = jobRes.value as any;
+        const rows = payload?.data?.content ?? payload?.data ?? [];
+        setClosedJobs(Array.isArray(rows) ? rows.filter((j: any) => j.status === 'DELIVERED') : []);
+      }
     } catch {
       // ignore
     }
@@ -302,6 +360,9 @@ export default function BookingManagement() {
       totalAmount:   b.totalAmount ? String(b.totalAmount) : '',
       shelfLocation: b.shelfLocation ?? '',
       remark:        b.remark ?? '',
+      reworkReturn:  Boolean(b.reworkReturn),
+      parentServiceJobId: b.parentServiceJobId ? String(b.parentServiceJobId) : '',
+      reworkType:    b.reworkType ?? 'WARRANTY',
       devices,
     });
     setEditId(b.id);
@@ -331,6 +392,8 @@ export default function BookingManagement() {
     const hasEmptyProblem = form.devices.some(d => !d.problemDesc.trim());
     if (hasEmptyBrand) { Swal.fire('Error', 'Device တိုင်းအတွက် Brand ဖြည့်ပါ', 'error'); return; }
     if (hasEmptyProblem) { Swal.fire('Error', 'Device တိုင်းအတွက် ပြဿနာဖော်ပြချက် ဖြည့်ပါ', 'error'); return; }
+    if (form.reworkReturn && !form.parentServiceJobId) { Swal.fire('Error', 'မူလ Service Job ကို ရွေးပါ', 'error'); return; }
+    if (form.reworkReturn && !form.reworkType) { Swal.fire('Error', 'Rework အမျိုးအစားကို ရွေးပါ', 'error'); return; }
 
     // Use first device's fields as the booking-level device info (legacy compat)
     const first = form.devices[0];
@@ -339,6 +402,9 @@ export default function BookingManagement() {
       staffId:       form.staffId ? Number(form.staffId) : null,
       totalAmount:   form.totalAmount ? Number(form.totalAmount) : 0,
       shelfLocation: form.shelfLocation || null,
+      reworkReturn: form.reworkReturn,
+      parentServiceJobId: form.reworkReturn ? Number(form.parentServiceJobId) : null,
+      reworkType: form.reworkReturn ? form.reworkType : null,
       remark:        form.remark || null,
       deviceType:    first.deviceType,
       brand:         first.brand,
@@ -443,6 +509,12 @@ export default function BookingManagement() {
                       <td className="px-3 py-3 text-xs text-slate-400">{page * PAGE_SIZE + i + 1}</td>
                       <td className="px-3 py-3">
                         <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{b.invoiceNo}</span>
+                        {b.reworkReturn && (
+                          <div className="mt-1.5 w-fit rounded-lg border border-amber-300 bg-amber-50 px-2 py-1">
+                            <div className="text-[10px] font-black text-amber-800">↻ REWORK RETURN</div>
+                            <div className="text-[10px] font-semibold text-slate-500">မူလ Job → <span className="font-mono font-black text-purple-700">{b.parentServiceJobNo || `#${b.parentServiceJobId}`}</span></div>
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{b.bookingDate?.slice(0, 10)}</td>
                       <td className="px-3 py-3">
@@ -470,27 +542,28 @@ export default function BookingManagement() {
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${col}`}>{b.status}</span>
                       </td>
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-1 flex-nowrap">
-                          <button onClick={() => setPrintId(b.id)} title="Print Receipt"
-                            className="px-2 py-1 text-xs border rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
-                            🖨
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                          <button onClick={() => setPrintId(b.id)} title="လက်ခံဖြတ်ပိုင်း ပရင့်ထုတ်ရန်" aria-label="လက်ခံဖြတ်ပိုင်း ပရင့်ထုတ်ရန်"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 shadow-sm transition-all hover:border-violet-400 hover:bg-violet-600 hover:text-white hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-1">
+                            <Printer size={18} strokeWidth={2.4} />
                           </button>
                           {canConvert && (
-                            <button onClick={() => handleConvertToJob(b.id)} title="Convert to Service Job"
-                              className="px-2 py-1 text-xs border border-emerald-200 rounded-lg text-emerald-700 hover:bg-emerald-50 font-bold whitespace-nowrap transition-colors">
-                              → Job
+                            <button onClick={() => handleConvertToJob(b.id)} title="Service Job အဖြစ်ပြောင်းရန်" aria-label="Service Job အဖြစ်ပြောင်းရန်"
+                              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs font-extrabold text-emerald-700 shadow-sm whitespace-nowrap transition-all hover:border-emerald-600 hover:bg-emerald-600 hover:text-white hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1">
+                              <BriefcaseBusiness size={17} strokeWidth={2.4} />
+                              <span>Job</span>
                             </button>
                           )}
                           {canEdit && (
-                            <button onClick={() => openEdit(b)} title="Edit"
-                              className="px-2 py-1 text-xs border rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
-                              ✏
+                            <button onClick={() => openEdit(b)} title="ပြင်ဆင်ရန်" aria-label="ပြင်ဆင်ရန်"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 shadow-sm transition-all hover:border-blue-500 hover:bg-blue-600 hover:text-white hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1">
+                              <Pencil size={17} strokeWidth={2.5} />
                             </button>
                           )}
                           {canEdit && (
-                            <button onClick={() => handleDelete(b.id)} title="Delete"
-                              className="px-2 py-1 text-xs border rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
-                              🗑
+                            <button onClick={() => handleDelete(b.id)} title="ဖျက်ရန်" aria-label="ဖျက်ရန်"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 shadow-sm transition-all hover:border-rose-500 hover:bg-rose-600 hover:text-white hover:shadow-md focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-1">
+                              <Trash2 size={17} strokeWidth={2.4} />
                             </button>
                           )}
                         </div>
@@ -580,8 +653,8 @@ export default function BookingManagement() {
             <div className="p-6 space-y-5">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <button type="button" onClick={() => setStep('customer')} className={`px-3 py-1.5 rounded-full ${step === 'customer' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>1. Customer</button>
-                <button type="button" onClick={() => form.customerId && setStep('device')} className={`px-3 py-1.5 rounded-full ${step === 'device' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId}>2. Device</button>
-                <button type="button" onClick={() => form.devices.every(d => d.brand.trim() && d.problemDesc.trim()) && setStep('review')} className={`px-3 py-1.5 rounded-full ${step === 'review' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || !form.devices.every(d => d.brand.trim() && d.problemDesc.trim())}>3. Review</button>
+                <button type="button" onClick={() => form.customerId && (!form.reworkReturn || (form.parentServiceJobId && form.reworkType)) && setStep('device')} className={`px-3 py-1.5 rounded-full ${step === 'device' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || (form.reworkReturn && (!form.parentServiceJobId || !form.reworkType))}>2. Device</button>
+                <button type="button" onClick={() => form.devices.every(d => d.brand.trim() && d.problemDesc.trim()) && setStep('review')} className={`px-3 py-1.5 rounded-full ${step === 'review' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || (form.reworkReturn && !form.parentServiceJobId) || !form.devices.every(d => d.brand.trim() && d.problemDesc.trim())}>3. Review</button>
               </div>
 
               {step === 'customer' && (
@@ -591,12 +664,71 @@ export default function BookingManagement() {
                     <CustomerCombo
                       customers={customers}
                       value={form.customerId}
-                      onChange={id => setForm(p => ({ ...p, customerId: id }))}
+                      onChange={id => setForm(p => ({ ...p, customerId: id, parentServiceJobId: '' }))}
                       onCreated={(c) => {
                         setCustomers(prev => prev.some(x => x.id === c.id) ? prev : [c, ...prev]);
                       }}
                     />
                   </div>
+                  {form.customerId && (
+                    <section className={`rounded-xl border-2 p-4 transition-colors ${form.reworkReturn ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+                      <p className="text-sm font-black text-slate-800">↻ Rework / Warranty Return လား?</p>
+                      <p className="mt-1 text-xs text-slate-500">ယခင်ဝန်ဆောင်မှုလုပ်ငန်းမှ ပြန်လည်လက်ခံသည့်ပစ္စည်း ဟုတ်/မဟုတ် ရွေးပါ။</p>
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <button type="button" onClick={() => setForm(p => ({ ...p, reworkReturn: false, parentServiceJobId: '' }))}
+                          className={`rounded-xl border px-4 py-3 text-sm font-bold ${!form.reworkReturn ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 bg-white text-slate-600'}`}>
+                          မဟုတ်ပါ — ပုံမှန်လက်ခံ
+                        </button>
+                        <button type="button" onClick={() => setForm(p => ({ ...p, reworkReturn: true }))}
+                          className={`rounded-xl border px-4 py-3 text-sm font-bold ${form.reworkReturn ? 'border-amber-500 bg-amber-100 text-amber-900 ring-2 ring-amber-200' : 'border-slate-200 bg-white text-slate-600'}`}>
+                          ဟုတ်ပါတယ် — Rework Return
+                        </button>
+                      </div>
+
+                      {form.reworkReturn && (
+                        <div className="mt-4 grid grid-cols-1 gap-3 border-t border-amber-200 pt-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold text-amber-800">မူလ Service Job *</label>
+                            <SearchableSelect value={form.parentServiceJobId} placeholder="Job No၊ စက်အမည်၊ Serial No ဖြင့်ရှာပါ..."
+                              options={closedJobs.filter((j: any) => String(j.customerId) === String(form.customerId)).map((j: any) => ({
+                                value: String(j.id),
+                                label: `${j.jobNo} — ${j.itemName || 'Device'}${j.serialNo ? ` · SN: ${j.serialNo}` : ''}`,
+                                searchText: `${j.customerName || ''} ${j.problemDesc || ''}`,
+                              }))}
+                              onChange={selectedId => {
+                              const job = closedJobs.find((j: any) => String(j.id) === selectedId);
+                              setForm(p => ({
+                                ...p,
+                                parentServiceJobId: selectedId,
+                                staffId: job?.assignedStaffId ? String(job.assignedStaffId) : p.staffId,
+                                totalAmount: '0',
+                                remark: job ? `Rework Return from ${job.jobNo}` : p.remark,
+                                devices: job ? p.devices.map((d, idx) => idx === 0 ? {
+                                  ...d,
+                                  brand: job.itemName || d.brand,
+                                  serialNumber: job.serialNo || d.serialNumber,
+                                  color: job.color || d.color,
+                                  problemDesc: job.problemDesc || d.problemDesc,
+                                  deviceConditions: job.deviceConditions || d.deviceConditions,
+                                } : d) : p.devices,
+                              }));
+                            }} />
+                            {form.parentServiceJobId && <p className="mt-1 text-[11px] font-semibold text-emerald-700">မူလ Job မှ ပစ္စည်း၊ ပြဿနာနှင့် တာဝန်ခံအချက်အလက်များ ဖြည့်ပြီးပါပြီ။</p>}
+                            {closedJobs.filter((j: any) => String(j.customerId) === String(form.customerId)).length === 0 && <p className="mt-1 text-[11px] font-semibold text-rose-600">ဤဖောက်သည်အတွက် Closed Service Job မတွေ့ပါ။</p>}
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold text-amber-800">Rework အမျိုးအစား *</label>
+                            <SearchableSelect value={form.reworkType} placeholder="Rework အမျိုးအစား ရှာပါ..." onChange={reworkType => setForm(p => ({ ...p, reworkType }))}
+                              options={[
+                                { value: 'WARRANTY', label: 'Warranty — အာမခံပြန်ပြင်', searchText: 'free repair' },
+                                { value: 'REPLACEMENT', label: 'Replacement — ပစ္စည်းလဲပေး', searchText: 'exchange replace' },
+                                { value: 'ADDITIONAL', label: 'Additional — ထပ်ဆောင်းပြဿနာ', searchText: 'extra service' },
+                              ]} />
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  )}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                     <p className="font-semibold text-slate-700">လုပ်ငန်းစဉ်</p>
                     <ul className="list-disc ml-5 mt-2 space-y-1">
@@ -606,7 +738,7 @@ export default function BookingManagement() {
                     </ul>
                   </div>
                   <div className="flex justify-end">
-                    <button type="button" onClick={() => form.customerId && setStep('device')} disabled={!form.customerId} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">Next</button>
+                    <button type="button" onClick={() => form.customerId && (!form.reworkReturn || (form.parentServiceJobId && form.reworkType)) && setStep('device')} disabled={!form.customerId || (form.reworkReturn && (!form.parentServiceJobId || !form.reworkType))} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">Next</button>
                   </div>
                 </section>
               )}
@@ -638,6 +770,13 @@ export default function BookingManagement() {
 
               {step === 'review' && (
                 <section className="space-y-4">
+                  {form.reworkReturn && (
+                    <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-sm">
+                      <p className="font-black text-amber-900">↻ Rework / Warranty Return</p>
+                      <p className="mt-1 text-amber-800">မူလ Job: {closedJobs.find((j: any) => String(j.id) === String(form.parentServiceJobId))?.jobNo || '—'} · {form.reworkType}</p>
+                    </div>
+                  )}
+
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Review</p>
@@ -651,6 +790,10 @@ export default function BookingManagement() {
                       <div>
                         <p className="text-slate-500">ဝန်ထမ်း</p>
                         <p className="font-semibold text-slate-800">{staffList.find(s => String(s.id) === String(form.staffId))?.name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">ပစ္စည်းထားသည့်နေရာ</p>
+                        <p className="font-semibold text-slate-800">{form.shelfLocation || '— မသတ်မှတ်ရသေး —'}</p>
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -675,15 +818,21 @@ export default function BookingManagement() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">အခြေအနေ</label>
-                      <select value={form.shelfLocation} onChange={e => setForm(p => ({ ...p, shelfLocation: e.target.value }))}
-                        className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
-                        <option value="">— မရွေးထား —</option>
-                        <option value="IN_STORAGE">In Storage</option>
-                        <option value="Pending">Pending</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ပစ္စည်းထားသည့်နေရာ</label>
+                      <input
+                        type="text"
+                        list="booking-shelf-locations"
+                        value={form.shelfLocation}
+                        onChange={e => setForm(p => ({ ...p, shelfLocation: e.target.value }))}
+                        placeholder="ဥပမာ - A-01၊ ရှေ့ကောင်တာ"
+                        className="w-full border rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <datalist id="booking-shelf-locations">
+                        {shelves.map((s: any) => (
+                          <option key={s.id ?? s.code} value={s.code} label={s.label ? `${s.code} — ${s.label}` : s.code} />
+                        ))}
+                      </datalist>
+                      <p className="mt-1 text-[11px] text-slate-400">စာရင်းထဲမှရွေးနိုင်သလို နေရာအသစ်ကိုလည်း ရိုက်ထည့်နိုင်သည်။</p>
                     </div>
                   </section>
 

@@ -6,7 +6,7 @@ import {
   Loader2, Plus, Search, Trash2, Edit2, X, 
   Truck, Phone, MapPin,
   ChevronLeft, ChevronRight, ChevronDown, Save,
-  ClipboardList, RefreshCw
+  ClipboardList, RefreshCw, DollarSign, AlertCircle
 } from 'lucide-react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
@@ -35,9 +35,9 @@ const SupplierManagement: React.FC = () => {
   const fetchPaginatedData = useCallback(async () => {
     try {
       const pageData = await supplierService.getPaginated(currentPage, itemsPerPage);
-      setSuppliers(pageData.content);
-      setTotalElements(pageData.totalElements);
-      setTotalPages(pageData.totalPages);
+      setSuppliers(Array.isArray(pageData?.content) ? pageData.content : []);
+      setTotalElements(Number(pageData?.totalElements) || 0);
+      setTotalPages(Number(pageData?.totalPages) || 0);
     } catch (error) {
       console.error("Failed to load supplier data", error);
     } finally {
@@ -83,7 +83,7 @@ const SupplierManagement: React.FC = () => {
         await supplierService.create(formData);
       }
       setIsModalOpen(false);
-      fetchPaginatedData();
+      await fetchPaginatedData();
       Swal.fire({ icon: 'success', title: 'Supplier Saved', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
     } catch (error: any) {
       Swal.fire('Error', error.message || 'Operation failed', 'error');
@@ -218,10 +218,10 @@ const SupplierManagement: React.FC = () => {
                   <td className="px-4 py-3.5 text-right">
                     <div className="flex flex-col items-end">
                       <span className={`text-[14px] font-black tabular-nums ${supplier.currentBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        {supplier.currentBalance.toLocaleString()} <span className="text-[10px] ml-0.5 font-bold uppercase">Ks</span>
+        {Number(supplier.currentBalance ?? 0).toLocaleString()} <span className="text-[10px] ml-0.5 font-bold uppercase">Ks</span>
                       </span>
                       {supplier.openingBalance > 0 && (
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">OB: {supplier.openingBalance.toLocaleString()}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">OB: {Number(supplier.openingBalance ?? 0).toLocaleString()}</p>
                       )}
                     </div>
                   </td>
@@ -358,7 +358,7 @@ const SupplierManagement: React.FC = () => {
                   <AlertCircle size={18} className="text-indigo-600 shrink-0 mt-0.5" />
                   <div className="text-left">
                     <p className="text-[11px] font-black text-indigo-900 uppercase tracking-tight">Current Debt Balance</p>
-                    <p className="text-[15px] font-black text-indigo-700 tabular-nums">{editingSupplier.currentBalance.toLocaleString()} MMK</p>
+                    <p className="text-[15px] font-black text-indigo-700 tabular-nums">{Number(editingSupplier.currentBalance ?? 0).toLocaleString()} MMK</p>
                     <p className="text-[9px] text-indigo-400 font-bold mt-1">Balances are updated via procurement transactions and payments.</p>
                   </div>
                 </div>

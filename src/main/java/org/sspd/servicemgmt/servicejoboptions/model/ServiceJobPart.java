@@ -39,4 +39,8 @@ public class ServiceJobPart {
 
     @Column(name = "serial_numbers", columnDefinition = "TEXT")
     private String serialNumbers;
+
+    @Builder.Default
+    @Column(name = "warranty_covered")
+    private Boolean warrantyCovered = Boolean.FALSE;
 }

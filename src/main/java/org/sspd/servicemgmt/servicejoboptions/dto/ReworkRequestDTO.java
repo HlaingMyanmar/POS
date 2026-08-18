@@ -8,4 +8,7 @@ public class ReworkRequestDTO {
     private ReworkType reworkType;
     private String problemDesc;
     private Integer assignedStaffId;
+    private String replacementItemName;
+    private String replacementSerialNo;
+    private String replacementReason;
 }

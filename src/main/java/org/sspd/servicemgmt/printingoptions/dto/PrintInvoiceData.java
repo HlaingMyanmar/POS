@@ -68,6 +68,7 @@ public class PrintInvoiceData {
     private String model;
     private String serialNo;
     private String color;
+    private String shelfLocation;
     private List<DeviceRow> deviceRows; // multiple devices per booking
 
     @Data
@@ -80,6 +81,7 @@ public class PrintInvoiceData {
         private String color;
         private String accessories;
         private String problemDesc;
+        private String deviceConditions;
     }
 
     @Data

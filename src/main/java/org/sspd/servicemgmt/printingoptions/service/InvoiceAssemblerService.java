@@ -212,6 +212,7 @@ public class InvoiceAssemblerService {
                         .color(safe(d.getColor()))
                         .accessories(safe(d.getAccessories()))
                         .problemDesc(safe(d.getProblemDesc()))
+                        .deviceConditions(safe(d.getDeviceConditions()))
                         .build());
             }
         } else if (!safe(b.getBrand()).isBlank() || !safe(b.getModel()).isBlank()
@@ -225,6 +226,7 @@ public class InvoiceAssemblerService {
                     .color(safe(b.getColor()))
                     .accessories(safe(b.getAccessories()))
                     .problemDesc("")
+                    .deviceConditions("")
                     .build());
         }
 
@@ -244,6 +246,8 @@ public class InvoiceAssemblerService {
                 .customerName(b.getCustomer() != null ? b.getCustomer().getName() : "")
                 .customerPhone(b.getCustomer() != null ? safe(b.getCustomer().getPhone()) : "")
                 .cashierName(b.getStaff() != null ? b.getStaff().getName() : "")
+                .shelfLocation(safe(b.getShelfLocation()))
+                .estimatedCost(b.getTotalAmount() != null ? fmt(b.getTotalAmount()) : "0")
                 .lineItems(List.of())
                 .payments(List.of())
                 .subtotal("0")

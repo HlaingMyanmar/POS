@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { Printer, FileEdit, AlertTriangle } from 'lucide-react';
+import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw } from 'lucide-react';
 import { serviceJobService, serviceItemService } from '../services/api';
 import { staffService } from '../services/staffapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
@@ -32,7 +32,7 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   INSPECTING:  'စစ်ဆေးနေ',
   IN_PROGRESS: 'ပြင်ဆင်နေ',
   COMPLETED:   'ပြီးစီး',
-  DELIVERED:   'ပေးပို့ပြီး',
+  DELIVERED:   'Closed / ပိတ်ပြီး',
   CANCELLED:   'ပယ်ဖျက်',
 };
 
@@ -46,8 +46,8 @@ const emptyForm = {
   itemName: '', problemDesc: '', diagnosisNotes: '',
   deviceConditions: '', estimatedCompletion: '', estimatedCost: '', remark: '',
   status: 'RECEIVED',
-  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number }[],
-  productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[] }[],
+  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyCovered: boolean }[],
+  productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[] }[],
 };
 
 const emptySettle = {
@@ -55,6 +55,11 @@ const emptySettle = {
   paidAmount: '', dueDate: '',
   paymentMethodId: '', paymentAccountId: '', transactionNo: '',
   payments: [] as PaymentTransactionDTO[],
+};
+
+const emptyRework = {
+  reworkType: 'WARRANTY', problemDesc: '', assignedStaffId: '',
+  replacementItemName: '', replacementSerialNo: '', replacementReason: '',
 };
 
 const normalizePayments = (payments: PaymentTransactionDTO[]) =>
@@ -273,10 +278,16 @@ export default function ServiceJobManagement() {
   const [creditPayForm, setCreditPayForm] = useState({ paidAmount: '', paymentMethodId: '', paymentAccountId: '', transactionNo: '', payments: [] as PaymentTransactionDTO[] });
 
   const [printId, setPrintId]   = useState<number | null>(null);
+  const [showRework, setShowRework] = useState(false);
+  const [reworkParent, setReworkParent] = useState<any>(null);
+  const [reworkForm, setReworkForm] = useState(emptyRework);
+  const [expandedJobFamilies, setExpandedJobFamilies] = useState<Record<string, boolean>>({});
   const PAGE_SIZE = 20;
 
   const load = async () => {
-    const res = await serviceJobService.getAll(page, PAGE_SIZE, search, dateFrom, dateTo);
+    // Load the complete filtered working set so a main job and its linked
+    // reworks cannot be separated by server-side pagination.
+    const res = await serviceJobService.getAll(0, 5000, search, dateFrom, dateTo);
     if (res.success) {
       setJobs(res.data?.content ?? []);
       setTotal(res.data?.totalElements ?? 0);
@@ -325,13 +336,54 @@ export default function ServiceJobManagement() {
   });
 
   /* ── Filtering ─────────────────────────────────────────────── */
-  const filteredJobs = jobs.filter(j => {
+  const matchesTab = (j: any) => {
     if (tab === 'active')   return ACTIVE_STATUSES.includes(j.status);
     if (tab === 'done')     return DONE_STATUSES.includes(j.status);
     if (tab === 'archived') return ARCHIVED_STATUSES.includes(j.status);
     if (tab === 'credit')   return Number(j.dueAmount) > 0;
     return true;
-  });
+  };
+
+  // Keep every linked rework directly under its parent job. Orphaned children
+  // (for example when the parent is on another page/filter) remain visible.
+  const hierarchicalJobs = (() => {
+    const byParent = new Map<string, any[]>();
+    jobs.forEach(job => {
+      if (!job.parentJobId) return;
+      const key = String(job.parentJobId);
+      byParent.set(key, [...(byParent.get(key) || []), job]);
+    });
+    const ids = new Set(jobs.map(job => String(job.id)));
+    const roots = jobs.filter(job => !job.parentJobId || !ids.has(String(job.parentJobId))).filter(matchesTab);
+    const pagedRoots = roots.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    const result: { job: any; depth: number; childCount: number; lineage: string[]; family: any }[] = [];
+    const descendants = (job: any): any[] => (byParent.get(String(job.id)) || []).flatMap(child => [child, ...descendants(child)]);
+    const append = (job: any, depth: number, lineage: string[], family: any) => {
+      const children = (byParent.get(String(job.id)) || []).slice().sort((a, b) => String(a.receivedDate).localeCompare(String(b.receivedDate)));
+      result.push({ job, depth, childCount: children.length, lineage, family });
+      // Expanding the main job reveals its entire descendant chain, e.g.
+      // SJ-000001 → SJ-000002 → SJ-000003, with depth-based indentation.
+      if (depth > 0 || expandedJobFamilies[String(job.id)]) children.forEach(child => append(child, depth + 1, [...lineage, child.jobNo], family));
+    };
+    pagedRoots.forEach(job => {
+      const linked = descendants(job);
+      const originalCost = Number(job.netAmount ?? job.finalCost ?? 0);
+      const extraCharge = linked.reduce((sum, child) => sum + Number(child.netAmount ?? child.finalCost ?? 0), 0);
+      append(job, 0, [job.jobNo], {
+        linkedCount: linked.length,
+        warrantyCount: linked.filter(child => child.reworkType === 'WARRANTY').length,
+        additionalCount: linked.filter(child => child.reworkType === 'ADDITIONAL').length,
+        replacementCount: linked.filter(child => child.reworkType === 'REPLACEMENT').length,
+        originalCost, extraCharge, total: originalCost + extraCharge,
+      });
+    });
+    return result;
+  })();
+
+  const visibleRootCount = (() => {
+    const ids = new Set(jobs.map(job => String(job.id)));
+    return jobs.filter(job => (!job.parentJobId || !ids.has(String(job.parentJobId))) && matchesTab(job)).length;
+  })();
 
   const counts = {
     active:   jobs.filter(j => ACTIVE_STATUSES.includes(j.status)).length,
@@ -359,6 +411,7 @@ export default function ServiceJobManagement() {
         serviceItemName: l.serviceItemName ?? '',
         qty:             l.qty ?? 1,
         price:           Number(l.price ?? 0),
+        warrantyCovered: Boolean(l.warrantyCovered),
       })),
       productParts: (j.productParts ?? []).map((p: any) => {
         const prod = products.find((pr: any) => String(pr.id) === String(p.productId));
@@ -370,6 +423,7 @@ export default function ServiceJobManagement() {
           qty:            p.qty ?? 1,
           unitPrice:      Number(p.unitPrice ?? 0),
           discountAmount: Number(p.discountAmount ?? 0),
+          warrantyCovered: Boolean(p.warrantyCovered),
           hasSerial:      hs,
           serialNumbers:  Array.isArray(p.serialNumbers) ? p.serialNumbers : [],
           availableSerials: [] as any[],
@@ -429,6 +483,7 @@ export default function ServiceJobManagement() {
         serviceItemId: Number(l.serviceItemId),
         qty: Number(l.qty || 1),
         warrantyMonths: 0,
+        warrantyCovered: Boolean(l.warrantyCovered),
       })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
         productId: Number(p.productId),
@@ -436,6 +491,7 @@ export default function ServiceJobManagement() {
         unitPrice: p.unitPrice,
         discountAmount: p.discountAmount || 0,
         serialNumbers: p.hasSerial ? p.serialNumbers : [],
+        warrantyCovered: Boolean(p.warrantyCovered),
       })),
     };
 
@@ -472,6 +528,7 @@ export default function ServiceJobManagement() {
         unitPrice: p.unitPrice,
         discountAmount: p.discountAmount || 0,
         serialNumbers: p.hasSerial ? p.serialNumbers : [],
+        warrantyCovered: Boolean(p.warrantyCovered),
       })),
     };
     const res = await serviceJobService.update(editId, payload);
@@ -562,14 +619,48 @@ export default function ServiceJobManagement() {
   const handleDeliver = async (id: number) => {
     const { isConfirmed } = await Swal.fire({
       title: 'ပစ္စည်းပြန်ပေးပြီးကြောင်း အတည်ပြုမည်',
-      text: 'Delivered အဖြစ်မှတ်မည်',
+      text: 'ပစ္စည်းပေးအပ်ပြီး Closed အဖြစ်မှတ်မည်',
       icon: 'question', showCancelButton: true,
-      confirmButtonText: 'အတည်ပြု', cancelButtonText: 'မလုပ်တော့',
+      confirmButtonText: 'Closed လုပ်မည်', cancelButtonText: 'မလုပ်တော့',
     });
     if (!isConfirmed) return;
     const res = await serviceJobService.deliver(id);
     if (res.success) {
-      Swal.fire({ icon: 'success', title: 'ပေးပို့ပြီး!', timer: 1200, showConfirmButton: false });
+      Swal.fire({ icon: 'success', title: 'Job ပိတ်ပြီး!', timer: 1200, showConfirmButton: false });
+      load();
+    } else Swal.fire('အမှား', res.message, 'error');
+  };
+
+  const openRework = (job: any) => {
+    setReworkParent(job);
+    setReworkForm({
+      ...emptyRework,
+      assignedStaffId: job.assignedStaffId ? String(job.assignedStaffId) : '',
+      problemDesc: job.problemDesc ?? '',
+    });
+    setShowRework(true);
+  };
+
+  const handleCreateRework = async () => {
+    if (!reworkParent) return;
+    if (!reworkForm.problemDesc.trim()) {
+      Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'ပြန်လာသည့်ပြဿနာကို ဖြည့်ပါ', 'warning'); return;
+    }
+    if (reworkForm.reworkType === 'REPLACEMENT' && !reworkForm.replacementItemName.trim()) {
+      Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'လဲပေးသည့်ပစ္စည်းအမည်ကို ဖြည့်ပါ', 'warning'); return;
+    }
+    const res = await serviceJobService.rework(reworkParent.id, {
+      reworkType: reworkForm.reworkType,
+      problemDesc: reworkForm.problemDesc.trim(),
+      assignedStaffId: reworkForm.assignedStaffId ? Number(reworkForm.assignedStaffId) : null,
+      replacementItemName: reworkForm.reworkType === 'REPLACEMENT' ? reworkForm.replacementItemName.trim() : null,
+      replacementSerialNo: reworkForm.reworkType === 'REPLACEMENT' ? reworkForm.replacementSerialNo.trim() || null : null,
+      replacementReason: reworkForm.reworkType === 'REPLACEMENT' ? reworkForm.replacementReason.trim() || null : null,
+    });
+    if (res.success) {
+      setShowRework(false);
+      setTab('active');
+      Swal.fire({ icon: 'success', title: 'Linked Job အသစ်ဖန်တီးပြီး', text: res.data?.jobNo ?? '', timer: 1800, showConfirmButton: false });
       load();
     } else Swal.fire('အမှား', res.message, 'error');
   };
@@ -610,7 +701,7 @@ export default function ServiceJobManagement() {
   const limitExceeded = sBalance > 0 && creditLimit > 0 && projectedOutstanding > creditLimit;
   const limitNear = sBalance > 0 && creditLimit > 0 && !limitExceeded && projectedOutstanding >= (creditLimit * 0.8);
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(visibleRootCount / PAGE_SIZE);
 
   const openCreate = () => {
     setForm({ ...emptyForm, lines: [], productParts: [] });
@@ -621,7 +712,7 @@ export default function ServiceJobManagement() {
   const tabDef: { key: typeof tab; label: string; count: number; active: string; inactive: string }[] = [
     { key: 'active',   label: 'ဝန်ဆောင်မှု အမှာစာ ⚡', count: counts.active,   active: 'border-blue-500 text-blue-700 bg-blue-50',    inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
     { key: 'done',     label: 'ပြင်ဆင်ပြီး 🔧',        count: counts.done,     active: 'border-emerald-500 text-emerald-700 bg-emerald-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'archived', label: 'ပေးပို့ပြီး / ပိတ်ပြီး ✓', count: counts.archived, active: 'border-green-500 text-green-700 bg-green-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'archived', label: 'Closed / ပိတ်ပြီး ✓', count: counts.archived, active: 'border-green-500 text-green-700 bg-green-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
     { key: 'all',      label: 'အားလုံး',                count: counts.all,      active: 'border-slate-400 text-slate-700 bg-slate-100', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
     { key: 'credit',   label: 'အကြွေးကျန် 💳',         count: counts.credit,   active: 'border-rose-500 text-rose-700 bg-rose-50',    inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
   ];
@@ -667,17 +758,56 @@ export default function ServiceJobManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredJobs.map((j, i) => {
+              {hierarchicalJobs.map(({ job: j, depth, childCount, lineage, family }, i) => {
                 const col        = STATUS_COLOR[j.status as JobStatus] ?? 'bg-slate-100 text-slate-600';
-                const isCompleted = j.status === 'COMPLETED';
+                const isCompleted = j.status === 'COMPLETED' || j.status === 'DELIVERED';
                 const canEdit    = j.status !== 'DELIVERED' && j.status !== 'CANCELLED';
                 const canDelete  = j.status === 'RECEIVED' || j.status === 'INSPECTING';
                 const balance    = Number(j.dueAmount ?? 0);
                 return (
-                  <tr key={j.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-3 py-3 text-xs text-slate-400">{page * PAGE_SIZE + i + 1}</td>
-                    <td className="px-3 py-3">
-                      <span className="font-mono text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-lg">{j.jobNo}</span>
+                  <tr key={j.id} className={`transition-colors ${depth > 0 ? 'bg-amber-50/40 hover:bg-amber-50/80' : 'bg-white hover:bg-slate-50'}`}>
+                    <td className="px-3 py-3 text-xs text-slate-400">{depth === 0 ? page * PAGE_SIZE + i + 1 : '↳'}</td>
+                    <td className="px-3 py-3" style={{ paddingLeft: `${12 + Math.min(depth, 3) * 28}px` }}>
+                      {depth > 0 && <div className="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-700"><span className="h-px w-5 bg-amber-400"/> Rework sub job</div>}
+                      {j.rework ? (
+                        <div className={`min-w-[158px] overflow-hidden rounded-xl border-2 bg-white shadow-sm ${j.reworkType === 'REPLACEMENT' ? 'border-rose-300' : j.reworkType === 'WARRANTY' ? 'border-amber-300' : 'border-blue-300'}`}>
+                          <div className="flex items-center gap-1.5 border-b border-slate-100 px-2.5 py-2">
+                            <RotateCcw size={15} strokeWidth={2.5} className={j.reworkType === 'REPLACEMENT' ? 'text-rose-600' : j.reworkType === 'WARRANTY' ? 'text-amber-600' : 'text-blue-600'} />
+                            <span className="font-mono text-sm font-black tracking-wide text-slate-900">{j.jobNo}</span>
+                            <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black text-slate-500">STEP {depth}</span>
+                          </div>
+                          <div className="space-y-1.5 px-2.5 py-2">
+                            <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-black tracking-wide ${j.reworkType === 'REPLACEMENT' ? 'bg-rose-100 text-rose-800' : j.reworkType === 'WARRANTY' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                              {j.reworkType === 'REPLACEMENT' ? 'ပစ္စည်းလဲပေးခြင်း' : j.reworkType === 'WARRANTY' ? 'အာမခံပြန်ပြင်ခြင်း' : 'ထပ်ဆောင်းပြဿနာ'}
+                            </span>
+                            <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                              <span>မူလ Job</span>
+                              <span className="text-slate-400">→</span>
+                              <span className="font-mono text-xs font-extrabold text-purple-700">{j.parentJobNo || `#${j.parentJobId}`}</span>
+                            </div>
+                            <div className="max-w-[230px] truncate rounded-md bg-slate-50 px-2 py-1 font-mono text-[9px] font-bold text-slate-500" title={lineage.join(' → ')}>{lineage.join(' → ')}</div>
+                            {childCount > 0 && <div className="rounded-md bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-700">↳ နောက်ထပ် Linked Job {childCount} ခု</div>}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="min-w-[260px] space-y-2">
+                          <div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-lg">{j.jobNo}</span><span className="rounded-md bg-purple-600 px-2 py-0.5 text-[9px] font-black text-white">MAIN JOB</span>
+                          {family.linkedCount > 0 && <button type="button"
+                            onClick={() => setExpandedJobFamilies(prev => ({ ...prev, [String(j.id)]: !prev[String(j.id)] }))}
+                            title={expandedJobFamilies[String(j.id)] ? 'Linked Jobs ဖျောက်ရန်' : 'Linked Jobs ပြရန်'}
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800 hover:bg-amber-200">
+                            <span className={`transition-transform ${expandedJobFamilies[String(j.id)] ? 'rotate-90' : ''}`}>▶</span>
+                            ↻ Rework History {family.linkedCount} ခု
+                            <span className="font-semibold">{expandedJobFamilies[String(j.id)] ? 'Hide' : 'Show'}</span>
+                          </button>}</div>
+                          {family.linkedCount > 0 && <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-100 bg-slate-50 p-1.5 text-center">
+                            <div><p className="text-[8px] font-bold text-slate-400">ORIGINAL</p><b className="text-[10px] text-slate-700">{family.originalCost.toLocaleString()}</b></div>
+                            <div><p className="text-[8px] font-bold text-slate-400">EXTRA</p><b className="text-[10px] text-blue-700">{family.extraCharge.toLocaleString()}</b></div>
+                            <div><p className="text-[8px] font-bold text-slate-400">FAMILY TOTAL</p><b className="text-[10px] text-purple-700">{family.total.toLocaleString()}</b></div>
+                          </div>}
+                          {family.linkedCount > 0 && <div className="flex flex-wrap gap-1 text-[8px] font-black"><span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Warranty {family.warrantyCount}</span><span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-800">Additional {family.additionalCount}</span><span className="rounded bg-rose-100 px-1.5 py-0.5 text-rose-800">Replacement {family.replacementCount}</span></div>}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       {j.bookingNo && (
@@ -691,6 +821,9 @@ export default function ServiceJobManagement() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="font-medium text-slate-700">{j.itemName || '—'}</div>
+                      {j.reworkType === 'REPLACEMENT' && j.replacementItemName && (
+                        <p className="mt-1 text-xs font-semibold text-rose-600">လဲပေးရန် → {j.replacementItemName}{j.replacementSerialNo ? ` (${j.replacementSerialNo})` : ''}</p>
+                      )}
                       {j.problemDesc && (
                         <p className="text-xs text-slate-400 truncate max-w-32" title={j.problemDesc}>{j.problemDesc}</p>
                       )}
@@ -705,7 +838,9 @@ export default function ServiceJobManagement() {
                       {j.estimatedCost ? Number(j.estimatedCost).toLocaleString() : '—'}
                     </td>
                     <td className="px-3 py-3 text-sm font-semibold text-slate-700">
-                      {j.finalCost !== null && j.finalCost !== undefined ? Number(j.finalCost).toLocaleString() : '—'}
+                      {j.finalCost !== null && j.finalCost !== undefined
+                        ? (j.rework && Number(j.finalCost) === 0 ? <span className="font-black text-emerald-600">FREE</span> : `${Number(j.finalCost).toLocaleString()} Ks`)
+                        : '—'}
                     </td>
                     <td className="px-3 py-3">
                       {isCompleted && balance > 0 && (
@@ -744,9 +879,15 @@ export default function ServiceJobManagement() {
                           </button>
                         )}
                         {isCompleted && (
-                          <button onClick={() => handleDeliver(j.id)} title="ပေးပို့ပြီးမှတ်ရန်"
+                          <button onClick={() => handleDeliver(j.id)} title="ပစ္စည်းပေးအပ်ပြီး Job ပိတ်ရန်"
                             className="px-2 py-1 text-xs border border-green-200 rounded-lg text-green-700 hover:bg-green-50 font-bold transition-colors whitespace-nowrap">
-                            ✓ ပေးပို့ပြီး
+                            ✓ Closed
+                          </button>
+                        )}
+                        {j.status === 'DELIVERED' && (
+                          <button onClick={() => openRework(j)} title="Warranty/Rework Return အတွက် Linked Job အသစ်ဖန်တီးရန်"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-amber-300 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-600 hover:text-white font-bold transition-colors whitespace-nowrap">
+                            <RotateCcw size={14} /> Return
                           </button>
                         )}
                       </div>
@@ -754,7 +895,7 @@ export default function ServiceJobManagement() {
                   </tr>
                 );
               })}
-              {filteredJobs.length === 0 && (
+              {hierarchicalJobs.length === 0 && (
                 <tr>
                   <td colSpan={12} className="py-16 text-center">
                     <div className="text-5xl mb-3">🔧</div>
@@ -768,7 +909,7 @@ export default function ServiceJobManagement() {
 
         {totalPages > 1 && (
           <div className="px-4 py-3 border-t flex items-center justify-between text-xs text-slate-500">
-            <span>စုစုပေါင်း {total}</span>
+            <span>Main Job စုစုပေါင်း {visibleRootCount}{total > jobs.length ? ` (ရရှိနိုင်သော data ${jobs.length}/${total})` : ''}</span>
             <div className="flex gap-2 items-center">
               <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
                 className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-slate-50">← နောက်</button>
@@ -779,6 +920,79 @@ export default function ServiceJobManagement() {
           </div>
         )}
       </div>
+
+      {/* ─── Warranty / Rework / Replacement linked job ─── */}
+      {showRework && reworkParent && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-amber-600">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-white"><RotateCcw size={20} /> Warranty / Rework Return</h2>
+                <p className="text-xs text-amber-100 mt-0.5">မူလ Job: {reworkParent.jobNo} → New Linked Job</p>
+              </div>
+              <button onClick={() => setShowRework(false)} className="text-white/80 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+                <p className="font-bold text-slate-800">{reworkParent.itemName}</p>
+                <p className="mt-1 text-xs text-slate-500">Customer: {reworkParent.customerName}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Return အမျိုးအစား *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[
+                    ['WARRANTY', 'Warranty', 'အာမခံဖြင့် ပြန်ပြင်'],
+                    ['REPLACEMENT', 'Replacement', 'ပစ္စည်းအသစ် လဲပေး'],
+                    ['ADDITIONAL', 'Additional', 'ပြဿနာအသစ် / အခကြေးငွေရှိ'],
+                  ].map(([value, title, note]) => (
+                    <button key={value} type="button" onClick={() => setReworkForm(p => ({ ...p, reworkType: value }))}
+                      className={`rounded-xl border-2 p-3 text-left transition-all ${reworkForm.reworkType === value ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-slate-200 hover:border-amber-300'}`}>
+                      <span className="block text-sm font-extrabold text-slate-800">{title}</span>
+                      <span className="block mt-1 text-[11px] leading-4 text-slate-500">{note}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">ပြန်လာသည့်ပြဿနာ *</label>
+                <textarea value={reworkForm.problemDesc} onChange={e => setReworkForm(p => ({ ...p, problemDesc: e.target.value }))}
+                  rows={3} placeholder="ချို့ယွင်းချက်နှင့် ဖောက်သည်တိုင်ကြားချက်..." className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
+              </div>
+
+              {reworkForm.reworkType === 'REPLACEMENT' && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-rose-700"><PackageCheck size={18} /> လဲပေးမည့်ပစ္စည်း</div>
+                  <input value={reworkForm.replacementItemName} onChange={e => setReworkForm(p => ({ ...p, replacementItemName: e.target.value }))}
+                    placeholder="ပစ္စည်းအသစ် အမည် / Model *" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" />
+                  <input value={reworkForm.replacementSerialNo} onChange={e => setReworkForm(p => ({ ...p, replacementSerialNo: e.target.value }))}
+                    placeholder="Serial Number (ရှိလျှင်)" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" />
+                  <textarea value={reworkForm.replacementReason} onChange={e => setReworkForm(p => ({ ...p, replacementReason: e.target.value }))}
+                    rows={2} placeholder="လဲပေးရသည့်အကြောင်းရင်း..." className="w-full border rounded-xl px-3 py-2 text-sm bg-white resize-none" />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">တာဝန်ခံကျွမ်းကျင်သူ</label>
+                <select value={reworkForm.assignedStaffId} onChange={e => setReworkForm(p => ({ ...p, assignedStaffId: e.target.value }))}
+                  className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <option value="">— မူလတာဝန်ခံ / မရွေးထား —</option>
+                  {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
+                </select>
+              </div>
+
+              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                Linked Job အသစ်သည် <b>လက်ခံပြီး</b> အခြေအနေမှ စတင်မည်။ ပြီးလျှင် <b>Complete</b>၊ ဖောက်သည်ကို ပေးပြီးလျှင် <b>Closed</b> လုပ်နိုင်သည်။
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowRework(false)} className="px-4 py-2 border rounded-xl text-sm font-semibold text-slate-600">မလုပ်တော့ပါ</button>
+                <button type="button" onClick={handleCreateRework} className="px-5 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700">New Linked Job ဖန်တီးမည်</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Create Modal ─── */}
       {showCreate && (
@@ -861,7 +1075,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0 }] }))}
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyCovered: false }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 {form.lines.length > 0 ? (
@@ -874,6 +1088,11 @@ export default function ServiceJobManagement() {
                             onClick={() => setForm(p => ({ ...p, lines: p.lines.filter((_: any, idx: number) => idx !== li) }))}
                             className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
                         </div>
+                        <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${line.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                          <input type="checkbox" checked={Boolean(line.warrantyCovered)}
+                            onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], warrantyCovered: e.target.checked }; return { ...p, lines }; })} />
+                          Warranty အကျုံးဝင် — အခမဲ့
+                        </label>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
                           <SearchableSelect
@@ -1011,7 +1230,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0 }] }))}
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyCovered: false }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 {form.lines.length > 0 ? (
@@ -1024,6 +1243,11 @@ export default function ServiceJobManagement() {
                             onClick={() => setForm(p => ({ ...p, lines: p.lines.filter((_: any, idx: number) => idx !== li) }))}
                             className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
                         </div>
+                        <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${line.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                          <input type="checkbox" checked={Boolean(line.warrantyCovered)}
+                            onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], warrantyCovered: e.target.checked }; return { ...p, lines }; })} />
+                          Warranty အကျုံးဝင် — အခမဲ့
+                        </label>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
                           <SearchableSelect
@@ -1061,7 +1285,7 @@ export default function ServiceJobManagement() {
                         </div>
                         {line.serviceItemName && (
                           <div className="text-[10px] text-slate-400">
-                            စုစုပေါင်း: <span className="font-bold text-slate-600">{(Number(line.qty || 1) * Number(line.price || 0)).toLocaleString()} Ks</span>
+                            စုစုပေါင်း: <span className={`font-bold ${line.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{line.warrantyCovered ? 'FREE' : `${(Number(line.qty || 1) * Number(line.price || 0)).toLocaleString()} Ks`}</span>
                           </div>
                         )}
                       </div>
@@ -1077,7 +1301,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">📦 အသုံးပြုပစ္စည်းများ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, productParts: [...p.productParts, { productId: '', productName: '', qty: 1, unitPrice: 0, discountAmount: 0, hasSerial: false, serialNumbers: [], availableSerials: [] }] }))}
+                    onClick={() => setForm(p => ({ ...p, productParts: [...p.productParts, { productId: '', productName: '', qty: 1, unitPrice: 0, discountAmount: 0, warrantyCovered: false, hasSerial: false, serialNumbers: [], availableSerials: [] }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 {form.productParts.length > 0 ? (
@@ -1090,6 +1314,11 @@ export default function ServiceJobManagement() {
                             onClick={() => setForm(p => ({ ...p, productParts: p.productParts.filter((_: any, idx: number) => idx !== pi) }))}
                             className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
                         </div>
+                        <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${part.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                          <input type="checkbox" checked={Boolean(part.warrantyCovered)}
+                            onChange={e => setForm(p => { const pp = [...p.productParts]; pp[pi] = { ...pp[pi], warrantyCovered: e.target.checked }; return { ...p, productParts: pp }; })} />
+                          Warranty အကျုံးဝင် — ပစ္စည်းဖိုးအခမဲ့
+                        </label>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ပစ္စည်း</label>
                           <SearchableSelect
@@ -1210,10 +1439,10 @@ export default function ServiceJobManagement() {
                         {part.productName && (() => {
                           const gross = Number(part.qty || 1) * Number(part.unitPrice || 0);
                           const disc = Number(part.discountAmount || 0);
-                          const sub = Math.max(0, gross - disc);
+                          const sub = part.warrantyCovered ? 0 : Math.max(0, gross - disc);
                           return (
                             <div className="text-[10px] text-slate-400 flex items-center gap-2">
-                              <span>စုစုပေါင်း: <span className="font-bold text-slate-600">{sub.toLocaleString()} Ks</span></span>
+                              <span>စုစုပေါင်း: <span className={`font-bold ${part.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{part.warrantyCovered ? 'FREE' : `${sub.toLocaleString()} Ks`}</span></span>
                               {disc > 0 && <span className="text-red-400 font-medium">(- {disc.toLocaleString()} Ks လျှော့)</span>}
                             </div>
                           );

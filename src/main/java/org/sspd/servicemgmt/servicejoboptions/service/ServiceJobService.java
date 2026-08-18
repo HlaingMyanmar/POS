@@ -281,10 +281,9 @@ public class ServiceJobService {
             pm = paymentMethodRepo.findById(dto.getPaymentMethodId()).orElse(null);
         job.setPaymentMethod(pm);
 
-        boolean isWarrantyRework = job.getRework() != null && job.getRework() && job.getReworkType() == ReworkType.WARRANTY;
         boolean hasProducts = job.getProductParts() != null && !job.getProductParts().isEmpty();
 
-        if (hasProducts && !isWarrantyRework) {
+        if (hasProducts) {
             SaleDTO saleDto = createSaleFromServiceJob(job, dto, netAmt);
             SaleDTO createdSale = saleService.save(saleDto);
             job.setSaleId(createdSale.getId());
@@ -402,8 +401,9 @@ public class ServiceJobService {
             detail.setProductId(part.getProduct().getId());
             detail.setProductName(part.getProduct().getName());
             detail.setQty(part.getQty());
-            detail.setUnitPrice(part.getUnitPrice());
-            detail.setDiscountAmount(part.getDiscountAmount() != null ? part.getDiscountAmount() : BigDecimal.ZERO);
+            boolean covered = Boolean.TRUE.equals(part.getWarrantyCovered());
+            detail.setUnitPrice(covered ? BigDecimal.ZERO : part.getUnitPrice());
+            detail.setDiscountAmount(covered ? BigDecimal.ZERO : (part.getDiscountAmount() != null ? part.getDiscountAmount() : BigDecimal.ZERO));
             detail.setSubtotal(part.getSubtotal());
             List<String> serialNumbers = splitSerials(part.getSerialNumbers());
             if (Boolean.TRUE.equals(part.getProduct().getHasSerial()) && serialNumbers.isEmpty()) {
@@ -438,7 +438,15 @@ public class ServiceJobService {
         if (original.getStatus() != ServiceJobStatus.DELIVERED)
             throw new IllegalStateException("Rework can only be created for DELIVERED jobs");
 
-        boolean isWarranty = req.getReworkType() == ReworkType.WARRANTY;
+        if (req.getReworkType() == null)
+            throw new IllegalArgumentException("Return type is required");
+
+        boolean isNoChargeReturn = req.getReworkType() == ReworkType.WARRANTY
+            || req.getReworkType() == ReworkType.REPLACEMENT;
+
+        if (req.getReworkType() == ReworkType.REPLACEMENT
+                && (req.getReplacementItemName() == null || req.getReplacementItemName().isBlank()))
+            throw new IllegalArgumentException("Replacement item name is required");
 
         ServiceJob rework = ServiceJob.builder()
             .jobNo(generateJobNo())
@@ -448,13 +456,20 @@ public class ServiceJobService {
                 : original.getAssignedStaff())
             .itemName(original.getItemName())
             .itemCondition(original.getItemCondition())
+            .serialNo(original.getSerialNo())
+            .color(original.getColor())
+            .accessories(original.getAccessories())
+            .shelfLocation(original.getShelfLocation())
             .problemDesc(req.getProblemDesc() != null ? req.getProblemDesc() : original.getProblemDesc())
-            .estimatedCost(isWarranty ? BigDecimal.ZERO : null)
+            .estimatedCost(isNoChargeReturn ? BigDecimal.ZERO : null)
             .finalCost(BigDecimal.ZERO)
             .status(ServiceJobStatus.RECEIVED)
             .rework(true)
             .reworkType(req.getReworkType())
             .parentJobId(originalJobId)
+            .replacementItemName(req.getReplacementItemName())
+            .replacementSerialNo(req.getReplacementSerialNo())
+            .replacementReason(req.getReplacementReason())
             .bookingId(original.getBookingId())
             .lines(new ArrayList<>())
             .productParts(new ArrayList<>())
@@ -477,7 +492,8 @@ public class ServiceJobService {
                 .orElseThrow(() -> new ResourceNotFoundException("Service item not found: " + l.getServiceItemId()));
             int qty = l.getQty() != null ? l.getQty() : 1;
             BigDecimal price = svc.getPrice();
-            BigDecimal sub = price.multiply(BigDecimal.valueOf(qty));
+            boolean covered = Boolean.TRUE.equals(l.getWarrantyCovered());
+            BigDecimal sub = covered ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
             job.getLines().add(ServiceJobLine.builder()
                 .serviceJob(job)
                 .serviceItem(svc)
@@ -485,6 +501,7 @@ public class ServiceJobService {
                 .price(price)
                 .subtotal(sub)
                 .warrantyMonths(l.getWarrantyMonths() != null ? l.getWarrantyMonths() : 0)
+                .warrantyCovered(covered)
                 .build());
             total = total.add(sub);
         }
@@ -524,7 +541,9 @@ public class ServiceJobService {
             BigDecimal unitPrice = p.getUnitPrice() != null ? p.getUnitPrice()
                 : (product.getSellingPrice() != null ? product.getSellingPrice() : BigDecimal.ZERO);
             BigDecimal discount = p.getDiscountAmount() != null ? p.getDiscountAmount() : BigDecimal.ZERO;
-            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(qty)).subtract(discount).max(BigDecimal.ZERO);
+            boolean covered = Boolean.TRUE.equals(p.getWarrantyCovered());
+            BigDecimal subtotal = covered ? BigDecimal.ZERO
+                : unitPrice.multiply(BigDecimal.valueOf(qty)).subtract(discount).max(BigDecimal.ZERO);
             job.getProductParts().add(ServiceJobPart.builder()
                 .serviceJob(job)
                 .product(product)
@@ -533,6 +552,7 @@ public class ServiceJobService {
                 .discountAmount(discount)
                 .subtotal(subtotal)
                 .serialNumbers(String.join(",", serials))
+                .warrantyCovered(covered)
                 .build());
         }
         recalculateEstimatedCost(job);
@@ -752,6 +772,9 @@ public class ServiceJobService {
         dto.setRework(Boolean.TRUE.equals(j.getRework()));
         dto.setParentJobId(j.getParentJobId());
         dto.setReworkType(j.getReworkType());
+        dto.setReplacementItemName(j.getReplacementItemName());
+        dto.setReplacementSerialNo(j.getReplacementSerialNo());
+        dto.setReplacementReason(j.getReplacementReason());
         if (j.getParentJobId() != null) {
             repo.findById(j.getParentJobId()).ifPresent(p -> dto.setParentJobNo(p.getJobNo()));
         }
@@ -765,6 +788,7 @@ public class ServiceJobService {
             ld.setPrice(l.getPrice());
             ld.setSubtotal(l.getSubtotal());
             ld.setWarrantyMonths(l.getWarrantyMonths());
+            ld.setWarrantyCovered(Boolean.TRUE.equals(l.getWarrantyCovered()));
             return ld;
         }).toList());
         dto.setProductParts(j.getProductParts() == null ? List.of() : j.getProductParts().stream().map(p -> {
@@ -779,6 +803,7 @@ public class ServiceJobService {
             pd.setDiscountAmount(p.getDiscountAmount());
             pd.setSubtotal(p.getSubtotal());
             pd.setSerialNumbers(splitSerials(p.getSerialNumbers()));
+            pd.setWarrantyCovered(Boolean.TRUE.equals(p.getWarrantyCovered()));
             return pd;
         }).toList());
         return dto;

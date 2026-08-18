@@ -17,4 +17,5 @@ public class ServiceJobPartDTO {
     private BigDecimal discountAmount;
     private BigDecimal subtotal;
     private List<String> serialNumbers;
+    private Boolean warrantyCovered;
 }

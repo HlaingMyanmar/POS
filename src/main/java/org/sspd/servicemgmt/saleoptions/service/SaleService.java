@@ -146,7 +146,7 @@ public class SaleService {
         sale.setFoc(Boolean.TRUE.equals(dto.getFoc()));
         sale.setSaleCode("PENDING"); // temporary to satisfy not-null, will overwrite after save
 
-        List<SaleDetail> details = buildDetails(dto.getDetails(), sale);
+        List<SaleDetail> details = buildDetails(dto.getDetails(), sale, dto.isServiceJobSale());
         sale.setDetails(details);
 
         BigDecimal discount = dto.getDiscountAmount() != null ? dto.getDiscountAmount() : BigDecimal.ZERO;
@@ -180,6 +180,7 @@ public class SaleService {
         saved.setSaleCode(generateSaleCode(saved.getId()));
         saved = saleRepository.save(saved);
         recordStockMovements(saved); // always: reduce inventory stock
+        createInventoryValuationJournal(saved); // perpetual inventory: DR COGS / CR Inventory
 
         // Payment tracking: skip for internal service-job sales (handled at ServiceJob level)
         if (!isServiceJobSale) {
@@ -325,7 +326,7 @@ public class SaleService {
         saleRepository.delete(existing);
     }
 
-    private List<SaleDetail> buildDetails(List<SaleDetailDTO> detailDTOs, Sale parent) {
+    private List<SaleDetail> buildDetails(List<SaleDetailDTO> detailDTOs, Sale parent, boolean isServiceJobSale) {
         List<SaleDetail> detailEntities = new ArrayList<>();
         for (SaleDetailDTO d : detailDTOs) {
             Product product = productRepository.findById(d.getProductId())
@@ -385,7 +386,7 @@ public class SaleService {
                     java.time.LocalDate serialWarrantyExpiry = serial.getWarrantyEndDate() != null
                             ? serial.getWarrantyEndDate()
                             : (serialWarrantyMonths > 0 ? saleLocalDate.plusMonths(serialWarrantyMonths) : null);
-                    serial.setStatus(SerialStatus.Sold);
+                    serial.setStatus(isServiceJobSale ? SerialStatus.Used_In_Service : SerialStatus.Sold);
                     serialRepository.save(serial);
 
                     BigDecimal gross = d.getUnitPrice(); // qty 1 per serial
@@ -585,6 +586,32 @@ public class SaleService {
                     .referenceId(sale.getId())
                     .build());
         }
+    }
+
+    private void createInventoryValuationJournal(Sale sale) {
+        if (sale.getDetails() == null || sale.getDetails().isEmpty()) return;
+        BigDecimal totalCost = sale.getDetails().stream()
+                .map(detail -> (detail.getCostPriceSnapshot() != null ? detail.getCostPriceSnapshot() : BigDecimal.ZERO)
+                        .multiply(BigDecimal.valueOf(detail.getQty() != null ? detail.getQty() : 0)))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalCost.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        JournalDetailDTO drCogs = new JournalDetailDTO();
+        drCogs.setAccountId(accountResolver.cogs().getId());
+        drCogs.setDebit(totalCost);
+        drCogs.setCredit(BigDecimal.ZERO);
+        JournalDetailDTO crInventory = new JournalDetailDTO();
+        crInventory.setAccountId(accountResolver.inventory().getId());
+        crInventory.setDebit(BigDecimal.ZERO);
+        crInventory.setCredit(totalCost);
+
+        JournalEntryDTO entry = new JournalEntryDTO();
+        entry.setReferenceNo(sale.getSaleCode() + "-COGS");
+        entry.setEntryDate(LocalDateTime.now());
+        entry.setDescription("Inventory cost recognition - " + sale.getSaleCode());
+        entry.setStaffId(sale.getStaff() != null ? sale.getStaff().getId() : null);
+        entry.setDetails(List.of(drCogs, crInventory));
+        journalWriter.write(entry);
     }
 
     private void createSaleJournal(Sale sale, Integer paymentAccountId, Integer arAccountId, Integer paymentMethodId, List<PaymentTransactionDTO> payments) {

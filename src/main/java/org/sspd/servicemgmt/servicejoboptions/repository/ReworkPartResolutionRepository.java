@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface ReworkPartResolutionRepository extends JpaRepository<ReworkPartResolution, Integer> {
     List<ReworkPartResolution> findByReworkJobIdOrderByIdAsc(Integer reworkJobId);
+    boolean existsByOriginalPartId(Integer originalPartId);
 }

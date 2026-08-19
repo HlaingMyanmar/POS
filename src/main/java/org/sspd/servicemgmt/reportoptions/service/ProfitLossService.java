@@ -24,6 +24,7 @@ public class ProfitLossService {
     // Income accounts ထဲမှ P&L မှ ခွဲထုတ်သော codes (Revenue section မှာ တွက်ထားပြီး)
     private static final List<String> REVENUE_INCOME_CODES = List.of(
             AccountCode.SALES,        // INC-002
+            AccountCode.SERVICE_REVENUE, // INC-003
             AccountCode.PURCHASE_RTN  // INC-007
     );
 
@@ -41,17 +42,19 @@ public class ProfitLossService {
         LocalDateTime toDt   = to.atTime(23, 59, 59);
 
         // ── Section 1: Revenue ───────────────────────────────────────────────
-        BigDecimal grossSales    = credit(AccountCode.SALES,       fromDt, toDt);
-        BigDecimal salesReturns  = debit(AccountCode.SALES_RTN,    fromDt, toDt);
-        BigDecimal netRevenue    = grossSales.subtract(salesReturns);
+        BigDecimal grossSales     = credit(AccountCode.SALES, fromDt, toDt);
+        BigDecimal serviceRevenue = credit(AccountCode.SERVICE_REVENUE, fromDt, toDt);
+        BigDecimal salesReturns   = debit(AccountCode.SALES_RTN, fromDt, toDt);
+        BigDecimal netRevenue     = grossSales.add(serviceRevenue).subtract(salesReturns);
 
         // ── Section 2: Purchases ─────────────────────────────────────────────
         BigDecimal purchases       = debit(AccountCode.PURCHASES,    fromDt, toDt);
         BigDecimal purchaseReturns = credit(AccountCode.PURCHASE_RTN, fromDt, toDt);
         BigDecimal netPurchases    = purchases.subtract(purchaseReturns);
+        BigDecimal cogs            = debit(AccountCode.COGS, fromDt, toDt);
 
         // ── Section 3: Gross Profit ──────────────────────────────────────────
-        BigDecimal grossProfit = netRevenue.subtract(netPurchases);
+        BigDecimal grossProfit = netRevenue.subtract(cogs);
 
         // ── Section 4: Other Income ──────────────────────────────────────────
         // INC-002 (Sales) နဲ့ INC-007 (Purchase Returns) ကို ဖယ်ပြီး ကျန်သော Income accounts
@@ -74,11 +77,13 @@ public class ProfitLossService {
                 .from(from)
                 .to(to)
                 .grossSales(grossSales)
+                .serviceRevenue(serviceRevenue)
                 .salesReturns(salesReturns)
                 .netRevenue(netRevenue)
                 .purchases(purchases)
                 .purchaseReturns(purchaseReturns)
                 .netPurchases(netPurchases)
+                .cogs(cogs)
                 .grossProfit(grossProfit)
                 .otherIncomeItems(otherIncomeItems)
                 .totalOtherIncome(totalOtherIncome)

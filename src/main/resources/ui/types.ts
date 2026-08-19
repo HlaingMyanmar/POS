@@ -429,13 +429,13 @@ export interface AccountBalanceDTO {
 }
 
 export interface PaymentTransactionDTO {
-  id: number;
-  referenceId: number;
-  referenceType: string;
+  id?: number;
+  referenceId?: number;
+  referenceType?: string;
   paymentMethodId: number;
-  paymentMethodName: string;
+  paymentMethodName?: string;
   amount: number;
-  transactionNo: string;
+  transactionNo?: string;
   paymentDate?: string;
   referenceCode?: string;
   entityName?: string;
@@ -475,6 +475,7 @@ export interface PurchaseDetailDTO {
   unitCost: number;
   subtotal: number;
   warrantyMonths?: number;
+  warrantyTerms?: string;
   itemWarranties?: number[];
   serialNumbers: string[];
   serialConditions?: string[];
@@ -518,6 +519,7 @@ export interface PurchaseReturnDetailDTO {
 
 export interface PurchaseReturnDTO {
   id?: number;
+  status?: string;
   purchaseId: number;
   returnNo?: string;
   returnDate?: string;
@@ -807,6 +809,7 @@ export enum AppRoute {
   BOOKINGS = '/bookings',
   SERVICES = '/services',
   SERVICE_JOBS = '/service-jobs',
+  SERVICE_HELP = '/help/service-workflow',
   BACKUP = '/settings/backup',
   COMPANY_SETTINGS = '/settings/company',
   LABEL_DESIGNER = '/inventory/label-designer',

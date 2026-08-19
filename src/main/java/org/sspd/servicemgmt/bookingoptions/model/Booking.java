@@ -5,7 +5,6 @@ import lombok.*;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
-import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -81,17 +80,6 @@ public class Booking {
 
     @Column(name = "shelf_location", length = 100)
     private String shelfLocation;
-
-    @Builder.Default
-    @Column(name = "is_rework_return")
-    private Boolean reworkReturn = Boolean.FALSE;
-
-    @Column(name = "parent_service_job_id")
-    private Integer parentServiceJobId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "rework_type", length = 20)
-    private ReworkType reworkType;
 
     @Builder.Default
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)

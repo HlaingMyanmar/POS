@@ -5,6 +5,8 @@ public enum SerialStatus {
     Sold,
     Consumed_In_Manufacturing,
     Used_In_Service,
+    Quarantined,
+    Returned_To_Supplier,
     Damaged,
     Lost
 }

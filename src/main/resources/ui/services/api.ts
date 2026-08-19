@@ -1,4 +1,4 @@
-
+﻿
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { AuthResponse, User, DashboardStats, ApiResponse, PagedData } from '../types';
@@ -230,7 +230,7 @@ export const serviceJobService = {
     return api.get<any, ApiResponse<PagedData<any>>>(`/v1/service-jobs?page=${page}&size=${size}${q}${df}${dt}`);
   },
   getById: (id: number) => api.get<any, ApiResponse<any>>(`/v1/service-jobs/${id}`),
-  getByBooking: (bookingId: number) => api.get<any, ApiResponse<any>>(`/v1/service-jobs/by-booking/${bookingId}`),
+  getByBooking: (bookingId: number) => api.get<any, ApiResponse<any[]>>(`/v1/service-jobs/by-booking/${bookingId}`),
   getByStatus: (status: string) => api.get<any, ApiResponse<any[]>>(`/v1/service-jobs/status/${status}`),
   create: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-jobs', dto),
   update: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-jobs/${id}`, dto),

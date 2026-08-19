@@ -152,7 +152,7 @@ const AccountingDashboard: React.FC = () => {
         toPaymentMethodId:   transferForm.toPaymentMethodId,
         amount,
         transactionNo: transferForm.transactionNo.trim() || undefined,
-        note:          transferForm.note.trim() || undefined,
+        description:   transferForm.note.trim() || undefined,
       });
       setTransferForm({ fromPaymentMethodId: 0, toPaymentMethodId: 0, amount: '', transactionNo: '', note: '' });
       Swal.fire({ icon: 'success', title: 'Transfer လုပ်ဆောင်ပြီးပါပြီ', toast: true, position: 'top-end', showConfirmButton: false, timer: 1800 });

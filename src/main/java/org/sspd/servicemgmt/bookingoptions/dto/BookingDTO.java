@@ -2,7 +2,6 @@ package org.sspd.servicemgmt.bookingoptions.dto;
 
 import lombok.Data;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
-import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -36,10 +35,6 @@ public class BookingDTO {
 
     // Storage
     private String shelfLocation;
-    private Boolean reworkReturn;
-    private Integer parentServiceJobId;
-    private String parentServiceJobNo;
-    private ReworkType reworkType;
 
     private List<BookingDeviceInfoDTO> deviceInfos;
     private List<BookingDetailDTO> details;

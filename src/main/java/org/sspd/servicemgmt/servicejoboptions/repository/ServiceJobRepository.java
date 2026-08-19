@@ -20,7 +20,7 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     List<ServiceJob> findByCustomerId(Integer customerId);
     List<ServiceJob> findByAssignedStaffId(Integer staffId);
     long countByStatus(ServiceJobStatus status);
-    Optional<ServiceJob> findByBookingId(Integer bookingId);
+    List<ServiceJob> findAllByBookingIdOrderByIdAsc(Integer bookingId);
 
     @Query("""
         SELECT j FROM ServiceJob j

@@ -27,6 +27,44 @@ const RoleManagement: React.FC = () => {
   const [permSearchTerm, setPermSearchTerm] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const recommendedPermissionNames = (roleName: string): string[] => {
+    const role = roleName.toUpperCase();
+    const read = [
+      'CAN_ACCESS_CUSTOMER_READ', 'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_SERVICE_READ',
+      'CAN_ACCESS_SERVICE_JOB_READ', 'CAN_ACCESS_BOOKING_READ',
+    ];
+    if (role.includes('ADMIN')) return allPermissions.map(permission => permission.name);
+    if (role.includes('MANAGER')) return [
+      ...read, 'CAN_ACCESS_SALE_READ', 'CAN_ACCESS_SALE_CREATE', 'CAN_ACCESS_SALE_UPDATE',
+      'CAN_ACCESS_PURCHASE_READ', 'CAN_ACCESS_PURCHASE_CREATE', 'CAN_ACCESS_PURCHASE_UPDATE',
+      'CAN_ACCESS_SUPPLIER_READ', 'CAN_ACCESS_STOCK_READ', 'CAN_ACCESS_STOCK_UPDATE',
+      'CAN_ACCESS_BOOKING_UPDATE', 'CAN_ACCESS_SERVICE_JOB_UPDATE', 'CAN_ACCESS_SERVICE_JOB_SETTLE',
+      'CAN_ACCESS_REPORT_READ', 'CAN_ACCESS_CREDIT_ALERT_READ', 'CAN_ACCESS_CREDIT_OVERRIDE_APPROVE',
+    ];
+    if (role.includes('CASHIER') || role.includes('SALE')) return [
+      'CAN_ACCESS_CUSTOMER_CREATE', ...read, 'CAN_ACCESS_SALE_READ', 'CAN_ACCESS_SALE_CREATE',
+      'CAN_ACCESS_SALE_UPDATE', 'CAN_ACCESS_SALE_RETURN_CREATE', 'CAN_ACCESS_PAYMENT_TRANSACTION_CREATE',
+    ];
+    if (role.includes('TECHNICIAN') || role.includes('TECH')) return [
+      'CAN_ACCESS_CUSTOMER_READ', 'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_SERVICE_READ',
+      'CAN_ACCESS_SERVICE_JOB_READ', 'CAN_ACCESS_SERVICE_JOB_UPDATE', 'CAN_ACCESS_SERVICE_JOB_REWORK',
+      'CAN_ACCESS_BOOKING_READ', 'CAN_ACCESS_BOOKING_UPDATE',
+    ];
+    if (role.includes('INVENTORY') || role.includes('STOCK')) return [
+      'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_PRODUCT_CREATE', 'CAN_ACCESS_PRODUCT_UPDATE',
+      'CAN_ACCESS_PRODUCT_SERIAL_READ', 'CAN_ACCESS_PRODUCT_SERIAL_UPDATE',
+      'CAN_ACCESS_SUPPLIER_READ', 'CAN_ACCESS_PURCHASE_READ', 'CAN_ACCESS_STOCK_READ',
+      'CAN_ACCESS_STOCK_UPDATE', 'CAN_ACCESS_STOCK_ADJUSTMENT_CREATE', 'CAN_ACCESS_STOCK_ADJUSTMENT_READ',
+    ];
+    if (role.includes('ACCOUNT') || role.includes('FINANCE')) return [
+      'CAN_ACCESS_CUSTOMER_READ', 'CAN_ACCESS_SUPPLIER_READ', 'CAN_ACCESS_SALE_READ',
+      'CAN_ACCESS_PURCHASE_READ', 'CAN_ACCESS_PAYMENT_TRANSACTION_READ', 'CAN_ACCESS_ACCOUNT_BALANCE_READ',
+      'CAN_ACCESS_JOURNAL_READ', 'CAN_ACCESS_EXPENSE_READ', 'CAN_ACCESS_INCOME_READ',
+      'CAN_ACCESS_CREDIT_ALERT_READ', 'CAN_ACCESS_CUSTOMER_PAYMENT_READ', 'CAN_ACCESS_REPORT_READ',
+    ];
+    return read;
+  };
+
   const fetchData = useCallback(async () => {
     try {
       const [roleData, permData] = await Promise.all([
@@ -145,6 +183,22 @@ const RoleManagement: React.FC = () => {
     const requiredIds = allPermissions.filter(permission => requiredNames.has(permission.name)).map(permission => permission.id);
     setSelectedPermissionIds(prev => Array.from(new Set([...prev, ...requiredIds])));
   };
+
+  const addRecommendedPermissions = () => {
+    if (!editingRole) return;
+    const recommendedNames = new Set(recommendedPermissionNames(editingRole.name));
+    const recommendedIds = allPermissions
+      .filter(permission => recommendedNames.has(permission.name))
+      .map(permission => permission.id);
+    setSelectedPermissionIds(previous => Array.from(new Set([...previous, ...recommendedIds])));
+  };
+
+  const recommendedMissing = editingRole
+    ? allPermissions.filter(permission =>
+      recommendedPermissionNames(editingRole.name).includes(permission.name) &&
+      !selectedPermissionIds.includes(permission.id)
+    )
+    : [];
 
 
   if (loading) return (
@@ -275,10 +329,26 @@ const RoleManagement: React.FC = () => {
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button onClick={addRecommendedPermissions} title="ဒီ Role အတွက် မရှိသေးသော သင့်တော်သည့် Permission များကိုသာ ထည့်မည်" className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors">Recommended +</button>
                 <button onClick={addCustomerHistoryPermissions} title="Customer, Sale, Booking နှင့် Service Job Read permissions ထည့်မည်" className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200 hover:bg-indigo-100 transition-colors">Customer History</button>
                 <button onClick={() => setSelectedPermissionIds(allPermissions.filter(p => p.name.toLowerCase().includes(permSearchTerm.toLowerCase())).map(p => p.id))} className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-100 transition-colors">All</button>
                 <button onClick={() => setSelectedPermissionIds([])} className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 rounded-xl border border-rose-100 hover:bg-rose-100 transition-colors">None</button>
               </div>
+            </div>
+
+            <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-800">ထည့်သင့်သော Permission</p>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-amber-700">{recommendedMissing.length} ခု မရှိသေး</span>
+              </div>
+              <p className="mt-1 text-[10px] leading-5 text-amber-700">
+                Recommended + ကိုနှိပ်ပါက မရှိသေးသော permission များကိုသာ ထပ်ပေါင်းမည်။ ရှိပြီးသား permission များ မဖယ်ပါ။
+              </p>
+              {recommendedMissing.length > 0 && (
+                <p className="mt-1 line-clamp-2 text-[9px] font-medium text-amber-800">
+                  {recommendedMissing.map(permission => permission.name).join(' · ')}
+                </p>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { serviceTypeService, serviceItemService, subServiceTypeService, exportService } from '../services/api';
 import Swal from 'sweetalert2';
@@ -8,10 +8,57 @@ const emptyType = { name: '', description: '', isActive: true };
 const emptyItem = { item: '', price: '', serviceTypeId: '', subServiceTypeId: '', isActive: true };
 const emptySubType = { name: '', description: '', isActive: true, serviceTypeId: 0 };
 
+const ServiceItemsTable: React.FC<{
+  items: any[];
+  onEdit: (item: any) => void;
+  onDelete: (id: number) => void;
+  showType: boolean;
+}> = ({ items, onEdit, onDelete, showType }) => (
+  <div className="overflow-x-auto">
+    <table className="w-full min-w-[760px] text-sm">
+      <thead className="bg-purple-600 text-left">
+        <tr>
+          <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">ကုဒ်</th>
+          <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">ဝန်ဆောင်မှုအမည်</th>
+          {showType && <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အမျိုးအစား</th>}
+          <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အုပ်စုခွဲ</th>
+          <th className="px-4 py-3.5 text-right text-[13px] font-extrabold text-white tracking-wide">ဈေးနှုန်း</th>
+          <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အခြေအနေ</th>
+          <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">လုပ်ဆောင်ချက်</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y">
+        {items.map(item => (
+          <tr key={item.id} className="hover:bg-slate-50">
+            <td className="px-4 py-3 text-slate-500">{item.code}</td>
+            <td className="px-4 py-3 font-medium">{item.item}</td>
+            {showType && <td className="px-4 py-3">{item.serviceTypeName || '-'}</td>}
+            <td className="px-4 py-3 text-slate-500">{item.subServiceTypeName || '-'}</td>
+            <td className="px-4 py-3 text-right">{Number(item.price).toLocaleString()}</td>
+            <td className="px-4 py-3">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                {item.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex gap-2">
+                <button onClick={() => onEdit(item)} className="text-indigo-600 hover:underline text-xs">Edit</button>
+                <button onClick={() => onDelete(item.id)} className="text-red-500 hover:underline text-xs">Delete</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
 const ServiceManagement: React.FC = () => {
   const [types, setTypes]         = useState<any[]>([]);
   const [items, setItems]         = useState<any[]>([]);
   const [typeTab, setTypeTab]     = useState<'types'|'items'>('items');
+  const [itemView, setItemView]   = useState<'grouped'|'all'>('grouped');
+  const [itemSearch, setItemSearch] = useState('');
   const [typeForm, setTypeForm]   = useState<any>(emptyType);
   const [itemForm, setItemForm]   = useState<any>(emptyItem);
   const [editTypeId, setEditTypeId] = useState<number|null>(null);
@@ -38,6 +85,25 @@ const ServiceManagement: React.FC = () => {
     if (t.success) setTypes(t.data ?? []);
     if (s.success) setItems(s.data ?? []);
   };
+
+  const filteredItems = useMemo(() => {
+    const query = itemSearch.trim().toLowerCase();
+    if (!query) return items;
+    return items.filter(item => [item.code, item.item, item.serviceTypeName, item.subServiceTypeName]
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(query)));
+  }, [items, itemSearch]);
+
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    filteredItems.forEach(item => {
+      const groupName = item.serviceTypeName || 'အမျိုးအစား မသတ်မှတ်ရသေး';
+      const group = groups.get(groupName) ?? [];
+      group.push(item);
+      groups.set(groupName, group);
+    });
+    return Array.from(groups.entries()).map(([name, groupItems]) => ({ name, items: groupItems }));
+  }, [filteredItems]);
 
   useEffect(() => { loadAll(); }, []);
   useRefreshOnTabActivate(loadAll);
@@ -277,43 +343,45 @@ const ServiceManagement: React.FC = () => {
       {typeTab === 'items' && (
         <div>
           <div className="flex items-center justify-between p-4 border-b">
-            <span className="font-medium text-slate-700">ဝန်ဆောင်မှုများ</span>
-            <button onClick={() => openItemModal()}
-              className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+ ထည့်မည်</button>
+            <div>
+              <span className="font-medium text-slate-700">ဝန်ဆောင်မှုများ</span>
+              <p className="mt-0.5 text-xs text-slate-400">အမျိုးအစားအလိုက် စုစည်းပြထားသည်</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <input
+                value={itemSearch}
+                onChange={event => setItemSearch(event.target.value)}
+                placeholder="ဝန်ဆောင်မှု ရှာရန်..."
+                className="w-52 rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+              <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-bold">
+                <button onClick={() => setItemView('grouped')}
+                  className={`rounded-md px-3 py-1.5 ${itemView === 'grouped' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                  အုပ်စုလိုက်
+                </button>
+                <button onClick={() => setItemView('all')}
+                  className={`rounded-md px-3 py-1.5 ${itemView === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                  အားလုံး
+                </button>
+              </div>
+              <button onClick={() => openItemModal()}
+                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+ ထည့်မည်</button>
+            </div>
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-purple-600 text-left">
-              <tr>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">ကုဒ်</th>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">ဝန်ဆောင်မှုအမည်</th>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အမျိုးအစား</th>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အုပ်စုခွဲ</th>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide text-right">ဈေးနှုန်း</th>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အခြေအနေ</th>
-                <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">လုပ်ဆောင်ချက်</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {items.map(s => (
-                <tr key={s.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-500">{s.code}</td>
-                  <td className="px-4 py-3 font-medium">{s.item}</td>
-                  <td className="px-4 py-3">{s.serviceTypeName}</td>
-                  <td className="px-4 py-3 text-slate-500">{s.subServiceTypeName || '-'}</td>
-                  <td className="px-4 py-3 text-right">{Number(s.price).toLocaleString()}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {s.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 flex gap-2">
-                    <button onClick={() => openItemModal(s)} className="text-indigo-600 hover:underline text-xs">Edit</button>
-                    <button onClick={() => deleteItem(s.id)} className="text-red-500 hover:underline text-xs">Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {filteredItems.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-slate-400">ရှာဖွေမှုနှင့် ကိုက်ညီသော ဝန်ဆောင်မှု မတွေ့ပါ</p>
+          ) : itemView === 'grouped' ? groupedItems.map(group => (
+            <section key={group.name} className="border-b last:border-b-0">
+              <div className="flex items-center justify-between bg-indigo-50/60 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-600 text-sm font-black text-white">{group.name.charAt(0)}</span>
+                  <h3 className="font-bold text-indigo-900">{group.name}</h3>
+                </div>
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-indigo-700">{group.items.length} ခု</span>
+              </div>
+              <ServiceItemsTable items={group.items} onEdit={openItemModal} onDelete={deleteItem} showType={false} />
+            </section>
+          )) : <ServiceItemsTable items={filteredItems} onEdit={openItemModal} onDelete={deleteItem} showType />}
         </div>
       )}
       </div>{/* end card wrapper */}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { ArrowLeft, CreditCard, Eye, List, Plus, ReceiptText, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -257,7 +257,7 @@ const PurchaseReturnManagement: React.FC = () => {
     const map = new Map<number, PurchaseProductOption>();
     selectedPurchase.details.forEach((detail) => {
       const existing = map.get(detail.productId);
-      const rawSerials = Array.from(new Set((detail.serialNumbers || []).map((sn) => sanitizeSerial(sn)).filter(Boolean)));
+      const rawSerials: string[] = Array.from(new Set<string>((detail.serialNumbers || []).map((sn: string) => sanitizeSerial(sn)).filter(Boolean)));
       const netUnitCost = discountedUnitCost(selectedPurchase, detail);
       const serialNumbers = rawSerials.filter((sn) => !returnedSerials.has(normalizeSerial(sn)));
       if (!existing) {
@@ -279,7 +279,7 @@ const PurchaseReturnManagement: React.FC = () => {
       existing.returnedQty = returnedByProduct.get(detail.productId) || 0;
       existing.returnableQty = Math.max(0, existing.purchasedQty - existing.returnedQty);
       existing.unitPrice = Math.round(((existing.unitPrice * (existing.purchasedQty - (Number(detail.qty) || 0))) + (netUnitCost * (Number(detail.qty) || 0))) / Math.max(1, existing.purchasedQty) * 100) / 100;
-      existing.serialNumbers = Array.from(new Set([
+      existing.serialNumbers = Array.from(new Set<string>([
         ...existing.serialNumbers,
         ...serialNumbers
       ]));

@@ -18,6 +18,8 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+import org.sspd.servicemgmt.shelflocationoptions.model.ShelfLocation;
+import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
 
@@ -43,6 +45,7 @@ public class BookingService {
     private final CustomerRepository customerRepository;
     private final StaffRepository staffRepository;
     private final ServiceJobRepository serviceJobRepository;
+    private final ShelfLocationRepository shelfLocationRepository;
     private final CompanySettingsService companySettingsService;
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -111,12 +114,7 @@ public class BookingService {
             .color(dto.getColor())
             .accessories(dto.getAccessories())
             .shelfLocation(dto.getShelfLocation())
-            .reworkReturn(Boolean.TRUE.equals(dto.getReworkReturn()))
-            .parentServiceJobId(dto.getParentServiceJobId())
-            .reworkType(dto.getReworkType())
             .build();
-
-        validateReworkLink(dto);
 
         if (dto.getStaffId() != null)
             booking.setStaff(staffRepository.findById(dto.getStaffId()).orElse(null));
@@ -157,10 +155,6 @@ public class BookingService {
         booking.setColor(dto.getColor());
         booking.setAccessories(dto.getAccessories());
         booking.setShelfLocation(dto.getShelfLocation());
-        validateReworkLink(dto);
-        booking.setReworkReturn(Boolean.TRUE.equals(dto.getReworkReturn()));
-        booking.setParentServiceJobId(Boolean.TRUE.equals(dto.getReworkReturn()) ? dto.getParentServiceJobId() : null);
-        booking.setReworkType(Boolean.TRUE.equals(dto.getReworkReturn()) ? dto.getReworkType() : null);
 
         if (dto.getDeviceInfos() != null) {
             booking.getDeviceInfos().clear();
@@ -187,7 +181,7 @@ public class BookingService {
 
     @Transactional
     public List<ServiceJobDTO> convertToJob(Integer bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
 
         if (booking.getStatus() == BookingStatus.Converted)
@@ -196,6 +190,8 @@ public class BookingService {
             throw new IllegalStateException("Cannot convert a cancelled booking");
         if (booking.getStatus() == BookingStatus.Completed)
             throw new IllegalStateException("Cannot convert a completed booking");
+
+        ShelfLocation shelfLocation = resolveShelfLocation(booking.getShelfLocation());
 
         // Build condition summary from device infos (shared across jobs)
         String itemCondition = "";
@@ -232,15 +228,15 @@ public class BookingService {
                     .itemName(itemName.isBlank() ? "Device" : itemName)
                     .itemCondition(itemCondition)
                     .deviceConditions(device.getDeviceConditions())
-                    .problemDesc(devProblem)
+                    .serialNo(device.getSerialNumber())
+                    .color(device.getColor())
                     .accessories(device.getAccessories())
+                    .shelfLocation(shelfLocation)
+                    .problemDesc(devProblem)
                     .estimatedCost(booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO)
                     .finalCost(BigDecimal.ZERO)
                     .status(ServiceJobStatus.RECEIVED)
                     .bookingId(bookingId)
-                    .rework(Boolean.TRUE.equals(booking.getReworkReturn()))
-                    .reworkType(booking.getReworkType())
-                    .parentJobId(booking.getParentServiceJobId())
                     .lines(new ArrayList<>())
                     .build();
                 jobs.add(serviceJobRepository.save(job));
@@ -260,14 +256,14 @@ public class BookingService {
                 .itemName(itemName.isBlank() ? "Device" : itemName)
                 .itemCondition(itemCondition)
                 .problemDesc(booking.getRemark())
+                .serialNo(booking.getSerialNumber())
+                .color(booking.getColor())
                 .accessories(booking.getAccessories())
+                .shelfLocation(shelfLocation)
                 .estimatedCost(booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO)
                 .finalCost(BigDecimal.ZERO)
                 .status(ServiceJobStatus.RECEIVED)
                 .bookingId(bookingId)
-                .rework(Boolean.TRUE.equals(booking.getReworkReturn()))
-                .reworkType(booking.getReworkType())
-                .parentJobId(booking.getParentServiceJobId())
                 .lines(new ArrayList<>())
                 .build();
             jobs.add(serviceJobRepository.save(job));
@@ -276,8 +272,21 @@ public class BookingService {
         booking.setStatus(BookingStatus.Converted);
         bookingRepository.save(booking);
         messagingTemplate.convertAndSend(BOOKING_TOPIC, "BOOKING_UPDATED");
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_CREATED_FROM_BOOKING");
 
         return jobs.stream().map(this::toServiceJobDto).toList();
+    }
+
+    private ShelfLocation resolveShelfLocation(String code) {
+        if (code == null || code.isBlank()) return null;
+        String label = code.trim();
+        String normalized = label.length() > 30 ? label.substring(0, 30) : label;
+        return shelfLocationRepository.findByCodeIgnoreCase(normalized)
+            .orElseGet(() -> shelfLocationRepository.save(ShelfLocation.builder()
+                .code(normalized)
+                .label(label)
+                .active(true)
+                .build()));
     }
 
     @Transactional
@@ -338,22 +347,6 @@ public class BookingService {
         return String.format("SJ-%06d", next);
     }
 
-    private void validateReworkLink(BookingDTO dto) {
-        if (!Boolean.TRUE.equals(dto.getReworkReturn())) return;
-        if (dto.getParentServiceJobId() == null)
-            throw new IllegalArgumentException("Original service job is required for a rework return");
-        if (dto.getReworkType() == null)
-            throw new IllegalArgumentException("Rework type is required");
-
-        ServiceJob parent = serviceJobRepository.findById(dto.getParentServiceJobId())
-            .orElseThrow(() -> new ResourceNotFoundException("Original service job not found"));
-        if (parent.getStatus() != ServiceJobStatus.DELIVERED)
-            throw new IllegalStateException("Only closed service jobs can be linked as rework returns");
-        if (dto.getCustomerId() != null && parent.getCustomer() != null
-                && !parent.getCustomer().getId().equals(dto.getCustomerId()))
-            throw new IllegalArgumentException("Original service job belongs to a different customer");
-    }
-
     private BookingDTO toDto(Booking b) {
         BookingDTO dto = new BookingDTO();
         dto.setId(b.getId());
@@ -377,13 +370,6 @@ public class BookingService {
         dto.setColor(b.getColor());
         dto.setAccessories(b.getAccessories());
         dto.setShelfLocation(b.getShelfLocation());
-        dto.setReworkReturn(Boolean.TRUE.equals(b.getReworkReturn()));
-        dto.setParentServiceJobId(b.getParentServiceJobId());
-        dto.setReworkType(b.getReworkType());
-        if (b.getParentServiceJobId() != null) {
-            serviceJobRepository.findById(b.getParentServiceJobId())
-                .ifPresent(job -> dto.setParentServiceJobNo(job.getJobNo()));
-        }
         dto.setDeviceInfos(b.getDeviceInfos() != null
             ? b.getDeviceInfos().stream().map(d -> {
                 BookingDeviceInfoDTO dd = new BookingDeviceInfoDTO();
@@ -426,9 +412,15 @@ public class BookingService {
         }
         dto.setItemName(j.getItemName());
         dto.setItemCondition(j.getItemCondition());
+        dto.setDeviceConditions(j.getDeviceConditions());
+        dto.setSerialNo(j.getSerialNo());
+        dto.setColor(j.getColor());
+        dto.setAccessories(j.getAccessories());
         dto.setProblemDesc(j.getProblemDesc());
         dto.setStatus(j.getStatus());
         dto.setBookingId(j.getBookingId());
+        dto.setBookingNo(j.getBookingId() != null ? bookingRepository.findById(j.getBookingId()).map(Booking::getInvoiceNo).orElse(null) : null);
+        dto.setReceivedDate(j.getReceivedDate() != null ? j.getReceivedDate().toString() : null);
         dto.setEstimatedCost(j.getEstimatedCost());
         dto.setFinalCost(j.getFinalCost());
         dto.setLines(List.of());

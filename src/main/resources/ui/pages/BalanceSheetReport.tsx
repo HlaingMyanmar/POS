@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { CheckCircle, XCircle, RefreshCw, BarChart2, TrendingUp, TrendingDown } from 'lucide-react';
 import { financialReportService } from '../services/financialreportapiservice';
@@ -189,7 +189,7 @@ const SectionHeader = ({ label, color, date }: { label: string; color: keyof typ
   </div>
 );
 
-const AccountRow = ({ item, color }: { item: { accountCode: string; accountName: string; balance: number }; color: keyof typeof COLOR_MAP }) => (
+const AccountRow = ({ item, color }: { item: { accountCode: string; accountName: string; balance: number }; color: keyof typeof COLOR_MAP; key?: React.Key }) => (
   <div className="px-4 py-2.5 flex justify-between items-center hover:bg-slate-50">
     <div className="flex items-center gap-2 pl-2">
       <span className="text-[9px] font-mono bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">{item.accountCode}</span>

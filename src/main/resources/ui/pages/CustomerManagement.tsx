@@ -131,8 +131,8 @@ const CustomerManagement: React.FC = () => {
     normal: customers.filter((c) => !c.creditHold && !c.blacklisted).length,
     hold: customers.filter((c) => Boolean(c.creditHold)).length,
     blacklist: customers.filter((c) => Boolean(c.blacklisted)).length,
-    due: Array.from(dueByCustomer.values()).reduce((sum, value) => sum + value, 0),
-    overdue: Array.from(overdueByCustomer.values()).reduce((sum, value) => sum + value, 0),
+    due: Array.from(dueByCustomer.values()).reduce<number>((sum, value) => sum + Number(value), 0),
+    overdue: Array.from(overdueByCustomer.values()).reduce<number>((sum, value) => sum + Number(value), 0),
     alerts: alerts.filter((a) => !a.resolved).length
   }), [alerts, customers, dueByCustomer, overdueByCustomer]);
 

@@ -26,11 +26,15 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobLineDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobPartDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.SettleDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
+import org.sspd.servicemgmt.servicejoboptions.model.ReworkResolutionMode;
+import org.sspd.servicemgmt.servicejoboptions.model.OldPartDisposition;
+import org.sspd.servicemgmt.servicejoboptions.model.ReworkPartResolution;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+import org.sspd.servicemgmt.servicejoboptions.repository.ReworkPartResolutionRepository;
 import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
 import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
 import org.sspd.servicemgmt.saleoptions.service.SaleService;
@@ -41,6 +45,9 @@ import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductReposi
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.model.ProductSerial;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.ProductSerialRepository;
+import org.sspd.servicemgmt.stockoptions.stockmovementoptions.model.MovementType;
+import org.sspd.servicemgmt.stockoptions.stockmovementoptions.model.StockMovement;
+import org.sspd.servicemgmt.stockoptions.stockmovementoptions.service.StockMovementService;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -75,6 +82,8 @@ public class ServiceJobService {
     private final CreditService creditService;
     private final SimpMessagingTemplate messagingTemplate;
     private final BookingRepository bookingRepo;
+    private final ReworkPartResolutionRepository reworkResolutionRepo;
+    private final StockMovementService stockMovementService;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
@@ -104,10 +113,13 @@ public class ServiceJobService {
     }
 
     @Transactional(readOnly = true)
-    public ServiceJobDTO findByBookingId(Integer bookingId) {
-        return repo.findByBookingId(bookingId)
+    public List<ServiceJobDTO> findByBookingId(Integer bookingId) {
+        List<ServiceJobDTO> jobs = repo.findAllByBookingIdOrderByIdAsc(bookingId).stream()
             .map(this::toDto)
-            .orElseThrow(() -> new ResourceNotFoundException("No service job for booking: " + bookingId));
+            .toList();
+        if (jobs.isEmpty())
+            throw new ResourceNotFoundException("No service job for booking: " + bookingId);
+        return jobs;
     }
 
     @Transactional(readOnly = true)
@@ -434,50 +446,172 @@ public class ServiceJobService {
     public ServiceJobDTO createRework(Integer originalJobId, ReworkRequestDTO req) {
         ServiceJob original = repo.findById(originalJobId)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + originalJobId));
-
         if (original.getStatus() != ServiceJobStatus.DELIVERED)
             throw new IllegalStateException("Rework can only be created for DELIVERED jobs");
-
         if (req.getReworkType() == null)
             throw new IllegalArgumentException("Return type is required");
 
-        boolean isNoChargeReturn = req.getReworkType() == ReworkType.WARRANTY
-            || req.getReworkType() == ReworkType.REPLACEMENT;
+        ReworkResolutionMode mode = req.getResolutionMode() != null
+            ? req.getResolutionMode() : ReworkResolutionMode.SERVICE_ONLY;
+        ServiceJobPart originalPart = null;
+        Product replacementProduct = null;
+        int replacementQty = req.getReplacementQty() != null ? req.getReplacementQty() : 1;
+        BigDecimal originalCredit = BigDecimal.ZERO;
+        BigDecimal replacementPrice = BigDecimal.ZERO;
+        BigDecimal customerCharge = BigDecimal.ZERO;
+        BigDecimal refundAmount = BigDecimal.ZERO;
+        List<String> replacementSerials = req.getReplacementSerialNumbers() != null
+            ? req.getReplacementSerialNumbers().stream().map(String::trim).filter(v -> !v.isBlank()).distinct().toList()
+            : List.of();
 
-        if (req.getReworkType() == ReworkType.REPLACEMENT
-                && (req.getReplacementItemName() == null || req.getReplacementItemName().isBlank()))
-            throw new IllegalArgumentException("Replacement item name is required");
+        if (mode != ReworkResolutionMode.SERVICE_ONLY) {
+            if (req.getOriginalPartId() == null)
+                throw new IllegalArgumentException("Original job part is required");
+            originalPart = original.getProductParts().stream()
+                .filter(p -> p.getId().equals(req.getOriginalPartId())).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Selected part does not belong to the original job"));
+            if (req.getOldPartDisposition() == null)
+                throw new IllegalArgumentException("Old part disposition is required");
+
+            BigDecimal lineValue = originalPart.getUnitPrice().multiply(BigDecimal.valueOf(originalPart.getQty()))
+                .subtract(originalPart.getDiscountAmount() != null ? originalPart.getDiscountAmount() : BigDecimal.ZERO)
+                .max(BigDecimal.ZERO);
+            originalCredit = req.getWarrantyCredit() != null
+                ? req.getWarrantyCredit().max(BigDecimal.ZERO).min(lineValue) : lineValue;
+
+            if (mode == ReworkResolutionMode.REPLACE_SAME || mode == ReworkResolutionMode.UPGRADE) {
+                if (req.getReplacementProductId() == null)
+                    throw new IllegalArgumentException("Replacement product is required");
+                if (replacementQty <= 0)
+                    throw new IllegalArgumentException("Replacement quantity must be greater than zero");
+                replacementProduct = productRepo.findById(req.getReplacementProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Replacement product not found"));
+                validateReplacementAvailability(replacementProduct, replacementQty, replacementSerials);
+                BigDecimal unitPrice = replacementProduct.getSellingPrice() != null
+                    ? replacementProduct.getSellingPrice() : BigDecimal.ZERO;
+                replacementPrice = unitPrice.multiply(BigDecimal.valueOf(replacementQty));
+                customerCharge = mode == ReworkResolutionMode.UPGRADE
+                    ? replacementPrice.subtract(originalCredit).max(BigDecimal.ZERO) : BigDecimal.ZERO;
+            } else if (mode == ReworkResolutionMode.REFUND) {
+                if (req.getRefundPaymentMethodId() == null)
+                    throw new IllegalArgumentException("Refund payment method is required");
+                refundAmount = req.getRefundAmount() != null ? req.getRefundAmount() : originalCredit;
+                if (refundAmount.compareTo(BigDecimal.ZERO) <= 0 || refundAmount.compareTo(originalCredit) > 0)
+                    throw new IllegalArgumentException("Refund must be greater than zero and cannot exceed warranty credit");
+            }
+        }
 
         ServiceJob rework = ServiceJob.builder()
-            .jobNo(generateJobNo())
-            .customer(original.getCustomer())
+            .jobNo(generateJobNo()).customer(original.getCustomer())
             .assignedStaff(req.getAssignedStaffId() != null
-                ? staffRepo.findById(req.getAssignedStaffId()).orElse(original.getAssignedStaff())
-                : original.getAssignedStaff())
-            .itemName(original.getItemName())
-            .itemCondition(original.getItemCondition())
-            .serialNo(original.getSerialNo())
-            .color(original.getColor())
-            .accessories(original.getAccessories())
+                ? staffRepo.findById(req.getAssignedStaffId()).orElse(original.getAssignedStaff()) : original.getAssignedStaff())
+            .itemName(original.getItemName()).itemCondition(original.getItemCondition())
+            .serialNo(original.getSerialNo()).color(original.getColor()).accessories(original.getAccessories())
             .shelfLocation(original.getShelfLocation())
             .problemDesc(req.getProblemDesc() != null ? req.getProblemDesc() : original.getProblemDesc())
-            .estimatedCost(isNoChargeReturn ? BigDecimal.ZERO : null)
-            .finalCost(BigDecimal.ZERO)
-            .status(ServiceJobStatus.RECEIVED)
-            .rework(true)
-            .reworkType(req.getReworkType())
-            .parentJobId(originalJobId)
-            .replacementItemName(req.getReplacementItemName())
-            .replacementSerialNo(req.getReplacementSerialNo())
-            .replacementReason(req.getReplacementReason())
-            .bookingId(original.getBookingId())
-            .lines(new ArrayList<>())
-            .productParts(new ArrayList<>())
-            .build();
+            .estimatedCost(customerCharge).finalCost(BigDecimal.ZERO).status(ServiceJobStatus.RECEIVED)
+            .rework(true).reworkType(req.getReworkType()).parentJobId(originalJobId)
+            .replacementItemName(replacementProduct != null ? replacementProduct.getName() : req.getReplacementItemName())
+            .replacementSerialNo(!replacementSerials.isEmpty() ? replacementSerials.get(0) : req.getReplacementSerialNo())
+            .replacementReason(req.getReplacementReason()).bookingId(original.getBookingId())
+            .lines(new ArrayList<>()).productParts(new ArrayList<>()).build();
 
-        return toDto(repo.save(rework));
+        if (replacementProduct != null) {
+            BigDecimal unitPrice = replacementProduct.getSellingPrice() != null
+                ? replacementProduct.getSellingPrice() : BigDecimal.ZERO;
+            rework.getProductParts().add(ServiceJobPart.builder()
+                .serviceJob(rework).product(replacementProduct).qty(replacementQty).unitPrice(unitPrice)
+                .discountAmount(replacementPrice.subtract(customerCharge)).subtotal(customerCharge)
+                .serialNumbers(String.join(",", replacementSerials))
+                .warrantyCovered(customerCharge.compareTo(BigDecimal.ZERO) == 0).build());
+        }
+
+        rework = repo.save(rework);
+        if (mode != ReworkResolutionMode.SERVICE_ONLY) {
+            updateOldPartDisposition(originalPart, req.getOldPartDisposition());
+            ReworkPartResolution resolution = reworkResolutionRepo.save(ReworkPartResolution.builder()
+                .reworkJob(rework).originalPart(originalPart).replacementProduct(replacementProduct)
+                .resolutionMode(mode).oldPartDisposition(req.getOldPartDisposition())
+                .oldSerialNumbers(originalPart.getSerialNumbers())
+                .replacementSerialNumbers(String.join(",", replacementSerials)).replacementQty(replacementProduct != null ? replacementQty : null)
+                .originalCredit(originalCredit).replacementPrice(replacementPrice).customerCharge(customerCharge)
+                .refundAmount(refundAmount).reason(req.getReplacementReason()).build());
+            if (req.getOldPartDisposition() != OldPartDisposition.REUSE) {
+                stockMovementService.recordMovement(StockMovement.builder()
+                    .product(originalPart.getProduct()).movementType(MovementType.ADJUST).qty(originalPart.getQty())
+                    .referenceId(resolution.getId()).referenceType("ReworkPartResolution:" + req.getOldPartDisposition().name()).build());
+            }
+        }
+        if (mode == ReworkResolutionMode.REFUND) {
+            recordReworkRefund(rework, refundAmount, req.getRefundPaymentMethodId(), req.getRefundTransactionNo());
+        }
+        messagingTemplate.convertAndSend("/topic/service-jobs", "REWORK_CREATED");
+        return toDto(rework);
     }
 
+    private void recordReworkRefund(ServiceJob rework, BigDecimal amount, Integer paymentMethodId, String transactionNo) {
+        PaymentMethod method = paymentMethodRepo.findById(paymentMethodId)
+            .orElseThrow(() -> new ResourceNotFoundException("Refund payment method not found"));
+        if (method.getAccount() == null)
+            throw new IllegalArgumentException("Refund payment method must have a linked account");
+
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setReferenceId(rework.getId());
+        tx.setReferenceType(ReferenceType.Service);
+        tx.setPaymentMethod(method);
+        tx.setAmount(amount.negate());
+        tx.setPaymentDate(LocalDateTime.now());
+        tx.setTransactionNo(transactionNo != null && !transactionNo.isBlank() ? transactionNo.trim() : generateTxnNo());
+        paymentTransactionRepo.save(tx);
+
+        JournalDetailDTO drReturn = new JournalDetailDTO();
+        drReturn.setAccountId(accountResolver.salesRtn().getId());
+        drReturn.setDebit(amount);
+        drReturn.setCredit(BigDecimal.ZERO);
+        JournalDetailDTO crPayment = new JournalDetailDTO();
+        crPayment.setAccountId(method.getAccount().getId());
+        crPayment.setDebit(BigDecimal.ZERO);
+        crPayment.setCredit(amount);
+        JournalEntryDTO entry = new JournalEntryDTO();
+        entry.setReferenceNo(rework.getJobNo() + "-REFUND");
+        entry.setEntryDate(LocalDateTime.now());
+        entry.setDescription("Rework part refund - " + rework.getJobNo());
+        entry.setStaffId(rework.getAssignedStaff() != null ? rework.getAssignedStaff().getId() : null);
+        entry.setDetails(List.of(drReturn, crPayment));
+        journalWriter.write(entry);
+    }
+    private void validateReplacementAvailability(Product product, int qty, List<String> serials) {
+        if (Boolean.TRUE.equals(product.getHasSerial())) {
+            if (serials.size() != qty)
+                throw new IllegalArgumentException("Replacement serial count must match quantity");
+            for (String sn : serials) {
+                ProductSerial serial = serialRepo.findBySerialNumber(sn)
+                    .orElseThrow(() -> new ResourceNotFoundException("Serial number not found: " + sn));
+                if (!serial.getProduct().getId().equals(product.getId()) || serial.getStatus() != SerialStatus.Available)
+                    throw new IllegalArgumentException("Replacement serial is unavailable or belongs to another product: " + sn);
+            }
+        } else if (product.getStockQty() == null || product.getStockQty() < qty) {
+            throw new IllegalArgumentException("Insufficient replacement stock for " + product.getName());
+        }
+    }
+
+    private void updateOldPartDisposition(ServiceJobPart part, OldPartDisposition disposition) {
+        if (!Boolean.TRUE.equals(part.getProduct().getHasSerial()) || disposition == OldPartDisposition.REUSE) return;
+        SerialStatus target = switch (disposition) {
+            case QUARANTINE -> SerialStatus.Quarantined;
+            case DAMAGED -> SerialStatus.Damaged;
+            case SUPPLIER_RETURN -> SerialStatus.Returned_To_Supplier;
+            case REUSE -> SerialStatus.Used_In_Service;
+        };
+        for (String sn : splitSerials(part.getSerialNumbers())) {
+            ProductSerial serial = serialRepo.findBySerialNumber(sn)
+                .orElseThrow(() -> new ResourceNotFoundException("Original part serial not found: " + sn));
+            if (serial.getStatus() != SerialStatus.Used_In_Service && serial.getStatus() != SerialStatus.Quarantined)
+                throw new IllegalStateException("Original part serial is not installed/quarantined: " + sn);
+            serial.setStatus(target);
+            serialRepo.save(serial);
+        }
+    }
     @Transactional
     public void delete(Integer id) {
         repo.deleteById(id);

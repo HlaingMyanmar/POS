@@ -125,7 +125,7 @@ const PaymentTransactionManagement: React.FC = () => {
         toPaymentMethodId: transferForm.toPaymentMethodId,
         amount,
         transactionNo: transferForm.transactionNo.trim() || undefined,
-        note: transferForm.note.trim() || undefined
+        description: transferForm.note.trim() || undefined
       });
       setTransferForm({ fromPaymentMethodId: 0, toPaymentMethodId: 0, amount: '', transactionNo: '', note: '' });
       await fetchData();

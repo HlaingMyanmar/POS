@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw } from 'lucide-react';
 import { serviceJobService, serviceItemService } from '../services/api';
@@ -40,6 +40,14 @@ const ACTIVE_STATUSES    = ['RECEIVED', 'INSPECTING', 'IN_PROGRESS'];
 const DONE_STATUSES      = ['COMPLETED'];
 const ARCHIVED_STATUSES  = ['DELIVERED', 'CANCELLED'];
 
+const getLocalToday = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return [year, month, day].join('-');
+};
+
 /* ── Empty states ──────────────────────────────────────────────── */
 const emptyForm = {
   customerId: '', assignedStaffId: '',
@@ -59,7 +67,9 @@ const emptySettle = {
 
 const emptyRework = {
   reworkType: 'WARRANTY', problemDesc: '', assignedStaffId: '',
-  replacementItemName: '', replacementSerialNo: '', replacementReason: '',
+  resolutionMode: 'SERVICE_ONLY', originalPartId: '', oldPartDisposition: 'QUARANTINE',
+  replacementProductId: '', replacementQty: '1', replacementSerialNumbers: '',
+  warrantyCredit: '', refundAmount: '', refundPaymentMethodId: '', refundTransactionNo: '', replacementReason: '',
 };
 
 const normalizePayments = (payments: PaymentTransactionDTO[]) =>
@@ -251,10 +261,12 @@ export default function ServiceJobManagement() {
   const [jobs, setJobs]           = useState<any[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
-  const [tab, setTab]             = useState<'active' | 'done' | 'archived' | 'all' | 'credit'>('active');
+  const [tab, setTab]             = useState<'active' | 'all' | 'credit'>('active');
+  const [statusFilter, setStatusFilter] = useState<'all' | JobStatus>('all');
   const [search, setSearch]       = useState('');
-  const [dateFrom, setDateFrom]   = useState('');
-  const [dateTo, setDateTo]       = useState('');
+  const [defaultDate]             = useState(getLocalToday);
+  const [dateFrom, setDateFrom]   = useState(defaultDate);
+  const [dateTo, setDateTo]       = useState(defaultDate);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [serviceItems, setServiceItems] = useState<any[]>([]);
   const [products, setProducts]   = useState<any[]>([]);
@@ -281,13 +293,22 @@ export default function ServiceJobManagement() {
   const [showRework, setShowRework] = useState(false);
   const [reworkParent, setReworkParent] = useState<any>(null);
   const [reworkForm, setReworkForm] = useState(emptyRework);
+  const [reworkAvailableSerials, setReworkAvailableSerials] = useState<any[]>([]);
+  const [reworkSerialSearch, setReworkSerialSearch] = useState('');
+  const [reworkSerialLoading, setReworkSerialLoading] = useState(false);
   const [expandedJobFamilies, setExpandedJobFamilies] = useState<Record<string, boolean>>({});
   const PAGE_SIZE = 20;
 
   const load = async () => {
+    // Searching from the All tab is global across the complete job history.
+    // Clearing the search restores the default date range (Today).
+    const globalSearch = tab === 'all' && search.trim().length > 0;
+    const ignoresDateRange = tab === 'active' || globalSearch;
+    const effectiveDateFrom = ignoresDateRange ? '' : dateFrom;
+    const effectiveDateTo = ignoresDateRange ? '' : dateTo;
     // Load the complete filtered working set so a main job and its linked
     // reworks cannot be separated by server-side pagination.
-    const res = await serviceJobService.getAll(0, 5000, search, dateFrom, dateTo);
+    const res = await serviceJobService.getAll(0, 5000, search, effectiveDateFrom, effectiveDateTo);
     if (res.success) {
       setJobs(res.data?.content ?? []);
       setTotal(res.data?.totalElements ?? 0);
@@ -325,7 +346,7 @@ export default function ServiceJobManagement() {
   useEffect(() => {
     void load();
     void loadReferenceData();
-  }, [page, search, dateFrom, dateTo]);
+  }, [page, tab, search, dateFrom, dateTo]);
   useRefreshOnTabActivate(() => {
     void load();
     void loadReferenceData();
@@ -337,24 +358,26 @@ export default function ServiceJobManagement() {
 
   /* ── Filtering ─────────────────────────────────────────────── */
   const matchesTab = (j: any) => {
-    if (tab === 'active')   return ACTIVE_STATUSES.includes(j.status);
-    if (tab === 'done')     return DONE_STATUSES.includes(j.status);
-    if (tab === 'archived') return ARCHIVED_STATUSES.includes(j.status);
-    if (tab === 'credit')   return Number(j.dueAmount) > 0;
-    return true;
+    const matchesStatus = statusFilter === 'all' || j.status === statusFilter;
+    const matchesActive = tab !== 'active' || ACTIVE_STATUSES.includes(j.status);
+    const matchesCredit = tab !== 'credit' || Number(j.dueAmount) > 0;
+    return matchesStatus && matchesActive && matchesCredit;
   };
 
   // Keep every linked rework directly under its parent job. Orphaned children
   // (for example when the parent is on another page/filter) remain visible.
   const hierarchicalJobs = (() => {
+    // Filter before building the tree. An active rework with a delivered
+    // parent must become a visible root instead of being hidden with it.
+    const visibleJobs = jobs.filter(matchesTab);
     const byParent = new Map<string, any[]>();
-    jobs.forEach(job => {
+    visibleJobs.forEach(job => {
       if (!job.parentJobId) return;
       const key = String(job.parentJobId);
       byParent.set(key, [...(byParent.get(key) || []), job]);
     });
-    const ids = new Set(jobs.map(job => String(job.id)));
-    const roots = jobs.filter(job => !job.parentJobId || !ids.has(String(job.parentJobId))).filter(matchesTab);
+    const ids = new Set(visibleJobs.map(job => String(job.id)));
+    const roots = visibleJobs.filter(job => !job.parentJobId || !ids.has(String(job.parentJobId)));
     const pagedRoots = roots.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
     const result: { job: any; depth: number; childCount: number; lineage: string[]; family: any }[] = [];
     const descendants = (job: any): any[] => (byParent.get(String(job.id)) || []).flatMap(child => [child, ...descendants(child)]);
@@ -381,17 +404,22 @@ export default function ServiceJobManagement() {
   })();
 
   const visibleRootCount = (() => {
-    const ids = new Set(jobs.map(job => String(job.id)));
-    return jobs.filter(job => (!job.parentJobId || !ids.has(String(job.parentJobId))) && matchesTab(job)).length;
+    const visibleJobs = jobs.filter(matchesTab);
+    const ids = new Set(visibleJobs.map(job => String(job.id)));
+    return visibleJobs.filter(job => !job.parentJobId || !ids.has(String(job.parentJobId))).length;
   })();
 
+  const statusFilteredJobs = statusFilter === 'all'
+    ? jobs
+    : jobs.filter(j => j.status === statusFilter);
   const counts = {
-    active:   jobs.filter(j => ACTIVE_STATUSES.includes(j.status)).length,
-    done:     jobs.filter(j => DONE_STATUSES.includes(j.status)).length,
-    archived: jobs.filter(j => ARCHIVED_STATUSES.includes(j.status)).length,
-    all:      jobs.length,
-    credit:   jobs.filter(j => Number(j.dueAmount) > 0).length,
+    active: statusFilteredJobs.filter(j => ACTIVE_STATUSES.includes(j.status)).length,
+    all:    statusFilteredJobs.length,
+    credit: statusFilteredJobs.filter(j => Number(j.dueAmount) > 0).length,
   };
+  const availableStatuses = tab === 'active'
+    ? STATUS_LIST.filter(status => ACTIVE_STATUSES.includes(status))
+    : STATUS_LIST;
 
   /* ── Edit handlers ─────────────────────────────────────────── */
   const openEdit = (j: any) => {
@@ -638,24 +666,71 @@ export default function ServiceJobManagement() {
       assignedStaffId: job.assignedStaffId ? String(job.assignedStaffId) : '',
       problemDesc: job.problemDesc ?? '',
     });
+    setReworkAvailableSerials([]);
+    setReworkSerialSearch('');
     setShowRework(true);
   };
 
+  const handleReworkProductChange = async (product: any | null) => {
+    setReworkForm(p => ({ ...p, replacementProductId: product ? String(product.id) : '', replacementSerialNumbers: '' }));
+    setReworkAvailableSerials([]);
+    setReworkSerialSearch('');
+    if (!product || !Boolean(product.hasSerial)) return;
+    setReworkSerialLoading(true);
+    try {
+      const serials = await productSerialService.getByProductId(Number(product.id));
+      setReworkAvailableSerials((serials || []).filter((serial: any) => String(serial.status).toLowerCase() === 'available'));
+    } catch {
+      Swal.fire('အမှား', 'Available Serial များ ရယူ၍မရပါ', 'error');
+    } finally {
+      setReworkSerialLoading(false);
+    }
+  };
+
+  const toggleReworkSerial = (serialNumber: string) => {
+    setReworkForm(p => {
+      const selected = p.replacementSerialNumbers.split(',').map(v => v.trim()).filter(Boolean);
+      const exists = selected.includes(serialNumber);
+      if (!exists && selected.length >= Math.max(1, Number(p.replacementQty || 1))) return p;
+      const next = exists ? selected.filter(v => v !== serialNumber) : [...selected, serialNumber];
+      return { ...p, replacementSerialNumbers: next.join(',') };
+    });
+  };
   const handleCreateRework = async () => {
     if (!reworkParent) return;
     if (!reworkForm.problemDesc.trim()) {
       Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'ပြန်လာသည့်ပြဿနာကို ဖြည့်ပါ', 'warning'); return;
     }
-    if (reworkForm.reworkType === 'REPLACEMENT' && !reworkForm.replacementItemName.trim()) {
-      Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'လဲပေးသည့်ပစ္စည်းအမည်ကို ဖြည့်ပါ', 'warning'); return;
+    const partMode = reworkForm.resolutionMode !== 'SERVICE_ONLY';
+    if (partMode && !reworkForm.originalPartId) {
+      Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'မူလလဲခဲ့သည့်ပစ္စည်းကို ရွေးပါ', 'warning'); return;
+    }
+    if (['REPLACE_SAME', 'UPGRADE'].includes(reworkForm.resolutionMode) && !reworkForm.replacementProductId) {
+      Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'အသစ်လဲပေးမည့်ပစ္စည်းကို ရွေးပါ', 'warning'); return;
+    }
+    const replacementProduct = products.find((product: any) => String(product.id) === reworkForm.replacementProductId);
+    const selectedSerialCount = reworkForm.replacementSerialNumbers.split(',').map(v => v.trim()).filter(Boolean).length;
+    if (['REPLACE_SAME', 'UPGRADE'].includes(reworkForm.resolutionMode) && Boolean(replacementProduct?.hasSerial)
+        && selectedSerialCount !== Math.max(1, Number(reworkForm.replacementQty || 1))) {
+      Swal.fire('Serial ရွေးရန်လိုအပ်သည်', `Qty ${reworkForm.replacementQty || 1} ခုအတွက် Available Serial ${reworkForm.replacementQty || 1} ခု ရွေးပါ`, 'warning'); return;
+    }    if (reworkForm.resolutionMode === 'REFUND' && (Number(reworkForm.refundAmount) <= 0 || !reworkForm.refundPaymentMethodId)) {
+      Swal.fire('အချက်အလက်လိုအပ်ပါသည်', 'ပြန်အမ်းမည့်ငွေပမာဏကို ဖြည့်ပါ', 'warning'); return;
     }
     const res = await serviceJobService.rework(reworkParent.id, {
       reworkType: reworkForm.reworkType,
       problemDesc: reworkForm.problemDesc.trim(),
       assignedStaffId: reworkForm.assignedStaffId ? Number(reworkForm.assignedStaffId) : null,
-      replacementItemName: reworkForm.reworkType === 'REPLACEMENT' ? reworkForm.replacementItemName.trim() : null,
-      replacementSerialNo: reworkForm.reworkType === 'REPLACEMENT' ? reworkForm.replacementSerialNo.trim() || null : null,
-      replacementReason: reworkForm.reworkType === 'REPLACEMENT' ? reworkForm.replacementReason.trim() || null : null,
+      resolutionMode: reworkForm.resolutionMode,
+      originalPartId: reworkForm.originalPartId ? Number(reworkForm.originalPartId) : null,
+      oldPartDisposition: partMode ? reworkForm.oldPartDisposition : null,
+      replacementProductId: reworkForm.replacementProductId ? Number(reworkForm.replacementProductId) : null,
+      replacementQty: Number(reworkForm.replacementQty || 1),
+      replacementSerialNumbers: reworkForm.replacementSerialNumbers.split(',').map(v => v.trim()).filter(Boolean),
+      warrantyCredit: reworkForm.warrantyCredit ? Number(reworkForm.warrantyCredit) : null,
+      refundAmount: reworkForm.refundAmount ? Number(reworkForm.refundAmount) : null,
+      refundPaymentMethodId: reworkForm.refundPaymentMethodId ? Number(reworkForm.refundPaymentMethodId) : null,
+      refundTransactionNo: reworkForm.refundTransactionNo.trim() || null,
+      replacementReason: reworkForm.replacementReason.trim() || null,
     });
     if (res.success) {
       setShowRework(false);
@@ -664,7 +739,6 @@ export default function ServiceJobManagement() {
       load();
     } else Swal.fire('အမှား', res.message, 'error');
   };
-
   /* ── Delete ────────────────────────────────────────────────── */
   const handleDelete = async (id: number) => {
     const { isConfirmed } = await Swal.fire({
@@ -710,11 +784,9 @@ export default function ServiceJobManagement() {
 
   /* ── Tabs config ───────────────────────────────────────────── */
   const tabDef: { key: typeof tab; label: string; count: number; active: string; inactive: string }[] = [
-    { key: 'active',   label: 'ဝန်ဆောင်မှု အမှာစာ ⚡', count: counts.active,   active: 'border-blue-500 text-blue-700 bg-blue-50',    inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'done',     label: 'ပြင်ဆင်ပြီး 🔧',        count: counts.done,     active: 'border-emerald-500 text-emerald-700 bg-emerald-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'archived', label: 'Closed / ပိတ်ပြီး ✓', count: counts.archived, active: 'border-green-500 text-green-700 bg-green-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'all',      label: 'အားလုံး',                count: counts.all,      active: 'border-slate-400 text-slate-700 bg-slate-100', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'credit',   label: 'အကြွေးကျန် 💳',         count: counts.credit,   active: 'border-rose-500 text-rose-700 bg-rose-50',    inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'active', label: 'လုပ်ဆောင်ဆဲ ⚡', count: counts.active, active: 'border-blue-500 text-blue-700 bg-blue-50',      inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'all',    label: 'အားလုံး',          count: counts.all,    active: 'border-slate-400 text-slate-700 bg-slate-100', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'credit', label: 'အကြွေးကျန် 💳',   count: counts.credit, active: 'border-rose-500 text-rose-700 bg-rose-50',      inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
   ];
 
   return (
@@ -724,7 +796,7 @@ export default function ServiceJobManagement() {
         {/* Status Tabs */}
         <div className="flex gap-1.5 px-3 pt-3 pb-2 overflow-x-auto bg-slate-50/60 border-b">
           {tabDef.map(t => (
-            <button key={t.key} onClick={() => { setTab(t.key); setPage(0); }}
+            <button key={t.key} onClick={() => { setTab(t.key); setStatusFilter('all'); setPage(0); }}
               className={`px-3.5 py-1.5 rounded-lg text-sm font-bold border-2 whitespace-nowrap transition-all flex items-center gap-1.5 ${tab === t.key ? t.active : t.inactive}`}>
               {t.label}
               <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab === t.key ? 'bg-white/60' : 'bg-slate-200 text-slate-500'}`}>
@@ -737,12 +809,22 @@ export default function ServiceJobManagement() {
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b bg-white">
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder="Job#, ဝယ်သူ, ပစ္စည်း ရှာရန်..."
+            placeholder="Job#, ဝယ်သူ၊ ပစ္စည်း — မှတ်တမ်းအားလုံးတွင် ရှာရန်..."
             className="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-48 focus:ring-2 focus:ring-purple-400" />
-          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0); }}
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white" />
-          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0); }}
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white" />
+          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value as 'all' | JobStatus); setPage(0); }}
+            aria-label="အခြေအနေဖြင့် စစ်ထုတ်ရန်"
+            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-purple-400">
+            <option value="all">အခြေအနေအားလုံး</option>
+            {availableStatuses.map(status => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
+          </select>
+          <input type="date" value={dateFrom} disabled={tab === 'active'}
+            title={tab === 'active' ? 'လုပ်ဆောင်ဆဲအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : undefined}
+            onChange={e => { setDateFrom(e.target.value); setPage(0); }}
+            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
+          <input type="date" value={dateTo} disabled={tab === 'active'}
+            title={tab === 'active' ? 'လုပ်ဆောင်ဆဲအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : undefined}
+            onChange={e => { setDateTo(e.target.value); setPage(0); }}
+            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
           <button type="button" onClick={openCreate}
             className="ml-auto px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
             + Service Job အသစ်
@@ -923,77 +1005,70 @@ export default function ServiceJobManagement() {
 
       {/* ─── Warranty / Rework / Replacement linked job ─── */}
       {showRework && reworkParent && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 bg-amber-600">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-white"><RotateCcw size={20} /> Warranty / Rework Return</h2>
-                <p className="text-xs text-amber-100 mt-0.5">မူလ Job: {reworkParent.jobNo} → New Linked Job</p>
-              </div>
-              <button onClick={() => setShowRework(false)} className="text-white/80 hover:text-white text-xl">✕</button>
+        <div className="fixed inset-0 z-50 flex items-stretch justify-center overflow-hidden bg-black/50 p-0 sm:items-center sm:p-4">
+          <div className="flex h-[100dvh] w-full max-w-3xl flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
+            <div className="z-20 flex shrink-0 items-center justify-between gap-3 bg-amber-600 px-4 py-3 sm:px-6 sm:py-4">
+              <div><h2 className="flex items-center gap-2 text-lg font-bold text-white"><RotateCcw size={20} /> Warranty / Rework</h2>
+                <p className="text-xs text-amber-100 mt-0.5">မူလ Job: {reworkParent.jobNo} → Linked Job အသစ်</p></div>
+              <button onClick={() => setShowRework(false)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl text-white/90 hover:bg-white/15 hover:text-white">✕</button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 pb-24 [scrollbar-gutter:stable] [&_input]:text-base [&_textarea]:text-base sm:space-y-5 sm:p-6 sm:pb-24 sm:[&_input]:text-sm sm:[&_textarea]:text-sm">
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-                <p className="font-bold text-slate-800">{reworkParent.itemName}</p>
-                <p className="mt-1 text-xs text-slate-500">Customer: {reworkParent.customerName}</p>
+                <p className="font-bold text-slate-800">{reworkParent.itemName}</p><p className="mt-1 text-xs text-slate-500">Customer: {reworkParent.customerName}</p>
               </div>
-
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Return အမျိုးအစား *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {[
-                    ['WARRANTY', 'Warranty', 'အာမခံဖြင့် ပြန်ပြင်'],
-                    ['REPLACEMENT', 'Replacement', 'ပစ္စည်းအသစ် လဲပေး'],
-                    ['ADDITIONAL', 'Additional', 'ပြဿနာအသစ် / အခကြေးငွေရှိ'],
-                  ].map(([value, title, note]) => (
-                    <button key={value} type="button" onClick={() => setReworkForm(p => ({ ...p, reworkType: value }))}
-                      className={`rounded-xl border-2 p-3 text-left transition-all ${reworkForm.reworkType === value ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-slate-200 hover:border-amber-300'}`}>
-                      <span className="block text-sm font-extrabold text-slate-800">{title}</span>
-                      <span className="block mt-1 text-[11px] leading-4 text-slate-500">{note}</span>
-                    </button>
-                  ))}
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">အလုပ်အမျိုးအစား *</label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{[
+                  ['WARRANTY', 'Warranty', 'အာမခံဖြင့် ပြန်ပြင်'], ['REPLACEMENT', 'Replacement', 'ပစ္စည်းပါ လဲပေး'], ['ADDITIONAL', 'Additional', 'အခကြေးငွေရှိ အလုပ်အသစ်'],
+                ].map(([value, title, note]) => <button key={value} type="button" onClick={() => setReworkForm(p => ({ ...p, reworkType: value }))}
+                  className={`min-h-16 rounded-xl border-2 p-3 text-left transition-colors ${reworkForm.reworkType === value ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200' : 'border-slate-200'}`}>
+                  <span className="block text-sm font-extrabold">{title}</span><span className="block mt-1 text-[11px] text-slate-500">{note}</span></button>)}</div>
+              </div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">ပြန်လာသည့်ပြဿနာ *</label>
+                <textarea value={reworkForm.problemDesc} onChange={e => setReworkForm(p => ({ ...p, problemDesc: e.target.value }))} rows={3}
+                  placeholder="ချို့ယွင်းချက်နှင့် ဖောက်သည်တိုင်ကြားချက်..." className="w-full border rounded-xl px-3 py-2 text-sm resize-none" /></div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-2">Part ဖြေရှင်းနည်း</label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">{[
+                  ['SERVICE_ONLY', 'Service သာ', 'Part မလဲပါ'], ['REPLACE_SAME', 'အစားထိုး', 'တန်ဖိုးတူ/အာမခံ'],
+                  ['UPGRADE', 'Upgrade', 'ကွာဟငွေကောက်မည်'], ['REFUND', 'ငွေပြန်အမ်း', 'Warranty credit အတွင်း'],
+                ].map(([value, title, note]) => <button key={value} type="button" onClick={() => setReworkForm(p => ({ ...p, resolutionMode: value }))}
+                  className={`min-h-16 rounded-xl border-2 p-3 text-left transition-colors ${reworkForm.resolutionMode === value ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                  <span className="block text-sm font-bold">{title}</span><span className="text-[10px] text-slate-500">{note}</span></button>)}</div>
+              </div>
+              {reworkForm.resolutionMode !== 'SERVICE_ONLY' && <div className="space-y-4 rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1">မူလ Job မှ Part *</label><SearchableSelect
+                    items={(reworkParent.productParts || []).map((part: any) => ({ ...part, name: `${part.productName} × ${part.qty}`, detail: `${Number(part.subtotal || 0).toLocaleString()} Ks · ${part.serialNumbers?.join?.(', ') || part.productCode || ''}` }))}
+                    value={reworkForm.originalPartId} displayField="name" subField="detail" placeholder="Part အမည်၊ code၊ serial ဖြင့်ရှာပါ..."
+                    onChange={part => setReworkForm(p => ({ ...p, originalPartId: part ? String(part.id) : '', warrantyCredit: part ? String(Number(part.unitPrice || 0) * Number(part.qty || 1) - Number(part.discountAmount || 0)) : '' }))} /></div>
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1">ပစ္စည်းဟောင်းအခြေအနေ *</label><SearchableSelect
+                    items={[{ id: 'QUARANTINE', name: 'စစ်ဆေးရန် သီးသန့်ထား', detail: 'Quarantine' }, { id: 'DAMAGED', name: 'ပျက်စီး', detail: 'Damaged' }, { id: 'SUPPLIER_RETURN', name: 'Supplier ထံပြန်ပို့', detail: 'Supplier Return' }, { id: 'REUSE', name: 'ပြန်သုံးနိုင်', detail: 'Reuse' }]}
+                    value={reworkForm.oldPartDisposition} displayField="name" subField="detail" placeholder="ပစ္စည်းဟောင်းအခြေအနေ ရှာပါ..."
+                    onChange={item => setReworkForm(p => ({ ...p, oldPartDisposition: item ? String(item.id) : '' }))} /></div>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">ပြန်လာသည့်ပြဿနာ *</label>
-                <textarea value={reworkForm.problemDesc} onChange={e => setReworkForm(p => ({ ...p, problemDesc: e.target.value }))}
-                  rows={3} placeholder="ချို့ယွင်းချက်နှင့် ဖောက်သည်တိုင်ကြားချက်..." className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
-              </div>
-
-              {reworkForm.reworkType === 'REPLACEMENT' && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-3">
-                  <div className="flex items-center gap-2 font-bold text-rose-700"><PackageCheck size={18} /> လဲပေးမည့်ပစ္စည်း</div>
-                  <input value={reworkForm.replacementItemName} onChange={e => setReworkForm(p => ({ ...p, replacementItemName: e.target.value }))}
-                    placeholder="ပစ္စည်းအသစ် အမည် / Model *" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" />
-                  <input value={reworkForm.replacementSerialNo} onChange={e => setReworkForm(p => ({ ...p, replacementSerialNo: e.target.value }))}
-                    placeholder="Serial Number (ရှိလျှင်)" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" />
-                  <textarea value={reworkForm.replacementReason} onChange={e => setReworkForm(p => ({ ...p, replacementReason: e.target.value }))}
-                    rows={2} placeholder="လဲပေးရသည့်အကြောင်းရင်း..." className="w-full border rounded-xl px-3 py-2 text-sm bg-white resize-none" />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">တာဝန်ခံကျွမ်းကျင်သူ</label>
-                <select value={reworkForm.assignedStaffId} onChange={e => setReworkForm(p => ({ ...p, assignedStaffId: e.target.value }))}
-                  className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
-                  <option value="">— မူလတာဝန်ခံ / မရွေးထား —</option>
-                  {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
-                </select>
-              </div>
-
-              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-                Linked Job အသစ်သည် <b>လက်ခံပြီး</b> အခြေအနေမှ စတင်မည်။ ပြီးလျှင် <b>Complete</b>၊ ဖောက်သည်ကို ပေးပြီးလျှင် <b>Closed</b> လုပ်နိုင်သည်။
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowRework(false)} className="px-4 py-2 border rounded-xl text-sm font-semibold text-slate-600">မလုပ်တော့ပါ</button>
-                <button type="button" onClick={handleCreateRework} className="px-5 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700">New Linked Job ဖန်တီးမည်</button>
-              </div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1">Warranty Credit (အများဆုံး မူလ Part တန်ဖိုး)</label><input type="number" min="0" value={reworkForm.warrantyCredit} onChange={e => setReworkForm(p => ({ ...p, warrantyCredit: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /></div>
+                {['REPLACE_SAME', 'UPGRADE'].includes(reworkForm.resolutionMode) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1">အသစ်လဲပေးမည့် Product *</label><SearchableSelect items={products.map((product: any) => ({ ...product, reworkDetail: `${product.code || product.barcode || ""} · ${Number(product.sellingPrice || 0).toLocaleString()} Ks · Stock ${product.stockQty ?? 0}` }))} value={reworkForm.replacementProductId} displayField="name" subField="reworkDetail" placeholder="Product၊ code၊ barcode ဖြင့်ရှာပါ..." onChange={product => void handleReworkProductChange(product)} /></div>
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1">Qty</label><input type="number" min="1" value={reworkForm.replacementQty} onChange={e => setReworkForm(p => ({ ...p, replacementQty: e.target.value, replacementSerialNumbers: p.replacementSerialNumbers.split(",").map(v => v.trim()).filter(Boolean).slice(0, Math.max(1, Number(e.target.value || 1))).join(",") }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /></div>
+                  <div className="sm:col-span-2"><label className="block text-xs font-bold text-slate-600 mb-1">Replacement Serial ရွေးပါ</label>
+                    {!reworkForm.replacementProductId ? <div className="rounded-xl border border-dashed bg-white p-3 text-xs text-slate-500">Product ကိုအရင်ရွေးပါ</div> :
+                    !Boolean(products.find((product: any) => String(product.id) === reworkForm.replacementProductId)?.hasSerial) ? <div className="rounded-xl border bg-emerald-50 p-3 text-xs font-semibold text-emerald-700">ဤ Product သည် Serial မလိုပါ။ Stock Qty ကိုသာ စစ်ဆေးမည်။</div> :
+                    <div className="rounded-xl border bg-white p-3 space-y-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><input value={reworkSerialSearch} onChange={e => setReworkSerialSearch(e.target.value)} placeholder="Serial Number ရှာပါ..." className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" /><span className="whitespace-nowrap text-xs font-bold text-blue-700">ရွေးထား {reworkForm.replacementSerialNumbers.split(',').filter(Boolean).length}/{Math.max(1, Number(reworkForm.replacementQty || 1))}</span></div>
+                      <div className="max-h-44 overflow-y-auto rounded-lg border divide-y">{reworkSerialLoading ? <div className="p-3 text-xs text-slate-500">Serial များရယူနေသည်...</div> : reworkAvailableSerials.filter((serial: any) => String(serial.serialNumber || '').toLowerCase().includes(reworkSerialSearch.toLowerCase())).length === 0 ? <div className="p-3 text-xs text-rose-600">Available Serial မရှိပါ</div> : reworkAvailableSerials.filter((serial: any) => String(serial.serialNumber || '').toLowerCase().includes(reworkSerialSearch.toLowerCase())).map((serial: any) => { const checked = reworkForm.replacementSerialNumbers.split(',').includes(serial.serialNumber); return <label key={serial.id || serial.serialNumber} className={`flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-blue-50 ${checked ? 'bg-blue-50' : ''}`}><input type="checkbox" checked={checked} onChange={() => toggleReworkSerial(serial.serialNumber)} /><span className="font-mono font-bold text-slate-700">{serial.serialNumber}</span><span className="ml-auto text-[10px] font-bold text-emerald-600">Available</span></label>; })}</div>
+                    </div>}</div>
+                </div>}
+                {reworkForm.resolutionMode === 'REFUND' && <div><label className="block text-xs font-bold text-slate-600 mb-1">ပြန်အမ်းမည့်ငွေ *</label><input type="number" min="0" value={reworkForm.refundAmount} onChange={e => setReworkForm(p => ({ ...p, refundAmount: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3"><SearchableSelect items={payMethods.map((pm: any) => ({ ...pm, name: pm.methodName, detail: pm.accountName || "Cash / Bank" }))} value={reworkForm.refundPaymentMethodId} displayField="name" subField="detail" placeholder="ပြန်အမ်းမည့် Cash/Bank ရှာပါ..." onChange={pm => setReworkForm(p => ({ ...p, refundPaymentMethodId: pm ? String(pm.id) : "" }))} /><input value={reworkForm.refundTransactionNo} onChange={e => setReworkForm(p => ({ ...p, refundTransactionNo: e.target.value }))} placeholder="Transaction No. (optional)" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /></div><p className="mt-1 text-[11px] text-emerald-700">ငွေထွက် Payment Transaction နှင့် Refund Journal ကို အလိုအလျောက်ရေးမည်။</p></div>}
+                <textarea value={reworkForm.replacementReason} onChange={e => setReworkForm(p => ({ ...p, replacementReason: e.target.value }))} rows={2} placeholder="လဲ/အမ်းရသည့်အကြောင်းရင်း..." className="w-full border rounded-xl px-3 py-2 text-sm bg-white resize-none" />
+              </div>}
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">တာဝန်ခံကျွမ်းကျင်သူ</label><SearchableSelect items={staffList.map((staff: any) => ({ ...staff, detail: staff.role || staff.phone || "" }))} value={reworkForm.assignedStaffId} displayField="name" subField="detail" placeholder="ကျွမ်းကျင်သူအမည်၊ role ဖြင့်ရှာပါ..." onChange={staff => setReworkForm(p => ({ ...p, assignedStaffId: staff ? String(staff.id) : "" }))} /></div>
+              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">Replacement part သည် Linked Job Part အဖြစ်ဝင်ပြီး settlement လုပ်ချိန်တွင်သာ stock ထွက်မည်။ ပစ္စည်းဟောင်းသည် stock ထပ်မလျော့ဘဲ disposition/serial audit မှတ်တမ်းဝင်မည်။</div>
+              <div className="sticky bottom-0 z-30 -mx-3 -mb-24 flex flex-col-reverse gap-2 border-t bg-white/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:flex-row sm:justify-end sm:px-6"><button type="button" onClick={() => setShowRework(false)} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold">မလုပ်တော့ပါ</button><button type="button" onClick={handleCreateRework} className="min-h-11 rounded-xl bg-amber-600 px-5 py-2 text-sm font-bold text-white hover:bg-amber-700">Linked Job ဖန်တီးမည်</button></div>
             </div>
           </div>
         </div>
       )}
-
       {/* ─── Create Modal ─── */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
@@ -1147,19 +1222,19 @@ export default function ServiceJobManagement() {
 
       {/* ─── Edit Modal ─── */}
       {showEdit && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl">
-            <div className="flex items-center justify-between px-6 py-4 bg-purple-600 rounded-t-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-0 sm:p-4">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-2xl">
+            <div className="flex shrink-0 items-center justify-between gap-3 bg-purple-600 px-4 py-3 sm:px-6 sm:py-4 sm:rounded-t-2xl">
               <div>
                 <h2 className="text-lg font-bold text-white">✏ ဝန်ဆောင်မှု ပြင်ဆင်ရန်</h2>
                 <p className="text-xs text-purple-200 mt-0.5">{editJobNo}</p>
               </div>
-              <button onClick={() => setShowEdit(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => setShowEdit(false)} aria-label="ပိတ်ရန်" className="shrink-0 rounded-lg p-2 text-xl leading-none text-white/70 hover:bg-white/10 hover:text-white">✕</button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
               {/* Status + Technician */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">အခြေအနေ</label>
                   <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
@@ -1210,7 +1285,7 @@ export default function ServiceJobManagement() {
               </div>
 
               {/* Est. Completion + Est. Cost */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">ခန့်မှန်းပြီးစီးရက်</label>
                   <input type="datetime-local" value={form.estimatedCompletion}
@@ -1236,7 +1311,7 @@ export default function ServiceJobManagement() {
                 {form.lines.length > 0 ? (
                   <div className="space-y-2">
                     {form.lines.map((line: any, li: number) => (
-                      <div key={li} className="border rounded-xl p-3 bg-slate-50 space-y-2">
+                      <div key={li} className="min-w-0 space-y-2 rounded-xl border bg-slate-50 p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 uppercase">ဝန်ဆောင်မှု #{li + 1}</span>
                           <button type="button"
@@ -1269,7 +1344,7 @@ export default function ServiceJobManagement() {
                             }}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <div>
                             <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
                             <input type="number" min={1} value={line.qty}
@@ -1307,7 +1382,7 @@ export default function ServiceJobManagement() {
                 {form.productParts.length > 0 ? (
                   <div className="space-y-2">
                     {form.productParts.map((part: any, pi: number) => (
-                      <div key={pi} className="border rounded-xl p-3 bg-slate-50 space-y-2">
+                      <div key={pi} className="min-w-0 space-y-2 rounded-xl border bg-slate-50 p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 uppercase">ပစ္စည်း #{pi + 1}</span>
                           <button type="button"
@@ -1354,7 +1429,7 @@ export default function ServiceJobManagement() {
                             }}
                           />
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                           <div>
                             <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
                             <input type="number" min={1} value={part.qty}
@@ -1463,11 +1538,11 @@ export default function ServiceJobManagement() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-slate-50 rounded-b-2xl">
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4 sm:rounded-b-2xl">
               <button onClick={() => setShowEdit(false)}
-                className="px-5 py-2 text-sm border rounded-xl text-slate-600 hover:bg-slate-100 font-medium">မလုပ်တော့</button>
+                className="w-full rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 sm:w-auto sm:py-2">မလုပ်တော့</button>
               <button onClick={handleSave}
-                className="px-6 py-2 text-sm bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 shadow">
+                className="w-full rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-purple-700 sm:w-auto sm:py-2">
                 သိမ်းမယ်
               </button>
             </div>

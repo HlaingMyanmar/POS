@@ -36,6 +36,7 @@ import VoucherSettingsPage from './pages/VoucherSettingsPage';
 import ServiceManagement from './pages/ServiceManagement';
 import BookingManagement from './pages/BookingManagement';
 import ServiceJobManagement from './pages/ServiceJobManagement';
+import ServiceHelpPage from './pages/ServiceHelpPage';
 import ShelfLocationManagement from './pages/ShelfLocationManagement';
 import AuditLogManagement from './pages/AuditLogManagement';
 import SalesRankingPage from './pages/SalesRankingPage';
@@ -245,6 +246,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.BOOKINGS}            element={guard(<BookingManagement />,          'CAN_ACCESS_BOOKING_READ')} />
           <Route path={AppRoute.SERVICES}            element={guard(<ServiceManagement />,          'CAN_ACCESS_SERVICE_READ')} />
           <Route path={AppRoute.SERVICE_JOBS}        element={guard(<ServiceJobManagement />,       'CAN_ACCESS_SERVICE_JOB_READ')} />
+          <Route path={AppRoute.SERVICE_HELP}        element={guard(<ServiceHelpPage />)} />
           <Route path={AppRoute.SHELF_LOCATIONS}     element={guard(<ShelfLocationManagement />,    'CAN_ACCESS_SHELF_LOCATION_READ')} />
           <Route path={AppRoute.BACKUP}              element={guard(<BackupSettings />,             'CAN_ACCESS_BACKUP_SETTINGS_READ')} />
           <Route path={AppRoute.COMPANY_SETTINGS}    element={guard(<CompanySettingsPage />)} />

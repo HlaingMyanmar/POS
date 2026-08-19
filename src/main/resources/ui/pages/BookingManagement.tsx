@@ -1,6 +1,6 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { bookingService, serviceJobService, api } from '../services/api';
+import { bookingService, api } from '../services/api';
 import { shelfLocationService } from '../services/shelfLocationApiService';
 import { staffService } from '../services/staffapiservice';
 import { ApiResponse } from '../types';
@@ -11,8 +11,18 @@ import { BriefcaseBusiness, Pencil, Printer, Trash2 } from 'lucide-react';
 
 const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'Other'];
 
+const BOOKING_STATUSES = ['Pending', 'Confirmed', 'IN_STORAGE', 'Converted', 'Completed', 'Cancelled'] as const;
+type BookingStatus = typeof BOOKING_STATUSES[number];
+const WAITING_STATUSES: BookingStatus[] = ['Pending', 'Confirmed', 'IN_STORAGE'];
+
+const getLocalToday = () => {
+  const now = new Date();
+  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+};
+
 const STATUS_COLOR: Record<string, string> = {
   Pending:     'bg-amber-100 text-amber-700',
+  Confirmed:   'bg-blue-100 text-blue-700',
   IN_STORAGE:  'bg-teal-100 text-teal-700',
   Converted:   'bg-purple-100 text-purple-700',
   Completed:   'bg-emerald-100 text-emerald-700',
@@ -37,7 +47,6 @@ const emptyDevice = (): DeviceEntry => ({
 const emptyForm = {
   customerId: '', staffId: '',
   totalAmount: '', shelfLocation: '', remark: '',
-  reworkReturn: false, parentServiceJobId: '', reworkType: 'WARRANTY',
   devices: [emptyDevice()] as DeviceEntry[],
 };
 
@@ -265,13 +274,15 @@ export default function BookingManagement() {
   const [bookings, setBookings]   = useState<any[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
+  const [tab, setTab]             = useState<'waiting' | 'all' | 'converted'>('waiting');
+  const [statusFilter, setStatusFilter] = useState<'all' | BookingStatus>('all');
   const [customers, setCustomers] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [shelves, setShelves]     = useState<any[]>([]);
-  const [closedJobs, setClosedJobs] = useState<any[]>([]);
   const [search, setSearch]       = useState('');
-  const [dateFrom, setDateFrom]   = useState('');
-  const [dateTo, setDateTo]       = useState('');
+  const [defaultDate]             = useState(getLocalToday);
+  const [dateFrom, setDateFrom]   = useState(defaultDate);
+  const [dateTo, setDateTo]       = useState(defaultDate);
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId]       = useState<number | null>(null);
   const [form, setForm]           = useState({ ...emptyForm, devices: [emptyDevice()] });
@@ -281,7 +292,11 @@ export default function BookingManagement() {
   const PAGE_SIZE = 20;
 
   const load = async () => {
-    const res = await bookingService.getAll(page, PAGE_SIZE, search, dateFrom, dateTo);
+    const globalSearch = tab === 'all' && search.trim().length > 0;
+    const ignoresDateRange = tab !== 'all' || globalSearch;
+    const effectiveDateFrom = ignoresDateRange ? '' : dateFrom;
+    const effectiveDateTo = ignoresDateRange ? '' : dateTo;
+    const res = await bookingService.getAll(0, 5000, search, effectiveDateFrom, effectiveDateTo);
     if (res.success) {
       setBookings(res.data?.content ?? []);
       setTotal(res.data?.totalElements ?? 0);
@@ -290,11 +305,10 @@ export default function BookingManagement() {
 
   const loadReferenceData = async () => {
     try {
-      const [customerRes, staffRes, shelfRes, jobRes] = await Promise.allSettled([
+      const [customerRes, staffRes, shelfRes] = await Promise.allSettled([
         api.get<any, any>('/v1/customers?size=999'),
         staffService.getAllActive(),
         shelfLocationService.getActive(),
-        serviceJobService.getAll(0, 500),
       ]);
 
       if (customerRes.status === 'fulfilled') {
@@ -303,11 +317,6 @@ export default function BookingManagement() {
       }
       if (staffRes.status === 'fulfilled') setStaffList(Array.isArray(staffRes.value) ? staffRes.value : []);
       if (shelfRes.status === 'fulfilled') setShelves(Array.isArray(shelfRes.value) ? shelfRes.value : []);
-      if (jobRes.status === 'fulfilled') {
-        const payload = jobRes.value as any;
-        const rows = payload?.data?.content ?? payload?.data ?? [];
-        setClosedJobs(Array.isArray(rows) ? rows.filter((j: any) => j.status === 'DELIVERED') : []);
-      }
     } catch {
       // ignore
     }
@@ -316,7 +325,7 @@ export default function BookingManagement() {
   useEffect(() => {
     void load();
     void loadReferenceData();
-  }, [page, search, dateFrom, dateTo]);
+  }, [tab, search, dateFrom, dateTo]);
   useRefreshOnTabActivate(() => {
     void load();
     void loadReferenceData();
@@ -360,9 +369,6 @@ export default function BookingManagement() {
       totalAmount:   b.totalAmount ? String(b.totalAmount) : '',
       shelfLocation: b.shelfLocation ?? '',
       remark:        b.remark ?? '',
-      reworkReturn:  Boolean(b.reworkReturn),
-      parentServiceJobId: b.parentServiceJobId ? String(b.parentServiceJobId) : '',
-      reworkType:    b.reworkType ?? 'WARRANTY',
       devices,
     });
     setEditId(b.id);
@@ -392,8 +398,6 @@ export default function BookingManagement() {
     const hasEmptyProblem = form.devices.some(d => !d.problemDesc.trim());
     if (hasEmptyBrand) { Swal.fire('Error', 'Device တိုင်းအတွက် Brand ဖြည့်ပါ', 'error'); return; }
     if (hasEmptyProblem) { Swal.fire('Error', 'Device တိုင်းအတွက် ပြဿနာဖော်ပြချက် ဖြည့်ပါ', 'error'); return; }
-    if (form.reworkReturn && !form.parentServiceJobId) { Swal.fire('Error', 'မူလ Service Job ကို ရွေးပါ', 'error'); return; }
-    if (form.reworkReturn && !form.reworkType) { Swal.fire('Error', 'Rework အမျိုးအစားကို ရွေးပါ', 'error'); return; }
 
     // Use first device's fields as the booking-level device info (legacy compat)
     const first = form.devices[0];
@@ -402,21 +406,20 @@ export default function BookingManagement() {
       staffId:       form.staffId ? Number(form.staffId) : null,
       totalAmount:   form.totalAmount ? Number(form.totalAmount) : 0,
       shelfLocation: form.shelfLocation || null,
-      reworkReturn: form.reworkReturn,
-      parentServiceJobId: form.reworkReturn ? Number(form.parentServiceJobId) : null,
-      reworkType: form.reworkReturn ? form.reworkType : null,
       remark:        form.remark || null,
       deviceType:    first.deviceType,
       brand:         first.brand,
       model:         first.model,
       serialNumber:  first.serialNumber || null,
       color:         first.color || null,
+      accessories:   first.accessories || null,
       devices: form.devices.map(d => ({
         deviceType:       d.deviceType,
         brand:            d.brand,
         model:            d.model,
         serialNumber:     d.serialNumber || null,
         color:            d.color || null,
+        accessories:      d.accessories || null,
         problemDesc:      d.problemDesc || null,
         deviceConditions: d.deviceConditions || null,
       })),
@@ -436,7 +439,7 @@ export default function BookingManagement() {
 
   const handleConvertToJob = async (id: number) => {
     const b = bookings.find(b => b.id === id);
-    const deviceCount = b?.devices?.length ?? 1;
+    const deviceCount = Math.max(1, b?.devices?.length ?? 0);
     const { isConfirmed } = await Swal.fire({
       title: 'Service Job သို့ပြောင်းမည်',
       text: `Device ${deviceCount} ခုအတွက် Job Order ${deviceCount} ခု ဖန်တီးမည်။ ပြောင်းပြီးနောက် Intake ကို မပြင်နိုင်တော့ပါ`,
@@ -447,7 +450,8 @@ export default function BookingManagement() {
 
     const res = await bookingService.convertToJob(id);
     if (res.success) {
-      Swal.fire({ icon: 'success', title: `Service Job ${deviceCount} ခု ဖန်တီးပြီး`, timer: 1500, showConfirmButton: false });
+      const createdCount = Array.isArray(res.data) ? res.data.length : deviceCount;
+      Swal.fire({ icon: 'success', title: `Service Job ${createdCount} ခု ဖန်တီးပြီး`, timer: 1500, showConfirmButton: false });
       load();
     } else Swal.fire('Error', res.message, 'error');
   };
@@ -462,21 +466,62 @@ export default function BookingManagement() {
     if (res.success) load();
   };
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const matchesTab = (booking: any) => {
+    const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
+    const matchesWaiting = tab !== 'waiting' || WAITING_STATUSES.includes(booking.status);
+    const matchesConverted = tab !== 'converted' || booking.status === 'Converted';
+    return matchesStatus && matchesWaiting && matchesConverted;
+  };
+  const filteredBookings = bookings.filter(matchesTab);
+  const visibleBookings = filteredBookings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredBookings.length / PAGE_SIZE);
+  const counts = {
+    waiting: bookings.filter(b => WAITING_STATUSES.includes(b.status)).length,
+    all: bookings.length,
+    converted: bookings.filter(b => b.status === 'Converted').length,
+  };
+  const availableStatuses = tab === 'waiting'
+    ? BOOKING_STATUSES.filter(status => WAITING_STATUSES.includes(status))
+    : tab === 'converted' ? (['Converted'] as BookingStatus[]) : BOOKING_STATUSES;
+  const tabDef = [
+    { key: 'waiting' as const, label: 'စောင့်ဆိုင်းဆဲ ⚡', count: counts.waiting, active: 'border-blue-500 bg-blue-50 text-blue-700' },
+    { key: 'all' as const, label: 'အားလုံး', count: counts.all, active: 'border-slate-400 bg-slate-100 text-slate-700' },
+    { key: 'converted' as const, label: 'Job ပြောင်းပြီး ✓', count: counts.converted, active: 'border-purple-500 bg-purple-50 text-purple-700' },
+  ];
 
   return (
     <div>
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        {/* Workflow tabs */}
+        <div className="flex gap-1.5 overflow-x-auto border-b bg-slate-50/60 px-3 pb-2 pt-3">
+          {tabDef.map(item => (
+            <button key={item.key} type="button" onClick={() => { setTab(item.key); setStatusFilter('all'); setPage(0); }}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg border-2 px-3.5 py-1.5 text-sm font-bold transition-all ${tab === item.key ? item.active : 'border-transparent text-slate-500 hover:bg-slate-100'}`}>
+              {item.label}
+              <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${tab === item.key ? 'bg-white/60' : 'bg-slate-200 text-slate-500'}`}>{item.count}</span>
+            </button>
+          ))}
+        </div>
+
         {/* Toolbar: search + filters + button */}
         <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b bg-slate-50/60">
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
             placeholder="Intake#၊ ဖောက်သည်၊ ပစ္စည်း ရှာပါ..."
             className="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-44 focus:ring-2 focus:ring-indigo-300 bg-white" />
-          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0); }}
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white" />
-          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0); }}
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white" />
+          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value as 'all' | BookingStatus); setPage(0); }}
+            aria-label="အခြေအနေဖြင့် စစ်ထုတ်ရန်" className="border rounded-lg px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-300">
+            <option value="all">အခြေအနေအားလုံး</option>
+            {availableStatuses.map(status => <option key={status} value={status}>{status}</option>)}
+          </select>
+          <input type="date" value={dateFrom} disabled={tab !== 'all'}
+            title={tab !== 'all' ? 'ဤ tab တွင် မှတ်တမ်းအားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : undefined}
+            onChange={e => { setDateFrom(e.target.value); setPage(0); }}
+            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
+          <input type="date" value={dateTo} disabled={tab !== 'all'}
+            title={tab !== 'all' ? 'ဤ tab တွင် မှတ်တမ်းအားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : undefined}
+            onChange={e => { setDateTo(e.target.value); setPage(0); }}
+            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
           <button onClick={openNew}
             className="ml-auto px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm whitespace-nowrap">
             + ပစ္စည်းလက်ခံ
@@ -492,7 +537,7 @@ export default function BookingManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {bookings.map((b, i) => {
+              {visibleBookings.map((b, i) => {
                 const dev       = b.devices?.[0];
                 const devCount  = b.devices?.length ?? 0;
                 const devStr    = [dev?.brand ?? b.brand, dev?.model ?? b.model].filter(Boolean).join(' ');
@@ -509,12 +554,6 @@ export default function BookingManagement() {
                       <td className="px-3 py-3 text-xs text-slate-400">{page * PAGE_SIZE + i + 1}</td>
                       <td className="px-3 py-3">
                         <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{b.invoiceNo}</span>
-                        {b.reworkReturn && (
-                          <div className="mt-1.5 w-fit rounded-lg border border-amber-300 bg-amber-50 px-2 py-1">
-                            <div className="text-[10px] font-black text-amber-800">↻ REWORK RETURN</div>
-                            <div className="text-[10px] font-semibold text-slate-500">မူလ Job → <span className="font-mono font-black text-purple-700">{b.parentServiceJobNo || `#${b.parentServiceJobId}`}</span></div>
-                          </div>
-                        )}
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{b.bookingDate?.slice(0, 10)}</td>
                       <td className="px-3 py-3">
@@ -653,8 +692,8 @@ export default function BookingManagement() {
             <div className="p-6 space-y-5">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <button type="button" onClick={() => setStep('customer')} className={`px-3 py-1.5 rounded-full ${step === 'customer' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>1. Customer</button>
-                <button type="button" onClick={() => form.customerId && (!form.reworkReturn || (form.parentServiceJobId && form.reworkType)) && setStep('device')} className={`px-3 py-1.5 rounded-full ${step === 'device' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || (form.reworkReturn && (!form.parentServiceJobId || !form.reworkType))}>2. Device</button>
-                <button type="button" onClick={() => form.devices.every(d => d.brand.trim() && d.problemDesc.trim()) && setStep('review')} className={`px-3 py-1.5 rounded-full ${step === 'review' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || (form.reworkReturn && !form.parentServiceJobId) || !form.devices.every(d => d.brand.trim() && d.problemDesc.trim())}>3. Review</button>
+                <button type="button" onClick={() => form.customerId && setStep('device')} className={`px-3 py-1.5 rounded-full ${step === 'device' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId}>2. Device</button>
+                <button type="button" onClick={() => form.devices.every(d => d.brand.trim() && d.problemDesc.trim()) && setStep('review')} className={`px-3 py-1.5 rounded-full ${step === 'review' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`} disabled={!form.customerId || !form.devices.every(d => d.brand.trim() && d.problemDesc.trim())}>3. Review</button>
               </div>
 
               {step === 'customer' && (
@@ -664,71 +703,12 @@ export default function BookingManagement() {
                     <CustomerCombo
                       customers={customers}
                       value={form.customerId}
-                      onChange={id => setForm(p => ({ ...p, customerId: id, parentServiceJobId: '' }))}
+                      onChange={id => setForm(p => ({ ...p, customerId: id }))}
                       onCreated={(c) => {
                         setCustomers(prev => prev.some(x => x.id === c.id) ? prev : [c, ...prev]);
                       }}
                     />
                   </div>
-                  {form.customerId && (
-                    <section className={`rounded-xl border-2 p-4 transition-colors ${form.reworkReturn ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'}`}>
-                      <p className="text-sm font-black text-slate-800">↻ Rework / Warranty Return လား?</p>
-                      <p className="mt-1 text-xs text-slate-500">ယခင်ဝန်ဆောင်မှုလုပ်ငန်းမှ ပြန်လည်လက်ခံသည့်ပစ္စည်း ဟုတ်/မဟုတ် ရွေးပါ။</p>
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <button type="button" onClick={() => setForm(p => ({ ...p, reworkReturn: false, parentServiceJobId: '' }))}
-                          className={`rounded-xl border px-4 py-3 text-sm font-bold ${!form.reworkReturn ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 bg-white text-slate-600'}`}>
-                          မဟုတ်ပါ — ပုံမှန်လက်ခံ
-                        </button>
-                        <button type="button" onClick={() => setForm(p => ({ ...p, reworkReturn: true }))}
-                          className={`rounded-xl border px-4 py-3 text-sm font-bold ${form.reworkReturn ? 'border-amber-500 bg-amber-100 text-amber-900 ring-2 ring-amber-200' : 'border-slate-200 bg-white text-slate-600'}`}>
-                          ဟုတ်ပါတယ် — Rework Return
-                        </button>
-                      </div>
-
-                      {form.reworkReturn && (
-                        <div className="mt-4 grid grid-cols-1 gap-3 border-t border-amber-200 pt-4 md:grid-cols-2">
-                          <div>
-                            <label className="mb-1.5 block text-xs font-bold text-amber-800">မူလ Service Job *</label>
-                            <SearchableSelect value={form.parentServiceJobId} placeholder="Job No၊ စက်အမည်၊ Serial No ဖြင့်ရှာပါ..."
-                              options={closedJobs.filter((j: any) => String(j.customerId) === String(form.customerId)).map((j: any) => ({
-                                value: String(j.id),
-                                label: `${j.jobNo} — ${j.itemName || 'Device'}${j.serialNo ? ` · SN: ${j.serialNo}` : ''}`,
-                                searchText: `${j.customerName || ''} ${j.problemDesc || ''}`,
-                              }))}
-                              onChange={selectedId => {
-                              const job = closedJobs.find((j: any) => String(j.id) === selectedId);
-                              setForm(p => ({
-                                ...p,
-                                parentServiceJobId: selectedId,
-                                staffId: job?.assignedStaffId ? String(job.assignedStaffId) : p.staffId,
-                                totalAmount: '0',
-                                remark: job ? `Rework Return from ${job.jobNo}` : p.remark,
-                                devices: job ? p.devices.map((d, idx) => idx === 0 ? {
-                                  ...d,
-                                  brand: job.itemName || d.brand,
-                                  serialNumber: job.serialNo || d.serialNumber,
-                                  color: job.color || d.color,
-                                  problemDesc: job.problemDesc || d.problemDesc,
-                                  deviceConditions: job.deviceConditions || d.deviceConditions,
-                                } : d) : p.devices,
-                              }));
-                            }} />
-                            {form.parentServiceJobId && <p className="mt-1 text-[11px] font-semibold text-emerald-700">မူလ Job မှ ပစ္စည်း၊ ပြဿနာနှင့် တာဝန်ခံအချက်အလက်များ ဖြည့်ပြီးပါပြီ။</p>}
-                            {closedJobs.filter((j: any) => String(j.customerId) === String(form.customerId)).length === 0 && <p className="mt-1 text-[11px] font-semibold text-rose-600">ဤဖောက်သည်အတွက် Closed Service Job မတွေ့ပါ။</p>}
-                          </div>
-                          <div>
-                            <label className="mb-1.5 block text-xs font-bold text-amber-800">Rework အမျိုးအစား *</label>
-                            <SearchableSelect value={form.reworkType} placeholder="Rework အမျိုးအစား ရှာပါ..." onChange={reworkType => setForm(p => ({ ...p, reworkType }))}
-                              options={[
-                                { value: 'WARRANTY', label: 'Warranty — အာမခံပြန်ပြင်', searchText: 'free repair' },
-                                { value: 'REPLACEMENT', label: 'Replacement — ပစ္စည်းလဲပေး', searchText: 'exchange replace' },
-                                { value: 'ADDITIONAL', label: 'Additional — ထပ်ဆောင်းပြဿနာ', searchText: 'extra service' },
-                              ]} />
-                          </div>
-                        </div>
-                      )}
-                    </section>
-                  )}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                     <p className="font-semibold text-slate-700">လုပ်ငန်းစဉ်</p>
                     <ul className="list-disc ml-5 mt-2 space-y-1">
@@ -738,7 +718,7 @@ export default function BookingManagement() {
                     </ul>
                   </div>
                   <div className="flex justify-end">
-                    <button type="button" onClick={() => form.customerId && (!form.reworkReturn || (form.parentServiceJobId && form.reworkType)) && setStep('device')} disabled={!form.customerId || (form.reworkReturn && (!form.parentServiceJobId || !form.reworkType))} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">Next</button>
+                    <button type="button" onClick={() => form.customerId && setStep('device')} disabled={!form.customerId} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">Next</button>
                   </div>
                 </section>
               )}
@@ -770,13 +750,6 @@ export default function BookingManagement() {
 
               {step === 'review' && (
                 <section className="space-y-4">
-                  {form.reworkReturn && (
-                    <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-sm">
-                      <p className="font-black text-amber-900">↻ Rework / Warranty Return</p>
-                      <p className="mt-1 text-amber-800">မူလ Job: {closedJobs.find((j: any) => String(j.id) === String(form.parentServiceJobId))?.jobNo || '—'} · {form.reworkType}</p>
-                    </div>
-                  )}
-
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Review</p>

@@ -56,7 +56,7 @@ function buildGroups(logs: AuditLogDTO[]): SessionGroup[] {
 }
 
 /* ── session card ─────────────────────────────────────────────── */
-function SessionCard({ group }: { group: SessionGroup }) {
+function SessionCard({ group }: { group: SessionGroup; key?: React.Key }) {
   const [open, setOpen] = useState(false);
   const initial = (group.actor || 'U')[0].toUpperCase();
 

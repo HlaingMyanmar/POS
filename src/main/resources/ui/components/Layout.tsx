@@ -47,7 +47,8 @@ import {
   X,
   ChevronRight,
   ChevronDown,
-  Smartphone
+  Smartphone,
+  CircleHelp
 } from 'lucide-react';
 import { AppLanguage, AppRoute, AppTheme, User } from '../types';
 import { creditAlertService } from '../services/creditalertapiservice';
@@ -211,6 +212,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ဝန်ဆောင်မှုလုပ်ငန်း', icon: <Wrench size={18} />, path: AppRoute.SERVICE_JOBS, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_SERVICE_JOB_READ' },
       { name: 'ကန့်တည်နေရာ', icon: <Package size={18} />, path: AppRoute.SHELF_LOCATIONS, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_SHELF_LOCATION_READ' },
       { name: 'ဝန်ဆောင်မှုစာရင်း', icon: <Scissors size={18} />, path: AppRoute.SERVICES, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_SERVICE_READ' },
+      { name: 'အသုံးပြုနည်းလမ်းညွှန်', icon: <CircleHelp size={18} />, path: AppRoute.SERVICE_HELP, group: 'ဝန်ဆောင်မှု' },
       { name: 'အရန်သိမ်းဆည်း', icon: <Database size={18} />, path: AppRoute.BACKUP, group: 'ဆက်တင်', permission: 'CAN_ACCESS_BACKUP_SETTINGS_READ' },
       { name: 'ကုမ္ပဏီဆက်တင်', icon: <Settings size={18} />, path: AppRoute.COMPANY_SETTINGS, group: 'ဆက်တင်' },
       { name: 'ပရင့်ဒီဇိုင်း', icon: <FileText size={18} />, path: AppRoute.VOUCHER_SETTINGS, group: 'ဆက်တင်' },

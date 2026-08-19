@@ -44,4 +44,28 @@ public class BackupSettings {
 
     @Column(name = "mysqldump_path", length = 500)
     private String mysqldumpPath;
+
+    @Column(name = "daily_enabled", nullable = false)
+    private boolean dailyEnabled = true;
+
+    @Column(name = "daily_time")
+    private LocalTime dailyTime = LocalTime.of(5, 30);
+
+    @Column(name = "weekly_enabled", nullable = false)
+    private boolean weeklyEnabled = true;
+
+    @Column(name = "weekly_day")
+    private Integer weeklyDay = 7;
+
+    @Column(name = "weekly_time")
+    private LocalTime weeklyTime = LocalTime.of(5, 40);
+
+    @Column(name = "monthly_enabled", nullable = false)
+    private boolean monthlyEnabled = true;
+
+    @Column(name = "monthly_day")
+    private Integer monthlyDay = 1;
+
+    @Column(name = "monthly_time")
+    private LocalTime monthlyTime = LocalTime.of(5, 50);
 }

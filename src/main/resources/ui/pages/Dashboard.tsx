@@ -1,427 +1,125 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight,
-  BadgeCheck,
-  BarChart3,
-  Boxes,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardCheck,
-  Clock3,
-  Factory,
-  Filter,
-  Layers3,
-  PackageCheck,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  ReceiptText,
-  Search,
-  ShieldCheck,
-  ShoppingCart,
-  Truck,
+  AlertTriangle, ArrowRight, CheckCircle2, Clock3, CreditCard, FileText, Package,
+  PackageCheck, RefreshCw, ShoppingCart, Store, Undo2, Wrench,
 } from 'lucide-react';
-import { AppRoute } from '../types';
+import { AppRoute, DashboardStats } from '../types';
+import { dashboardService } from '../services/api';
 
-type ErpModuleKey = 'purchase' | 'supplier' | 'stock' | 'sale';
-type ModuleTone = 'blue' | 'emerald' | 'amber' | 'rose';
+type Period = 'today' | 'month' | 'custom';
 
-interface ModuleConfig {
-  key: ErpModuleKey;
-  label: string;
-  eyebrow: string;
-  icon: React.ReactNode;
-  route: AppRoute;
-  tone: ModuleTone;
-  metric: string;
-  metricLabel: string;
-  delta: string;
-  summary: string;
-  action: string;
-  rows: Array<{ id: string; title: string; meta: string; amount: string; status: string }>;
-  detail: Array<{ label: string; value: string }>;
-  pipeline: Array<{ label: string; value: number }>;
-}
-
-const toneStyles: Record<ModuleTone, { active: string; soft: string; text: string; bar: string; chip: string; button: string }> = {
-  blue: {
-    active: 'bg-blue-600 text-white shadow-lg shadow-blue-500/25',
-    soft: 'bg-blue-50 border-blue-100',
-    text: 'text-blue-700',
-    bar: 'bg-blue-500',
-    chip: 'bg-blue-50 text-blue-700 border-blue-100',
-    button: 'bg-blue-600 hover:bg-blue-700 text-white',
-  },
-  emerald: {
-    active: 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25',
-    soft: 'bg-emerald-50 border-emerald-100',
-    text: 'text-emerald-700',
-    bar: 'bg-emerald-500',
-    chip: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-  },
-  amber: {
-    active: 'bg-amber-500 text-white shadow-lg shadow-amber-500/25',
-    soft: 'bg-amber-50 border-amber-100',
-    text: 'text-amber-700',
-    bar: 'bg-amber-500',
-    chip: 'bg-amber-50 text-amber-700 border-amber-100',
-    button: 'bg-amber-500 hover:bg-amber-600 text-white',
-  },
-  rose: {
-    active: 'bg-rose-600 text-white shadow-lg shadow-rose-500/25',
-    soft: 'bg-rose-50 border-rose-100',
-    text: 'text-rose-700',
-    bar: 'bg-rose-500',
-    chip: 'bg-rose-50 text-rose-700 border-rose-100',
-    button: 'bg-rose-600 hover:bg-rose-700 text-white',
-  },
+const emptyStats: DashboardStats = {
+  totalSales: 0, totalPurchases: 0, totalServices: 0, totalCustomers: 0, recentSales: [],
+  todaySalesAmount: 0, todaySalesCount: 0, periodServiceAmount: 0, periodServiceCount: 0,
+  periodPurchaseAmount: 0, periodPurchaseCount: 0, totalOverdueAR: 0, overdueARCount: 0,
+  totalPendingAR: 0, pendingARCount: 0, pendingServiceJobs: 0, receivedJobCount: 0,
+  inProgressJobCount: 0, completedJobCount: 0, pendingPaymentJobCount: 0,
+  pendingDeliveryJobCount: 0, lowStockCount: 0, lowStockProducts: [], stockValue: 0,
+  supplierPayable: 0, reworkCount: 0, upgradeCount: 0, refundCount: 0, refundAmount: 0,
+  updatedAt: '', hasJournalEntries: false,
 };
 
-const modules: ModuleConfig[] = [
-  {
-    key: 'purchase',
-    label: 'Purchase',
-    eyebrow: 'Procurement control',
-    icon: <ShoppingCart size={19} />,
-    route: AppRoute.PURCHASES,
-    tone: 'blue',
-    metric: '128.4M',
-    metricLabel: 'Open purchase value',
-    delta: '+12.8% vs last month',
-    summary: 'Purchase orders, goods receipt, and vendor bills are grouped into one flow for quick review.',
-    action: 'Create PO',
-    rows: [
-      { id: 'PO-24061', title: 'Laptop accessories replenishment', meta: 'Awaiting supplier confirmation', amount: '18.6M', status: 'Pending' },
-      { id: 'PO-24058', title: 'Mobile display batch', meta: 'Goods receipt due today', amount: '42.0M', status: 'Due' },
-      { id: 'PO-24052', title: 'Repair tools restock', meta: 'Invoice matching required', amount: '7.4M', status: 'Review' },
-    ],
-    detail: [
-      { label: 'Open POs', value: '34' },
-      { label: 'Pending receipts', value: '9' },
-      { label: 'Avg cycle', value: '3.2 days' },
-    ],
-    pipeline: [
-      { label: 'Request', value: 88 },
-      { label: 'Ordered', value: 64 },
-      { label: 'Received', value: 42 },
-    ],
-  },
-  {
-    key: 'supplier',
-    label: 'Supplier',
-    eyebrow: 'Vendor performance',
-    icon: <Truck size={19} />,
-    route: AppRoute.SUPPLIERS,
-    tone: 'emerald',
-    metric: '76',
-    metricLabel: 'Active suppliers',
-    delta: '94% on-time score',
-    summary: 'Supplier risk, outstanding balances, and delivery reliability are visible from the same workspace.',
-    action: 'Add supplier',
-    rows: [
-      { id: 'SUP-018', title: 'Yangon Tech Parts', meta: 'Preferred electronics supplier', amount: '96%', status: 'Trusted' },
-      { id: 'SUP-044', title: 'Mandalay Mobile Hub', meta: '2 delayed shipments this month', amount: '82%', status: 'Watch' },
-      { id: 'SUP-057', title: 'North Star Tools', meta: 'New onboarding documents ready', amount: 'New', status: 'Draft' },
-    ],
-    detail: [
-      { label: 'Payables', value: '31.8M' },
-      { label: 'Due this week', value: '6' },
-      { label: 'Quality score', value: '91%' },
-    ],
-    pipeline: [
-      { label: 'Approved', value: 76 },
-      { label: 'Review', value: 18 },
-      { label: 'Blocked', value: 4 },
-    ],
-  },
-  {
-    key: 'stock',
-    label: 'Stock',
-    eyebrow: 'Inventory health',
-    icon: <Boxes size={19} />,
-    route: AppRoute.PRODUCTS,
-    tone: 'amber',
-    metric: '312.7M',
-    metricLabel: 'Inventory value',
-    delta: '18 low-stock SKUs',
-    summary: 'Serial and quantity inventory are monitored together with reorder pressure and movement signals.',
-    action: 'Stock adjust',
-    rows: [
-      { id: 'SKU-8821', title: 'iPhone 13 display assembly', meta: 'Serial stock, 5 available', amount: 'Low', status: 'Reorder' },
-      { id: 'SKU-4403', title: 'USB-C charging port', meta: 'Qty stock, 132 available', amount: 'Stable', status: 'OK' },
-      { id: 'SKU-1190', title: 'Samsung battery pack', meta: 'Serial stock, 14 available', amount: 'Fast', status: 'Moving' },
-    ],
-    detail: [
-      { label: 'Available units', value: '4,820' },
-      { label: 'Serial items', value: '1,248' },
-      { label: 'Stock alerts', value: '18' },
-    ],
-    pipeline: [
-      { label: 'Healthy', value: 72 },
-      { label: 'Low', value: 18 },
-      { label: 'Blocked', value: 6 },
-    ],
-  },
-  {
-    key: 'sale',
-    label: 'Sale',
-    eyebrow: 'Revenue operations',
-    icon: <ReceiptText size={19} />,
-    route: AppRoute.SALES,
-    tone: 'rose',
-    metric: '54.2M',
-    metricLabel: 'Month-to-date sales',
-    delta: '+8.4% conversion',
-    summary: 'Sales orders, payment status, and margin signals are arranged for quick cashier and manager decisions.',
-    action: 'New sale',
-    rows: [
-      { id: 'INV-9031', title: 'Aung Mobile Service', meta: 'Paid, delivered today', amount: '2.4M', status: 'Paid' },
-      { id: 'INV-9027', title: 'Walk-in customer', meta: 'Partial payment remains', amount: '680K', status: 'Partial' },
-      { id: 'INV-9019', title: 'Corporate repair batch', meta: 'Invoice approval pending', amount: '6.2M', status: 'Pending' },
-    ],
-    detail: [
-      { label: 'Invoices', value: '418' },
-      { label: 'Gross margin', value: '28%' },
-      { label: 'Receivables', value: '17.3M' },
-    ],
-    pipeline: [
-      { label: 'Quoted', value: 58 },
-      { label: 'Invoiced', value: 84 },
-      { label: 'Paid', value: 69 },
-    ],
-  },
-];
+const money = (value: number) => new Intl.NumberFormat('my-MM', {
+  maximumFractionDigits: 0,
+}).format(value) + ' ကျပ်';
+
+const Metric = ({ label, value, detail, icon, tone = 'slate' }: {
+  label: string; value: string; detail: string; icon: React.ReactNode; tone?: string;
+}) => (
+  <div className={'rounded-xl border bg-white p-4 shadow-sm ' + tone}>
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-xs font-bold text-slate-500">{label}</p>
+      <span className="text-slate-400">{icon}</span>
+    </div>
+    <p className="mt-3 text-xl font-black text-slate-950 tabular-nums">{value}</p>
+    <p className="mt-1 text-xs font-medium text-slate-400">{detail}</p>
+  </div>
+);
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeKey, setActiveKey] = useState<ErpModuleKey>('purchase');
-  const [collapsed, setCollapsed] = useState(false);
+  const [stats, setStats] = useState<DashboardStats>(emptyStats);
+  const [period, setPeriod] = useState<Period>('today');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const activeModule = useMemo(() => modules.find((module) => module.key === activeKey) || modules[0], [activeKey]);
-  const tone = toneStyles[activeModule.tone];
-  const maxPipelineValue = Math.max(...activeModule.pipeline.map((item) => item.value), 1);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    dashboardService.getStats({ period, ...(period === 'custom' ? { from, to } : {}) })
+      .then((data) => { if (active) setStats(data); })
+      .catch(() => { if (active) setError('Dashboard data ကို မရယူနိုင်ပါ။'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [period, from, to]);
+
+  const quickActions = [
+    { label: 'ရောင်းချမှုအသစ်', route: AppRoute.SALES, icon: <ShoppingCart size={17} /> },
+    { label: 'ဝယ်ယူမှုအသစ်', route: AppRoute.PURCHASES, icon: <Package size={17} /> },
+    { label: 'Service Job', route: AppRoute.SERVICE_JOBS, icon: <Wrench size={17} /> },
+    { label: 'ပစ္စည်းစာရင်း', route: AppRoute.PRODUCTS, icon: <Store size={17} /> },
+  ];
 
   return (
-    <div className="h-full min-h-[calc(100vh-7rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex h-full min-h-[calc(100vh-7rem)] bg-slate-50/80">
-        <aside className={(collapsed ? 'w-[76px]' : 'w-[264px]') + ' hidden shrink-0 border-r border-slate-200 bg-white transition-all duration-300 lg:flex lg:flex-col'}>
-          <div className="flex h-16 items-center justify-between border-b border-slate-100 px-4">
-            {!collapsed && (
-              <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">ERP Admin</p>
-                <h2 className="truncate text-sm font-black text-slate-900">Operations Hub</h2>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setCollapsed((value) => !value)}
-              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+    <main className="min-h-full bg-slate-50 p-4 sm:p-6">
+      <header className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-600">လုပ်ငန်းအခြေအနေ</p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500">Database မှ နောက်ဆုံးရရှိထားသော လုပ်ငန်းအချက်အလက်များ</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {(['today', 'month', 'custom'] as Period[]).map((item) => (
+            <button key={item} type="button" onClick={() => setPeriod(item)} className={'rounded-lg border px-3 py-2 text-xs font-bold ' + (period === item ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600')}>
+              {item === 'today' ? 'ဒီနေ့' : item === 'month' ? 'ယခုလ' : 'သတ်မှတ်ကာလ'}
             </button>
+          ))}
+          {period === 'custom' && <><input aria-label="စတင်ရက်" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs" /><input aria-label="ပြီးဆုံးရက်" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs" /></>}
+        </div>
+      </header>
+
+      {error && <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{error}</div>}
+      {loading && <div className="mb-4 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">Data ရယူနေပါသည်...</div>}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="ဒီနေ့ ရောင်းရငွေ" value={money(stats.todaySalesAmount)} detail={`${stats.todaySalesCount} ကြိမ် ရောင်းချထားသည်`} icon={<ShoppingCart size={18} />} tone="border-emerald-100" />
+        <Metric label="ဝန်ဆောင်မှုဝင်ငွေ" value={money(stats.periodServiceAmount)} detail={`${stats.periodServiceCount} ခု လက်ခံထားသည်`} icon={<Wrench size={18} />} tone="border-blue-100" />
+        <Metric label="Customer ထံမှရရန်" value={money(stats.totalPendingAR)} detail={`${stats.pendingARCount} ခု ကျန်ရှိသည်`} icon={<CreditCard size={18} />} tone="border-amber-100" />
+        <Metric label="Supplier ကိုပေးရန်" value={money(stats.supplierPayable)} detail="ပေးရန်ကျန် အဝယ်စာရင်း" icon={<PackageCheck size={18} />} tone="border-rose-100" />
+        <Metric label="လက်ရှိ Stock တန်ဖိုး" value={money(stats.stockValue)} detail={`${stats.lowStockCount} မျိုး Stock နည်းနေသည်`} icon={<Package size={18} />} />
+        <Metric label="ဒီနေ့ / ကာလအတွင်း ဝယ်ယူမှု" value={money(stats.periodPurchaseAmount)} detail={`${stats.periodPurchaseCount} ကြိမ်`} icon={<Store size={18} />} />
+        <Metric label="Warranty / Rework" value={`${stats.reworkCount} ခု`} detail={`Upgrade ${stats.upgradeCount} ခု`} icon={<RefreshCw size={18} />} />
+        <Metric label="Refund" value={`${stats.refundCount} ခု`} detail={money(stats.refundAmount)} icon={<Undo2 size={18} />} />
+      </section>
+
+      <section className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-black text-slate-900">Service Job အခြေအနေ</h2><p className="text-xs text-slate-400">လက်ရှိ database status အရ</p></div><Wrench className="text-indigo-600" size={20} /></div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <Metric label="လက်ခံ" value={String(stats.receivedJobCount)} detail="ခု" icon={<FileText size={16} />} />
+            <Metric label="လုပ်ဆောင်ဆဲ" value={String(stats.inProgressJobCount)} detail="ခု" icon={<Clock3 size={16} />} />
+            <Metric label="ပြီးစီး" value={String(stats.completedJobCount)} detail="ခု" icon={<CheckCircle2 size={16} />} />
+            <Metric label="ငွေရှင်းရန်" value={String(stats.pendingPaymentJobCount)} detail="ခု" icon={<CreditCard size={16} />} />
+            <Metric label="ပစ္စည်းပေးရန်" value={String(stats.pendingDeliveryJobCount)} detail="ခု" icon={<PackageCheck size={16} />} />
           </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-black text-slate-900">Stock နည်းနေသောပစ္စည်း</h2><p className="text-xs text-slate-400">ပြန်လည်မှာယူရန် လိုအပ်နိုင်သောစာရင်း</p></div><AlertTriangle className="text-amber-500" size={20} /></div>
+          {stats.lowStockProducts.length === 0 ? <p className="py-5 text-center text-sm font-medium text-slate-400">Stock နည်းနေသော ပစ္စည်းမရှိပါ</p> : <div className="space-y-2">{stats.lowStockProducts.map((name) => <div key={name} className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800"><AlertTriangle size={15} />{name}</div>)}</div>}
+        </div>
+      </section>
 
-          <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-            {modules.map((module) => {
-              const selected = module.key === activeKey;
-              const moduleTone = toneStyles[module.tone];
-              const iconClass = selected ? 'bg-white/20 text-white' : moduleTone.soft + ' ' + moduleTone.text;
-              return (
-                <button
-                  key={module.key}
-                  type="button"
-                  onClick={() => setActiveKey(module.key)}
-                  className={'group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-all duration-200 ' + (selected ? moduleTone.active : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950')}
-                  title={collapsed ? module.label : undefined}
-                >
-                  <span className={'grid h-9 w-9 shrink-0 place-items-center rounded-lg ' + iconClass}>{module.icon}</span>
-                  {!collapsed && (
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-black">{module.label}</span>
-                      <span className={'block truncate text-[10px] font-bold ' + (selected ? 'text-white/70' : 'text-slate-400')}>{module.eyebrow}</span>
-                    </span>
-                  )}
-                  {!collapsed && <ChevronRight size={15} className={selected ? 'text-white/70' : 'text-slate-300 group-hover:text-slate-500'} />}
-                </button>
-              );
-            })}
-          </nav>
+      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between"><div><h2 className="font-black text-slate-900">အမြန်လုပ်ဆောင်ရန်</h2><p className="text-xs text-slate-400">သက်ဆိုင်ရာစာမျက်နှာသို့ တိုက်ရိုက်သွားရန်</p></div><ArrowRight size={18} className="text-slate-400" /></div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{quickActions.map((action) => <button key={action.label} type="button" onClick={() => navigate(action.route)} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-left text-sm font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50"><span className="flex items-center gap-2">{action.icon}{action.label}</span><ArrowRight size={15} /></button>)}</div>
+      </section>
 
-          {!collapsed && (
-            <div className="border-t border-slate-100 p-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-400">
-                  <ShieldCheck size={14} /> Live Control
-                </div>
-                <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Four core modules synced into one admin workspace.</p>
-              </div>
-            </div>
-          )}
-        </aside>
-
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
-            <div className="flex gap-2 overflow-x-auto">
-              {modules.map((module) => (
-                <button
-                  key={module.key}
-                  type="button"
-                  onClick={() => setActiveKey(module.key)}
-                  className={'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-black transition ' + (module.key === activeKey ? toneStyles[module.tone].active : 'border-slate-200 bg-white text-slate-600')}
-                >
-                  {module.icon}{module.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <section key={activeModule.key} className="animate-[erpSlideFade_280ms_ease-out] p-4 sm:p-5 xl:p-6">
-            <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="min-w-0">
-                <div className={'mb-2 inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 text-[11px] font-black uppercase tracking-widest ' + tone.chip}>
-                  {activeModule.icon}
-                  {activeModule.eyebrow}
-                </div>
-                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{activeModule.label} Workspace</h1>
-                <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-500">{activeModule.summary}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
-                  <Filter size={15} /> Filter
-                </button>
-                <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
-                  <Search size={15} /> Search
-                </button>
-                <button type="button" onClick={() => navigate(activeModule.route)} className={'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-black shadow-sm transition ' + tone.button}>
-                  <Plus size={15} /> {activeModule.action}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-              <div className="min-w-0 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className={'rounded-xl border p-4 ' + tone.soft}>
-                    <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">{activeModule.metricLabel}</p>
-                    <p className={'mt-2 text-3xl font-black tabular-nums ' + tone.text}>{activeModule.metric}</p>
-                    <p className="mt-1 text-xs font-bold text-slate-500">{activeModule.delta}</p>
-                  </div>
-                  {activeModule.detail.map((item, index) => (
-                    <div key={item.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{item.label}</p>
-                        {[<ClipboardCheck size={16} />, <Clock3 size={16} />, <BadgeCheck size={16} />][index]}
-                      </div>
-                      <p className="mt-2 text-2xl font-black text-slate-900 tabular-nums">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900">Operational Queue</h3>
-                      <p className="text-[11px] font-semibold text-slate-400">Master list for the selected module</p>
-                    </div>
-                    <button type="button" onClick={() => navigate(activeModule.route)} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-black ' + tone.chip}>
-                      Open module <ArrowRight size={13} />
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-left">
-                      <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        <tr>
-                          <th className="px-4 py-3">Reference</th>
-                          <th className="px-4 py-3">Record</th>
-                          <th className="px-4 py-3">Signal</th>
-                          <th className="px-4 py-3 text-right">Value</th>
-                          <th className="px-4 py-3 text-right">State</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {activeModule.rows.map((row) => (
-                          <tr key={row.id} className="transition hover:bg-slate-50/80">
-                            <td className="px-4 py-4 text-xs font-black text-slate-700">{row.id}</td>
-                            <td className="px-4 py-4">
-                              <p className="text-sm font-black text-slate-900">{row.title}</p>
-                              <p className="mt-0.5 text-xs font-medium text-slate-400">{row.meta}</p>
-                            </td>
-                            <td className="px-4 py-4"><span className={'inline-flex rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wide ' + tone.chip}>{row.status}</span></td>
-                            <td className="px-4 py-4 text-right text-sm font-black text-slate-900 tabular-nums">{row.amount}</td>
-                            <td className="px-4 py-4 text-right"><button className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"><ChevronRight size={16} /></button></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-              <aside className="min-w-0 space-y-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900">Module Flow</h3>
-                      <p className="text-[11px] font-semibold text-slate-400">Stage distribution</p>
-                    </div>
-                    <span className={'grid h-10 w-10 place-items-center rounded-xl border ' + tone.soft + ' ' + tone.text}>{activeModule.icon}</span>
-                  </div>
-                  <div className="space-y-4">
-                    {activeModule.pipeline.map((item) => (
-                      <div key={item.label}>
-                        <div className="mb-1.5 flex items-center justify-between text-xs font-bold">
-                          <span className="text-slate-500">{item.label}</span>
-                          <span className="text-slate-900">{item.value}</span>
-                        </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                          <div className={'h-full rounded-full transition-all duration-500 ' + tone.bar} style={{ width: String(Math.max(12, (item.value / maxPipelineValue) * 100)) + '%' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h3 className="text-sm font-black text-slate-900">Detail Snapshot</h3>
-                  <div className="mt-4 space-y-3">
-                    {[
-                      { icon: <Layers3 size={16} />, label: 'Document control', value: 'Approval rules active' },
-                      { icon: <CircleDollarSign size={16} />, label: 'Financial sync', value: 'Ledger ready' },
-                      { icon: <PackageCheck size={16} />, label: 'Inventory link', value: 'Stock movement tracked' },
-                      { icon: <Factory size={16} />, label: 'Branch scope', value: 'Main warehouse' },
-                    ].map((item) => (
-                      <div key={item.label} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
-                        <span className={tone.text}>{item.icon}</span>
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-black text-slate-700">{item.label}</p>
-                          <p className="truncate text-[11px] font-medium text-slate-400">{item.value}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-black uppercase tracking-widest text-white/40">Next review</p>
-                      <h3 className="mt-1 text-lg font-black">09:30 AM</h3>
-                      <p className="mt-1 text-xs font-medium leading-5 text-white/55">Manager approval queue and daily stock exception review.</p>
-                    </div>
-                    <BarChart3 size={22} className="text-white/50" />
-                  </div>
-                </div>
-              </aside>
-            </div>
-          </section>
-        </main>
-      </div>
-
-      <style>{'@keyframes erpSlideFade { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }'}</style>
-    </div>
+      <footer className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-400"><Clock3 size={14} /> နောက်ဆုံး update: {stats.updatedAt ? new Date(stats.updatedAt).toLocaleString('my-MM') : 'မရရှိသေးပါ'}</footer>
+    </main>
   );
 };
 

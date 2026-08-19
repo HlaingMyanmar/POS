@@ -8,6 +8,7 @@ import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 
 import java.util.List;
 import java.util.Optional;
+import java.math.BigDecimal;
 
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Integer> {
@@ -49,4 +50,7 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
     @org.springframework.data.jpa.repository.Query(
         "select p.name from Product p where p.hasSerial = false and p.stockQty <= :threshold and p.stockQty >= 0 order by p.stockQty asc")
     List<String> findLowStockNames(@org.springframework.data.repository.query.Param("threshold") int threshold);
+
+    @org.springframework.data.jpa.repository.Query("select coalesce(sum(coalesce(p.costPrice, 0) * coalesce(p.stockQty, 0)), 0) from Product p")
+    BigDecimal sumStockValue();
 }

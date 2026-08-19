@@ -18,6 +18,10 @@ public class DashboardStatsDTO {
     // ── Today ──────────────────────────────────────────
     private BigDecimal todaySalesAmount;
     private long todaySalesCount;
+    private BigDecimal periodServiceAmount;
+    private long periodServiceCount;
+    private BigDecimal periodPurchaseAmount;
+    private long periodPurchaseCount;
 
     // ── AR Alerts ──────────────────────────────────────
     private BigDecimal totalOverdueAR;
@@ -27,8 +31,20 @@ public class DashboardStatsDTO {
 
     // ── Operations ─────────────────────────────────────
     private long pendingServiceJobs;
+    private long receivedJobCount;
+    private long inProgressJobCount;
+    private long completedJobCount;
+    private long pendingPaymentJobCount;
+    private long pendingDeliveryJobCount;
     private long lowStockCount;
     private List<String> lowStockProducts;
+    private BigDecimal stockValue;
+    private BigDecimal supplierPayable;
+    private long reworkCount;
+    private long upgradeCount;
+    private long refundCount;
+    private BigDecimal refundAmount;
+    private String updatedAt;
 
     // ── System Health ──────────────────────────────────
     private boolean hasJournalEntries;

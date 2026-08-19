@@ -34,4 +34,10 @@ public interface SaleReturnRepository extends JpaRepository<SaleReturn, Integer>
           AND (:to   IS NULL OR r.returnDate <= :to)
         """)
     BigDecimal sumInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("SELECT COUNT(r) FROM SaleReturn r WHERE (r.deleted = false OR r.deleted IS NULL) AND r.returnDate >= :from AND r.returnDate < :to")
+    long countInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("SELECT COALESCE(SUM(r.refundAmount), 0) FROM SaleReturn r WHERE (r.deleted = false OR r.deleted IS NULL) AND r.returnDate >= :from AND r.returnDate < :to")
+    BigDecimal sumRefundInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

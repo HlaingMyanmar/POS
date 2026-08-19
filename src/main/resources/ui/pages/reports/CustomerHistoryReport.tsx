@@ -1,0 +1,112 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CalendarDays, ChevronDown, ChevronRight, CircleDollarSign, History, PackageCheck, Printer, Search, ShoppingCart, Smartphone, UserRound, Wrench } from 'lucide-react';
+import { bookingService, serviceJobService } from '../../services/api';
+import { customerService } from '../../services/customerapiservice';
+import { saleApiService } from '../../services/saleapiservice';
+import { useDataEvents } from '../../hooks/useDataEvents';
+import { useRefreshOnTabActivate } from '../../hooks/useRefreshOnTabActivate';
+
+const money=(v:any)=>`${Number(v||0).toLocaleString()} Ks`;
+const fmtDate=(v:any)=>v?new Date(v).toLocaleDateString('en-GB'):'—';
+const rows=(r:any)=>r?.data?.content??r?.data??[];
+const jobCharge=(job:any)=>{
+ const posted=Number(job.netAmount??0),finalCost=Number(job.finalCost??0);
+ if(posted>0)return posted;
+ if(finalCost>0)return finalCost;
+ const serviceLines=(job.lines||[]).reduce((sum:number,line:any)=>sum+Number(line.subtotal??(Number(line.qty||0)*Number(line.price||0))),0);
+ const parts=(job.productParts||[]).reduce((sum:number,part:any)=>sum+Number(part.subtotal??(Number(part.qty||0)*Number(part.unitPrice||0))),0);
+ return serviceLines+parts;
+};
+const isJobPaid=(job:any)=>String(job.paymentStatus||'').toUpperCase()==='PAID'||(jobCharge(job)>0&&Number(job.paidAmount||0)>=jobCharge(job));
+const statusColor:Record<string,string>={DELIVERED:'bg-emerald-100 text-emerald-700',COMPLETED:'bg-green-100 text-green-700',IN_PROGRESS:'bg-purple-100 text-purple-700',RECEIVED:'bg-slate-100 text-slate-700',INSPECTING:'bg-blue-100 text-blue-700',CANCELLED:'bg-rose-100 text-rose-700'};
+const typeColor:Record<string,string>={WARRANTY:'bg-amber-100 text-amber-800',REPLACEMENT:'bg-rose-100 text-rose-800',ADDITIONAL:'bg-blue-100 text-blue-800'};
+const statusLabel:Record<string,string>={RECEIVED:'လက်ခံပြီး',INSPECTING:'စစ်ဆေးနေ',IN_PROGRESS:'ဝန်ဆောင်မှု ပြင်ဆင်နေ',COMPLETED:'ပြီးစီး',DELIVERED:'ပစ္စည်းပေးအပ်ပြီး',CANCELLED:'ပယ်ဖျက်ပြီး'};
+
+function CustomerPicker({customers,value,onChange}:any){
+ const selected=customers.find((c:any)=>String(c.id)===String(value));
+ const [text,setText]=useState(''),[open,setOpen]=useState(false);
+ const ref=useRef<HTMLDivElement>(null);
+ useEffect(()=>{setText(selected?`${selected.name} · ${selected.phone||''}`:'')},[selected?.id,selected?.name,selected?.phone]);
+ useEffect(()=>{const close=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false)};document.addEventListener('mousedown',close);return()=>document.removeEventListener('mousedown',close)},[]);
+ const keyword=text.trim().toLowerCase();
+ const filtered=customers.filter((c:any)=>`${c.name||''} ${c.phone||''} ${c.address||''}`.toLowerCase().includes(keyword)).slice(0,30);
+ return <div ref={ref} className="relative">
+  <Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18}/>
+  <input value={text} onFocus={()=>setOpen(true)} onChange={e=>{setText(e.target.value);onChange('');setOpen(true)}} placeholder="Customer အမည် သို့မဟုတ် ဖုန်းနံပါတ်ဖြင့် ရှာပြီးရွေးပါ..." className="w-full rounded-xl border border-indigo-300 bg-indigo-50 py-2.5 pl-10 pr-10 text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"/>
+  {(text||value)&&<button type="button" onClick={()=>{setText('');onChange('');setOpen(true)}} className="absolute right-3 top-2 text-xl text-slate-400 hover:text-rose-500">×</button>}
+  {open&&<div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border bg-white shadow-xl">
+   {filtered.map((c:any)=><button type="button" key={c.id} onClick={()=>{onChange(String(c.id));setText(`${c.name} · ${c.phone||''}`);setOpen(false)}} className={`flex w-full items-center justify-between gap-3 border-b px-3 py-3 text-left last:border-0 hover:bg-indigo-50 ${String(c.id)===String(value)?'bg-indigo-50':''}`}><span><b className="block text-sm text-slate-800">{c.name}</b><small className="text-slate-400">{c.address||'လိပ်စာမရှိ'}</small></span><span className="whitespace-nowrap text-xs font-bold text-indigo-600">{c.phone||'ဖုန်းမရှိ'}</span></button>)}
+   {filtered.length===0&&<p className="px-4 py-5 text-center text-sm text-slate-400">Customer မတွေ့ပါ</p>}
+  </div>}
+ </div>
+}
+
+export default function CustomerHistoryReport(){
+ const [customers,setCustomers]=useState<any[]>([]),[customerId,setCustomerId]=useState('');
+ const [sales,setSales]=useState<any[]>([]),[bookings,setBookings]=useState<any[]>([]),[jobs,setJobs]=useState<any[]>([]);
+ const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tab,setTab]=useState<'overview'|'timeline'|'sales'|'service'|'devices'>('overview');
+ useEffect(()=>{customerService.getAll().then(setCustomers).catch(()=>setError('Customer စာရင်း မရရှိပါ။'))},[]);
+ const loadHistory=useCallback(async()=>{if(!customerId){setSales([]);setBookings([]);setJobs([]);return}setLoading(true);setError('');try{const [s,b,j]=await Promise.all([saleApiService.getAll(),bookingService.getAll(0,500),serviceJobService.getAll(0,500)]);setSales(s.filter((x:any)=>String(x.customerId)===customerId));setBookings(rows(b).filter((x:any)=>String(x.customerId)===customerId));setJobs(rows(j).filter((x:any)=>String(x.customerId)===customerId))}catch(e:any){setError(e?.message||'Customer history မရရှိပါ။')}finally{setLoading(false)}},[customerId]);
+ useEffect(()=>{setTab('overview');void loadHistory()},[loadHistory]);
+ useRefreshOnTabActivate(loadHistory);
+ useDataEvents(['Service Job','Booking','Sale','Payment'],loadHistory);
+ const customer=customers.find(c=>String(c.id)===customerId);
+ const saleTotal=sales.reduce((s,x)=>s+Number(x.netAmount||0),0),serviceTotal=jobs.reduce((s,x)=>s+jobCharge(x),0),serviceOutstanding=jobs.reduce((s,x)=>s+(isJobPaid(x)?0:(Number(x.dueAmount)>0?Number(x.dueAmount):jobCharge(x))),0),due=sales.reduce((s,x)=>s+Number(x.dueAmount||0),0)+serviceOutstanding,reworks=jobs.filter(j=>j.rework).length;
+ const devices=useMemo(()=>{const m=new Map<string,any>();jobs.forEach(j=>{const serial=String(j.serialNo||'').trim(),name=String(j.itemName||'Unknown Device').trim(),key=serial?`s:${serial.toLowerCase()}`:`n:${name.toLowerCase()}`,charge=jobCharge(j),d=m.get(key)||{name,serial,count:0,reworks:0,spent:0,toCollect:0,paidJobs:0,problems:new Set<string>(),last:''};d.count++;d.reworks+=j.rework?1:0;d.spent+=charge;if(isJobPaid(j))d.paidJobs++;else d.toCollect+=Number(j.dueAmount)>0?Number(j.dueAmount):charge;if(j.problemDesc)d.problems.add(j.problemDesc);if(!d.last||String(j.receivedDate)>d.last)d.last=j.receivedDate;m.set(key,d)});return [...m.values()].map(d=>({...d,problems:[...d.problems]})).sort((a,b)=>b.count-a.count)},[jobs]);
+ const first=[...sales.map(s=>s.saleDate),...bookings.map(b=>b.bookingDate),...jobs.map(j=>j.receivedDate)].filter(Boolean).sort()[0];
+ const alerts=[...(due>0?[`ပေးရန်ကျန်ငွေ ${money(due)} ရှိသည်`]:[]),...devices.filter(d=>d.count>=3).map(d=>`${d.name}${d.serial?` (${d.serial})`:''} ကို ${d.count} ကြိမ် ပြုပြင်ထားသည်`),...(reworks>=2?[`Warranty/Rework စုစုပေါင်း ${reworks} ကြိမ်ရှိသည်`]:[])];
+ const timeline=[...sales.map(x=>({kind:'SALE',at:x.saleDate,code:x.saleCode,title:(x.details||[]).map((d:any)=>`${d.productName} × ${d.qty}`).join(', ')||'Sale',amount:x.netAmount})),...bookings.map(x=>({kind:'INTAKE',at:x.bookingDate,code:x.invoiceNo,title:x.devices?.map((d:any)=>`${d.brand} ${d.model||''}`).join(', ')||`${x.brand||''} ${x.model||''}`,amount:null})),...jobs.map(x=>({kind:x.rework?'REWORK':'SERVICE',at:x.receivedDate,code:x.jobNo,title:`${x.itemName||'Device'} — ${x.problemDesc||'Service'}`,amount:jobCharge(x),status:`${statusLabel[x.status]||x.status} · ${isJobPaid(x)?'ငွေရှင်းပြီး ✓':jobCharge(x)>0?'ငွေရှင်းရန်လိုအပ်':'အခမဲ့'}`}))].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+ const tabs=[['overview','Overview'],['timeline','Activity Timeline'],['sales',`Sales (${sales.length})`],['service',`Service (${jobs.length})`],['devices',`Devices (${devices.length})`]] as const;
+ return <div className="space-y-5 p-4 md:p-6 print:p-0">
+  <header className="flex flex-wrap items-center justify-between gap-3 print:hidden"><div className="flex items-center gap-3"><span className="rounded-xl bg-indigo-100 p-2.5"><History className="text-indigo-700"/></span><div><h1 className="text-xl font-black text-slate-900">Customer History</h1><p className="text-xs text-slate-500">အရောင်း၊ ပစ္စည်းအပ်နှံမှုနှင့် Service history</p></div></div>{customer&&<button onClick={()=>window.print()} className="flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"><Printer size={16}/> Print Report</button>}</header>
+  <section className="rounded-2xl border bg-white p-4 print:hidden"><label className="mb-2 block text-xs font-black uppercase text-slate-500">Customer ရွေးပါ</label><CustomerPicker customers={customers} value={customerId} onChange={setCustomerId}/></section>
+  {error&&<div className="rounded-xl bg-rose-50 p-4 font-bold text-rose-700">{error}</div>}{loading&&<div className="py-20 text-center font-bold text-slate-400">Customer history ရယူနေပါသည်...</div>}{!loading&&!customerId&&<div className="rounded-2xl border-2 border-dashed py-24 text-center text-slate-400"><UserRound className="mx-auto mb-3" size={44}/><b>Customer ရွေးလိုက်တာနဲ့ History အပြည့်အစုံ ပေါ်လာပါမယ်</b></div>}
+  {!loading&&customer&&<>
+   <section className="rounded-2xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-800 p-6 text-white shadow-lg"><div className="grid gap-5 md:grid-cols-[1fr_auto]"><div><span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black tracking-widest">CUSTOMER PROFILE</span><h2 className="mt-3 text-3xl font-black">{customer.name}</h2><p className="mt-1 text-sm text-indigo-100">{customer.phone} · {customer.address||'လိပ်စာမရှိ'}</p></div><div className="grid grid-cols-2 gap-8 text-sm md:text-right"><div><p className="text-xs text-indigo-200">Customer Since</p><b>{fmtDate(first)}</b></div><div><p className="text-xs text-indigo-200">Total Spent</p><b className="text-emerald-300">{money(saleTotal+serviceTotal)}</b></div></div></div></section>
+   {alerts.length>0&&<section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="mb-2 flex items-center gap-2 font-black text-amber-900"><AlertTriangle size={18}/> အရေးကြီးသတိပေးချက်</h3><div className="grid gap-2 md:grid-cols-2">{alerts.map((a,i)=><div key={i} className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-800">⚠ {a}</div>)}</div></section>}
+   <section className="grid grid-cols-2 gap-3 lg:grid-cols-5"><Metric icon={ShoppingCart} label="SALE" value={money(saleTotal)} sub={`${sales.length} vouchers`} color="blue"/><Metric icon={Wrench} label="SERVICE" value={money(serviceTotal)} sub={`${jobs.length} jobs`} color="emerald"/><Metric icon={Smartphone} label="DEVICES" value={devices.length} sub="မှတ်တမ်းရှိသောစက်" color="violet"/><Metric icon={History} label="REWORK" value={reworks} sub="Warranty / Return" color="amber"/><Metric icon={CircleDollarSign} label="ကျန်ငွေ" value={money(due)} sub={due>0?'ပေးရန်ကျန်':'ငွေရှင်းပြီး'} color={due>0?'rose':'emerald'}/></section>
+   <nav className="flex gap-1 overflow-x-auto rounded-xl border bg-white p-1.5 print:hidden">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold ${tab===k?'bg-indigo-600 text-white shadow':'text-slate-500 hover:bg-slate-50'}`}>{l}</button>)}</nav>
+   {tab==='overview'&&<div className="space-y-5"><Title icon={Smartphone} title="စက်တစ်လုံးချင်း အကျဉ်းချုပ်" sub="မကြာခဏပြန်ပြင်ရသောစက်ကို အပေါ်ဆုံးမှာပြထားသည်"/><DeviceCards rows={devices}/><Title icon={Wrench} title="Main Job နှင့် Rework Family" sub="Rework အားလုံးကို မူလ Job အောက်တွင်စုထားသည်"/><JobFamilies rows={jobs}/></div>}
+   {tab==='timeline'&&<Timeline rows={timeline}/>} {tab==='sales'&&<Sales rows={sales}/>} {tab==='service'&&<div className="space-y-5"><Intakes rows={bookings}/><JobFamilies rows={jobs}/></div>} {tab==='devices'&&<DeviceCards rows={devices}/>} 
+  </>}
+ </div>
+}
+
+function Metric({icon:Icon,label,value,sub,color}:any){const c:any={blue:'bg-blue-50 text-blue-700',emerald:'bg-emerald-50 text-emerald-700',violet:'bg-violet-50 text-violet-700',amber:'bg-amber-50 text-amber-700',rose:'bg-rose-50 text-rose-700'};return <div className="rounded-2xl border bg-white p-4"><span className={`inline-flex rounded-lg p-2 ${c[color]}`}><Icon size={18}/></span><p className="mt-2 text-[10px] font-black tracking-widest text-slate-400">{label}</p><p className="text-xl font-black text-slate-900">{value}</p><p className="text-xs text-slate-400">{sub}</p></div>}
+function Title({icon:Icon,title,sub}:any){return <div className="flex items-center gap-3"><span className="rounded-lg bg-indigo-100 p-2 text-indigo-700"><Icon size={18}/></span><div><h3 className="font-black text-slate-800">{title}</h3><p className="text-xs text-slate-400">{sub}</p></div></div>}
+function Empty({text='မှတ်တမ်းမရှိပါ'}:{text?:string}){return <div className="rounded-2xl border-2 border-dashed p-10 text-center text-sm text-slate-400">{text}</div>}
+function Badge({text,cls}:any){return <span className={`rounded-full px-2 py-0.5 text-[10px] font-black tracking-wide ${cls}`}>{String(text||'—').replaceAll('_',' ')}</span>}
+function DeviceCards({rows}:any){if(!rows.length)return <Empty/>;return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{rows.map((d:any,i:number)=><article key={i} className={`rounded-2xl border-2 bg-white p-4 ${d.toCollect>0?'border-rose-300':d.count>=3?'border-amber-300':'border-slate-200'}`}><div className="flex justify-between gap-2"><div className="flex gap-3"><span className="rounded-xl bg-slate-100 p-2.5"><Smartphone size={20}/></span><div><h4 className="font-black">{d.name}</h4><p className="font-mono text-xs text-slate-400">{d.serial?`SN: ${d.serial}`:'Serial မမှတ်ထားပါ'}</p></div></div>{d.count>=3&&<Badge text="FREQUENT" cls="bg-amber-100 text-amber-800"/>}</div><div className="mt-4 grid grid-cols-3 gap-2 text-center"><Mini label="Service" value={`${d.count} ကြိမ်`}/><Mini label="Rework" value={d.reworks}/><Mini label="လက်ရှိကုန်ကျ" value={money(d.spent)}/></div>{d.spent===0?<div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-700">အခမဲ့ / ကုန်ကျငွေမရှိ</div>:d.toCollect>0?<div className="mt-3 flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 py-2"><span className="text-xs font-black text-rose-700">ငွေရှင်းရန်လိုအပ်</span><b className="text-sm text-rose-700">{money(d.toCollect)}</b></div>:<div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-black text-emerald-700">ငွေရှင်းပြီး ✓</div>}<div className="mt-3 border-t pt-3"><p className="text-[10px] font-black text-slate-400">ဖြစ်ခဲ့သောပြဿနာ</p>{d.problems.slice(0,3).map((p:string)=><p key={p} className="mt-1 truncate text-xs text-slate-600">• {p}</p>)}<p className="mt-2 text-[10px] text-slate-400">နောက်ဆုံး: {fmtDate(d.last)}</p></div></article>)}</div>}
+function Mini({label,value}:any){return <div className="rounded-lg bg-slate-50 p-2"><p className="text-[10px] text-slate-400">{label}</p><b className="text-xs">{value}</b></div>}
+function JobFamilies({rows}:any){
+ const [open,setOpen]=useState<Record<string,boolean>>({});
+ if(!rows.length)return <Empty/>;
+ const children=new Map<string,any[]>();
+ rows.forEach((job:any)=>{if(job.parentJobId)children.set(String(job.parentJobId),[...(children.get(String(job.parentJobId))||[]),job])});
+ const ids=new Set(rows.map((job:any)=>String(job.id)));
+ const roots=rows.filter((job:any)=>!job.parentJobId||!ids.has(String(job.parentJobId)));
+ return <div className="space-y-3">{roots.map((root:any)=>{
+  const subs=children.get(String(root.id))||[],expanded=open[root.id]!==false;
+  return <article key={root.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+   <button onClick={()=>setOpen(prev=>({...prev,[root.id]:!expanded}))} className="grid w-full grid-cols-[auto_1fr_auto] items-start gap-3 p-4 text-left hover:bg-slate-50">
+    <span className="mt-1 rounded-lg bg-indigo-50 p-1.5 text-indigo-600">{subs.length?(expanded?<ChevronDown size={18}/>:<ChevronRight size={18}/>):<Wrench size={18}/>}</span>
+    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><b className="font-mono text-indigo-700">{root.jobNo}</b><Badge text="MAIN JOB" cls="bg-indigo-100 text-indigo-700"/><Badge text={statusLabel[root.status]||root.status} cls={statusColor[root.status]||'bg-slate-100'}/>{subs.length>0&&<Badge text={`${subs.length} LINKED`} cls="bg-amber-100 text-amber-800"/>}</div><h4 className="mt-2 font-black text-slate-900">{root.itemName||'Device'} {root.serialNo&&<span className="font-mono text-xs font-normal text-slate-400">· SN: {root.serialNo}</span>}</h4><p className="mt-1 truncate text-sm text-slate-600">{root.problemDesc||'ပြဿနာမဖော်ပြထားပါ'}</p><p className="mt-1 text-xs text-slate-400">{fmtDate(root.receivedDate)} · {root.assignedStaffName||'တာဝန်ခံမရှိ'}</p></div><Cost job={root}/>
+   </button>
+   {expanded&&subs.length>0&&<div className="border-t border-slate-200 bg-slate-50/70 px-3 py-3 md:px-6"><div className="relative ml-3 border-l-2 border-amber-300 pl-5"><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-amber-700">Linked Job History</p>{subs.map((job:any)=><Rework key={job.id} job={job} children={children} depth={0}/>)}</div></div>}
+  </article>
+ })}</div>
+}
+function Cost({job}:any){const value=jobCharge(job),paid=isJobPaid(job),outstanding=Number(job.dueAmount)>0?Number(job.dueAmount):value;return <div className="whitespace-nowrap text-right">{value===0?<b className="text-emerald-700">FREE</b>:<><b className="text-slate-900">{money(value)}</b>{paid?<p className="text-[11px] font-black text-emerald-600">ငွေရှင်းပြီး ✓</p>:<p className="text-[11px] font-black text-rose-600">ငွေရှင်းရန် {money(outstanding)}</p>}</>}</div>}
+function Rework({job,children,depth}:any){
+ const nested=children.get(String(job.id))||[];
+ const border=job.reworkType==='REPLACEMENT'?'border-l-rose-500':job.reworkType==='ADDITIONAL'?'border-l-blue-500':'border-l-amber-500';
+ return <div className={`${depth?'ml-5':''}`}>
+  <div className={`relative mb-2 grid grid-cols-1 gap-2 rounded-lg border border-slate-200 border-l-4 ${border} bg-white px-3 py-2.5 sm:grid-cols-[1fr_auto] sm:items-center before:absolute before:-left-6 before:top-1/2 before:h-px before:w-5 before:bg-amber-300`}>
+   <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><b className="font-mono text-sm text-slate-900">{job.jobNo}</b><Badge text={job.reworkType||'REWORK'} cls={typeColor[job.reworkType]||'bg-amber-100 text-amber-800'}/><Badge text={statusLabel[job.status]||job.status} cls={statusColor[job.status]||'bg-slate-100'}/></div><p className="mt-1 truncate text-sm font-semibold text-slate-700" title={job.problemDesc}>{job.problemDesc||job.itemName||'Rework'}</p><div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-slate-400"><span>{fmtDate(job.receivedDate)}</span><span>Parent: <b className="font-mono text-slate-500">{job.parentJobNo||job.parentJobId}</b></span>{nested.length>0&&<span className="font-bold text-amber-700">↳ {nested.length} linked</span>}</div></div><Cost job={job}/>
+  </div>
+  {nested.length>0&&<div className="border-l border-dashed border-amber-300 pl-3">{nested.map((child:any)=><Rework key={child.id} job={child} children={children} depth={depth+1}/>)}</div>}
+ </div>
+}
+function Timeline({rows}:any){if(!rows.length)return <Empty/>;const s:any={SALE:['bg-blue-100 text-blue-700',ShoppingCart],INTAKE:['bg-violet-100 text-violet-700',PackageCheck],SERVICE:['bg-emerald-100 text-emerald-700',Wrench],REWORK:['bg-amber-100 text-amber-700',History]};return <section className="rounded-2xl border bg-white p-5"><h3 className="mb-5 flex gap-2 font-black"><CalendarDays size={19}/> Activity Timeline</h3>{rows.map((x:any,i:number)=>{const [cls,Icon]=s[x.kind];return <div key={i} className="relative flex gap-4 pb-5"><span className="absolute bottom-0 left-5 top-10 w-px bg-slate-200"/><span className={`z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${cls}`}><Icon size={17}/></span><div className="flex flex-1 justify-between gap-2 rounded-xl border bg-slate-50 p-3"><div><Badge text={x.kind} cls={cls}/><b className="ml-2 font-mono text-sm">{x.code}</b><p className="mt-1 text-sm">{x.title}</p><p className="text-xs text-slate-400">{fmtDate(x.at)} {x.status?`· ${x.status}`:''}</p></div>{x.amount!==null&&<b>{Number(x.amount)?money(x.amount):'FREE'}</b>}</div></div>})}</section>}
+function Sales({rows}:any){if(!rows.length)return <Empty/>;return <div className="space-y-3">{rows.map((s:any)=><article key={s.id} className="rounded-2xl border bg-white p-4"><div className="flex justify-between"><div><Badge text="SALE" cls="bg-blue-100 text-blue-700"/><b className="ml-2 font-mono text-indigo-700">{s.saleCode}</b><p className="text-xs text-slate-400">{fmtDate(s.saleDate)}</p></div><Cost job={s}/></div><div className="mt-3 divide-y rounded-xl bg-slate-50 px-3">{(s.details||[]).map((d:any,i:number)=><div key={i} className="flex justify-between py-2 text-sm"><span><b>{d.productName}</b> × {d.qty}{d.serialNumbers?.length?<small>SN: {d.serialNumbers.join(', ')}</small>:null}</span><b>{money(d.subtotal)}</b></div>)}</div></article>)}</div>}
+function Intakes({rows}:any){if(!rows.length)return <Empty text="ပစ္စည်းလက်ခံမှတ်တမ်းမရှိပါ"/>;return <section><Title icon={PackageCheck} title="ပစ္စည်းလက်ခံထားမှု" sub={`${rows.length} intake records`}/><div className="mt-3 grid gap-3 md:grid-cols-2">{rows.map((b:any)=><div key={b.id} className="rounded-xl border bg-white p-3"><div className="flex justify-between"><b className="font-mono text-violet-700">{b.invoiceNo}</b><Badge text={b.reworkReturn?'REWORK RETURN':b.status} cls={b.reworkReturn?'bg-amber-100 text-amber-800':'bg-violet-100 text-violet-700'}/></div><p className="mt-2 text-sm font-bold">{b.devices?.map((d:any)=>`${d.brand} ${d.model||''}`).join(', ')||`${b.brand||''} ${b.model||''}`}</p><p className="text-xs text-slate-400">{fmtDate(b.bookingDate)}</p></div>)}</div></section>}

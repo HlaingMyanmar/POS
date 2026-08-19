@@ -115,11 +115,21 @@ const TabCloseMenu: React.FC<{
 const isAdministrator = (user: User) =>
   user.roles.some(r => r === 'ADMINISTRATOR' || r === 'ROLE_ADMINISTRATOR');
 
-const hasMenuAccess = (user: User, permission?: string): boolean => {
+type MenuPermission = string | readonly string[];
+
+const hasMenuAccess = (user: User, permission?: MenuPermission): boolean => {
   if (!permission) return true;
   if (isAdministrator(user)) return true;
-  return (user.permissions || []).includes(permission);
+  const required = Array.isArray(permission) ? permission : [permission];
+  return required.every(item => (user.permissions || []).includes(item));
 };
+
+const CUSTOMER_HISTORY_PERMISSIONS = [
+  'CAN_ACCESS_CUSTOMER_READ',
+  'CAN_ACCESS_SALE_READ',
+  'CAN_ACCESS_BOOKING_READ',
+  'CAN_ACCESS_SERVICE_JOB_READ'
+] as const;
 
 interface LayoutProps {
   user: User;
@@ -196,7 +206,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ရောင်းအားအဆင့်', icon: <BarChart3 size={18} />, path: AppRoute.SALES_RANKING, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ဝယ်ယူမှုအကျဉ်း', icon: <Truck size={18} />, path: AppRoute.PURCHASE_SUMMARY, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_PURCHASE_READ' },
       { name: 'ဝန်ဆောင်မှုအကျဉ်း', icon: <Wrench size={18} />, path: AppRoute.SERVICE_SUMMARY, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_SERVICE_JOB_READ' },
-      { name: 'Customer History', icon: <Users size={18} />, path: AppRoute.CUSTOMER_HISTORY, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_CUSTOMER_READ' },
+      { name: 'Customer History', icon: <Users size={18} />, path: AppRoute.CUSTOMER_HISTORY, group: 'အစီရင်ခံစာ', permission: CUSTOMER_HISTORY_PERMISSIONS },
       { name: 'ဝန်ထမ်းစွမ်းဆောင်ရည်', icon: <Activity size={18} />, path: AppRoute.STAFF_PERFORMANCE, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_STAFF_READ' },
       { name: 'လက်ကျန်အစီရင်ခံ', icon: <Package size={18} />, path: AppRoute.STOCK_REPORT, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_PRODUCT_READ' },
       { name: 'အမြတ်/အရှုံး', icon: <FileText size={18} />, path: AppRoute.PROFIT_LOSS, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_REPORT_READ' },

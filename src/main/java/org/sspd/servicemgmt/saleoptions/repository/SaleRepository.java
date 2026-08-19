@@ -28,6 +28,12 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
     @Query("select count(s) from Sale s where s.saleDate >= :from")
     long countSalesFrom(@org.springframework.data.repository.query.Param("from") LocalDateTime from);
 
+    @Query("select coalesce(sum(s.netAmount), 0) from Sale s where s.saleDate >= :from and s.saleDate < :to")
+    BigDecimal sumSalesInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("select count(s) from Sale s where s.saleDate >= :from and s.saleDate < :to")
+    long countSalesInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     @Query("select coalesce(sum(s.dueAmount), 0) from Sale s where s.creditStatus = 'Overdue' and s.dueAmount > 0")
     BigDecimal sumOverdueAR();
 

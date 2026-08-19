@@ -48,6 +48,14 @@ type BackupSettingsDTO = {
   lastBackupAt?: string | null;
   lastBackupSizeBytes?: number | null;
   backupCount?: number;
+  dailyEnabled: boolean;
+  dailyTime: string;
+  weeklyEnabled: boolean;
+  weeklyDay: number;
+  weeklyTime: string;
+  monthlyEnabled: boolean;
+  monthlyDay: number;
+  monthlyTime: string;
 };
 
 const defaultSettings: BackupSettingsDTO = {
@@ -59,6 +67,14 @@ const defaultSettings: BackupSettingsDTO = {
   enabled: true,
   keepDays: 30,
   mysqldumpPath: '',
+  dailyEnabled: true,
+  dailyTime: '05:30',
+  weeklyEnabled: true,
+  weeklyDay: 7,
+  weeklyTime: '05:40',
+  monthlyEnabled: true,
+  monthlyDay: 1,
+  monthlyTime: '05:50',
 };
 
 const frequencyLabels: Record<Frequency, string> = {
@@ -97,12 +113,11 @@ const formatDateTime = (value?: string | null) => {
 };
 
 const scheduleSummary = (settings: BackupSettingsDTO) => {
-  const time = settings.backupTime || '02:00';
   if (!settings.enabled) return 'Auto backup ပိတ်ထားသည်';
-  if (settings.frequency === 'DAILY') return `နေ့စဉ် ${time} တွင် backup ယူမည်`;
-  if (settings.frequency === 'WEEKLY') return `${DAYS_OF_WEEK[(settings.dayValue || 1) - 1]}နေ့ ${time} တွင် backup ယူမည်`;
-  if (settings.frequency === 'MONTHLY') return `လတိုင်း ${settings.dayValue || 1} ရက်နေ့ ${time} တွင် backup ယူမည်`;
-  return `နှစ်တိုင်း ${MONTHS[(settings.monthValue || 1) - 1]} ${settings.dayValue || 1} ရက်နေ့ ${time} တွင် backup ယူမည်`;
+  const daily = settings.dailyEnabled ? `နေ့စဉ် ${settings.dailyTime}` : 'နေ့စဉ် ပိတ်ထားသည်';
+  const weekly = settings.weeklyEnabled ? `${DAYS_OF_WEEK[(settings.weeklyDay || 7) - 1]}နေ့ ${settings.weeklyTime}` : 'အပတ်စဉ် ပိတ်ထားသည်';
+  const monthly = settings.monthlyEnabled ? `လတိုင်း ${settings.monthlyDay || 1} ရက်နေ့ ${settings.monthlyTime}` : 'လစဉ် ပိတ်ထားသည်';
+  return `${daily} · ${weekly} · ${monthly}`;
 };
 
 const StatusTile = ({
@@ -202,7 +217,7 @@ const BackupSettings: React.FC = () => {
 
   const handleImport = async () => {
     if (!importFile) {
-      Swal.fire('File ရွေးပါ', '.sql backup file တစ်ခုရွေးရန်လိုသည်', 'error');
+      Swal.fire('File ရွေးပါ', '.sql.gz backup file တစ်ခုရွေးရန်လိုသည်', 'error');
       return;
     }
 
@@ -243,8 +258,8 @@ const BackupSettings: React.FC = () => {
   const normalizedBackups = useMemo(() => backups.map(normalizeFile), [backups]);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="ml-0 mr-0 min-h-screen w-full bg-slate-50 py-4 pr-4 sm:py-6 sm:pr-6">
+      <div className="ml-0 mr-0 w-full space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">အလိုအလျောက် Backup Settings</h1>
@@ -317,73 +332,35 @@ const BackupSettings: React.FC = () => {
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-slate-700">အကြိမ်ရေ</span>
-                <select
-                  value={settings.frequency}
-                  onChange={(event) => set('frequency', event.target.value as Frequency)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                >
-                  {Object.entries(frequencyLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
+              <div className="md:col-span-2 rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+                <p className="text-sm font-bold text-indigo-900">Backup အချိန်ဇယား အသေးစိတ်</p>
+                <p className="mt-1 text-xs text-indigo-700">Schedule တစ်ခုချင်းစီကို ဖွင့်/ပိတ်ပြီး ရက်နှင့်အချိန် သီးခြားသတ်မှတ်နိုင်သည်။</p>
+              </div>
+
+              <label className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 md:col-span-2">
+                <input type="checkbox" checked={settings.dailyEnabled} onChange={(event) => set('dailyEnabled', event.target.checked)} className="h-5 w-5 accent-emerald-600" />
+                <span className="w-32 text-sm font-bold text-slate-700">နေ့စဉ် Backup</span>
+                <input type="time" value={settings.dailyTime} onChange={(event) => set('dailyTime', event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <span className="text-xs text-slate-500">နေ့တိုင်း</span>
+              </label>
+
+              <label className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 p-3 md:col-span-2">
+                <input type="checkbox" checked={settings.weeklyEnabled} onChange={(event) => set('weeklyEnabled', event.target.checked)} className="h-5 w-5 accent-emerald-600" />
+                <span className="w-32 text-sm font-bold text-slate-700">အပတ်စဉ် Backup</span>
+                <select value={settings.weeklyDay} onChange={(event) => set('weeklyDay', Number(event.target.value))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  {DAYS_OF_WEEK.map((day, index) => <option key={day} value={index + 1}>{day}</option>)}
                 </select>
+                <input type="time" value={settings.weeklyTime} onChange={(event) => set('weeklyTime', event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </label>
 
-              <label className="space-y-1">
-                <span className="text-sm font-medium text-slate-700">Backup ယူမည့်အချိန်</span>
-                <input
-                  type="time"
-                  value={settings.backupTime}
-                  onChange={(event) => set('backupTime', event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                />
+              <label className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 p-3 md:col-span-2">
+                <input type="checkbox" checked={settings.monthlyEnabled} onChange={(event) => set('monthlyEnabled', event.target.checked)} className="h-5 w-5 accent-emerald-600" />
+                <span className="w-32 text-sm font-bold text-slate-700">လစဉ် Backup</span>
+                <select value={settings.monthlyDay} onChange={(event) => set('monthlyDay', Number(event.target.value))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => <option key={day} value={day}>{day} ရက်နေ့</option>)}
+                </select>
+                <input type="time" value={settings.monthlyTime} onChange={(event) => set('monthlyTime', event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </label>
-
-              {settings.frequency === 'WEEKLY' && (
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-slate-700">အပတ်စဉ် ရက်</span>
-                  <select
-                    value={settings.dayValue}
-                    onChange={(event) => set('dayValue', Number(event.target.value))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {DAYS_OF_WEEK.map((day, index) => (
-                      <option key={day} value={index + 1}>{day}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {(settings.frequency === 'MONTHLY' || settings.frequency === 'YEARLY') && (
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-slate-700">လထဲရှိ ရက်</span>
-                  <select
-                    value={settings.dayValue}
-                    onChange={(event) => set('dayValue', Number(event.target.value))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
-                      <option key={day} value={day}>{day} ရက်နေ့</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {settings.frequency === 'YEARLY' && (
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-slate-700">လ</span>
-                  <select
-                    value={settings.monthValue}
-                    onChange={(event) => set('monthValue', Number(event.target.value))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {MONTHS.map((month, index) => (
-                      <option key={month} value={index + 1}>{month}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
 
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm font-medium text-slate-700">Backup သိမ်းမည့် Folder</span>
@@ -465,7 +442,7 @@ const BackupSettings: React.FC = () => {
               <div className="mt-4 space-y-3">
                 <input
                   type="file"
-                  accept=".sql"
+                  accept=".sql.gz,application/gzip"
                   onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
                   className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700"
                 />
@@ -487,7 +464,7 @@ const BackupSettings: React.FC = () => {
           <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Backup History</h2>
-              <p className="mt-1 text-sm text-slate-500">Server folder ထဲရှိ .sql backup files များ</p>
+              <p className="mt-1 text-sm text-slate-500">Daily, Weekly, Monthly နှင့် Safety folder များထဲရှိ .sql.gz files များ</p>
             </div>
             <button
               type="button"

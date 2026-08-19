@@ -21,4 +21,12 @@ public class BackupSettingsDTO {
     private String lastBackupAt;
     private Long lastBackupSizeBytes;
     private Integer backupCount;
+    private boolean dailyEnabled;
+    private String dailyTime;
+    private boolean weeklyEnabled;
+    private Integer weeklyDay;
+    private String weeklyTime;
+    private boolean monthlyEnabled;
+    private Integer monthlyDay;
+    private String monthlyTime;
 }

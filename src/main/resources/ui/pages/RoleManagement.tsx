@@ -1,4 +1,4 @@
-﻿
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { roleService } from '../services/roleapiservice';
 import { permissionService } from '../services/permissionapiservice';
@@ -135,6 +135,18 @@ const RoleManagement: React.FC = () => {
     );
   };
 
+  const addCustomerHistoryPermissions = () => {
+    const requiredNames = new Set([
+      'CAN_ACCESS_CUSTOMER_READ',
+      'CAN_ACCESS_SALE_READ',
+      'CAN_ACCESS_BOOKING_READ',
+      'CAN_ACCESS_SERVICE_JOB_READ'
+    ]);
+    const requiredIds = allPermissions.filter(permission => requiredNames.has(permission.name)).map(permission => permission.id);
+    setSelectedPermissionIds(prev => Array.from(new Set([...prev, ...requiredIds])));
+  };
+
+
   if (loading) return (
     <div className="h-full flex items-center justify-center">
       <Loader2 className="animate-spin text-indigo-600" size={32} />
@@ -262,7 +274,8 @@ const RoleManagement: React.FC = () => {
                   className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none text-[11px] font-bold shadow-sm focus:border-indigo-500 transition-all"
                 />
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button onClick={addCustomerHistoryPermissions} title="Customer, Sale, Booking နှင့် Service Job Read permissions ထည့်မည်" className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200 hover:bg-indigo-100 transition-colors">Customer History</button>
                 <button onClick={() => setSelectedPermissionIds(allPermissions.filter(p => p.name.toLowerCase().includes(permSearchTerm.toLowerCase())).map(p => p.id))} className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-100 transition-colors">All</button>
                 <button onClick={() => setSelectedPermissionIds([])} className="flex-1 sm:flex-none px-3 py-2 text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 rounded-xl border border-rose-100 hover:bg-rose-100 transition-colors">None</button>
               </div>

@@ -62,11 +62,21 @@ import { getCompanySettings } from './utils/companySettings';
 import { applyDocumentLanguage, resolveInitialLanguage, saveLanguagePreference } from './utils/language';
 import { initDomLanguageTranslator, setDomLanguage } from './utils/domLanguageTranslator';
 
-const canAccess = (user: User, permission?: string): boolean => {
+type RequiredPermission = string | readonly string[];
+
+const canAccess = (user: User, permission?: RequiredPermission): boolean => {
   if (!permission) return true;
   if (user.roles.some(r => r === 'ADMINISTRATOR' || r === 'ROLE_ADMINISTRATOR')) return true;
-  return (user.permissions || []).includes(permission);
+  const required = Array.isArray(permission) ? permission : [permission];
+  return required.every(item => (user.permissions || []).includes(item));
 };
+
+const CUSTOMER_HISTORY_PERMISSIONS = [
+  'CAN_ACCESS_CUSTOMER_READ',
+  'CAN_ACCESS_SALE_READ',
+  'CAN_ACCESS_BOOKING_READ',
+  'CAN_ACCESS_SERVICE_JOB_READ'
+] as const;
 
 const THEME_STORAGE_KEY = 'sspd_theme';
 const INVISIBLE_ROUTE_CHARS = /[\u200B-\u200D\uFEFF]/g;
@@ -170,7 +180,7 @@ const App: React.FC = () => {
   };
 
   // Permission guard for child routes (no Layout — Layout is the parent)
-  const guard = (element: React.ReactNode, perm?: string) => {
+  const guard = (element: React.ReactNode, perm?: RequiredPermission) => {
     if (!user) return <Navigate to={AppRoute.LOGIN} replace />;
     if (perm && !canAccess(user, perm)) return <Navigate to={AppRoute.DASHBOARD} replace />;
     return <>{element}</>;
@@ -259,7 +269,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.SALES_SUMMARY}       element={guard(<SalesSummaryReport />,         'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.PURCHASE_SUMMARY}    element={guard(<PurchaseSummaryReport />,      'CAN_ACCESS_PURCHASE_READ')} />
           <Route path={AppRoute.SERVICE_SUMMARY}     element={guard(<ServiceSummaryReport />,       'CAN_ACCESS_SERVICE_JOB_READ')} />
-          <Route path={AppRoute.CUSTOMER_HISTORY}    element={guard(<CustomerHistoryReport />,      'CAN_ACCESS_CUSTOMER_READ')} />
+          <Route path={AppRoute.CUSTOMER_HISTORY}    element={guard(<CustomerHistoryReport />,      CUSTOMER_HISTORY_PERMISSIONS)} />
           <Route path={AppRoute.STAFF_PERFORMANCE}   element={guard(<StaffPerformanceReport />,     'CAN_ACCESS_STAFF_READ')} />
           <Route path={AppRoute.STOCK_REPORT}        element={guard(<StockReport />,                'CAN_ACCESS_PRODUCT_READ')} />
           <Route path="*" element={<Navigate to={AppRoute.DASHBOARD} />} />

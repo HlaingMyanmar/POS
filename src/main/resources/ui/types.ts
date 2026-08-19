@@ -252,6 +252,10 @@ export interface DashboardStats {
   // Today
   todaySalesAmount: number;
   todaySalesCount: number;
+  periodServiceAmount: number;
+  periodServiceCount: number;
+  periodPurchaseAmount: number;
+  periodPurchaseCount: number;
   // AR Alerts
   totalOverdueAR: number;
   overdueARCount: number;
@@ -259,8 +263,20 @@ export interface DashboardStats {
   pendingARCount: number;
   // Operations
   pendingServiceJobs: number;
+  receivedJobCount: number;
+  inProgressJobCount: number;
+  completedJobCount: number;
+  pendingPaymentJobCount: number;
+  pendingDeliveryJobCount: number;
   lowStockCount: number;
   lowStockProducts: string[];
+  stockValue: number;
+  supplierPayable: number;
+  reworkCount: number;
+  upgradeCount: number;
+  refundCount: number;
+  refundAmount: number;
+  updatedAt: string;
   // System
   hasJournalEntries: boolean;
 }

@@ -326,8 +326,8 @@ async function openPdfBlob(path: string): Promise<void> {
 }
 
 export const dashboardService = {
-  getStats: async (): Promise<DashboardStats> => {
-    const res = await api.get<any, ApiResponse<DashboardStats>>('/v1/dashboard/stats');
+  getStats: async (params?: { period?: string; from?: string; to?: string }): Promise<DashboardStats> => {
+    const res = await api.get<any, ApiResponse<DashboardStats>>('/v1/dashboard/stats', { params });
     const d = (res?.data ?? {}) as any;
     return {
       totalSales:     Number(d.totalSales)     || 0,
@@ -336,13 +336,29 @@ export const dashboardService = {
       totalCustomers: Number(d.totalCustomers) || 0,
       todaySalesAmount:  Number(d.todaySalesAmount)  || 0,
       todaySalesCount:   Number(d.todaySalesCount)   || 0,
+      periodServiceAmount: Number(d.periodServiceAmount) || 0,
+      periodServiceCount: Number(d.periodServiceCount) || 0,
+      periodPurchaseAmount: Number(d.periodPurchaseAmount) || 0,
+      periodPurchaseCount: Number(d.periodPurchaseCount) || 0,
       totalOverdueAR:    Number(d.totalOverdueAR)    || 0,
       overdueARCount:    Number(d.overdueARCount)    || 0,
       totalPendingAR:    Number(d.totalPendingAR)    || 0,
       pendingARCount:    Number(d.pendingARCount)    || 0,
       pendingServiceJobs: Number(d.pendingServiceJobs) || 0,
+      receivedJobCount: Number(d.receivedJobCount) || 0,
+      inProgressJobCount: Number(d.inProgressJobCount) || 0,
+      completedJobCount: Number(d.completedJobCount) || 0,
+      pendingPaymentJobCount: Number(d.pendingPaymentJobCount) || 0,
+      pendingDeliveryJobCount: Number(d.pendingDeliveryJobCount) || 0,
       lowStockCount:     Number(d.lowStockCount)     || 0,
       lowStockProducts:  Array.isArray(d.lowStockProducts) ? d.lowStockProducts : [],
+      stockValue: Number(d.stockValue) || 0,
+      supplierPayable: Number(d.supplierPayable) || 0,
+      reworkCount: Number(d.reworkCount) || 0,
+      upgradeCount: Number(d.upgradeCount) || 0,
+      refundCount: Number(d.refundCount) || 0,
+      refundAmount: Number(d.refundAmount) || 0,
+      updatedAt: String(d.updatedAt || ''),
       hasJournalEntries: Boolean(d.hasJournalEntries),
       recentSales: Array.isArray(d.recentSales)
         ? d.recentSales.map((s: any) => ({

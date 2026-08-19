@@ -20,6 +20,22 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     List<ServiceJob> findByCustomerId(Integer customerId);
     List<ServiceJob> findByAssignedStaffId(Integer staffId);
     long countByStatus(ServiceJobStatus status);
+
+    @Query("select coalesce(sum(j.netAmount), 0) from ServiceJob j where j.receivedDate >= :from and j.receivedDate < :to")
+    BigDecimal sumNetAmountInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("select count(j) from ServiceJob j where j.receivedDate >= :from and j.receivedDate < :to")
+    long countInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("select count(j) from ServiceJob j where j.dueAmount > 0 and j.status <> org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED")
+    long countPendingPayment();
+
+    @Query("select count(j) from ServiceJob j where j.status = org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.COMPLETED")
+    long countPendingDelivery();
+
+    @Query("select count(j) from ServiceJob j where j.rework = true and j.receivedDate >= :from and j.receivedDate < :to")
+    long countReworkInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     List<ServiceJob> findAllByBookingIdOrderByIdAsc(Integer bookingId);
 
     @Query("""

@@ -2,6 +2,8 @@ package org.sspd.servicemgmt.servicejoboptions.dto;
 
 import lombok.Data;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
+import org.sspd.servicemgmt.servicejoboptions.model.ReworkResolutionMode;
+import org.sspd.servicemgmt.servicejoboptions.model.OldPartDisposition;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 
 import java.math.BigDecimal;
@@ -55,6 +57,22 @@ public class ServiceJobDTO {
     private String replacementItemName;
     private String replacementSerialNo;
     private String replacementReason;
+    private ReworkResolutionMode resolutionMode;
+    private OldPartDisposition oldPartDisposition;
+    private String originalPartName;
+    private String originalPartCode;
+    private List<String> originalPartSerialNumbers;
+    private String replacementProductName;
+    private String replacementProductCode;
+    private List<String> replacementPartSerialNumbers;
+    private Integer replacementQty;
+    private BigDecimal warrantyCredit;
+    private BigDecimal replacementPrice;
+    private BigDecimal customerCharge;
+    private BigDecimal refundAmount;
+    private String refundPaymentMethodName;
+    private String refundTransactionNo;
+    private String refundDate;
     private String remark;
     private List<ServiceJobLineDTO> lines;
     private List<ServiceJobPartDTO> productParts;

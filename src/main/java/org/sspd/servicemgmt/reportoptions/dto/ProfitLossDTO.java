@@ -14,14 +14,16 @@ public class ProfitLossDTO {
     private LocalDate to;
 
     // ── Section 1: Revenue ──────────────────────────
-    private BigDecimal grossSales;       // Sales (INC-002)
+    private BigDecimal grossSales;       // Product Sales (INC-002)
+    private BigDecimal serviceRevenue;   // Service Revenue (INC-003)
     private BigDecimal salesReturns;     // Sales Returns (EXP-010)
     private BigDecimal netRevenue;       // grossSales - salesReturns
 
     // ── Section 2: Cost of Goods ────────────────────
     private BigDecimal purchases;        // Purchases (EXP-007)
     private BigDecimal purchaseReturns;  // Purchase Returns (INC-007)
-    private BigDecimal netPurchases;     // purchases - purchaseReturns
+    private BigDecimal netPurchases;     // purchases - purchaseReturns (legacy periodic reference)
+    private BigDecimal cogs;             // perpetual cost recognised when inventory is issued
 
     // ── Section 3: Gross Profit ─────────────────────
     private BigDecimal grossProfit;      // netRevenue - netPurchases

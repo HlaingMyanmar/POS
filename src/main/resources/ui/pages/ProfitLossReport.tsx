@@ -78,7 +78,7 @@ const ProfitLossReport: React.FC = () => {
   const barData = data
     ? [
         { name: 'Net Revenue',    value: data.netRevenue,    fill: '#6366f1' },
-        { name: 'Net Purchases',  value: data.netPurchases,  fill: '#f59e0b' },
+        { name: 'COGS',           value: data.cogs,          fill: '#f59e0b' },
         { name: 'Gross Profit',   value: data.grossProfit,   fill: '#10b981' },
         { name: 'Expenses',       value: data.totalExpenses, fill: '#f43f5e' },
         { name: 'Net Profit',     value: Math.abs(data.netProfit), fill: isProfit ? '#6366f1' : '#94a3b8' },
@@ -172,14 +172,14 @@ const ProfitLossReport: React.FC = () => {
               {/* ① REVENUE */}
               <SecHead label="Revenue" />
               <DeductRow label="Gross Sales"    value={data.grossSales}    indent />
+              <DeductRow label="Service Revenue" value={data.serviceRevenue} indent />
               <DeductRow label="(-) Sales Returns" value={data.salesReturns} indent deduct />
               <SubtotalRow label="Net Revenue" value={data.netRevenue} color="indigo" />
 
               {/* ② COST OF GOODS SOLD */}
               <SecHead label="Cost of Goods Sold" />
-              <DeductRow label="Purchases"              value={data.purchases}       indent />
-              <DeductRow label="(-) Purchase Returns"   value={data.purchaseReturns} indent deduct />
-              <SubtotalRow label="Net Purchases" value={data.netPurchases} color="amber" />
+              <DeductRow label="Inventory Cost Issued" value={data.cogs} indent />
+              <SubtotalRow label="COGS" value={data.cogs} color="amber" />
 
               {/* ③ GROSS PROFIT */}
               <GrossProfitRow value={data.grossProfit} />

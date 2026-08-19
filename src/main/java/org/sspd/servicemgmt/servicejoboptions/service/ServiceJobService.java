@@ -472,6 +472,8 @@ public class ServiceJobService {
                 .orElseThrow(() -> new IllegalArgumentException("Selected part does not belong to the original job"));
             if (req.getOldPartDisposition() == null)
                 throw new IllegalArgumentException("Old part disposition is required");
+            if (reworkResolutionRepo.existsByOriginalPartId(originalPart.getId()))
+                throw new IllegalStateException("This original job part has already been returned/disposed in another rework");
 
             BigDecimal lineValue = originalPart.getUnitPrice().multiply(BigDecimal.valueOf(originalPart.getQty()))
                 .subtract(originalPart.getDiscountAmount() != null ? originalPart.getDiscountAmount() : BigDecimal.ZERO)
@@ -536,10 +538,13 @@ public class ServiceJobService {
                 .replacementSerialNumbers(String.join(",", replacementSerials)).replacementQty(replacementProduct != null ? replacementQty : null)
                 .originalCredit(originalCredit).replacementPrice(replacementPrice).customerCharge(customerCharge)
                 .refundAmount(refundAmount).reason(req.getReplacementReason()).build());
-            if (req.getOldPartDisposition() != OldPartDisposition.REUSE) {
-                stockMovementService.recordMovement(StockMovement.builder()
-                    .product(originalPart.getProduct()).movementType(MovementType.ADJUST).qty(originalPart.getQty())
-                    .referenceId(resolution.getId()).referenceType("ReworkPartResolution:" + req.getOldPartDisposition().name()).build());
+            stockMovementService.recordMovement(StockMovement.builder()
+                .product(originalPart.getProduct())
+                .movementType(req.getOldPartDisposition() == OldPartDisposition.REUSE ? MovementType.RETURN : MovementType.ADJUST)
+                .qty(originalPart.getQty()).referenceId(resolution.getId())
+                .referenceType("ReworkOldPart:" + req.getOldPartDisposition().name()).build());
+            if (req.getOldPartDisposition() == OldPartDisposition.REUSE) {
+                createReturnedPartValuationJournal(rework, originalPart);
             }
         }
         if (mode == ReworkResolutionMode.REFUND) {
@@ -547,6 +552,30 @@ public class ServiceJobService {
         }
         messagingTemplate.convertAndSend("/topic/service-jobs", "REWORK_CREATED");
         return toDto(rework);
+    }
+
+    private void createReturnedPartValuationJournal(ServiceJob rework, ServiceJobPart originalPart) {
+        BigDecimal unitCost = originalPart.getProduct().getCostPrice() != null
+            ? originalPart.getProduct().getCostPrice() : BigDecimal.ZERO;
+        BigDecimal returnedCost = unitCost.multiply(BigDecimal.valueOf(originalPart.getQty()));
+        if (returnedCost.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        JournalDetailDTO drInventory = new JournalDetailDTO();
+        drInventory.setAccountId(accountResolver.inventory().getId());
+        drInventory.setDebit(returnedCost);
+        drInventory.setCredit(BigDecimal.ZERO);
+        JournalDetailDTO crCogs = new JournalDetailDTO();
+        crCogs.setAccountId(accountResolver.cogs().getId());
+        crCogs.setDebit(BigDecimal.ZERO);
+        crCogs.setCredit(returnedCost);
+
+        JournalEntryDTO entry = new JournalEntryDTO();
+        entry.setReferenceNo(rework.getJobNo() + "-RETURN-COST");
+        entry.setEntryDate(LocalDateTime.now());
+        entry.setDescription("Reusable rework part returned to inventory - " + rework.getJobNo());
+        entry.setStaffId(rework.getAssignedStaff() != null ? rework.getAssignedStaff().getId() : null);
+        entry.setDetails(List.of(drInventory, crCogs));
+        journalWriter.write(entry);
     }
 
     private void recordReworkRefund(ServiceJob rework, BigDecimal amount, Integer paymentMethodId, String transactionNo) {
@@ -596,20 +625,28 @@ public class ServiceJobService {
     }
 
     private void updateOldPartDisposition(ServiceJobPart part, OldPartDisposition disposition) {
-        if (!Boolean.TRUE.equals(part.getProduct().getHasSerial()) || disposition == OldPartDisposition.REUSE) return;
-        SerialStatus target = switch (disposition) {
-            case QUARANTINE -> SerialStatus.Quarantined;
-            case DAMAGED -> SerialStatus.Damaged;
-            case SUPPLIER_RETURN -> SerialStatus.Returned_To_Supplier;
-            case REUSE -> SerialStatus.Used_In_Service;
-        };
-        for (String sn : splitSerials(part.getSerialNumbers())) {
-            ProductSerial serial = serialRepo.findBySerialNumber(sn)
-                .orElseThrow(() -> new ResourceNotFoundException("Original part serial not found: " + sn));
-            if (serial.getStatus() != SerialStatus.Used_In_Service && serial.getStatus() != SerialStatus.Quarantined)
-                throw new IllegalStateException("Original part serial is not installed/quarantined: " + sn);
-            serial.setStatus(target);
-            serialRepo.save(serial);
+        Product product = part.getProduct();
+        if (Boolean.TRUE.equals(product.getHasSerial())) {
+            SerialStatus target = switch (disposition) {
+                case REUSE -> SerialStatus.Available;
+                case QUARANTINE -> SerialStatus.Quarantined;
+                case DAMAGED -> SerialStatus.Damaged;
+                case SUPPLIER_RETURN -> SerialStatus.Returned_To_Supplier;
+            };
+            for (String sn : splitSerials(part.getSerialNumbers())) {
+                ProductSerial serial = serialRepo.findBySerialNumber(sn)
+                    .orElseThrow(() -> new ResourceNotFoundException("Original part serial not found: " + sn));
+                if (serial.getStatus() != SerialStatus.Used_In_Service
+                    && serial.getStatus() != SerialStatus.Sold
+                    && serial.getStatus() != SerialStatus.Quarantined)
+                    throw new IllegalStateException("Original part serial is not installed/quarantined: " + sn);
+                serial.setStatus(target);
+                serialRepo.save(serial);
+            }
+        } else if (disposition == OldPartDisposition.REUSE) {
+            int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
+            product.setStockQty(currentQty + part.getQty());
+            productRepo.save(product);
         }
     }
     @Transactional
@@ -909,6 +946,32 @@ public class ServiceJobService {
         dto.setReplacementItemName(j.getReplacementItemName());
         dto.setReplacementSerialNo(j.getReplacementSerialNo());
         dto.setReplacementReason(j.getReplacementReason());
+        if (Boolean.TRUE.equals(j.getRework())) {
+            reworkResolutionRepo.findByReworkJobIdOrderByIdAsc(j.getId()).stream().findFirst().ifPresent(r -> {
+                dto.setResolutionMode(r.getResolutionMode());
+                dto.setOldPartDisposition(r.getOldPartDisposition());
+                dto.setOriginalPartName(r.getOriginalPart() != null ? r.getOriginalPart().getProduct().getName() : null);
+                dto.setOriginalPartCode(r.getOriginalPart() != null ? r.getOriginalPart().getProduct().getProductCode() : null);
+                dto.setOriginalPartSerialNumbers(splitSerials(r.getOldSerialNumbers()));
+                dto.setReplacementProductName(r.getReplacementProduct() != null ? r.getReplacementProduct().getName() : null);
+                dto.setReplacementProductCode(r.getReplacementProduct() != null ? r.getReplacementProduct().getProductCode() : null);
+                dto.setReplacementPartSerialNumbers(splitSerials(r.getReplacementSerialNumbers()));
+                dto.setReplacementQty(r.getReplacementQty());
+                dto.setWarrantyCredit(r.getOriginalCredit());
+                dto.setReplacementPrice(r.getReplacementPrice());
+                dto.setCustomerCharge(r.getCustomerCharge());
+                dto.setRefundAmount(r.getRefundAmount());
+            });
+        }
+        if (dto.getResolutionMode() == ReworkResolutionMode.REFUND) {
+            paymentTransactionRepo.findByReferenceIdAndReferenceType(j.getId(), ReferenceType.Service).stream()
+                .filter(tx -> tx.getAmount() != null && tx.getAmount().compareTo(BigDecimal.ZERO) < 0)
+                .findFirst().ifPresent(tx -> {
+                    dto.setRefundPaymentMethodName(tx.getPaymentMethod() != null ? tx.getPaymentMethod().getMethodName() : null);
+                    dto.setRefundTransactionNo(tx.getTransactionNo());
+                    dto.setRefundDate(tx.getPaymentDate() != null ? tx.getPaymentDate().toString() : null);
+                });
+        }
         if (j.getParentJobId() != null) {
             repo.findById(j.getParentJobId()).ifPresent(p -> dto.setParentJobNo(p.getJobNo()));
         }

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { accountingApiService } from '../services/accountingapiservice';
@@ -281,8 +281,8 @@ const AccountingDashboard: React.FC = () => {
                   <p className="text-[10px] text-slate-400 mt-0.5">Ks</p>
                 </div>
                 <div className="p-5 bg-amber-50">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Net Purchases</p>
-                  <p className="text-2xl font-bold text-amber-700 mt-1 tabular-nums">{money(pl.netPurchases)}</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">COGS</p>
+                  <p className="text-2xl font-bold text-amber-700 mt-1 tabular-nums">{money(pl.cogs)}</p>
                   <p className="text-[10px] text-slate-400 mt-0.5">Ks</p>
                 </div>
                 <div className="p-5 bg-rose-50">

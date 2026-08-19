@@ -546,12 +546,14 @@ export interface ProfitLossDTO {
   to: string;
   // Revenue
   grossSales: number;
+  serviceRevenue: number;
   salesReturns: number;
   netRevenue: number;
   // Purchases / COGS
   purchases: number;
   purchaseReturns: number;
   netPurchases: number;
+  cogs: number;
   // Gross Profit
   grossProfit: number;
   // Other Income

@@ -1,6 +1,8 @@
 package org.sspd.servicemgmt.bookingoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
@@ -21,6 +23,9 @@ import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.shelflocationoptions.model.ShelfLocation;
 import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.staffoptions.model.Staff;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
 
 import org.springframework.data.domain.PageRequest;
@@ -44,6 +49,7 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final CustomerRepository customerRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
     private final ServiceJobRepository serviceJobRepository;
     private final ShelfLocationRepository shelfLocationRepository;
     private final CompanySettingsService companySettingsService;
@@ -116,8 +122,9 @@ public class BookingService {
             .shelfLocation(dto.getShelfLocation())
             .build();
 
-        if (dto.getStaffId() != null)
-            booking.setStaff(staffRepository.findById(dto.getStaffId()).orElse(null));
+        Staff staff = dto.getStaffId() == null ? null : staffRepository.findById(dto.getStaffId()).orElse(null);
+        validateReceiver(staff);
+        booking.setStaff(staff);
 
         buildDeviceInfos(booking, dto);
         buildDevices(booking, dto);
@@ -137,10 +144,9 @@ public class BookingService {
         if (dto.getCustomerId() != null)
             booking.setCustomer(customerRepository.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")));
-        if (dto.getStaffId() != null)
-            booking.setStaff(staffRepository.findById(dto.getStaffId()).orElse(null));
-        else
-            booking.setStaff(null);
+        Staff staff = dto.getStaffId() == null ? null : staffRepository.findById(dto.getStaffId()).orElse(null);
+        validateReceiver(staff);
+        booking.setStaff(staff);
         if (dto.getAppointmentDate() != null)
             booking.setAppointmentDate(LocalDateTime.parse(dto.getAppointmentDate(), FMT));
         if (dto.getStatus() != null)
@@ -169,6 +175,23 @@ public class BookingService {
         BookingDTO updated = toDto(bookingRepository.save(booking));
         messagingTemplate.convertAndSend(BOOKING_TOPIC, "BOOKING_UPDATED");
         return updated;
+    }
+
+    private void validateReceiver(Staff selectedStaff) {
+        if (hasAuthority("CAN_ACCESS_BOOKING_STAFF_OVERRIDE")) return;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication != null ? authentication.getName() : null;
+        User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
+        if (user == null || user.getStaff() == null || selectedStaff == null
+                || !user.getStaff().getId().equals(selectedStaff.getId())) {
+            throw new AccessDeniedException("ပစ္စည်းလက်ခံမှုအတွက် သင့် Staff ကိုသာ ရွေးချယ်နိုင်ပါသည်။");
+        }
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
     }
 
     @Transactional

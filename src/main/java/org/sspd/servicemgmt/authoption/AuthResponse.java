@@ -14,6 +14,7 @@ class AuthResponse {
     private String username;
     private String name;
     private String phone;
+    private Integer staffId;
     private Set<String> roles;
     private Set<String> permissions;
 }

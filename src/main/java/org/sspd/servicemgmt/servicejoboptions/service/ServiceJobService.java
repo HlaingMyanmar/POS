@@ -1,6 +1,8 @@
 package org.sspd.servicemgmt.servicejoboptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
@@ -40,6 +42,9 @@ import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
 import org.sspd.servicemgmt.saleoptions.service.SaleService;
 import org.sspd.servicemgmt.saleoptions.saledetails.dto.SaleDetailDTO;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.staffoptions.model.Staff;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
@@ -70,6 +75,7 @@ public class ServiceJobService {
     private final ServiceJobRepository repo;
     private final CustomerRepository customerRepo;
     private final StaffRepository staffRepo;
+    private final UserRepository userRepository;
     private final ServiceItemRepository serviceItemRepo;
     private final ProductRepository productRepo;
     private final ProductSerialRepository serialRepo;
@@ -169,8 +175,9 @@ public class ServiceJobService {
             .productParts(new ArrayList<>())
             .build();
 
-        if (dto.getAssignedStaffId() != null)
-            job.setAssignedStaff(staffRepo.findById(dto.getAssignedStaffId()).orElse(null));
+        Staff technician = dto.getAssignedStaffId() == null ? null : staffRepo.findById(dto.getAssignedStaffId()).orElse(null);
+        validateTechnician(technician);
+        job.setAssignedStaff(technician);
         if (dto.getShelfLocationId() != null)
             job.setShelfLocation(shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null));
         if (dto.getEstimatedCompletion() != null && !dto.getEstimatedCompletion().isBlank())
@@ -194,8 +201,11 @@ public class ServiceJobService {
         if (dto.getCustomerId() != null)
             job.setCustomer(customerRepo.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")));
-        if (dto.getAssignedStaffId() != null)
-            job.setAssignedStaff(staffRepo.findById(dto.getAssignedStaffId()).orElse(null));
+        if (dto.getAssignedStaffId() != null) {
+            Staff technician = staffRepo.findById(dto.getAssignedStaffId()).orElse(null);
+            validateTechnician(technician);
+            job.setAssignedStaff(technician);
+        }
         job.setShelfLocation(dto.getShelfLocationId() != null
             ? shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null)
             : null);
@@ -246,6 +256,23 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_STATUS_CHANGED");
         return result;
+    }
+
+    private void validateTechnician(Staff selectedStaff) {
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) return;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication != null ? authentication.getName() : null;
+        User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
+        if (user == null || user.getStaff() == null || selectedStaff == null
+                || !user.getStaff().getId().equals(selectedStaff.getId())) {
+            throw new AccessDeniedException("ဝန်ဆောင်မှုအတွက် သင့်ကျွမ်းကျင်သူ Staff ကိုသာ သတ်မှတ်နိုင်ပါသည်။");
+        }
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
     }
 
     @Transactional

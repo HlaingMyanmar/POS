@@ -13,6 +13,8 @@ import org.sspd.servicemgmt.rbacoptions.useroptions.dto.UserDTO;
 import org.sspd.servicemgmt.rbacoptions.useroptions.mapper.UserMapper;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
+import org.sspd.servicemgmt.staffoptions.model.Staff;
+import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final StaffRepository staffRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserMapper mapper;
@@ -36,6 +39,7 @@ public class UserService {
     @Transactional
     public UserDTO save(UserDTO dto){
         User entity = mapper.toEntity(dto);
+        entity.setStaff(resolveStaff(dto.getStaffId()));
         if (userRepository.existsByEmail(dto.getEmail())) {
             throw new RuntimeException("Email '" + dto.getEmail() + "' is already registered!");
         }
@@ -86,10 +90,16 @@ public class UserService {
 
         // ၂။ Mapper ထဲမှာ Password ကို Ignore လုပ်ထားဖို့ လိုအပ်ပါတယ် (အောက်မှာ ပြထားပါတယ်)
         mapper.updateEntityFromDto(userDTO, existingEntity);
+        existingEntity.setStaff(resolveStaff(userDTO.getStaffId()));
 
         // ၃။ WebSocket & Save
         messagingTemplate.convertAndSend(USER_TOPIC, "USER_UPDATED");
         return mapper.toDto(userRepository.save(existingEntity));
+    }
+
+    private Staff resolveStaff(Integer staffId) {
+        return staffId == null ? null : staffRepository.findById(staffId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_USER_DELETE')")

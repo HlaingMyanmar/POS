@@ -1,7 +1,9 @@
 package org.sspd.servicemgmt.accountingoptions.expenseoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
@@ -21,8 +23,11 @@ import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
 import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +40,7 @@ public class ExpenseService {
     private final ChartOfAccountRepository coaRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
     private final JournalWriter journalWriter;
     private final ExpenseMapper mapper;
     private final AccountResolver accounts;
@@ -65,6 +71,7 @@ public class ExpenseService {
 
         Staff staff = staffRepository.findById(dto.getStaffId())
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
+        validateStaffSelection(staff);
 
         validateSufficientBalance(method, dto.getAmount());
 
@@ -72,7 +79,9 @@ public class ExpenseService {
         entity.setAccount(account);
         entity.setPaymentMethod(method);
         entity.setStaff(staff);
-        entity.setExpenseDate(dto.getExpenseDate() != null ? dto.getExpenseDate() : LocalDateTime.now());
+        LocalDateTime expenseDate = dto.getExpenseDate() != null ? dto.getExpenseDate() : LocalDateTime.now();
+        validateBackdatePermission(expenseDate);
+        entity.setExpenseDate(expenseDate);
         entity.setExpenseCode("PENDING");
 
         Expense saved = expenseRepository.save(entity);
@@ -95,6 +104,34 @@ public class ExpenseService {
     public ExpenseDTO findById(Integer id) {
         return mapper.toDto(expenseRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Expense not found: " + id)));
+    }
+
+    private void validateBackdatePermission(LocalDateTime date) {
+        LocalDate today = LocalDate.now();
+        if (date.toLocalDate().isBefore(today) && !hasAuthority("CAN_ACCESS_EXPENSE_BACKDATE")) {
+            throw new AccessDeniedException("Expense ကို အတိတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။");
+        }
+        if (date.toLocalDate().isAfter(today) && !hasAuthority("CAN_ACCESS_EXPENSE_FUTUREDATE")) {
+            throw new AccessDeniedException("Expense ကို အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။");
+        }
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
+    }
+
+    private void validateStaffSelection(Staff selectedStaff) {
+        if (hasAuthority("CAN_ACCESS_EXPENSE_STAFF_OVERRIDE")) return;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication != null ? authentication.getName() : null;
+        User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
+        boolean matches = user != null && user.getStaff() != null
+            && user.getStaff().getId().equals(selectedStaff.getId());
+        if (!matches) {
+            throw new AccessDeniedException("Expense အတွက် သင့် Staff ကိုသာ ရွေးချယ်နိုင်ပါသည်။");
+        }
     }
 
     private void createExpenseJournal(Expense expense, ChartOfAccount account,

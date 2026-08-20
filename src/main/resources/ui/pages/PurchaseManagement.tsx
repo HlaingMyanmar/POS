@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
@@ -13,6 +13,7 @@ import { AppRoute, PurchaseDTO, PurchaseDetailDTO, SupplierDTO, StaffDTO, Produc
 import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp } from 'lucide-react';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
 import { getCachedCompanySettings } from '../utils/companySettings';
+import { getFromSession } from '../utils/storageHelper';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import Swal from 'sweetalert2';
 
@@ -74,6 +75,15 @@ const getThisMonthRange = () => {
 };
 
 const PurchaseManagement: React.FC = () => {
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] };
+    } catch {
+      return {};
+    }
+  }, []);
+  const canOverrideStaff = (currentUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role))
+    || (currentUser.permissions || []).includes('CAN_ACCESS_PURCHASE_STAFF_OVERRIDE');
   const location = useLocation();
   const navigate = useNavigate();
   const [showNewVoucherForm, setShowNewVoucherForm] = useState(false);
@@ -173,6 +183,9 @@ const PurchaseManagement: React.FC = () => {
       ]);
       setSuppliers(supRes);
       setStaffs(staffRes);
+      const linkedStaff = staffRes.find((staff) => staff.id === currentUser.staffId);
+      setSelectedStaffId((previous) => previous || linkedStaff?.id || (canOverrideStaff ? staffRes[0]?.id || 0 : 0));
+      if (linkedStaff) setStaffSearch(linkedStaff.name);
       setProducts(prodRes);
       setPaymentMethods(payRes);
     } catch (error) {
@@ -1247,16 +1260,17 @@ const PurchaseManagement: React.FC = () => {
               </div>
               <div className="space-y-1.5 xl:col-span-3 2xl:col-span-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <User size={12} /> ဝယ်ယူသူ / ဝန်ထမ်း
+                  <User size={12} /> ဝယ်ယူမှုတာဝန်ခံ (Staff)
                 </label>
                 <div className="relative">
                   <input
                     value={staffSearch && staffSearch.length > 0 ? staffSearch : getStaffLabelById(selectedStaffId)}
+                    readOnly={!canOverrideStaff}
                     onChange={(e) => {
                       handleStaffSearchChange(e.target.value);
                       setStaffOpen(true);
                     }}
-                    onFocus={() => setStaffOpen(true)}
+                    onFocus={() => { if (canOverrideStaff) setStaffOpen(true); }}
                     onBlur={() => setTimeout(() => setStaffOpen(false), 120)}
                     placeholder="ဝန်ထမ်း ရှာပါ..."
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"

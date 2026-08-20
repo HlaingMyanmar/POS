@@ -54,6 +54,7 @@ public class AuthController {
                 result.username(),
                 result.name(),
                 result.phone(),
+                result.staffId(),
                 result.roles(),
                 result.permissions()
         );

@@ -18,10 +18,13 @@ public interface UserMapper {
 
     // Entity -> DTO
     @Mapping(target = "roles", expression = "java(mapRolesToStrings(entity.getRoles()))")
+    @Mapping(source = "staff.id", target = "staffId")
+    @Mapping(source = "staff.name", target = "staffName")
     UserDTO toDto(User entity);
 
     // DTO -> Entity
     @Mapping(target = "roles", ignore = true)
+    @Mapping(target = "staff", ignore = true)
     User toEntity(UserDTO dto);
 
 
@@ -29,6 +32,7 @@ public interface UserMapper {
     @Mapping(target = "roles", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "password", ignore = true)
+    @Mapping(target = "staff", ignore = true)
     void updateEntityFromDto(UserDTO dto, @MappingTarget User entity);
 
     default Set<String> mapRolesToStrings(Set<Role> roles) {

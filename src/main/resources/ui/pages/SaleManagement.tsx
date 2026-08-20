@@ -154,6 +154,21 @@ const canCurrentUserBackdateSale = () => {
   }
 };
 
+const canCurrentUserFutureDateSale = () => {
+  const raw = getFromSession('sspd_user');
+  if (!raw) return false;
+  try {
+    const user = JSON.parse(raw);
+    const roles: string[] = user.roles || [];
+    const permissions: string[] = user.permissions || [];
+    return roles.includes('ADMINISTRATOR') ||
+      roles.includes('ROLE_ADMINISTRATOR') ||
+      permissions.includes('CAN_ACCESS_SALE_FUTUREDATE');
+  } catch {
+    return false;
+  }
+};
+
 const badgeByState: Record<SaleState, string> = {
   PENDING: 'bg-sky-100 text-sky-700 border border-sky-200',
   PARTIAL: 'bg-amber-100 text-amber-700 border border-amber-200',
@@ -168,6 +183,15 @@ const saleStateLabel: Record<SaleState, string> = {
 };
 
 const SaleManagement: React.FC = () => {
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] };
+    } catch {
+      return {};
+    }
+  }, []);
+  const canOverrideStaff = (currentUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role))
+    || (currentUser.permissions || []).includes('CAN_ACCESS_SALE_STAFF_OVERRIDE');
   const location = useLocation();
   const navigate = useNavigate();
   const [showCreateSaleForm, setShowCreateSaleForm] = useState(false);
@@ -221,6 +245,7 @@ const SaleManagement: React.FC = () => {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [payModalOpen, setPayModalOpen] = useState(false);
   const canBackdateSale = useMemo(() => canCurrentUserBackdateSale(), []);
+  const canFutureDateSale = useMemo(() => canCurrentUserFutureDateSale(), []);
   const detailsRef = useRef<DetailForm[]>([emptyDetail()]);
   const productSearchesRef = useRef<string[]>(['']);
 
@@ -261,6 +286,8 @@ const SaleManagement: React.FC = () => {
       setCustomers(customerRes || []);
       setTerms(termRes || []);
       setStaffs(staffRes || []);
+      const linkedStaff = staffRes.find((staff) => staff.id === currentUser.staffId);
+      setStaffId((previous) => previous || linkedStaff?.id || (canOverrideStaff ? staffRes[0]?.id || 0 : 0));
       setProducts(productRes || []);
       setMethods(methodRes || []);
       setSerials(serialRes || []);
@@ -603,7 +630,7 @@ const SaleManagement: React.FC = () => {
     setCustomerId(0);
     setCustomerSearch('');
     setCustomerOpen(false);
-    setStaffId(0);
+    setStaffId(currentUser.staffId || (canOverrideStaff ? staffs[0]?.id || 0 : 0));
     setSaleDate(todayStr);
     setDiscountInput('');
     setPaidInput('');
@@ -621,7 +648,9 @@ const SaleManagement: React.FC = () => {
   const validateSale = () => {
     if (customerId <= 0) return 'Customer is required.';
     if (!saleDate) return 'Sale date is required.';
-    if (saleDate < todayStr && !canBackdateSale) return 'Back date sale requires permission.';
+    if (staffId <= 0) return 'ရောင်းသူ Staff ကို ရွေးချယ်ပါ။';
+    if (saleDate < todayStr && !canBackdateSale) return 'အတိတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။';
+    if (saleDate > todayStr && !canFutureDateSale) return 'အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။';
     if (details.length === 0) return 'Sale detail is required.';
 
     const usedSerials = new Set<string>();
@@ -950,7 +979,7 @@ const SaleManagement: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">ရောင်းသူ</label>
-              <select value={staffId} onChange={(e) => setStaffId(Number(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
+              <select value={staffId} disabled={!canOverrideStaff} onChange={(e) => setStaffId(Number(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
                 <option value={0}>- ရောင်းသူရွေးပါ -</option>
                 {staffs.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
               </select>
@@ -961,11 +990,12 @@ const SaleManagement: React.FC = () => {
               <input
                 type="date"
                 value={saleDate}
-                max={canBackdateSale ? undefined : todayStr}
+                min={canBackdateSale ? undefined : todayStr}
+                max={canFutureDateSale ? undefined : todayStr}
                 onChange={(e) => setSaleDate(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
               />
-              {!canBackdateSale && <p className="text-[10px] text-slate-400 mt-1">နောက်ရက်စွဲဖြင့်ထည့်ရန် permission လိုအပ်သည်။</p>}
+              {(!canBackdateSale || !canFutureDateSale) && <p className="text-[10px] text-slate-400 mt-1">အတိတ်/အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် ခွင့်ပြုချက်လိုအပ်သည်။</p>}
             </div>
 
             <div>
@@ -1429,7 +1459,7 @@ const SaleManagement: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Staff</label>
-                <select value={staffId} onChange={(e) => setStaffId(Number(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
+                <select value={staffId} disabled={!canOverrideStaff} onChange={(e) => setStaffId(Number(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
                   <option value={0}>— Select staff —</option>
                   {staffs.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
                 </select>
@@ -1440,11 +1470,12 @@ const SaleManagement: React.FC = () => {
                 <input
                   type="date"
                   value={saleDate}
-                  max={canBackdateSale ? undefined : todayStr}
+                  min={canBackdateSale ? undefined : todayStr}
+                  max={canFutureDateSale ? undefined : todayStr}
                   onChange={(e) => setSaleDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
                 />
-                {!canBackdateSale && <p className="text-[10px] text-slate-400 mt-1">Back date requires permission.</p>}
+                {(!canBackdateSale || !canFutureDateSale) && <p className="text-[10px] text-slate-400 mt-1">အတိတ်/အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် ခွင့်ပြုချက်လိုအပ်သည်။</p>}
               </div>
 
               <div>

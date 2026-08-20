@@ -22,6 +22,8 @@ import org.sspd.servicemgmt.saleoptions.saledetails.dto.SaleDetailDTO;
 import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
@@ -72,6 +74,7 @@ public class SaleService {
     private final SaleRepository saleRepository;
     private final CustomerRepository customerRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final ProductSerialRepository serialRepository;
     private final StockMovementService stockMovementService;
@@ -137,6 +140,7 @@ public class SaleService {
         Staff staff = dto.getStaffId() != null
                 ? staffRepository.findById(dto.getStaffId()).orElseThrow(() -> new ResourceNotFoundException("Staff not found"))
                 : null;
+        validateStaffSelection(staff);
 
         Sale sale = new Sale();
         sale.setCustomer(customer);
@@ -215,10 +219,26 @@ public class SaleService {
         return java.time.LocalDate.parse(s).atStartOfDay().plusDays(1);
     }
 
+    private void validateStaffSelection(Staff selectedStaff) {
+        if (hasCurrentAuthority("CAN_ACCESS_SALE_STAFF_OVERRIDE")) return;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication != null ? authentication.getName() : null;
+        User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
+        boolean matches = user != null && user.getStaff() != null && selectedStaff != null
+                && user.getStaff().getId().equals(selectedStaff.getId());
+        if (!matches) {
+            throw new AccessDeniedException("Sale အတွက် သင့် Staff ကိုသာ ရွေးချယ်နိုင်ပါသည်။");
+        }
+    }
+
     private LocalDateTime resolveSaleDateWithPermission(LocalDateTime requestedSaleDate) {
         LocalDateTime resolved = requestedSaleDate != null ? requestedSaleDate : LocalDateTime.now();
-        if (resolved.toLocalDate().isBefore(LocalDate.now()) && !hasCurrentAuthority("CAN_ACCESS_SALE_BACKDATE")) {
-            throw new AccessDeniedException("Back date sale requires CAN_ACCESS_SALE_BACKDATE permission.");
+        LocalDate today = LocalDate.now();
+        if (resolved.toLocalDate().isBefore(today) && !hasCurrentAuthority("CAN_ACCESS_SALE_BACKDATE")) {
+            throw new AccessDeniedException("Sale ကို အတိတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။");
+        }
+        if (resolved.toLocalDate().isAfter(today) && !hasCurrentAuthority("CAN_ACCESS_SALE_FUTUREDATE")) {
+            throw new AccessDeniedException("Sale ကို အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။");
         }
         return resolved;
     }

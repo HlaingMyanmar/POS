@@ -238,7 +238,12 @@ const App: React.FC = () => {
           <Route path={AppRoute.PAYMENT_METHODS}     element={guard(<PaymentMethodManagement />,    'CAN_ACCESS_PAYMENT_METHOD_READ')} />
           <Route path={AppRoute.ACCOUNTING_DASHBOARD} element={guard(<AccountingDashboard />,       'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.JOURNAL_ENTRIES}     element={guard(<JournalEntryManagement />,     'CAN_ACCESS_JOURNAL_READ')} />
-          <Route path={AppRoute.EXPENSE_INCOME}      element={guard(<ExpenseIncomeManagement />,    'CAN_ACCESS_EXPENSE_READ')} />
+          <Route path={AppRoute.EXPENSE_INCOME}      element={guard(<ExpenseIncomeManagement
+            canBackdateExpense={user ? canAccess(user, 'CAN_ACCESS_EXPENSE_BACKDATE') : false}
+            canFutureDateExpense={user ? canAccess(user, 'CAN_ACCESS_EXPENSE_FUTUREDATE') : false}
+            canBackdateIncome={user ? canAccess(user, 'CAN_ACCESS_INCOME_BACKDATE') : false}
+            canFutureDateIncome={user ? canAccess(user, 'CAN_ACCESS_INCOME_FUTUREDATE') : false}
+          />, 'CAN_ACCESS_EXPENSE_READ')} />
           <Route path={AppRoute.OPENING_BALANCE}     element={guard(<OpeningBalancePage />,         'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.PAYMENT_TRANSACTIONS} element={guard(<PaymentTransactionManagement />, 'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.OPENING_STOCK}       element={guard(<OpeningStockPage />,           'CAN_ACCESS_PRODUCT_READ')} />

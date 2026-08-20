@@ -13,6 +13,7 @@ import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { PaymentTransactionDTO } from '../types';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { getFromSession } from '../utils/storageHelper';
 
 /* ── Status config ─────────────────────────────────────────────── */
 const STATUS_LIST = ['RECEIVED','INSPECTING','IN_PROGRESS','COMPLETED','DELIVERED','CANCELLED'] as const;
@@ -276,6 +277,12 @@ const CustomerPicker: React.FC<{
 
 /* ── Main Page ─────────────────────────────────────────────────── */
 export default function ServiceJobManagement() {
+  const currentUser = useMemo(() => {
+    try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] }; }
+    catch { return {}; }
+  }, []);
+  const canAssignTechnician = (currentUser.roles || []).some((r) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(r))
+    || (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN');
   const [jobs, setJobs]           = useState<any[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
@@ -345,7 +352,14 @@ export default function ServiceJobManagement() {
         creditTermService.getAll(),
       ]);
 
-      if (staffRes.status === 'fulfilled') setStaffList(Array.isArray(staffRes.value) ? staffRes.value : []);
+      if (staffRes.status === 'fulfilled') {
+        const rows = (Array.isArray(staffRes.value) ? staffRes.value : []).filter((staff: any) =>
+          String(staff.role || '').toLowerCase().includes('technician') || String(staff.role || '').toLowerCase().includes('tech')
+        );
+        setStaffList(rows);
+        const linked = rows.find((staff: any) => staff.id === currentUser.staffId);
+        if (linked && !editId) setForm((prev) => ({ ...prev, assignedStaffId: String(linked.id) }));
+      }
       if (serviceItemRes.status === 'fulfilled') {
         const data = serviceItemRes.value as any;
         setServiceItems(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
@@ -805,7 +819,7 @@ export default function ServiceJobManagement() {
   const totalPages = Math.ceil(visibleRootCount / PAGE_SIZE);
 
   const openCreate = () => {
-    setForm({ ...emptyForm, lines: [], productParts: [] });
+    setForm({ ...emptyForm, assignedStaffId: currentUser.staffId ? String(currentUser.staffId) : '', lines: [], productParts: [] });
     setShowCreate(true);
   };
 
@@ -878,7 +892,7 @@ export default function ServiceJobManagement() {
           <table className="w-full text-sm">
             <thead className="bg-purple-600">
               <tr>
-                {['#', 'Job No', 'Intake #', 'ရက်စွဲ', 'ဖောက်သည်', 'ပစ္စည်း', 'ကျွမ်းကျင်သူ', 'အခြေအနေ', 'ခန့်မှန်းကုန်ကျ', 'အပြီးသတ်', 'လက်ကျန်', 'လုပ်ဆောင်ချက်'].map(h => (
+                {['#', 'Job No', 'Intake #', 'ရက်စွဲ', 'ဖောက်သည်', 'ပစ္စည်း', 'ပြုပြင်သူ', 'အခြေအနေ', 'ခန့်မှန်းကုန်ကျ', 'အပြီးသတ်', 'လက်ကျန်', 'လုပ်ဆောင်ချက်'].map(h => (
                   <th key={h} className="text-left px-3 py-3.5 text-[13px] font-extrabold text-white tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1117,7 +1131,7 @@ export default function ServiceJobManagement() {
                 {reworkForm.resolutionMode === 'REFUND' && <div><label className="block text-xs font-bold text-slate-600 mb-1">ပြန်အမ်းမည့်ငွေ *</label><input type="number" min="0" value={reworkForm.refundAmount} onChange={e => setReworkForm(p => ({ ...p, refundAmount: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3"><SearchableSelect items={payMethods.map((pm: any) => ({ ...pm, name: pm.methodName, detail: pm.accountName || "Cash / Bank" }))} value={reworkForm.refundPaymentMethodId} displayField="name" subField="detail" placeholder="ပြန်အမ်းမည့် Cash/Bank ရှာပါ..." onChange={pm => setReworkForm(p => ({ ...p, refundPaymentMethodId: pm ? String(pm.id) : "" }))} /><input value={reworkForm.refundTransactionNo} onChange={e => setReworkForm(p => ({ ...p, refundTransactionNo: e.target.value }))} placeholder="Transaction No. (optional)" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /></div><p className="mt-1 text-[11px] text-emerald-700">ငွေထွက် Payment Transaction နှင့် Refund Journal ကို အလိုအလျောက်ရေးမည်။</p></div>}
                 <textarea value={reworkForm.replacementReason} onChange={e => setReworkForm(p => ({ ...p, replacementReason: e.target.value }))} rows={2} placeholder="လဲ/အမ်းရသည့်အကြောင်းရင်း..." className="w-full border rounded-xl px-3 py-2 text-sm bg-white resize-none" />
               </div>}
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">တာဝန်ခံကျွမ်းကျင်သူ</label><SearchableSelect items={staffList.map((staff: any) => ({ ...staff, detail: staff.role || staff.phone || "" }))} value={reworkForm.assignedStaffId} displayField="name" subField="detail" placeholder="ကျွမ်းကျင်သူအမည်၊ role ဖြင့်ရှာပါ..." onChange={staff => setReworkForm(p => ({ ...p, assignedStaffId: staff ? String(staff.id) : "" }))} /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">ပြန်လည်ပြုပြင်သူ</label><SearchableSelect items={staffList.map((staff: any) => ({ ...staff, detail: staff.role || staff.phone || "" }))} value={reworkForm.assignedStaffId} displayField="name" subField="detail" placeholder="ပြုပြင်သူအမည်၊ role ဖြင့်ရှာပါ..." onChange={staff => setReworkForm(p => ({ ...p, assignedStaffId: staff ? String(staff.id) : "" }))} /></div>
               <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">Replacement part သည် Linked Job Part အဖြစ်ဝင်ပြီး settlement လုပ်ချိန်တွင်သာ stock ထွက်မည်။ ပစ္စည်းဟောင်းသည် stock ထပ်မလျော့ဘဲ disposition/serial audit မှတ်တမ်းဝင်မည်။</div>
               <div className="sticky bottom-0 z-30 -mx-3 -mb-24 flex flex-col-reverse gap-2 border-t bg-white/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:flex-row sm:justify-end sm:px-6"><button type="button" onClick={() => setShowRework(false)} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold">မလုပ်တော့ပါ</button><button type="button" onClick={handleCreateRework} className="min-h-11 rounded-xl bg-amber-600 px-5 py-2 text-sm font-bold text-white hover:bg-amber-700">Linked Job ဖန်တီးမည်</button></div>
             </div>
@@ -1148,8 +1162,8 @@ export default function ServiceJobManagement() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ကျွမ်းကျင်သူ</label>
-                  <select value={form.assignedStaffId} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
+                  <select value={form.assignedStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
                     className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
                     <option value="">— မရှိ —</option>
                     {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
@@ -1174,7 +1188,7 @@ export default function ServiceJobManagement() {
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">စစ်ဆေးတွေ့ရှိချက်</label>
                   <textarea value={form.diagnosisNotes} onChange={e => setForm(p => ({ ...p, diagnosisNotes: e.target.value }))}
-                    rows={3} placeholder="ကျွမ်းကျင်သူ တွေ့ရှိချက်..."
+                    rows={3} placeholder="ပြုပြင်သူ တွေ့ရှိချက်..."
                     className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
                 </div>
               </div>
@@ -1298,8 +1312,8 @@ export default function ServiceJobManagement() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ကျွမ်းကျင်သူ</label>
-                  <select value={form.assignedStaffId} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
+                  <select value={form.assignedStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
                     className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
                     <option value="">— မရှိ —</option>
                     {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
@@ -1326,7 +1340,7 @@ export default function ServiceJobManagement() {
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">စစ်ဆေးတွေ့ရှိချက်</label>
                   <textarea value={form.diagnosisNotes} onChange={e => setForm(p => ({ ...p, diagnosisNotes: e.target.value }))}
-                    rows={3} placeholder="ကျွမ်းကျင်သူ တွေ့ရှိချက်..."
+                    rows={3} placeholder="ပြုပြင်သူ တွေ့ရှိချက်..."
                     className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
                 </div>
               </div>

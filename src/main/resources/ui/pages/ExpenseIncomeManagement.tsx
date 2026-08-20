@@ -18,6 +18,7 @@ import { incomeApiService } from '../services/incomeapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { staffService } from '../services/staffapiservice';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { getFromSession } from '../utils/storageHelper';
 import {
   AccountType,
   ChartOfAccountDTO,
@@ -98,7 +99,31 @@ const toCsvCell = (value: unknown) => {
   return text;
 };
 
-const ExpenseIncomeManagement: React.FC = () => {
+type ExpenseIncomeManagementProps = {
+  canBackdateExpense: boolean;
+  canFutureDateExpense: boolean;
+  canBackdateIncome: boolean;
+  canFutureDateIncome: boolean;
+};
+
+const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
+  canBackdateExpense,
+  canFutureDateExpense,
+  canBackdateIncome,
+  canFutureDateIncome
+}) => {
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(getFromSession('sspd_user') || '{}') as { name?: string; phone?: string; staffId?: number; roles?: string[]; permissions?: string[] };
+    } catch {
+      return {};
+    }
+  }, []);
+  const canOverrideStaff = (currentUser.roles || []).some((role) =>
+    ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role)
+  ) || (currentUser as any).permissions?.some((permission: string) =>
+    ['CAN_ACCESS_EXPENSE_STAFF_OVERRIDE', 'CAN_ACCESS_INCOME_STAFF_OVERRIDE'].includes(permission)
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -160,7 +185,8 @@ const ExpenseIncomeManagement: React.FC = () => {
         setPaymentMethodId((prev) => prev || preferredMethods[0].id);
       }
       if ((staffRows || []).length > 0) {
-        setStaffId((prev) => prev || staffRows[0].id);
+        const matchedStaff = (staffRows || []).find((staff) => staff.id === currentUser.staffId);
+        setStaffId((prev) => prev || matchedStaff?.id || (canOverrideStaff ? staffRows[0].id : 0));
       }
     } catch (e: any) {
       Swal.fire('Error', e?.message || 'Failed to load expense/income data', 'error');
@@ -222,6 +248,21 @@ const ExpenseIncomeManagement: React.FC = () => {
 
   const selectedAccount = accountById.get(accountId);
   const selectedMethod = methodById.get(paymentMethodId);
+  const todayDate = nowLocalDateTime().slice(0, 10);
+  const canBackdate = tab === 'EXPENSE' ? canBackdateExpense : canBackdateIncome;
+  const canFutureDate = tab === 'EXPENSE' ? canFutureDateExpense : canFutureDateIncome;
+  const dateIsAllowed = () => {
+    const selectedDate = entryDate.slice(0, 10);
+    if (selectedDate < todayDate && !canBackdate) {
+      Swal.fire('ခွင့်ပြုချက်လိုအပ်သည်', 'အတိတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။', 'warning');
+      return false;
+    }
+    if (selectedDate > todayDate && !canFutureDate) {
+      Swal.fire('ခွင့်ပြုချက်လိုအပ်သည်', 'အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် သင့်မှာ ခွင့်ပြုချက်မရှိပါ။', 'warning');
+      return false;
+    }
+    return true;
+  };
   const amount = useMemo(() => {
     if (!amountInput.trim()) return 0;
     const n = Number(amountInput);
@@ -276,6 +317,7 @@ const ExpenseIncomeManagement: React.FC = () => {
       Swal.fire('Validation', 'Please select account/payment/staff and enter a valid amount.', 'warning');
       return;
     }
+    if (!dateIsAllowed()) return;
     setConfirmOpen(true);
   };
 
@@ -538,7 +580,10 @@ const ExpenseIncomeManagement: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1.5">Date</label>
-                  <input type="datetime-local" value={entryDate} onChange={(e) => setEntryDate(e.target.value)}
+                  <input type="datetime-local" value={entryDate}
+                    min={canBackdate ? undefined : `${todayDate}T00:00`}
+                    max={canFutureDate ? undefined : `${todayDate}T23:59`}
+                    onChange={(e) => setEntryDate(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
                 </div>
                 <div>
@@ -577,7 +622,8 @@ const ExpenseIncomeManagement: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1.5">Staff</label>
-                  <select value={staffId} onChange={(e) => setStaffId(Number(e.target.value) || 0)}
+                  <select value={staffId} disabled={!canOverrideStaff}
+                    onChange={(e) => setStaffId(Number(e.target.value) || 0)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
                     <option value={0}>Select staff</option>
                     {staffs.map((s) => (

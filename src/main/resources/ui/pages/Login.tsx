@@ -63,6 +63,9 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, language, onLanguageChang
         const authData = response.data;
         onLoginSuccess({
           username: authData.username,
+          name: authData.name,
+          phone: authData.phone,
+          staffId: authData.staffId,
           roles: authData.roles,
           permissions: authData.permissions
         }, authData.accessToken);

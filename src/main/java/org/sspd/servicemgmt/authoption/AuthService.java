@@ -63,9 +63,11 @@ public class AuthService {
                 .collect(Collectors.toSet());
 
         // ၆. ရလာသမျှ အချက်အလက်အားလုံးကို စုစည်းပြီး ပြန်ပေးခြင်း
-        return new LoginResult(accessToken, refreshToken, userDetails.getUsername(), user.getName(), user.getPhone(), roles, permissions);
+        return new LoginResult(accessToken, refreshToken, userDetails.getUsername(), user.getName(), user.getPhone(),
+                user.getStaff() != null ? user.getStaff().getId() : null, roles, permissions);
     }
 
     // Login ရလဒ်များကို သယ်ဆောင်ရန် အတွင်းသုံး record (သို့မဟုတ် DTO)
-    public record LoginResult(String accessToken, String refreshToken, String username, String name, String phone, Set<String> roles, Set<String> permissions) {}
+        public record LoginResult(String accessToken, String refreshToken, String username, String name, String phone,
+                                                          Integer staffId, Set<String> roles, Set<String> permissions) {}
 }

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { userService } from '../services/userapiservice';
 import { roleService } from '../services/roleapiservice';
+import { staffService } from '../services/staffapiservice';
 import { UserDTO, RoleDTO } from '../types';
 import { 
   Loader2, Plus, Search, Shield, Mail, CheckCircle, XCircle, 
@@ -15,6 +16,7 @@ import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserDTO[]>([]);
   const [availableRoles, setAvailableRoles] = useState<RoleDTO[]>([]);
+  const [availableStaff, setAvailableStaff] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsStatus, setWsStatus] = useState<'online' | 'offline'>('offline');
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,19 +25,21 @@ const UserManagement: React.FC = () => {
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserDTO | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({ username: '', email: '', password: '', isActive: true });
+  const [formData, setFormData] = useState({ username: '', email: '', password: '', isActive: true, staffId: 0 });
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
   const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [userData, rolesData] = await Promise.all([
+      const [userData, rolesData, staffData] = await Promise.all([
         userService.getAll(),
-        roleService.getAll()
+        roleService.getAll(),
+        staffService.getAllActive()
       ]);
       setUsers(userData);
       setAvailableRoles(rolesData);
+      setAvailableStaff(staffData);
     } catch (error) {
       console.error("Failed to load user data", error);
     } finally {
@@ -60,10 +64,10 @@ const UserManagement: React.FC = () => {
   const handleOpenUserModal = (user?: UserDTO) => {
     if (user) {
       setEditingUser(user);
-      setFormData({ username: user.username, email: user.email, password: '', isActive: user.isActive });
+      setFormData({ username: user.username, email: user.email, password: '', isActive: user.isActive, staffId: user.staffId || 0 });
     } else {
       setEditingUser(null);
-      setFormData({ username: '', email: '', password: '', isActive: true });
+      setFormData({ username: '', email: '', password: '', isActive: true, staffId: 0 });
     }
     setShowPassword(false);
     setIsModalOpen(true);
@@ -223,6 +227,13 @@ const UserManagement: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Password {editingUser && '(Optional)'}</label>
                 <input type="password" required={!editingUser} value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs" placeholder={editingUser ? "Unchanged" : "••••••••"} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Linked Staff</label>
+                <select value={formData.staffId} onChange={(e) => setFormData({...formData, staffId: Number(e.target.value) || 0})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs">
+                  <option value={0}>မချိတ်ရသေးပါ</option>
+                  {availableStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                </select>
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-xs font-bold">Cancel</button>

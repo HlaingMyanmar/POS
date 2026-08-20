@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.sspd.servicemgmt.rbacoptions.roleoptions.model.Role;
+import org.sspd.servicemgmt.staffoptions.model.Staff;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -52,6 +53,10 @@ public class User  {
 
     @Column(name = "phone", length = 30)
     private String phone;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "staff_id")
+    private Staff staff;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(

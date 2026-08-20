@@ -101,16 +101,23 @@ public enum PermissionName {
     CAN_ACCESS_STOCK_ADJUSTMENT_DELETE("Stock Adjustment ဖျက်သိမ်းခွင့်ပြုသည်"),
 
     CAN_ACCESS_EXPENSE_CREATE("Expense ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_EXPENSE_STAFF_OVERRIDE("Expense အတွက် အခြား Staff ရွေးခွင့်"),
+    CAN_ACCESS_EXPENSE_BACKDATE("Expense ကို နောက်ကျသောရက်စွဲဖြင့် သိမ်းခွင့်"),
+    CAN_ACCESS_EXPENSE_FUTUREDATE("Expense ကို အနာဂတ်ရက်စွဲဖြင့် သိမ်းခွင့်"),
     CAN_ACCESS_EXPENSE_READ("Expense များကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_EXPENSE_UPDATE("Expense များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_EXPENSE_DELETE("Expense များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
 
     CAN_ACCESS_INCOME_CREATE("Income ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_INCOME_STAFF_OVERRIDE("Income အတွက် အခြား Staff ရွေးခွင့်"),
+    CAN_ACCESS_INCOME_BACKDATE("Income ကို နောက်ကျသောရက်စွဲဖြင့် သိမ်းခွင့်"),
+    CAN_ACCESS_INCOME_FUTUREDATE("Income ကို အနာဂတ်ရက်စွဲဖြင့် သိမ်းခွင့်"),
     CAN_ACCESS_INCOME_READ("Income များကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_INCOME_UPDATE("Income များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_INCOME_DELETE("Income များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
 
     CAN_ACCESS_PURCHASE_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_STAFF_OVERRIDE("Purchase အတွက် အခြား Staff ရွေးခွင့်"),
     CAN_ACCESS_PURCHASE_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_UPDATE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
 
@@ -130,6 +137,8 @@ public enum PermissionName {
     CAN_ACCESS_SALE_DELETE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_UPDATE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_BACKDATE("Sale ကို နောက်ကျသောရက်စွဲဖြင့် သိမ်းခွင့်"),
+    CAN_ACCESS_SALE_FUTUREDATE("Sale ကို အနာဂတ်ရက်စွဲဖြင့် သိမ်းခွင့်"),
+    CAN_ACCESS_SALE_STAFF_OVERRIDE("Sale အတွက် အခြား Staff ရွေးခွင့်"),
     CAN_ACCESS_SALE_RETURN_CREATE("Sale Return ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_RETURN_READ("Sale Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_RETURN_UPDATE("Sale Return အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
@@ -169,12 +178,14 @@ public enum PermissionName {
     CAN_ACCESS_SERVICE_JOB_DELETE("Service Job များကို ဖျက်သိမ်းခွင့်"),
     CAN_ACCESS_SERVICE_JOB_SETTLE("Service Job settlement ပြုလုပ်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_REWORK("Service Job rework ဖန်တီးခွင့်"),
+    CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN("Service ပြင်ဆင်ရန် ကျွမ်းကျင်သူသတ်မှတ်ခွင့်"),
 
     CAN_ACCESS_BOOKING_CREATE("Booking အသစ်များ ဖန်တီးခွင့်"),
     CAN_ACCESS_BOOKING_READ("Booking အချက်အလက်များကို ကြည့်ရှုခွင့်"),
     CAN_ACCESS_BOOKING_UPDATE("Booking အချက်အလက်များနှင့် status များကို ပြင်ဆင်ခွင့်"),
     CAN_ACCESS_BOOKING_DELETE("Booking များကို ဖျက်သိမ်းခွင့်"),
     CAN_ACCESS_BOOKING_CONVERT_JOB("Booking ကို Service Job သို့ပြောင်းလဲခွင့်"),
+    CAN_ACCESS_BOOKING_STAFF_OVERRIDE("ပစ္စည်းလက်ခံမှုအတွက် အခြား Staff ရွေးခွင့်"),
 
     CAN_ACCESS_BACKUP_SETTINGS_READ("Backup settings ကြည့်ရှုခွင့်"),
     CAN_ACCESS_BACKUP_SETTINGS_UPDATE("Backup settings ပြင်ဆင်ခွင့်"),

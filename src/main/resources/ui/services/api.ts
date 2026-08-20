@@ -118,6 +118,9 @@ export const authService = {
       saveToSession('sspd_refresh', response.data.refreshToken);
       saveToSession('sspd_user', JSON.stringify({
         username: response.data.username,
+        name: response.data.name,
+        phone: response.data.phone,
+        staffId: response.data.staffId,
         roles: response.data.roles,
         permissions: response.data.permissions
       }));

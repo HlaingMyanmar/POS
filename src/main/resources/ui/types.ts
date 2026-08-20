@@ -18,12 +18,19 @@ export type AppTheme = 'light' | 'dark';
 export interface AuthResponse {
   accessToken: string;
   username: string;
+  name?: string;
+  phone?: string;
+  staffId?: number;
   roles: string[];
   permissions: string[];
 }
 
 export interface User {
   username: string;
+  name?: string;
+  phone?: string;
+  staffId?: number;
+  staffName?: string;
   roles: string[];
   permissions: string[];
 }

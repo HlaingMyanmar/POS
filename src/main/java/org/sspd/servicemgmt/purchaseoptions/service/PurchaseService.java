@@ -1,7 +1,9 @@
 package org.sspd.servicemgmt.purchaseoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,8 @@ import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetail
 import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
@@ -59,6 +63,7 @@ public class PurchaseService {
     private final PurchaseRepository purchaseRepository;
     private final SupplierRepository supplierRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final ProductSerialRepository serialRepository;
     private final StockMovementService stockMovementService;
@@ -82,6 +87,7 @@ public class PurchaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
         Staff staff = staffRepository.findById(dto.getStaffId())
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
+        validateStaffSelection(staff);
 
         // Duplicate submission guard — same supplier+staff+total within 15 seconds
         BigDecimal estimatedTotal = dto.getDetails().stream()
@@ -227,6 +233,24 @@ public class PurchaseService {
 
         messagingTemplate.convertAndSend(PURCHASE_TOPIC, "PURCHASE_CREATED");
         return enrichWarrantyItems(mapper.toDto(savedPurchase), savedPurchase);
+    }
+
+    private void validateStaffSelection(Staff selectedStaff) {
+        if (hasAuthority("CAN_ACCESS_PURCHASE_STAFF_OVERRIDE")) return;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication != null ? authentication.getName() : null;
+        User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
+        boolean matches = user != null && user.getStaff() != null
+                && user.getStaff().getId().equals(selectedStaff.getId());
+        if (!matches) {
+            throw new AccessDeniedException("Purchase အတွက် သင့် Staff ကိုသာ ရွေးချယ်နိုင်ပါသည်။");
+        }
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
     }
 
     private void updateAverageCost(Product product, BigDecimal purchaseUnitCost, Integer purchasedQty, int currentQty) {

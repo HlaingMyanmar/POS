@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { bookingService, api } from '../services/api';
 import { shelfLocationService } from '../services/shelfLocationApiService';
@@ -7,6 +7,7 @@ import { ApiResponse } from '../types';
 import Swal from 'sweetalert2';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { getFromSession } from '../utils/storageHelper';
 import { BriefcaseBusiness, Pencil, Printer, Trash2 } from 'lucide-react';
 
 const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'Other'];
@@ -271,6 +272,12 @@ const DeviceCard: React.FC<{
 
 /* ── Main Page ────────────────────────────────────────────────────────── */
 export default function BookingManagement() {
+  const currentUser = useMemo(() => {
+    try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] }; }
+    catch { return {}; }
+  }, []);
+  const canOverrideReceiver = (currentUser.roles || []).some((r) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(r))
+    || (currentUser.permissions || []).includes('CAN_ACCESS_BOOKING_STAFF_OVERRIDE');
   const [bookings, setBookings]   = useState<any[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
@@ -315,7 +322,12 @@ export default function BookingManagement() {
         const payload = customerRes.value as any;
         setCustomers(payload?.data?.content ?? payload?.data ?? payload ?? []);
       }
-      if (staffRes.status === 'fulfilled') setStaffList(Array.isArray(staffRes.value) ? staffRes.value : []);
+      if (staffRes.status === 'fulfilled') {
+        const staffRows = Array.isArray(staffRes.value) ? staffRes.value : [];
+        setStaffList(staffRows);
+        const linkedStaff = staffRows.find((staff: any) => staff.id === currentUser.staffId);
+        if (linkedStaff && !editId) setForm((prev) => ({ ...prev, staffId: String(linkedStaff.id) }));
+      }
       if (shelfRes.status === 'fulfilled') setShelves(Array.isArray(shelfRes.value) ? shelfRes.value : []);
     } catch {
       // ignore
@@ -336,7 +348,7 @@ export default function BookingManagement() {
   });
 
   const openNew = () => {
-    setForm({ ...emptyForm, devices: [emptyDevice()] });
+    setForm({ ...emptyForm, staffId: currentUser.staffId ? String(currentUser.staffId) : '', devices: [emptyDevice()] });
     setEditId(null);
     setStep('customer');
     setShowModal(true);
@@ -531,7 +543,7 @@ export default function BookingManagement() {
           <table className="w-full text-sm">
             <thead className="bg-purple-600">
               <tr>
-                {['#', 'လက်ခံနံပါတ်', 'ရက်စွဲ', 'ဖောက်သည်', 'ပစ္စည်း', 'ပြဿနာ', 'ခန့်မှန်းကုန်ကျ', 'ကန့်နေရာ', 'ကျွမ်းကျင်သူ', 'အခြေအနေ', 'လုပ်ဆောင်ချက်'].map(h => (
+                {['#', 'လက်ခံနံပါတ်', 'ရက်စွဲ', 'ဖောက်သည်', 'ပစ္စည်း', 'ပြဿနာ', 'ခန့်မှန်းကုန်ကျ', 'ကန့်နေရာ', 'လက်ခံသူ', 'အခြေအနေ', 'လုပ်ဆောင်ချက်'].map(h => (
                   <th key={h} className="text-left px-3 py-3.5 text-[13px] font-extrabold text-white tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -782,7 +794,7 @@ export default function BookingManagement() {
                   <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ဝန်ထမ်း</label>
-                      <select value={form.staffId} onChange={e => setForm(p => ({ ...p, staffId: e.target.value }))}
+                      <select value={form.staffId} disabled={!canOverrideReceiver} onChange={e => setForm(p => ({ ...p, staffId: e.target.value }))}
                         className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
                         <option value="">— မရွေးထား —</option>
                         {staffList.map((s: any) => (

@@ -20,6 +20,8 @@ public class UserDTO {
     private Boolean isActive;
     private String name;
     private String phone;
+    private Integer staffId;
+    private String staffName;
     private Set<String> roles;
 
 

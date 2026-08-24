@@ -14,5 +14,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     // Reference ID (Purchase/Sale ID) နဲ့ Type အလိုက် ငွေပေးချေမှုမှတ်တမ်း ရှာရန်
     List<PaymentTransaction> findByReferenceIdAndReferenceType(Integer referenceId, ReferenceType referenceType);
 
+    void deleteByReferenceIdAndReferenceType(Integer referenceId, ReferenceType referenceType);
+
     Optional<PaymentTransaction> findTopByOrderByIdDesc();
 }

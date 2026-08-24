@@ -31,7 +31,9 @@ const SupplierManagement: React.FC = () => {
     name: '',
     phone: '',
     address: '',
-    openingBalance: 0
+    openingBalance: 0,
+    defaultCreditDays: 30,
+    creditLimit: 0
   });
   const [saving, setSaving] = useState(false);
   const bulk = useBulkSelection<SupplierDTO>(suppliers);
@@ -63,7 +65,9 @@ const SupplierManagement: React.FC = () => {
         name: supplier.name,
         phone: supplier.phone || '',
         address: supplier.address || '',
-        openingBalance: supplier.openingBalance
+        openingBalance: supplier.openingBalance,
+        defaultCreditDays: supplier.defaultCreditDays ?? 30,
+        creditLimit: supplier.creditLimit ?? 0
       });
     } else {
       setEditingSupplier(null);
@@ -71,7 +75,9 @@ const SupplierManagement: React.FC = () => {
         name: '',
         phone: '',
         address: '',
-        openingBalance: 0
+        openingBalance: 0,
+        defaultCreditDays: 30,
+        creditLimit: 0
       });
     }
     setIsModalOpen(true);
@@ -387,6 +393,22 @@ const SupplierManagement: React.FC = () => {
                     className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 shadow-sm transition-all resize-none" 
                     placeholder="Enter full business location..."
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Default Credit Days</label>
+                  <input type="number" min="0" max="3650" value={formData.defaultCreditDays ?? 30}
+                    onChange={(e) => setFormData({...formData, defaultCreditDays: Math.max(0, Number(e.target.value) || 0)})}
+                    className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-amber-500" />
+                  <p className="text-[9px] font-semibold text-amber-600">Purchase ရွေးချယ်ချိန် due date အလိုအလျောက်တွက်မည်။</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Credit Limit (MMK)</label>
+                  <input type="number" min="0" step="0.01" value={formData.creditLimit ?? 0}
+                    onChange={(e) => setFormData({...formData, creditLimit: Math.max(0, Number(e.target.value) || 0)})}
+                    className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-amber-500" />
                 </div>
               </div>
 

@@ -37,4 +37,10 @@ public class Supplier {
 
     @Column(name = "current_balance", precision = 15, scale = 2)
     private BigDecimal currentBalance = BigDecimal.ZERO;
+
+    @Column(name = "default_credit_days")
+    private Integer defaultCreditDays = 30;
+
+    @Column(name = "credit_limit", precision = 15, scale = 2)
+    private BigDecimal creditLimit = BigDecimal.ZERO;
 }

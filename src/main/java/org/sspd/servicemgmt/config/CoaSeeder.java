@@ -47,6 +47,7 @@ public class CoaSeeder implements CommandLineRunner {
         seed(AccountCode.PAYABLE,           "Accounts Payable",   AccountType.Liability, liabParent);
         seed(AccountCode.SALARY_PAYABLE,    "Salary Payable",     AccountType.Liability, liabParent);
         seed(AccountCode.CUSTOMER_ADVANCE,  "Customer Advance",   AccountType.Liability, liabParent);
+        seed(AccountCode.TAX_PAYABLE,       "Tax Payable",        AccountType.Liability, liabParent);
 
         // ── Income (parent = OPERATING_INCOME) ──────────────────────────────
         ChartOfAccount incomeParent = repo.findByCode(AccountCode.OPERATING_INCOME).orElse(null);

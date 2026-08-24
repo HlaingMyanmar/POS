@@ -38,6 +38,19 @@ public class SaleController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Sale found", sale));
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @GetMapping("/export/excel")
+    public ResponseEntity<byte[]> exportExcel(@RequestParam(required = false) String dateFrom,
+                                              @RequestParam(required = false) String dateTo) throws java.io.IOException {
+        byte[] bytes = service.exportExcel(dateFrom, dateTo);
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=sales_" + java.time.LocalDate.now() + ".xlsx")
+                .contentType(org.springframework.http.MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
+    }
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_CREATE')")
     @PostMapping
     public ResponseEntity<ApiResponse<SaleDTO>> create(@Valid @RequestBody SaleDTO dto) {
@@ -61,10 +74,11 @@ public class SaleController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Sale payment recorded", paid));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_DELETE')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_VOID','CAN_ACCESS_SALE_DELETE')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
-        service.delete(id);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Sale deleted successfully", null));
+    public ResponseEntity<ApiResponse<SaleDTO>> delete(@PathVariable Integer id,
+                                                       @RequestParam String reason) {
+        SaleDTO voided = service.voidSale(id, reason);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Sale voided successfully", voided));
     }
 }

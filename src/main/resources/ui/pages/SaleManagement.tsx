@@ -24,7 +24,8 @@ import {
   ShieldAlert,
   Trash2,
   User,
-  X
+  X,
+  PauseCircle
 } from 'lucide-react';
 import { saleApiService } from '../services/saleapiservice';
 import { saleReturnApiService } from '../services/salereturnapiservice';
@@ -66,6 +67,24 @@ type ListFilter = 'ALL' | 'DUE' | SaleState;
 type DateShortcut = 'TODAY' | 'WEEK' | 'MONTH' | 'ALL' | 'CUSTOM';
 type DetailForm = SaleDetailDTO;
 type NewCustomerForm = { name: string; phone: string; address: string };
+type HeldSale = {
+  id: string;
+  createdAt: string;
+  customerId: number;
+  customerSearch: string;
+  staffId: number;
+  saleDate: string;
+  discountInput: string;
+  taxInput: string;
+  paidInput: string;
+  salePayments: PaymentTransactionDTO[];
+  dueDate: string;
+  paymentMethodId: number;
+  remark: string;
+  details: DetailForm[];
+  productSearches: string[];
+};
+const HELD_SALES_KEY = 'sspd.heldSales.v1';
 const emptyDetail = (): DetailForm => ({
   productId: 0,
   qty: 1,
@@ -199,6 +218,14 @@ const SaleManagement: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showCreateSaleForm, setShowCreateSaleForm] = useState(false);
+  const [heldSales, setHeldSales] = useState<HeldSale[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HELD_SALES_KEY) || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [paySaving, setPaySaving] = useState(false);
@@ -238,6 +265,7 @@ const SaleManagement: React.FC = () => {
   const [staffId, setStaffId] = useState(0);
   const [saleDate, setSaleDate] = useState(todayStr);
   const [discountInput, setDiscountInput] = useState('');
+  const [taxInput, setTaxInput] = useState('');
   const [paidInput, setPaidInput] = useState('');
   const [salePayments, setSalePayments] = useState<PaymentTransactionDTO[]>([]);
   const [dueDate, setDueDate] = useState('');
@@ -246,6 +274,9 @@ const SaleManagement: React.FC = () => {
   const [details, setDetails] = useState<DetailForm[]>([emptyDetail()]);
   const [productSearches, setProductSearches] = useState<string[]>(['']);
   const [barcodeInput, setBarcodeInput] = useState('');
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const scannerBufferRef = useRef('');
+  const scannerLastKeyRef = useRef(0);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [payModalOpen, setPayModalOpen] = useState(false);
   const canBackdateSale = useMemo(() => canCurrentUserBackdateSale(), []);
@@ -261,6 +292,10 @@ const SaleManagement: React.FC = () => {
   const [viewStockMovements, setViewStockMovements] = useState<ProductStockHistoryMovementDTO[]>([]);
   const [payForm, setPayForm] = useState({ amount: '', paymentMethodId: 0, transactionNo: '', note: '', payments: [] as PaymentTransactionDTO[] });
   const [printPreviewSaleId, setPrintPreviewSaleId] = useState<number | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(HELD_SALES_KEY, JSON.stringify(heldSales));
+  }, [heldSales]);
 
   const loadSales = useCallback(async (page: number, size: number, search: string, dateFrom: string, dateTo: string) => {
     setLoading(true);
@@ -331,6 +366,32 @@ const SaleManagement: React.FC = () => {
     productSearchesRef.current = productSearches;
   }, [details, productSearches]);
 
+  useEffect(() => {
+    if (!showCreateSaleForm) return;
+    const focusScanner = () => barcodeInputRef.current?.focus();
+    focusScanner();
+    const handleScannerKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
+      const now = Date.now();
+      if (now - scannerLastKeyRef.current > 80) scannerBufferRef.current = '';
+      scannerLastKeyRef.current = now;
+      if (event.key === 'Enter') {
+        const code = scannerBufferRef.current.trim();
+        scannerBufferRef.current = '';
+        if (code.length >= 3) {
+          event.preventDefault();
+          handleBarcodeScan(code);
+          focusScanner();
+        }
+        return;
+      }
+      if (event.key.length === 1) scannerBufferRef.current += event.key;
+    };
+    window.addEventListener('keydown', handleScannerKey);
+    return () => window.removeEventListener('keydown', handleScannerKey);
+  }, [showCreateSaleForm]);
+
   const barcodeScanRef = useRef<(code: string) => void>(() => {});
   useWebsocket('/topic/barcode-scan', useCallback((code: string) => {
     barcodeScanRef.current(code.trim());
@@ -366,6 +427,11 @@ const SaleManagement: React.FC = () => {
     const n = Number(discountInput);
     return Number.isNaN(n) ? 0 : n;
   }, [discountInput]);
+  const taxAmount = useMemo(() => {
+    if (!taxInput.trim()) return 0;
+    const n = Number(taxInput);
+    return Number.isNaN(n) ? 0 : n;
+  }, [taxInput]);
   const paid = useMemo(() => {
     if (!paidInput.trim()) return 0;
     const n = Number(paidInput);
@@ -375,7 +441,7 @@ const SaleManagement: React.FC = () => {
   const splitPaid = useMemo(() => paymentTotal(salePayments), [salePayments]);
   const effectivePaid = normalizedSalePayments.length > 0 ? splitPaid : paid;
   const totalAmount = useMemo(() => details.reduce((sum, d) => sum + (d.subtotal || 0), 0), [details]);
-  const netAmount = useMemo(() => Math.max(0, totalAmount - discount), [totalAmount, discount]);
+  const netAmount = useMemo(() => Math.max(0, totalAmount - discount) + Math.max(0, taxAmount), [totalAmount, discount, taxAmount]);
   const hasCustomVoucherPrice = useMemo(() => details.some((d) => Number(d.customVoucherPrice) > 0), [details]);
   const voucherDisplayAmount = useMemo(() => details.reduce((sum, d) => {
     const customPrice = Number(d.customVoucherPrice);
@@ -638,6 +704,7 @@ const SaleManagement: React.FC = () => {
     setStaffId(currentUser.staffId || (canOverrideStaff ? staffs[0]?.id || 0 : 0));
     setSaleDate(todayStr);
     setDiscountInput('');
+    setTaxInput('');
     setPaidInput('');
     setSalePayments([]);
     setDueDate('');
@@ -645,6 +712,52 @@ const SaleManagement: React.FC = () => {
     setDetails([emptyDetail()]);
     setProductSearches(['']);
     setPaymentMethodId(methods[0]?.id || 0);
+  };
+
+  const holdSale = () => {
+    const held: HeldSale = {
+      id: `hold-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      customerId,
+      customerSearch,
+      staffId,
+      saleDate,
+      discountInput,
+      taxInput,
+      paidInput,
+      salePayments,
+      dueDate,
+      paymentMethodId,
+      remark,
+      details,
+      productSearches,
+    };
+    setHeldSales((previous) => [held, ...previous]);
+    resetCreateForm();
+    setShowCreateSaleForm(false);
+    Swal.fire({ icon: 'success', title: 'Sale ကို ခဏသိမ်းထားပြီးပါပြီ', text: 'Held Sales ထဲမှ နောက်မှ ပြန်ဆက်လုပ်နိုင်ပါသည်။', toast: true, position: 'top-end', showConfirmButton: false, timer: 1600 });
+  };
+
+  const resumeHeldSale = (held: HeldSale) => {
+    setCustomerId(held.customerId);
+    setCustomerSearch(held.customerSearch);
+    setStaffId(held.staffId);
+    setSaleDate(held.saleDate);
+    setDiscountInput(held.discountInput);
+    setTaxInput(held.taxInput || '');
+    setPaidInput(held.paidInput);
+    setSalePayments(held.salePayments || []);
+    setDueDate(held.dueDate);
+    setPaymentMethodId(held.paymentMethodId);
+    setRemark(held.remark);
+    setDetails(held.details?.length ? held.details : [emptyDetail()]);
+    setProductSearches(held.productSearches?.length ? held.productSearches : ['']);
+    setHeldSales((previous) => previous.filter((item) => item.id !== held.id));
+    setShowCreateSaleForm(true);
+  };
+
+  const deleteHeldSale = (id: string) => {
+    setHeldSales((previous) => previous.filter((item) => item.id !== id));
   };
 
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -686,6 +799,7 @@ const SaleManagement: React.FC = () => {
     }
 
     if (discount < 0) return 'Discount cannot be negative.';
+    if (taxAmount < 0) return 'Tax / VAT cannot be negative.';
     if (effectivePaid < 0) return 'Paid amount cannot be negative.';
     if (effectivePaid > netAmount) return 'Paid amount cannot exceed net amount.';
 
@@ -718,6 +832,7 @@ const SaleManagement: React.FC = () => {
         saleDate: `${saleDate}T00:00:00`,
         totalAmount,
         discountAmount: discount,
+        taxAmount,
         netAmount,
         paidAmount: effectivePaid,
         dueAmount,
@@ -935,6 +1050,39 @@ const SaleManagement: React.FC = () => {
     setPrintPreviewSaleId(sale.id);
   }, []);
 
+  const handleVoidSale = async (sale: SaleDTO) => {
+    if (!sale.id || sale.voided) return;
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Void this sale?',
+      text: 'Stock, serial, payment and journal entries will be reversed.',
+      input: 'textarea',
+      inputLabel: 'Void reason (required)',
+      inputPlaceholder: 'Enter the reason...',
+      showCancelButton: true,
+      confirmButtonText: 'Void Sale',
+      confirmButtonColor: '#dc2626',
+      inputValidator: (value) => value.trim() ? undefined : 'Void reason is required'
+    });
+    if (!result.isConfirmed || !result.value?.trim()) return;
+    try {
+      const updated = await saleApiService.delete(sale.id, result.value.trim());
+      setViewSale(updated);
+      await loadSales(salePage, salePageSize, debouncedSearch, dateFrom, dateTo);
+      Swal.fire({ icon: 'success', title: 'Sale voided', timer: 1300, showConfirmButton: false });
+    } catch (error: any) {
+      Swal.fire('Error', error?.message || 'Failed to void sale', 'error');
+    }
+  };
+
+  const handleExcelExport = async () => {
+    try {
+      await saleApiService.exportExcel(dateFrom, dateTo);
+    } catch (error: any) {
+      Swal.fire('Export failed', error?.message || 'Could not export sales', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -958,10 +1106,15 @@ const SaleManagement: React.FC = () => {
       <>
       <div className="w-full max-w-none space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <button onClick={closeCreateSale} className="inline-flex w-full sm:w-auto justify-center sm:justify-start items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">
-            <ArrowLeft size={16} />
-            စာရင်းသို့ပြန်မည်
-          </button>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <button onClick={closeCreateSale} className="inline-flex flex-1 justify-center sm:flex-none sm:justify-start items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">
+              <ArrowLeft size={16} />
+              စာရင်းသို့ပြန်မည်
+            </button>
+            <button type="button" onClick={holdSale} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-bold text-amber-700 hover:bg-amber-100" title="Temporarily hold this sale">
+              <PauseCircle size={16} /> ခဏသိမ်း
+            </button>
+          </div>
           <div className="text-center sm:text-left">
             <h2 className="text-xl font-bold text-slate-800">ရောင်းချမှုဘောင်ချာအသစ်</h2>
           </div>
@@ -1053,6 +1206,7 @@ const SaleManagement: React.FC = () => {
           <div className="flex items-center gap-2 px-3 py-2 bg-violet-50 border border-violet-200 rounded-lg">
             <Search size={15} className="text-violet-400 shrink-0" />
             <input
+              ref={barcodeInputRef}
               type="text"
               value={barcodeInput}
               onChange={e => setBarcodeInput(e.target.value)}
@@ -1260,10 +1414,18 @@ const SaleManagement: React.FC = () => {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tax / VAT</label>
+                  <input type="number" min="0" step="0.01" value={taxInput}
+                    onChange={(e) => setTaxInput(e.target.value)} placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400" />
+                </div>
+
                 {/* Totals summary */}
                 <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 space-y-1.5 text-sm">
                   <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-slate-600"><span>Subtotal</span><span className="font-semibold text-slate-800">{money(totalAmount)}</span></div>
                   {discount > 0 && <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-slate-600"><span>Discount</span><span className="font-semibold text-rose-600">- {money(discount)}</span></div>}
+                  {taxAmount > 0 && <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-amber-700"><span>Tax / VAT</span><span className="font-semibold">+ {money(taxAmount)}</span></div>}
                   <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-t border-slate-200 pt-1.5 text-base font-bold text-slate-900"><span>ကျသင့်ငွေ</span><span>{money(netAmount)}</span></div>
                   {hasCustomVoucherPrice && <>
                     <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-violet-700"><span>ဘောင်ချာစုစုပေါင်း</span><span className="font-semibold">{money(voucherDisplayAmount)}</span></div>
@@ -1432,6 +1594,23 @@ const SaleManagement: React.FC = () => {
         </button>
       </div>
       </div>
+
+      {heldSales.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div><h3 className="text-sm font-black text-amber-900">ခဏသိမ်းထားသော Saleများ</h3><p className="text-[11px] font-semibold text-amber-700">Customer စောင့်နေချိန်တွင် ရပ်ထားသော Sale များ</p></div>
+            <span className="rounded-full bg-amber-200 px-2 py-1 text-[10px] font-black text-amber-900">{heldSales.length} ခု</span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {heldSales.map((held) => (
+              <div key={held.id} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-700">{held.customerSearch || 'Customer မရွေးရသေး'}</p><p className="text-[10px] text-slate-500">{held.details.filter((detail) => detail.productId > 0).length} items · {new Date(held.createdAt).toLocaleString()}</p></div>
+                <div className="flex shrink-0 gap-1.5"><button type="button" onClick={() => resumeHeldSale(held)} className="rounded-md bg-amber-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-amber-700">ဆက်လုပ်</button><button type="button" onClick={() => deleteHeldSale(held.id)} className="rounded-md border border-rose-200 px-2 py-1.5 text-[10px] font-bold text-rose-600 hover:bg-rose-50" title="Delete held sale"><Trash2 size={13} /></button></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
@@ -1655,6 +1834,10 @@ const SaleManagement: React.FC = () => {
                     <input type="number" min="0" step="0.01" value={discountInput} onChange={(e) => setDiscountInput(e.target.value)} placeholder="0.00" className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-sm focus:outline-none focus:border-indigo-400" />
                   </div>
                   <div className="flex-1">
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Tax / VAT</label>
+                    <input type="number" min="0" step="0.01" value={taxInput} onChange={(e) => setTaxInput(e.target.value)} placeholder="0.00" className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-sm focus:outline-none focus:border-indigo-400" />
+                  </div>
+                  <div className="flex-1">
                     <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Paid</label>
                     <div className="flex gap-1">
                       <input type="number" min="0" step="0.01" value={paidInput} onChange={(e) => setPaidInput(e.target.value)} placeholder="0.00" className="flex-1 w-0 px-2.5 py-1.5 rounded border border-slate-200 bg-white text-sm focus:outline-none focus:border-indigo-400" />
@@ -1666,6 +1849,7 @@ const SaleManagement: React.FC = () => {
                 <div className="border-t border-slate-200 pt-3 space-y-1.5 text-sm">
                   <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-semibold text-slate-800">{money(totalAmount)}</span></div>
                   <div className="flex justify-between text-slate-600"><span>Discount</span><span className="font-semibold text-rose-600">— {money(discount)}</span></div>
+                  {taxAmount > 0 && <div className="flex justify-between text-amber-700"><span>Tax / VAT</span><span className="font-semibold">+ {money(taxAmount)}</span></div>}
                   <div className="flex justify-between text-slate-700 font-semibold border-t border-slate-200 pt-1.5"><span>Net Amount</span><span className="text-slate-900">{money(netAmount)}</span></div>
                   <div className="flex justify-between text-slate-600"><span>Paid</span><span className="font-semibold text-emerald-600">{money(paid)}</span></div>
                   <div className={`flex justify-between font-bold ${dueAmount > 0 ? 'text-rose-700' : 'text-emerald-700'}`}><span>Due</span><span>{money(dueAmount)}</span></div>
@@ -2057,6 +2241,14 @@ const SaleManagement: React.FC = () => {
                 <p className="text-xs text-slate-500 mt-0.5">{viewSale.customerName || '—'} · {fmtDate(viewSale.saleDate)} · Staff: {viewSale.staffName || '—'}</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                {!viewSale.voided && (
+                  <button onClick={() => handleVoidSale(viewSale)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700">
+                    <Trash2 size={13} /> Void
+                  </button>
+                )}
+                <button onClick={handleExcelExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100">
+                  <Download size={13} /> Excel
+                </button>
                 <button onClick={() => viewSale.id && setPrintPreviewSaleId(viewSale.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">
                   <Printer size={13} /> Print
                 </button>
@@ -2068,6 +2260,12 @@ const SaleManagement: React.FC = () => {
 
             <div className="overflow-auto flex-1">
               <div className="p-5 space-y-5">
+                {viewSale.voided && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800">
+                    <p className="font-black">VOIDED</p>
+                    <p className="text-xs mt-1">{viewSale.voidReason || 'No reason'} · {viewSale.voidedBy || 'Unknown user'}</p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -2077,6 +2275,10 @@ const SaleManagement: React.FC = () => {
                   <div className="rounded-lg border border-rose-100 bg-rose-50 p-3">
                     <p className="text-xs text-rose-600 font-medium">Discount</p>
                     <p className="text-lg font-bold text-rose-700 mt-1">{money(Number(viewSale.discountAmount) || 0)}</p>
+                  </div>
+                  <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+                    <p className="text-xs text-amber-700 font-medium">Tax / VAT</p>
+                    <p className="text-lg font-bold text-amber-800 mt-1">{money(Number(viewSale.taxAmount) || 0)}</p>
                   </div>
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
                     <p className="text-xs text-emerald-600 font-medium">Paid</p>
@@ -2137,7 +2339,7 @@ const SaleManagement: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="rounded-lg border border-slate-200 p-4">
                     <h4 className="text-sm font-bold text-slate-800 mb-3">{(Number(viewSale.dueAmount) || 0) > 0 ? 'Collect Payment' : 'Payment'}</h4>
-                    {(Number(viewSale.dueAmount) || 0) > 0 ? (
+                    {(Number(viewSale.dueAmount) || 0) > 0 && !viewSale.voided ? (
                       <form onSubmit={submitPayDue} className="space-y-2.5">
                         <div>
                           <label className="block text-xs font-semibold text-slate-500 mb-1">Amount</label>

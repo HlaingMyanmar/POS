@@ -24,7 +24,7 @@ android {
         vectorDrawables { useSupportLibrary = true }
 
         // Default server — override per-buildType below if needed
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://10.61.224.35:8080\"")
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://192.168.20.253:8080\"")
     }
 
     signingConfigs {

@@ -18,6 +18,7 @@ public class PurchaseDTO {
     private Integer staffId;
     private LocalDateTime purchaseDate;
     private LocalDate dueDate;
+    private Integer paymentTermDays;
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;
     private BigDecimal paidAmount;
@@ -34,6 +35,11 @@ public class PurchaseDTO {
     private String transactionNo;
     private List<PaymentTransactionDTO> payments;
 
-
-
+    // DRAFT / CONFIRMED / CANCELLED
+    private String status;
+    private BigDecimal taxAmount;
+    private BigDecimal otherCharges;
+    private String attachmentName;
+    private String attachmentData;
+    private Integer poId;
 }

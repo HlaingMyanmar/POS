@@ -71,7 +71,29 @@ class SaleDetailViewModel(
     fun clearPayError()    = _uiState.update { it.copy(payError = null) }
     fun clearPaySuccess()  = _uiState.update { it.copy(paySuccess = false) }
 
-    fun payDue(amount: Double, paymentMethodId: Int, note: String?) {
+    fun voidSale(reason: String, onSuccess: () -> Unit) {
+        val trimmed = reason.trim()
+        if (trimmed.isBlank()) {
+            _uiState.update { it.copy(payError = "Void reason is required") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(voiding = true, payError = null) }
+            try {
+                val response = ApiClient.service.voidSale(ApiClient.bearer(prefs.authToken), saleId, trimmed)
+                if (response.isSuccessful && response.body()?.data != null) {
+                    _uiState.update { it.copy(sale = response.body()!!.data, voiding = false) }
+                    onSuccess()
+                } else {
+                    _uiState.update { it.copy(voiding = false, payError = response.body()?.message ?: "Sale void failed") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(voiding = false, payError = e.message ?: "Network error") }
+            }
+        }
+    }
+
+    fun payDue(amount: Double, paymentMethodId: Int, transactionNo: String?, note: String?) {
         viewModelScope.launch {
             _uiState.update { it.copy(paying = true, payError = null) }
             try {
@@ -81,6 +103,7 @@ class SaleDetailViewModel(
                     SalePaymentRequest(
                         paidAmount      = amount,
                         paymentMethodId = paymentMethodId,
+                        transactionNo   = transactionNo?.ifBlank { null },
                         note            = note?.ifBlank { null }
                     )
                 )
@@ -114,6 +137,7 @@ class SaleDetailViewModel(
         val loading:           Boolean                        = true,
         val showPayDialog:     Boolean                        = false,
         val paying:            Boolean                        = false,
+        val voiding:           Boolean                        = false,
         val paySuccess:        Boolean                        = false,
         val payError:          String?                        = null
     )

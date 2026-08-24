@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sspd.servicemgmt.api.ApiClient
 import com.sspd.servicemgmt.api.PurchaseDTO
+import com.sspd.servicemgmt.api.ReorderSuggestionDTO
 import com.sspd.servicemgmt.utils.PreferenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,10 +32,15 @@ class PurchaseListViewModel(application: Application) : AndroidViewModel(applica
             _uiState.update { it.copy(loading = true) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
-                val res = ApiClient.service.getPurchases(token, search = _uiState.value.search)
+                val current = _uiState.value
+                val res = ApiClient.service.getPurchases(token, search = current.search, dateFrom = current.dateFrom, dateTo = current.dateTo)
+                val overdue = runCatching { ApiClient.service.getOverduePurchases(token).body()?.data.orEmpty() }.getOrDefault(emptyList())
+                val reorder = runCatching { ApiClient.service.getReorderSuggestions(token).body()?.data.orEmpty() }.getOrDefault(emptyList())
                 _uiState.update {
                     it.copy(
                         items = res.body()?.data?.content ?: emptyList(),
+                        overdueItems = overdue,
+                        reorderSuggestions = reorder,
                         loading = false
                     )
                 }
@@ -77,6 +83,7 @@ class PurchaseListViewModel(application: Application) : AndroidViewModel(applica
                 dateTo = range?.second?.toString() ?: ""
             )
         }
+        load()
     }
 
     fun findVoucher(keyword: String, onFound: (Int) -> Unit, onFallbackSearch: () -> Unit) {
@@ -113,6 +120,8 @@ class PurchaseListViewModel(application: Application) : AndroidViewModel(applica
 
     data class UiState(
         val items: List<PurchaseDTO> = emptyList(),
+        val overdueItems: List<PurchaseDTO> = emptyList(),
+        val reorderSuggestions: List<ReorderSuggestionDTO> = emptyList(),
         val loading: Boolean = true,
         val search: String = "",
         val statusFilter: StatusFilter = StatusFilter.ALL,

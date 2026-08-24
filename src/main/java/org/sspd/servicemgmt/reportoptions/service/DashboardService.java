@@ -117,7 +117,7 @@ public class DashboardService {
                 .lowStockCount(lowStockCount)
                 .lowStockProducts(lowStockNames)
                 .stockValue(safe(productRepository.sumStockValue()))
-                .supplierPayable(safe(purchaseRepository.findByDueAmountGreaterThan(BigDecimal.ZERO).stream().map(p -> p.getDueAmount()).reduce(BigDecimal.ZERO, BigDecimal::add)))
+                .supplierPayable(safe(purchaseRepository.findActivePayables().stream().map(p -> p.getDueAmount()).reduce(BigDecimal.ZERO, BigDecimal::add)))
                 .reworkCount(serviceJobRepository.countReworkInPeriod(from, to))
                 .upgradeCount(reworkPartResolutionRepository.countUpgradesInPeriod(from, to))
                 .refundCount(saleReturnRepository.countInRange(from, to))

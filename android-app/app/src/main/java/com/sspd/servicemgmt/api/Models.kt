@@ -178,6 +178,8 @@ data class PaymentTransactionDTO(
 data class SalePaymentRequest(
     val paidAmount:      Double,
     val paymentMethodId: Int? = null,
+    val paymentAccountId: Int? = null,
+    val arAccountId:     Int? = null,
     val note:            String? = null,
     val staffId:         Int?    = null,
     val transactionNo:   String? = null,
@@ -189,6 +191,8 @@ data class SaleItemDTO(
     val productName: String? = null,
     val qty: Int? = null,
     val unitPrice: Double? = null,
+    val customVoucherPrice: Double? = null,
+    val customerMargin: Double? = null,
     val subtotal: Double? = null,
     val discountAmount: Double? = null,
     val foc: Boolean? = null,
@@ -222,13 +226,29 @@ data class SaleDTO(
     val saleDate: String? = null,
     val totalAmount: Double? = null,
     val discountAmount: Double? = null,
+    val taxAmount: Double? = null,
+    val foc: Boolean? = null,
     val netAmount: Double? = null,
     val paidAmount: Double? = null,
     val dueAmount: Double? = null,
     val paymentStatus: String? = null,
+    val creditStatus: String? = null,
+    val voided: Boolean? = null,
+    val voidReason: String? = null,
+    val voidedBy: String? = null,
+    val voidedAt: String? = null,
+    val quotationId: Int? = null,
+    val quotationCode: String? = null,
+    val managerOverride: Boolean? = null,
+    val managerId: Int? = null,
+    val overrideNote: String? = null,
+    val paymentAccountId: Int? = null,
     val paymentMethodId: Int? = null,
     val paymentMethodName: String? = null,
     val payments: List<PaymentTransactionDTO>? = null,
+    val transactionNo: String? = null,
+    val arAccountId: Int? = null,
+    val serviceJobSale: Boolean = false,
     val dueDate: String? = null,
     val remark: String? = null,
     val details: List<SaleItemDTO>? = null
@@ -458,7 +478,9 @@ data class SupplierDTO(
     val phone: String? = null,
     val address: String? = null,
     val openingBalance: Double? = null,
-    val currentBalance: Double? = null
+    val currentBalance: Double? = null,
+    val defaultCreditDays: Int? = null,
+    val creditLimit: Double? = null
 )
 
 // ─── Purchases ───────────────────────────────────────────────────────────────
@@ -472,6 +494,7 @@ data class PurchaseDTO(
     val staffName: String? = null,
     val purchaseDate: String? = null,
     val dueDate: String? = null,
+    val paymentTermDays: Int? = null,
     val totalAmount: Double? = null,
     val discountAmount: Double? = null,
     val paidAmount: Double? = null,
@@ -486,7 +509,64 @@ data class PurchaseDTO(
     val paymentMethodId: Int? = null,
     val paymentMethodName: String? = null,
     val payments: List<PaymentTransactionDTO>? = null,
-    val transactionNo: String? = null
+    val transactionNo: String? = null,
+    val status: String? = null,
+    val taxAmount: Double? = null,
+    val otherCharges: Double? = null,
+    val attachmentName: String? = null,
+    val attachmentData: String? = null,
+    val poId: Int? = null
+)
+
+data class ReorderSuggestionDTO(
+    val productId: Int? = null,
+    val productName: String? = null,
+    val productCode: String? = null,
+    val hasSerial: Boolean? = null,
+    val stockQty: Int? = null,
+    val reorderLevel: Int? = null,
+    val suggestedQty: Int? = null,
+    val lastCost: Double? = null
+)
+
+data class PurchaseOrderDetailDTO(
+    val id: Int? = null, val productId: Int? = null, val productName: String? = null,
+    val qty: Int? = null, val receivedQty: Int? = null, val unitCost: Double? = null,
+    val subtotal: Double? = null, val warrantyMonths: Int? = null,
+    val itemWarranties: List<Int>? = null,
+    val serialNumbers: List<String>? = null, val serialConditions: List<String>? = null,
+    val serialPhotos: List<String>? = null
+)
+
+data class PurchaseOrderDTO(
+    val id: Int? = null, val poCode: String? = null, val supplierId: Int? = null,
+    val supplierName: String? = null, val staffId: Int? = null, val staffName: String? = null,
+    val orderDate: String? = null, val expectedDate: String? = null, val status: String? = null,
+    val totalAmount: Double? = null, val remark: String? = null,
+    val details: List<PurchaseOrderDetailDTO>? = null
+)
+
+data class PurchaseOrderReceiveLineDTO(
+    val detailId: Int? = null,
+    val qty: Int? = null,
+    val warrantyMonths: Int? = null,
+    val itemWarranties: List<Int>? = null,
+    val serialNumbers: List<String>? = null,
+    val serialConditions: List<String>? = null,
+    val serialPhotos: List<String>? = null
+)
+
+data class PurchaseOrderReceiveRequest(
+    val staffId: Int? = null, val lines: List<PurchaseOrderReceiveLineDTO>? = null,
+    val dueDate: String? = null, val discountAmount: Double? = null,
+    val taxAmount: Double? = null, val otherCharges: Double? = null,
+    val paymentMethodId: Int? = null, val transactionNo: String? = null,
+    val payments: List<PaymentTransactionDTO>? = null, val remark: String? = null
+)
+
+data class PurchaseOrderReceiveResultDTO(
+    val order: PurchaseOrderDTO? = null,
+    val purchase: PurchaseDTO? = null
 )
 
 data class PurchaseItemDTO(
@@ -496,6 +576,8 @@ data class PurchaseItemDTO(
     val qty: Int? = null,
     val unitCost: Double? = null,
     val subtotal: Double? = null,
+    val batchNumber: String? = null,
+    val expiryDate: String? = null,
     val warrantyMonths: Int? = null,
     val itemWarranties: List<Int>? = null,
     val serialNumbers: List<String>? = null,

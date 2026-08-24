@@ -51,6 +51,7 @@ import org.sspd.servicemgmt.creditoptions.service.CreditAlertService;
 import org.sspd.servicemgmt.creditoptions.service.CreditService;
 import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.creditoptions.repository.CreditOverrideLogRepository;
+import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -89,12 +90,19 @@ public class SaleService {
     private final PaymentBalanceValidator paymentBalanceValidator;
     private final CompanySettingsService companySettingsService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final CashDrawerService cashDrawerService;
+
+    private static final BigDecimal CASHIER_DISCOUNT_PERCENT = new BigDecimal("5");
+    private static final BigDecimal MANAGER_DISCOUNT_PERCENT = new BigDecimal("20");
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_UPDATE')")
     @Transactional
     public SaleDTO payDue(Integer saleId, SalePaymentDTO dto) {
         Sale sale = saleRepository.findById(saleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + saleId));
+        if (Boolean.TRUE.equals(sale.getVoided())) {
+            throw new RuntimeException("Cannot record payment for a voided sale.");
+        }
 
         BigDecimal currentDue = sale.getDueAmount() != null ? sale.getDueAmount() : BigDecimal.ZERO;
         if (currentDue.compareTo(BigDecimal.ZERO) <= 0) {
@@ -105,8 +113,11 @@ public class SaleService {
         if (incomingPaid.compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("Paid amount must be greater than zero.");
         }
+        if (incomingPaid.compareTo(currentDue) > 0) {
+            throw new RuntimeException("Paid amount cannot exceed the outstanding balance.");
+        }
 
-        BigDecimal applied = incomingPaid.min(currentDue);
+        BigDecimal applied = incomingPaid;
 
         BigDecimal newPaid = sale.getPaidAmount().add(applied);
         BigDecimal newDue = currentDue.subtract(applied);
@@ -154,13 +165,20 @@ public class SaleService {
         sale.setDetails(details);
 
         BigDecimal discount = dto.getDiscountAmount() != null ? dto.getDiscountAmount() : BigDecimal.ZERO;
+        BigDecimal tax = dto.getTaxAmount() != null ? dto.getTaxAmount() : BigDecimal.ZERO;
+        if (tax.signum() < 0) throw new RuntimeException("Tax amount cannot be negative");
+        sale.setTaxAmount(tax);
         BigDecimal totalPreview = calculateTotal(details);
-        BigDecimal netPreview = totalPreview.subtract(discount).max(BigDecimal.ZERO);
+        validateDiscountLimit(totalPreview, discount);
+        BigDecimal netPreview = totalPreview.subtract(discount).max(BigDecimal.ZERO).add(tax);
 
         // Internal service-job sales: treat as fully paid (inventory-only, payment tracked at job level)
         boolean isServiceJobSale = dto.isServiceJobSale();
         BigDecimal paidPreview = isServiceJobSale ? netPreview
                 : paymentTotal(dto.getPayments(), dto.getPaidAmount());
+        if (!isServiceJobSale && paidPreview.compareTo(netPreview) > 0) {
+            throw new RuntimeException("Paid amount cannot exceed the sale net amount.");
+        }
         BigDecimal duePreview = netPreview.subtract(paidPreview).max(BigDecimal.ZERO);
 
         if (!isServiceJobSale) {
@@ -287,11 +305,16 @@ public class SaleService {
 
         List<SaleDetail> details = existing.getDetails();
         BigDecimal discount = dto.getDiscountAmount() != null ? dto.getDiscountAmount() : existing.getDiscountAmount();
+        BigDecimal tax = dto.getTaxAmount() != null ? dto.getTaxAmount() : existing.getTaxAmount();
+        if (tax != null && tax.signum() < 0) throw new RuntimeException("Tax amount cannot be negative");
+        existing.setTaxAmount(tax != null ? tax : BigDecimal.ZERO);
         BigDecimal paid = dto.getPaidAmount() != null ? dto.getPaidAmount() : existing.getPaidAmount();
         LocalDate dueDate = dto.getDueDate() != null ? dto.getDueDate() : existing.getDueDate();
 
         BigDecimal totalPreview = calculateTotal(details);
-        BigDecimal netPreview = totalPreview.subtract(discount != null ? discount : BigDecimal.ZERO);
+        validateDiscountLimit(totalPreview, discount);
+        BigDecimal netPreview = totalPreview.subtract(discount != null ? discount : BigDecimal.ZERO)
+                .add(existing.getTaxAmount() != null ? existing.getTaxAmount() : BigDecimal.ZERO);
         if (netPreview.compareTo(BigDecimal.ZERO) < 0) netPreview = BigDecimal.ZERO;
         BigDecimal paidPreview = paid != null ? paid : BigDecimal.ZERO;
         if (paidPreview.compareTo(netPreview) > 0) paidPreview = netPreview;
@@ -338,12 +361,81 @@ public class SaleService {
         return mapper.toDto(saved);
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_DELETE')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_VOID','CAN_ACCESS_SALE_DELETE')")
     @Transactional
-    public void delete(Integer id) {
+    public SaleDTO voidSale(Integer id, String reason) {
         Sale existing = saleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + id));
-        saleRepository.delete(existing);
+        if (Boolean.TRUE.equals(existing.getVoided())) {
+            throw new RuntimeException("Voided sale cannot be updated.");
+        }
+        if (Boolean.TRUE.equals(existing.getVoided())) {
+            throw new RuntimeException("Sale is already voided");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new RuntimeException("Void reason is required");
+        }
+
+        reverseStock(existing);
+        recordVoidedCashRefund(existing);
+        paymentTransactionRepository.deleteByReferenceIdAndReferenceType(existing.getId(), ReferenceType.Sale);
+        journalWriter.reverseByReferenceNo(existing.getSaleCode());
+        journalWriter.reverseByReferenceNo(existing.getSaleCode() + "-COGS");
+        journalWriter.reverseByReferenceNo(existing.getSaleCode() + "-PAY");
+        journalWriter.reverseByReferenceNo(existing.getSaleCode() + "-ADJ");
+
+        existing.setVoided(Boolean.TRUE);
+        existing.setVoidReason(reason.trim());
+        existing.setVoidedBy(currentUsername());
+        existing.setVoidedAt(LocalDateTime.now());
+        Sale saved = saleRepository.save(existing);
+        messagingTemplate.convertAndSend("/topic/sales", "SALE_VOIDED");
+        return mapper.toDto(saved);
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @Transactional(readOnly = true)
+    public byte[] exportExcel(String dateFrom, String dateTo) throws java.io.IOException {
+        var sales = saleRepository.findBySearch("", parseDateStart(dateFrom), parseDateEnd(dateTo),
+                PageRequest.of(0, Integer.MAX_VALUE, Sort.by("id").descending())).getContent();
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             var output = new java.io.ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Sales");
+            String[] headers = {"Invoice", "Date", "Customer", "Staff", "Total", "Discount", "Tax / VAT", "Net", "Paid", "Due", "Payment Status", "Credit Status", "Voided"};
+            var style = workbook.createCellStyle();
+            var font = workbook.createFont();
+            font.setBold(true);
+            font.setColor(org.apache.poi.ss.usermodel.IndexedColors.WHITE.getIndex());
+            style.setFont(font);
+            style.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.INDIGO.getIndex());
+            style.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            var header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                var cell = header.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(style);
+                sheet.setColumnWidth(i, 4800);
+            }
+            int rowIndex = 1;
+            for (Sale sale : sales) {
+                var row = sheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(sale.getSaleCode() != null ? sale.getSaleCode() : "#" + sale.getId());
+                row.createCell(1).setCellValue(sale.getSaleDate() != null ? sale.getSaleDate().toString() : "");
+                row.createCell(2).setCellValue(sale.getCustomer() != null ? sale.getCustomer().getName() : "");
+                row.createCell(3).setCellValue(sale.getStaff() != null ? sale.getStaff().getName() : "");
+                row.createCell(4).setCellValue(sale.getTotalAmount() != null ? sale.getTotalAmount().doubleValue() : 0);
+                row.createCell(5).setCellValue(sale.getDiscountAmount() != null ? sale.getDiscountAmount().doubleValue() : 0);
+                row.createCell(6).setCellValue(sale.getTaxAmount() != null ? sale.getTaxAmount().doubleValue() : 0);
+                row.createCell(7).setCellValue(sale.getNetAmount() != null ? sale.getNetAmount().doubleValue() : 0);
+                row.createCell(8).setCellValue(sale.getPaidAmount() != null ? sale.getPaidAmount().doubleValue() : 0);
+                row.createCell(9).setCellValue(sale.getDueAmount() != null ? sale.getDueAmount().doubleValue() : 0);
+                row.createCell(10).setCellValue(sale.getPaymentStatus() != null ? sale.getPaymentStatus().name() : "");
+                row.createCell(11).setCellValue(sale.getCreditStatus() != null ? sale.getCreditStatus().name() : "");
+                row.createCell(12).setCellValue(Boolean.TRUE.equals(sale.getVoided()));
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
     }
 
     private List<SaleDetail> buildDetails(List<SaleDetailDTO> detailDTOs, Sale parent, boolean isServiceJobSale) {
@@ -358,6 +450,10 @@ public class SaleService {
 
             if (d.getUnitPrice() == null) {
                 throw new RuntimeException("Unit price is required");
+            }
+            if (!isServiceJobSale && d.getUnitPrice().compareTo(product.getSellingPrice()) != 0
+                    && !hasCurrentAuthority("CAN_ACCESS_SALE_PRICE_EDIT")) {
+                throw new AccessDeniedException("Unit price editing requires CAN_ACCESS_SALE_PRICE_EDIT");
             }
 
             int requestedWarrantyMonths = d.getWarrantyMonths() != null ? d.getWarrantyMonths()
@@ -480,6 +576,62 @@ public class SaleService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private void validateDiscountLimit(BigDecimal total, BigDecimal discount) {
+        BigDecimal safeDiscount = discount != null ? discount : BigDecimal.ZERO;
+        if (safeDiscount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Discount cannot be negative");
+        }
+        if (safeDiscount.compareTo(total) > 0) {
+            throw new RuntimeException("Discount cannot exceed sale total");
+        }
+        if (safeDiscount.signum() == 0 || hasCurrentAuthority("CAN_ACCESS_SALE_DISCOUNT_OVERRIDE")
+                || hasCurrentAuthority("ROLE_ADMINISTRATOR")) return;
+
+        BigDecimal limit = hasCurrentAuthority("ROLE_MANAGER") || hasCurrentAuthority("ROLE_ADMIN")
+                ? MANAGER_DISCOUNT_PERCENT : CASHIER_DISCOUNT_PERCENT;
+        BigDecimal percent = total.signum() == 0 ? BigDecimal.ZERO
+                : safeDiscount.multiply(new BigDecimal("100")).divide(total, 4, java.math.RoundingMode.HALF_UP);
+        if (percent.compareTo(limit) > 0) {
+            throw new AccessDeniedException("Discount exceeds role limit of " + limit.stripTrailingZeros().toPlainString() + "%");
+        }
+    }
+
+    private void reverseStock(Sale sale) {
+        if (sale.getDetails() == null) return;
+        for (SaleDetail detail : sale.getDetails()) {
+            Product product = detail.getProduct();
+            int qty = detail.getQty() != null ? detail.getQty() : 0;
+            if (detail.getSerialNumber() != null && !detail.getSerialNumber().isBlank()) {
+                serialRepository.findBySerialNumber(detail.getSerialNumber()).ifPresent(serial -> {
+                    serial.setStatus(SerialStatus.Available);
+                    serialRepository.save(serial);
+                });
+            } else {
+                product.setStockQty((product.getStockQty() != null ? product.getStockQty() : 0) + qty);
+                productRepository.save(product);
+            }
+            stockMovementService.recordMovement(StockMovement.builder()
+                    .product(product).movementType(MovementType.RETURN).qty(qty)
+                    .referenceType("SaleVoid").referenceId(sale.getId()).build());
+        }
+    }
+
+    private void recordVoidedCashRefund(Sale sale) {
+        BigDecimal cashPaid = paymentTransactionRepository
+                .findByReferenceIdAndReferenceType(sale.getId(), ReferenceType.Sale).stream()
+                .filter(tx -> tx.getPaymentMethod() != null && tx.getPaymentMethod().getAccount() != null)
+                .filter(tx -> tx.getPaymentMethod().getAccount().getId().equals(accountResolver.cash().getId()))
+                .map(PaymentTransaction::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        cashDrawerService.recordCashRefund(cashPaid);
+    }
+
+    private String currentUsername() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null ? authentication.getName() : "system";
+    }
+
     private void applyTotals(Sale sale, List<SaleDetail> details, BigDecimal discount, BigDecimal paid, LocalDate dueDate) {
         BigDecimal total = details.stream()
                 .map(SaleDetail::getSubtotal)
@@ -489,7 +641,8 @@ public class SaleService {
         if (safeDiscount.compareTo(BigDecimal.ZERO) < 0) {
             throw new RuntimeException("Discount cannot be negative");
         }
-        BigDecimal net = total.subtract(safeDiscount);
+        BigDecimal tax = sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO;
+        BigDecimal net = total.subtract(safeDiscount).add(tax);
         if (net.compareTo(BigDecimal.ZERO) < 0) {
             net = BigDecimal.ZERO;
         }
@@ -678,8 +831,16 @@ public class SaleService {
         JournalDetailDTO crSales = new JournalDetailDTO();
         crSales.setAccountId(accountResolver.sales().getId()); // Product Sale income
         crSales.setDebit(BigDecimal.ZERO);
-        crSales.setCredit(net);
+        BigDecimal tax = sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO;
+        crSales.setCredit(net.subtract(tax));
         details.add(crSales);
+        if (tax.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO crTax = new JournalDetailDTO();
+            crTax.setAccountId(accountResolver.taxPayable().getId());
+            crTax.setDebit(BigDecimal.ZERO);
+            crTax.setCredit(tax);
+            details.add(crTax);
+        }
 
         JournalEntryDTO journalDTO = new JournalEntryDTO();
         journalDTO.setReferenceNo(sale.getSaleCode());
@@ -791,6 +952,7 @@ public class SaleService {
                         ? generateTransactionNo()
                         : line.transactionNo());
                 paymentTransactionRepository.save(paymentTx);
+                recordDrawerCashSale(line.method(), line.amount());
             }
             return;
         }
@@ -808,6 +970,14 @@ public class SaleService {
                 : dto.getTransactionNo();
         paymentTx.setTransactionNo(txnNo);
         paymentTransactionRepository.save(paymentTx);
+        recordDrawerCashSale(method, paid);
+    }
+
+    private void recordDrawerCashSale(PaymentMethod method, BigDecimal amount) {
+        if (method != null && method.getAccount() != null
+                && method.getAccount().getId().equals(accountResolver.cash().getId())) {
+            cashDrawerService.recordCashSale(amount);
+        }
     }
 
     private BigDecimal paymentTotal(List<PaymentTransactionDTO> payments, BigDecimal fallback) {

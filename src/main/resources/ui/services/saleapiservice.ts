@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, BASE_URL, getAccessToken } from './api';
 import { ApiResponse, SaleDTO, SaleDetailDTO, SalePaymentDTO } from '../types';
 
 type AnyRecord = Record<string, any>;
@@ -152,7 +152,25 @@ export const saleApiService = {
     return normalizeSale((res.data || {}) as AnyRecord);
   },
 
-  delete: async (id: number): Promise<void> => {
-    await api.delete<any, ApiResponse<void>>(`/v1/sales/${id}`);
+  delete: async (id: number, reason: string): Promise<SaleDTO> => {
+    const res = await api.delete<any, ApiResponse<SaleDTO>>(`/v1/sales/${id}?reason=${encodeURIComponent(reason)}`);
+    return normalizeSale((res.data || {}) as AnyRecord);
+  },
+
+  exportExcel: async (dateFrom = '', dateTo = ''): Promise<void> => {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    const token = getAccessToken();
+    const response = await fetch(`${BASE_URL}/v1/sales/export/excel?${params.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) throw new Error('Export failed');
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sales_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 };

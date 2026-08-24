@@ -28,6 +28,7 @@ public class AccountResolver {
     public ChartOfAccount payable()         { return get(AccountCode.PAYABLE); }
     public ChartOfAccount salaryPayable()   { return get(AccountCode.SALARY_PAYABLE); }
     public ChartOfAccount custAdvance()     { return get(AccountCode.CUSTOMER_ADVANCE); }
+    public ChartOfAccount taxPayable()      { return get(AccountCode.TAX_PAYABLE); }
 
     // ── Income ──────────────────────────────────────
     public ChartOfAccount sales()           { return get(AccountCode.SALES); }

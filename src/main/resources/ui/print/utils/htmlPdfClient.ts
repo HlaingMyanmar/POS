@@ -78,5 +78,6 @@ function buildRequest(
     showQrCode: options.showQrCode ?? false,
     sign1Label: options.sign1Label ?? 'Prepared By',
     sign2Label: options.sign2Label ?? 'Received By',
+    copyType: options.copyType ?? 'CUSTOMER',
   };
 }

@@ -182,6 +182,20 @@ interface ApiService {
         @Body body: SaleDTO
     ): Response<ApiResponse<SaleDTO>>
 
+    @PUT("sales/{id}")
+    suspend fun updateSale(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: SaleDTO
+    ): Response<ApiResponse<SaleDTO>>
+
+    @DELETE("sales/{id}")
+    suspend fun voidSale(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Query("reason") reason: String
+    ): Response<ApiResponse<SaleDTO>>
+
     @GET("customers")
     suspend fun getCustomers(@Header("Authorization") auth: String): Response<ApiResponse<List<CustomerDTO>>>
 
@@ -244,6 +258,28 @@ interface ApiService {
         @Path("id") id: Int,
         @Body body: PurchaseDTO
     ): Response<ApiResponse<PurchaseDTO>>
+
+    @POST("purchases/{id}/confirm")
+    suspend fun confirmPurchase(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseDTO = PurchaseDTO()): Response<ApiResponse<PurchaseDTO>>
+    @DELETE("purchases/{id}")
+    suspend fun cancelPurchase(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<Void>>
+    @GET("purchases/overdue")
+    suspend fun getOverduePurchases(@Header("Authorization") auth: String): Response<ApiResponse<List<PurchaseDTO>>>
+    @GET("purchases/reorder-suggestions")
+    suspend fun getReorderSuggestions(@Header("Authorization") auth: String): Response<ApiResponse<List<ReorderSuggestionDTO>>>
+
+    @GET("purchase-orders")
+    suspend fun getPurchaseOrders(@Header("Authorization") auth: String, @Query("page") page: Int = 0, @Query("size") size: Int = 50, @Query("search") search: String = ""): Response<ApiResponse<PagedResponse<PurchaseOrderDTO>>>
+    @GET("purchase-orders/{id}")
+    suspend fun getPurchaseOrderById(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<PurchaseOrderDTO>>
+    @POST("purchase-orders")
+    suspend fun createPurchaseOrder(@Header("Authorization") auth: String, @Body body: PurchaseOrderDTO): Response<ApiResponse<PurchaseOrderDTO>>
+    @PUT("purchase-orders/{id}")
+    suspend fun updatePurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseOrderDTO): Response<ApiResponse<PurchaseOrderDTO>>
+    @DELETE("purchase-orders/{id}")
+    suspend fun cancelPurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<Void>>
+    @POST("purchase-orders/{id}/receive")
+    suspend fun receivePurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseOrderReceiveRequest): Response<ApiResponse<PurchaseOrderReceiveResultDTO>>
 
     @GET("purchase-returns")
     suspend fun getPurchaseReturns(

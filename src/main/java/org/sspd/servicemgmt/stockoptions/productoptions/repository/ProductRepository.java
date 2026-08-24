@@ -53,4 +53,12 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
 
     @org.springframework.data.jpa.repository.Query("select coalesce(sum(coalesce(p.costPrice, 0) * coalesce(p.stockQty, 0)), 0) from Product p")
     BigDecimal sumStockValue();
+
+    @org.springframework.data.jpa.repository.Query(
+        "select p from Product p " +
+        "where coalesce(p.archived, false) = false " +
+        "and coalesce(p.reorderLevel, 0) > 0 " +
+        "and coalesce(p.stockQty, 0) <= p.reorderLevel " +
+        "order by (coalesce(p.stockQty, 0) - p.reorderLevel) asc")
+    java.util.List<Product> findReorderNeeded();
 }

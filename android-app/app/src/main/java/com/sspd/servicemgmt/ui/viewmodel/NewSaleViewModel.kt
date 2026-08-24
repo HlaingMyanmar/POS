@@ -272,6 +272,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
     fun setPaidAmount(v: String)             = _uiState.update { it.copy(paidAmount = v) }
     fun setPaymentTransactionNo(v: String)   = _uiState.update { it.copy(paymentTransactionNo = v) }
     fun setOverallDiscount(v: String)        = _uiState.update { it.copy(overallDiscount = v) }
+    fun setTaxAmount(v: String)              = _uiState.update { it.copy(taxAmount = v) }
     fun setRemark(v: String)                 = _uiState.update { it.copy(remark = v) }
     fun showProductScanner()                 = _uiState.update { it.copy(showProductScanner = true) }
     fun dismissProductScanner()              = _uiState.update { it.copy(showProductScanner = false) }
@@ -373,7 +374,8 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val lineDiscL = state.cart.filterNot { it.foc }.sumOf { it.discountAmount }
         val focAmountL = state.cart.filter { it.foc }.sumOf { it.unitPrice * it.qty.toLong() }
         val overallDL = state.overallDiscount.toLongOrNull() ?: 0L
-        val netL      = maxOf(0L, grossL - focAmountL - lineDiscL - overallDL)
+        val taxL      = maxOf(0L, state.taxAmount.toLongOrNull() ?: 0L)
+        val netL      = maxOf(0L, grossL - focAmountL - lineDiscL - overallDL) + taxL
         val splitPayments = normalizePayments(state.splitPayments)
         val paidL     = if (splitPayments.isNotEmpty()) splitTotal(splitPayments).toLong() else (state.paidAmount.toLongOrNull() ?: netL)
         val dueL      = maxOf(0L, netL - paidL)
@@ -409,8 +411,9 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val gross    = grossL.toDouble()
         val lineDisc = lineDiscL.toDouble()
         val overallD = overallDL.toDouble()
+        val tax       = taxL.toDouble()
         val subtotal = maxOf(0.0, gross - focAmountL.toDouble() - lineDisc)
-        val net      = maxOf(0.0, subtotal - overallD)
+        val net      = maxOf(0.0, subtotal - overallD) + tax
         val paid     = if (splitPayments.isNotEmpty()) splitTotal(splitPayments) else (state.paidAmount.toDoubleOrNull() ?: net)
         val due      = maxOf(0.0, net - paid)
 
@@ -426,11 +429,13 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
             saleDate        = "${state.saleDate}T00:00:00",
             totalAmount     = gross,
             discountAmount  = overallD,
+            taxAmount       = tax,
             netAmount       = net,
             paidAmount      = paid,
             dueAmount       = due,
             paymentMethodId = if (paid > 0.0) (splitPayments.firstOrNull()?.paymentMethodId ?: state.selectedPayMethod?.id) else null,
             payments        = splitPayments.ifEmpty { null },
+            transactionNo   = state.paymentTransactionNo.ifBlank { null },
             dueDate         = dueDateStr,
             remark          = state.remark.ifBlank { null },
             details         = state.cart.map { item ->
@@ -442,6 +447,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
                     subtotal       = if (item.foc) 0.0 else (item.unitPrice * item.qty - item.discountAmount).toDouble(),
                     discountAmount = item.discountAmount.toDouble(),
                     foc            = item.foc,
+                    warrantyMonths = item.product.warrantyMonths,
                     serialNumbers  = item.serialNumbers.ifEmpty { null }
                 )
             }
@@ -484,6 +490,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val paidAmount:        String               = "",
         val paymentTransactionNo: String            = "",
         val overallDiscount:   String               = "",
+        val taxAmount:         String               = "",
         val remark:            String               = "",
         val submitting:        Boolean              = false,
         val showProductScanner:Boolean              = false,

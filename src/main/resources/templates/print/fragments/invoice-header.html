@@ -34,6 +34,7 @@
     <!-- Right: invoice meta -->
     <div class="inv-header__meta">
       <div class="inv-header__meta-title" th:text="${inv.invoiceTitle}">SALES INVOICE</div>
+        <div class="inv-header__copy-label" th:text="${inv.copyLabel}">CUSTOMER COPY</div>
       <div class="inv-header__meta-number" th:text="${inv.invoiceNo}">#0001</div>
       <div class="inv-header__meta-date"   th:text="${inv.invoiceDate}">01/01/2025</div>
       <img th:if="${inv.showQrCode and not #strings.isEmpty(inv.qrCodeBase64)}"

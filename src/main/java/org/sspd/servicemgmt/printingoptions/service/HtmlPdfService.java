@@ -154,6 +154,17 @@ public class HtmlPdfService {
                 body);
     }
 
+    private List<PrintInvoiceData> buildCopyPages(PrintInvoiceData data, PrintLayoutConfig config, String copyType) {
+        List<PrintInvoiceData> customerPages = paginationService.buildPages(data, config);
+        if (!"BOTH".equalsIgnoreCase(copyType)) return customerPages;
+        List<PrintInvoiceData> shopPages = paginationService.buildPages(data, config);
+        shopPages.forEach(page -> page.setCopyLabel("SHOP COPY"));
+        return new java.util.ArrayList<>() {{
+            addAll(customerPages);
+            addAll(shopPages);
+        }};
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Flying Saucer PDF conversion
     // ─────────────────────────────────────────────────────────────────────────

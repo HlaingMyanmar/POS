@@ -83,6 +83,7 @@ public class InvoiceAssemblerService {
             case PURCHASE     -> assemblePurchase(req.getDocumentId(), cs);
         };
         data.setDocumentType(req.getDocumentType().name());
+        data.setCopyLabel("SHOP".equalsIgnoreCase(req.getCopyType()) ? "SHOP COPY" : "CUSTOMER COPY");
 
         data.setPageConfig(pageCfg);
         data.setShowLogo(req.isShowLogo());
@@ -185,9 +186,10 @@ public class InvoiceAssemblerService {
                 .payments(payments)
                 .subtotal(fmt(hasCustomVoucherPrice ? voucherTotal : sale.getTotalAmount()))
                 .discount(fmt(hasCustomVoucherPrice ? voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO) : sale.getDiscountAmount()))
-                .netAmount(fmt(hasCustomVoucherPrice ? voucherTotal.subtract(voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO)).max(BigDecimal.ZERO) : sale.getNetAmount()))
+                .tax(fmt(sale.getTaxAmount()))
+                .netAmount(fmt(hasCustomVoucherPrice ? voucherTotal.subtract(voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO)).max(BigDecimal.ZERO).add(sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO) : sale.getNetAmount()))
                 .commission(fmt(commission))
-                .paid(fmt(hasCustomVoucherPrice ? voucherTotal.subtract(voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO)).max(BigDecimal.ZERO) : sale.getPaidAmount()))
+                .paid(fmt(hasCustomVoucherPrice ? voucherTotal.subtract(voucherLineDiscount.add(sale.getDiscountAmount() != null ? sale.getDiscountAmount() : BigDecimal.ZERO)).max(BigDecimal.ZERO).add(sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO) : sale.getPaidAmount()))
                 .balanceDue(fmt(hasCustomVoucherPrice ? BigDecimal.ZERO : sale.getDueAmount()))
                 .remark(safe(sale.getRemark()))
                 .customerNotice("")

@@ -41,6 +41,9 @@ public class Purchase {
     @Column(name = "due_date")
     private LocalDate dueDate;
 
+    @Column(name = "payment_term_days")
+    private Integer paymentTermDays;
+
     private BigDecimal totalAmount = BigDecimal.ZERO;
     @Column(name = "discount_amount")
     private BigDecimal discountAmount = BigDecimal.ZERO;
@@ -59,8 +62,43 @@ public class Purchase {
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus = PaymentStatus.Pending;
 
+    // DRAFT / CONFIRMED / CANCELLED — legacy rows (NULL) are treated as CONFIRMED
+    @Enumerated(EnumType.STRING)
+    @Column(name = "voucher_status")
+    private PurchaseStatus status;
+
+    @Column(name = "tax_amount")
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
+    // Landing cost — freight/customs/other charges added to purchase cost
+    @Column(name = "other_charges")
+    private BigDecimal otherCharges = BigDecimal.ZERO;
+
+    // Supplier paper invoice attachment (base64)
+    @Column(name = "attachment_name", length = 255)
+    private String attachmentName;
+
+    @Column(name = "attachment_data", columnDefinition = "LONGTEXT")
+    private String attachmentData;
+
+    // Linked Purchase Order (nullable)
+    @Column(name = "po_id")
+    private Integer poId;
+
     @Column(columnDefinition = "TEXT")
     private String remark;
+
+    public boolean isDraft() {
+        return status == PurchaseStatus.DRAFT;
+    }
+
+    public boolean isCancelled() {
+        return status == PurchaseStatus.CANCELLED;
+    }
+
+    public boolean isEffectivelyConfirmed() {
+        return status == null || status == PurchaseStatus.CONFIRMED;
+    }
 
     // အဝယ်အသေးစိတ်စာရင်းများနှင့် ချိတ်ဆက်ခြင်း
     @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL, orphanRemoval = true)

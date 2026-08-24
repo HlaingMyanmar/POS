@@ -31,6 +31,7 @@ import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.viewmodel.ProductListViewModel
 import com.sspd.servicemgmt.ui.viewmodel.ProductListViewModel.ProductFilter
+import com.sspd.servicemgmt.ui.viewmodel.ProductListViewModel.ProductSort
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,6 +83,18 @@ fun ProductListScreen(
             ProductFilter.NO_SELLING_PRICE -> it.sellingPrice <= 0.0
         }
         matchesSearch && matchesFilter
+    }.let { products ->
+        when (state.sort) {
+            ProductSort.NAME -> products.sortedBy { it.name.lowercase() }
+            ProductSort.STOCK_LOW -> products.sortedBy { if (it.hasSerial == true) it.availableSerialCount ?: it.stockQty else it.stockQty }
+            ProductSort.STOCK_HIGH -> products.sortedByDescending { if (it.hasSerial == true) it.availableSerialCount ?: it.stockQty else it.stockQty }
+            ProductSort.PRICE_LOW -> products.sortedBy { it.sellingPrice }
+            ProductSort.PRICE_HIGH -> products.sortedByDescending { it.sellingPrice }
+            ProductSort.VALUE_HIGH -> products.sortedByDescending {
+                val qty = if (it.hasSerial == true) it.availableSerialCount ?: it.stockQty else it.stockQty
+                (it.costPrice ?: 0.0) * qty
+            }
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -148,6 +161,25 @@ fun ProductListScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                val totalUnits = state.items.sumOf { if (it.hasSerial == true) it.availableSerialCount ?: it.stockQty else it.stockQty }
+                val lowStockCount = state.items.count {
+                    val qty = if (it.hasSerial == true) it.availableSerialCount ?: it.stockQty else it.stockQty
+                    qty <= (it.reorderLevel ?: 0)
+                }
+                val stockValue = state.items.sumOf {
+                    val qty = if (it.hasSerial == true) it.availableSerialCount ?: it.stockQty else it.stockQty
+                    (it.costPrice ?: 0.0) * qty
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ProductSummaryCard("Items", state.items.size.toString(), Primary, Modifier.weight(1f))
+                    ProductSummaryCard("Stock", totalUnits.toString(), Success, Modifier.weight(1f))
+                    ProductSummaryCard("Low", lowStockCount.toString(), Warning, Modifier.weight(1f))
+                    ProductSummaryCard("Value", stockValue.compactMoney(), Violet, Modifier.weight(1.35f))
+                }
+
                 LazyRow(
                     modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -157,6 +189,18 @@ fun ProductListScreen(
                     item { ProductFilterChip("Serial", state.filter == ProductFilter.SERIAL, Violet) { vm.setFilter(ProductFilter.SERIAL) } }
                     item { ProductFilterChip("No Cost", state.filter == ProductFilter.NO_COST, Danger) { vm.setFilter(ProductFilter.NO_COST) } }
                     item { ProductFilterChip("No Price", state.filter == ProductFilter.NO_SELLING_PRICE, Danger) { vm.setFilter(ProductFilter.NO_SELLING_PRICE) } }
+                }
+
+                LazyRow(
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item { ProductSortChip("Name", state.sort == ProductSort.NAME) { vm.setSort(ProductSort.NAME) } }
+                    item { ProductSortChip("Stock ↑", state.sort == ProductSort.STOCK_LOW) { vm.setSort(ProductSort.STOCK_LOW) } }
+                    item { ProductSortChip("Stock ↓", state.sort == ProductSort.STOCK_HIGH) { vm.setSort(ProductSort.STOCK_HIGH) } }
+                    item { ProductSortChip("Price ↑", state.sort == ProductSort.PRICE_LOW) { vm.setSort(ProductSort.PRICE_LOW) } }
+                    item { ProductSortChip("Price ↓", state.sort == ProductSort.PRICE_HIGH) { vm.setSort(ProductSort.PRICE_HIGH) } }
+                    item { ProductSortChip("Value ↓", state.sort == ProductSort.VALUE_HIGH) { vm.setSort(ProductSort.VALUE_HIGH) } }
                 }
 
                 if (state.loading) {
@@ -207,6 +251,21 @@ fun ProductListScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ProductSummaryCard(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, color = color.copy(alpha = 0.09f), shape = RoundedCornerShape(10.dp)) {
+        Column(Modifier.padding(horizontal = 9.dp, vertical = 8.dp)) {
+            Text(value, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = color, maxLines = 1)
+            Text(label, fontSize = 9.sp, color = TextMuted, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ProductSortChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label, fontSize = 10.sp) })
 }
 
 @Composable
@@ -344,6 +403,12 @@ private fun ProductMiniBadge(label: String, color: Color, bg: Color) {
 }
 
 private fun Double.fmt() = if (this % 1.0 == 0.0) String.format("%,.0f", this) else String.format("%,.2f", this)
+private fun Double.compactMoney(): String = when {
+    this >= 1_000_000_000 -> String.format("%.1fB", this / 1_000_000_000)
+    this >= 1_000_000 -> String.format("%.1fM", this / 1_000_000)
+    this >= 1_000 -> String.format("%.1fK", this / 1_000)
+    else -> String.format("%.0f", this)
+}
 
 
 @androidx.compose.ui.tooling.preview.Preview(showBackground = true, widthDp = 360)

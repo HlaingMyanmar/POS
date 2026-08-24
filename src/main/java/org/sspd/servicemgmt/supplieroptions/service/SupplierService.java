@@ -26,6 +26,7 @@ public class SupplierService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_SUPPLIER_CREATE')")
     @Transactional
     public SupplierDTO save(SupplierDTO dto) {
+        validateCreditSettings(dto);
         if (supplierRepository.existsByName(dto.getName())) {
             throw new RuntimeException("Supplier '" + dto.getName() + "' is already registered!");
         }
@@ -77,6 +78,7 @@ public class SupplierService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_SUPPLIER_UPDATE')")
     @Transactional
     public SupplierDTO update(Integer id, SupplierDTO dto) {
+        validateCreditSettings(dto);
         Supplier existingEntity = supplierRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier Not Found with Id : " + id));
         if (!existingEntity.getName().equals(dto.getName()) &&
@@ -97,5 +99,16 @@ public class SupplierService {
         }
         supplierRepository.delete(existingEntity);
         messagingTemplate.convertAndSend(SUPPLIER_TOPIC, "SUPPLIER_DELETED");
+    }
+
+    private void validateCreditSettings(SupplierDTO dto) {
+        if (dto.getDefaultCreditDays() != null && dto.getDefaultCreditDays() < 0) {
+            throw new RuntimeException("Default credit days cannot be negative.");
+        }
+        if (dto.getCreditLimit() != null && dto.getCreditLimit().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Supplier credit limit cannot be negative.");
+        }
+        if (dto.getDefaultCreditDays() == null) dto.setDefaultCreditDays(30);
+        if (dto.getCreditLimit() == null) dto.setCreditLimit(java.math.BigDecimal.ZERO);
     }
 }

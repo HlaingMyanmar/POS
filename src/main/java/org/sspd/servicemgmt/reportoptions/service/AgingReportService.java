@@ -56,7 +56,7 @@ public class AgingReportService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_REPORT_READ')")
     @Transactional(readOnly = true)
     public AgingReportDTO getSupplierAging(LocalDate asOf) {
-        List<AgingLineItemDTO> lines = purchaseRepository.findByDueAmountGreaterThan(BigDecimal.ZERO).stream()
+        List<AgingLineItemDTO> lines = purchaseRepository.findOverduePayables(asOf).stream()
                 .map(purchase -> toSupplierLine(purchase, asOf))
                 .sorted(Comparator.comparingInt(AgingLineItemDTO::getDaysPastDue).reversed()
                         .thenComparing(AgingLineItemDTO::getPartyName, Comparator.nullsLast(String::compareToIgnoreCase)))

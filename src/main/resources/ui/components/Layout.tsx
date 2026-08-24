@@ -188,6 +188,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'အမျိုးအစား', icon: <Layers size={18} />, path: AppRoute.CATEGORIES, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_CATEGORY_READ' },
       { name: 'ယူနစ်', icon: <Ruler size={18} />, path: AppRoute.UNITS, group: 'ကုန်ပစ္စည်း', permission: 'CAN_ACCESS_UNIT_READ' },
       { name: 'ဝယ်ယူမှု', icon: <ShoppingCart size={18} />, path: AppRoute.PURCHASES, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_PURCHASE_READ' },
+      { name: 'အဝယ်အော်ဒါ', icon: <ClipboardList size={18} />, path: AppRoute.PURCHASE_ORDERS, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_PURCHASE_ORDER_READ' },
       { name: 'ဝယ်ပြန်ပို့', icon: <RotateCcw size={18} />, path: AppRoute.PURCHASE_RETURNS, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_PURCHASE_RETURN_READ' },
       { name: 'ပေးသွင်းသူ', icon: <Truck size={18} />, path: AppRoute.SUPPLIERS, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_SUPPLIER_READ' },
       { name: 'ရောင်းချမှု', icon: <TrendingUp size={18} />, path: AppRoute.SALES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },

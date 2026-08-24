@@ -22,6 +22,7 @@ public final class AccountCode {
     public static final String PAYABLE              = "LIA-002";  // Accounts Payable
     public static final String SALARY_PAYABLE       = "LIA-003";  // Salary Payable
     public static final String CUSTOMER_ADVANCE     = "LIA-004";  // Customer Advance
+    public static final String TAX_PAYABLE          = "LIA-005";  // Output VAT / Commercial Tax
 
     // ── Income ──────────────────────────────────────
     public static final String SALES                = "INC-002";  // Product Sales

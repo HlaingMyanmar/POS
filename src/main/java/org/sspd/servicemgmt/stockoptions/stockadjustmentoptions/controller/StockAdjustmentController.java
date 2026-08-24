@@ -39,4 +39,11 @@ public class StockAdjustmentController {
         StockAdjustmentDTO created = service.save(dto);
         return ResponseEntity.status(201).body(new ApiResponse<>(true, "Stock adjustment created", created));
     }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PHYSICAL_STOCK_COUNT')")
+    @PostMapping("/physical-count")
+    public ResponseEntity<ApiResponse<StockAdjustmentDTO>> createPhysicalCount(@Valid @RequestBody StockAdjustmentDTO dto) {
+        StockAdjustmentDTO created = service.save(dto);
+        return ResponseEntity.status(201).body(new ApiResponse<>(true, "Physical stock count created", created));
+    }
 }

@@ -78,4 +78,14 @@ public class Product {
 
     @Column(name = "photo_base64", columnDefinition = "LONGTEXT")
     private String photoBase64;
+
+    @Builder.Default
+    @Column(name = "archived", nullable = false)
+    private Boolean archived = Boolean.FALSE;
+
+    @Column(name = "warehouse_name", length = 120)
+    private String warehouseName;
+
+    @Column(name = "shelf_location", length = 120)
+    private String shelfLocation;
 }

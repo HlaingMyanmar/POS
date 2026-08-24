@@ -2,12 +2,13 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productService } from '../services/productapiservice';
+import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
 import { brandService } from '../services/brandapiservice';
 import { categoryService } from '../services/categoryapiservice';
 import { unitService } from '../services/unitapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { purchaseApiService } from '../services/purchaseapiservice';
-import { AppRoute, ProductDTO, BrandDTO, CategoryDTO, UnitDTO, ProductType, ProductSerialDTO, SerialStatus } from '../types';
+import { AppRoute, ProductDTO, BrandDTO, CategoryDTO, UnitDTO, ProductType, ProductSerialDTO, SerialStatus, ProductStockHistoryDTO, ProductStockHistoryMovementDTO, AdjustmentType, StockAdjustmentDTO, PriceHistoryDTO, ReorderSuggestionDTO } from '../types';
 import {
   Loader2, Plus, Search, Trash2, Edit2, X,
   Box, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
@@ -16,13 +17,15 @@ import {
   CheckCircle2, AlertCircle, Filter, RotateCcw,
   ClipboardList, Eye, Info, LayoutList, Wallet,
   Settings2, AlertTriangle, ArrowLeft, Shield,
-  Download, Upload, FileSpreadsheet, FileDown, CheckCheck
+  Download, Upload, FileSpreadsheet, FileDown, CheckCheck, Printer
 } from 'lucide-react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
 import BarcodeLabel from '../components/BarcodeLabel';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 
 interface CategoryOption {
   id: number;
@@ -211,9 +214,31 @@ const getCanDelete = (): boolean => {
   } catch { return false; }
 };
 
+const getCanViewProductPriceHistory = (): boolean => {
+  try {
+    const raw = sessionStorage.getItem('sspd_user');
+    if (!raw) return false;
+    const user = JSON.parse(raw);
+    if ((user.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR')) return true;
+    return (user.permissions || []).includes('CAN_ACCESS_PRODUCT_PRICE_HISTORY_READ');
+  } catch { return false; }
+};
+
+const getCanPhysicalStockCount = (): boolean => {
+  try {
+    const raw = sessionStorage.getItem('sspd_user');
+    if (!raw) return false;
+    const user = JSON.parse(raw);
+    if ((user.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR')) return true;
+    return (user.permissions || []).includes('CAN_ACCESS_PHYSICAL_STOCK_COUNT');
+  } catch { return false; }
+};
+
 const ProductManagement: React.FC = () => {
   const navigate = useNavigate();
   const canDelete = getCanDelete();
+  const canViewProductPriceHistory = getCanViewProductPriceHistory();
+  const canPhysicalStockCount = getCanPhysicalStockCount();
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<ProductDTO[]>([]);
   const [brands, setBrands] = useState<BrandDTO[]>([]);
@@ -230,6 +255,7 @@ const ProductManagement: React.FC = () => {
   const [filterCategoryId, setFilterCategoryId] = useState<'All' | number>('All');
   const [filterTracking, setFilterTracking] = useState<'All' | 'Serial' | 'Qty'>('All');
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
+  const [filterArchive, setFilterArchive] = useState<'All' | 'Active' | 'Archived'>('Active');
   const [showFilterTools, setShowFilterTools] = useState(false);
   
   // Per-group filter for nested rows
@@ -243,6 +269,27 @@ const ProductManagement: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [isSerialModalOpen, setIsSerialModalOpen] = useState(false);
   const [selectedProductForSerial, setSelectedProductForSerial] = useState<ProductDTO | null>(null);
+  const [stockHistoryOpen, setStockHistoryOpen] = useState(false);
+  const [detailProduct, setDetailProduct] = useState<ProductDTO | null>(null);
+  const [detailPriceHistory, setDetailPriceHistory] = useState<PriceHistoryDTO[]>([]);
+  const [detailPriceLoading, setDetailPriceLoading] = useState(false);
+  const [reorderSuggestions, setReorderSuggestions] = useState<ReorderSuggestionDTO[]>([]);
+  const [reorderOpen, setReorderOpen] = useState(false);
+  const [reorderLoading, setReorderLoading] = useState(false);
+  const [physicalCountOpen, setPhysicalCountOpen] = useState(false);
+  const [physicalCountRows, setPhysicalCountRows] = useState<{ product: ProductDTO; countedStock: string }[]>([]);
+  const [physicalCountReason, setPhysicalCountReason] = useState('');
+  const [physicalCountDate, setPhysicalCountDate] = useState(new Date().toISOString().slice(0, 16));
+  const [physicalCountSaving, setPhysicalCountSaving] = useState(false);
+  const [stockHistoryProduct, setStockHistoryProduct] = useState<ProductDTO | null>(null);
+  const [stockHistory, setStockHistory] = useState<ProductStockHistoryDTO | null>(null);
+  const [stockHistoryLoading, setStockHistoryLoading] = useState(false);
+  const [stockHistorySearch, setStockHistorySearch] = useState('');
+  const [stockHistoryFrom, setStockHistoryFrom] = useState('');
+  const [stockHistoryTo, setStockHistoryTo] = useState('');
+  const [stockHistoryType, setStockHistoryType] = useState('');
+  const [stockHistoryPage, setStockHistoryPage] = useState(1);
+  const stockHistoryPageSize = 25;
   const [selectedSerialGroup, setSelectedSerialGroup] = useState<ProductGroup | null>(null);
   const [editingSerialId, setEditingSerialId] = useState<number | null>(null);
   const [serialEditForm, setSerialEditForm] = useState<{ serialNumber: string; status: SerialStatus; warrantyValue: number; warrantyUnit: 'ရက်' | 'လ' | 'နှစ်' }>({
@@ -286,6 +333,8 @@ const ProductManagement: React.FC = () => {
     reorderLevel: 0,
     warrantyMonths: 0,
     warrantyTerms: '',
+    warehouseName: '',
+    shelfLocation: '',
     remark: '',
     categoryId: undefined,
     brandId: undefined,
@@ -609,10 +658,13 @@ const ProductManagement: React.FC = () => {
         (filterTracking === 'Qty' && group.products.some(p => p.hasSerial === false));
 
       const matchesLowStock = !filterLowStockOnly || group.products.some(p => lowStockIds.has(p.id));
+      const matchesArchive = filterArchive === 'All'
+        || (filterArchive === 'Archived' && group.products.every(p => p.archived === true))
+        || (filterArchive === 'Active' && group.products.some(p => p.archived !== true));
 
-      return matchesSearch && matchesCondition && matchesStatus && matchesBrand && matchesCategory && matchesTracking && matchesLowStock;
+      return matchesSearch && matchesCondition && matchesStatus && matchesBrand && matchesCategory && matchesTracking && matchesLowStock && matchesArchive;
     });
-  }, [products, allSerials, searchTerm, filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly, lowStockIds, getAvailableCount]);
+  }, [products, allSerials, searchTerm, filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly, filterArchive, lowStockIds, getAvailableCount]);
 
   const stockSummary = useMemo(() => {
     const serialProducts = products.filter(p => p.hasSerial !== false).length;
@@ -639,8 +691,9 @@ const ProductManagement: React.FC = () => {
       filterCategoryId !== 'All',
       filterTracking !== 'All',
       filterLowStockOnly,
+      filterArchive !== 'Active',
     ].filter(Boolean).length;
-  }, [filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly]);
+  }, [filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly, filterArchive]);
 
   const resetProductFilters = () => {
     setSearchTerm('');
@@ -650,12 +703,13 @@ const ProductManagement: React.FC = () => {
     setFilterCategoryId('All');
     setFilterTracking('All');
     setFilterLowStockOnly(false);
+    setFilterArchive('Active');
   };
   useEffect(() => {
     setCurrentPage(1);
     setExpandedGroups(new Set());
     setNestedFilters({});
-  }, [searchTerm, filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly]);
+  }, [searchTerm, filterCondition, filterStatus, filterBrandId, filterCategoryId, filterTracking, filterLowStockOnly, filterArchive]);
 
   const toggleGroup = (groupId: string) => {
     const newExpanded = new Set(expandedGroups);
@@ -673,6 +727,81 @@ const ProductManagement: React.FC = () => {
   const totalPages = Math.ceil(productGroups.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedGroups = productGroups.slice(startIndex, startIndex + itemsPerPage);
+  const visibleMasterProducts = useMemo(() => paginatedGroups.map((group) => group.products[0]).filter(Boolean), [paginatedGroups]);
+  const bulk = useBulkSelection<ProductDTO>(visibleMasterProducts);
+  const selectedStockValue = useMemo(() => (
+    paginatedGroups
+      .filter((group) => bulk.selectedIds.has(group.products[0]?.id))
+      .reduce((sum, group) => sum + group.groupStockValue, 0)
+  ), [paginatedGroups, bulk.selectedIds]);
+  const stockHistoryBulk = useBulkSelection<ProductStockHistoryMovementDTO>(stockHistory?.movements || []);
+
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key === 'physical-count') {
+      if (!canPhysicalStockCount) return;
+      setPhysicalCountRows(bulk.selectedRows.map((product) => ({
+        product,
+        countedStock: String(product.stockQty ?? product.currentStock ?? 0),
+      })));
+      setPhysicalCountReason('');
+      setPhysicalCountDate(new Date().toISOString().slice(0, 16));
+      setPhysicalCountOpen(true);
+      return;
+    }
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Product Code', 'Name', 'Tracking', 'Stock', 'Selling Price'],
+      ...bulk.selectedRows.map((product) => [product.id, product.productCode, product.name, product.hasSerial === false ? 'Quantity' : 'Serial', product.stockQty ?? product.currentStock ?? 0, product.sellingPrice])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `products-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
+
+  const savePhysicalCount = async () => {
+    const rowsToSave = physicalCountRows.filter(({ product }) => product.hasSerial === false);
+    const staffId = Number((JSON.parse(sessionStorage.getItem('sspd_user') || '{}') as { staffId?: number }).staffId || 0);
+    if (!staffId) {
+      Swal.fire('စစ်ဆေးရန်', 'လက်ရှိ user အတွက် staff မသတ်မှတ်ရသေးပါ။', 'warning');
+      return;
+    }
+    if (!physicalCountReason.trim()) {
+      Swal.fire('စစ်ဆေးရန်', 'Physical count reason ထည့်ပါ။', 'warning');
+      return;
+    }
+    setPhysicalCountSaving(true);
+    try {
+      const payloads: StockAdjustmentDTO[] = rowsToSave
+        .map(({ product, countedStock }) => {
+          const systemStock = Number(product.stockQty ?? product.currentStock ?? 0);
+          const counted = Math.max(0, Math.trunc(Number(countedStock) || 0));
+          return {
+            productId: product.id,
+            adjustmentType: AdjustmentType.CORRECTION,
+            qtyChange: counted - systemStock,
+            qtyBefore: systemStock,
+            qtyAfter: counted,
+            reason: `Physical Stock Count: ${physicalCountReason.trim()}`,
+            staffId,
+            createdAt: physicalCountDate || undefined,
+          };
+        })
+        .filter((payload) => payload.qtyChange !== 0);
+      await Promise.all(payloads.map((payload) => stockAdjustmentApiService.createPhysicalCount(payload)));
+      setPhysicalCountOpen(false);
+      bulk.clear();
+      await fetchData();
+      Swal.fire({ icon: 'success', title: `${payloads.length} products stock count saved`, toast: true, position: 'top-end', showConfirmButton: false, timer: 1800 });
+    } catch (error: any) {
+      Swal.fire('Error', error?.message || 'Physical stock count မသိမ်းနိုင်ပါ', 'error');
+    } finally {
+      setPhysicalCountSaving(false);
+    }
+  };
 
   const pageNumbers = useMemo<(number | '...')[]>(() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -694,6 +823,8 @@ const ProductManagement: React.FC = () => {
         reorderLevel: product.reorderLevel ?? 0,
         warrantyMonths: product.warrantyMonths ?? 0,
         warrantyTerms: product.warrantyTerms || '',
+        warehouseName: product.warehouseName || '',
+        shelfLocation: product.shelfLocation || '',
         remark: product.remark || '',
         categoryId: product.categoryId,
         brandId: product.brandId,
@@ -723,6 +854,8 @@ const ProductManagement: React.FC = () => {
         reorderLevel: 0,
         warrantyMonths: 0,
         warrantyTerms: '',
+        warehouseName: '',
+        shelfLocation: '',
         remark: '',
         categoryId: undefined,
         brandId: undefined,
@@ -781,6 +914,164 @@ const ProductManagement: React.FC = () => {
     setSelectedProductForSerial(product);
     setNewSerialInput('');
     setIsSerialModalOpen(true);
+  };
+
+  const closeStockHistory = () => {
+    setStockHistoryOpen(false);
+    setStockHistoryProduct(null);
+    setStockHistory(null);
+  };
+
+  const toggleProductArchive = async () => {
+    if (!detailProduct?.id) return;
+    try {
+      const updated = await productService.setArchived(detailProduct.id, !detailProduct.archived);
+      setDetailProduct(updated);
+      await fetchData();
+      Swal.fire({ icon: 'success', title: updated.archived ? 'Archive လုပ်ပြီး' : 'ပြန်ဖွင့်ပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1600 });
+    } catch (error: any) {
+      Swal.fire('Error', error?.message || 'Product status ပြောင်းမရပါ', 'error');
+    }
+  };
+
+  const openProductDetail = async (product: ProductDTO) => {
+    setDetailProduct(product);
+    setDetailPriceHistory([]);
+    if (!canViewProductPriceHistory) {
+      setDetailPriceLoading(false);
+      return;
+    }
+    setDetailPriceLoading(true);
+    try {
+      setDetailPriceHistory(await productService.getPriceHistory(product.id));
+    } catch (error) {
+      console.error('Failed to load price history', error);
+    } finally {
+      setDetailPriceLoading(false);
+    }
+  };
+
+  const openReorderSuggestions = async () => {
+    setReorderOpen(true);
+    setReorderLoading(true);
+    try {
+      setReorderSuggestions(await productService.getReorderSuggestions());
+    } catch (error: any) {
+      Swal.fire('Error', error?.message || 'Reorder suggestions ဖတ်မရပါ', 'error');
+    } finally {
+      setReorderLoading(false);
+    }
+  };
+
+  const exportReorderSuggestions = () => {
+    if (reorderSuggestions.length === 0) return;
+    const rows = [
+      ['Supplier', 'Product', 'Code', 'Current Stock', 'Reorder Level', 'Suggested Order', 'Current Cost'],
+      ...reorderSuggestions.map((row) => [
+        row.supplierName || 'No supplier history', row.productName, row.productCode,
+        row.currentStock, row.reorderLevel, row.suggestedQuantity, row.currentCost || 0,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `reorder-suggestions-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printReorderSuggestions = () => {
+    if (reorderSuggestions.length === 0) return;
+    const printWindow = window.open('', '_blank', 'width=1000,height=700');
+    if (!printWindow) return;
+    const rows = reorderSuggestions.map((row) => `<tr><td>${row.supplierName || 'No supplier history'}</td><td>${row.productName}<br><small>${row.productCode}</small></td><td>${row.currentStock}</td><td>${row.reorderLevel}</td><td>+${row.suggestedQuantity}</td><td>${(row.currentCost || 0).toLocaleString()} Ks</td></tr>`).join('');
+    printWindow.document.write(`<html><head><title>Reorder Suggestions</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#1e293b}h1{font-size:20px;margin:0 0 6px}p{color:#64748b;font-size:12px;margin:0 0 18px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f1f5f9}td:nth-child(n+3){text-align:right}small{color:#64748b}</style></head><body><h1>Reorder Suggestions</h1><p>Generated ${new Date().toLocaleString()}</p><table><thead><tr><th>Supplier</th><th>Product</th><th>Current Stock</th><th>Reorder Level</th><th>Suggested Order</th><th>Current Cost</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const fetchStockHistory = async (product: ProductDTO | null, page = stockHistoryPage) => {
+    const params = {
+      from: stockHistoryFrom ? `${stockHistoryFrom}T00:00:00` : undefined,
+      to: stockHistoryTo ? `${stockHistoryTo}T23:59:59` : undefined,
+      type: stockHistoryType || undefined,
+      search: stockHistorySearch.trim() || undefined,
+      page: page - 1,
+      size: stockHistoryPageSize,
+    };
+    return product
+      ? productService.getStockHistory(product.id, params)
+      : productService.getAllStockHistory(params);
+  };
+
+  const handleOpenStockHistory = async (product: ProductDTO | null) => {
+    setStockHistoryProduct(product);
+    setStockHistoryOpen(true);
+    setStockHistory(null);
+    setStockHistoryPage(1);
+    setStockHistorySearch('');
+    setStockHistoryFrom('');
+    setStockHistoryTo('');
+    setStockHistoryType('');
+    if (!product) return;
+
+    setStockHistoryLoading(true);
+    try {
+      setStockHistory(await fetchStockHistory(product, 1));
+    } catch (error) {
+      console.error('Failed to load stock history', error);
+      Swal.fire('Error', 'Stock history ဖတ်မရပါ။', 'error');
+    } finally {
+      setStockHistoryLoading(false);
+    }
+  };
+
+  const loadStockHistory = async (page = 1) => {
+    setStockHistoryLoading(true);
+    try {
+      setStockHistoryPage(page);
+      setStockHistory(await fetchStockHistory(stockHistoryProduct, page));
+    } catch (error) {
+      console.error('Failed to load stock history', error);
+      Swal.fire('Error', 'Stock history ဖတ်မရပါ။', 'error');
+    } finally {
+      setStockHistoryLoading(false);
+    }
+  };
+
+  const exportStockHistory = () => {
+    if (!stockHistory) return;
+    const allProducts = !stockHistoryProduct;
+    const csv = [
+      ['Date', 'Product', 'Code', 'Type', 'Reference', 'Supplier / Customer', 'In', 'Out', 'Balance'],
+      ...stockHistory.movements.map((row) => [
+        row.date,
+        row.productName || stockHistory.productName || '',
+        row.productCode || '',
+        row.type,
+        row.referenceNumber || '',
+        row.partyName || '',
+        row.quantityIn,
+        row.quantityOut,
+        row.balance,
+      ])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${allProducts ? 'all-products' : stockHistory.productName}-stock-history.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openHistoryReference = (movement: ProductStockHistoryDTO['movements'][number]) => {
+    if (!movement.referenceId) return;
+    if (movement.type === 'PURCHASE') navigate(`${AppRoute.PURCHASES}?purchaseId=${movement.referenceId}`);
+    if (movement.type === 'SALE') navigate(`${AppRoute.SALES}?saleId=${movement.referenceId}`);
+    if (movement.type === 'PURCHASE_RETURN') navigate(`${AppRoute.PURCHASE_RETURNS}?id=${movement.referenceId}`);
+    if (movement.type === 'SALE_RETURN') navigate(`${AppRoute.SALE_RETURNS}?id=${movement.referenceId}`);
   };
 
   const getSerialWarrantyEditUnit = (serial: ProductSerialDTO): { warrantyValue: number; warrantyUnit: 'ရက်' | 'လ' | 'နှစ်' } => {
@@ -1173,6 +1464,29 @@ const ProductManagement: React.FC = () => {
                   )}
                 </div>
 
+                {/* Warehouse location */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ဂိုဒေါင်</label>
+                  <input
+                    type="text"
+                    value={formData.warehouseName ?? ''}
+                    onChange={(e) => setFormData({ ...formData, warehouseName: e.target.value })}
+                    className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all"
+                    placeholder="ဥပမာ: Main Store"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">စင် / အကွက်</label>
+                  <input
+                    type="text"
+                    value={formData.shelfLocation ?? ''}
+                    onChange={(e) => setFormData({ ...formData, shelfLocation: e.target.value })}
+                    className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all"
+                    placeholder="ဥပမာ: A-03 / Bin 12"
+                  />
+                </div>
+
                 {/* Warranty Terms */}
                 <div className="col-span-2 space-y-1.5">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အာမခံ စည်းကမ်း</label>
@@ -1546,6 +1860,13 @@ const ProductManagement: React.FC = () => {
             Template
           </button>
           <button
+            onClick={() => handleOpenStockHistory(null)}
+            className="bg-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-teal-700"
+            title="ကုန်ပစ္စည်းအားလုံးရဲ့ stock history"
+          >
+            <ClipboardList size={14} /> Stock History
+          </button>
+          <button
             onClick={() => setIsImportModalOpen(true)}
             className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 hover:bg-emerald-700"
             title="Excel မှ ကုန်ပစ္စည်းတွေ Import လုပ်ရန်"
@@ -1613,6 +1934,11 @@ const ProductManagement: React.FC = () => {
         <InventoryMetricCard label="Out" value={stockSummary.outProducts.toLocaleString()} icon={<AlertCircle size={16} />} tone="rose" />
         <InventoryMetricCard label="Stock Value" value={`${stockSummary.value.toLocaleString()} Ks`} icon={<Wallet size={16} />} tone="teal" />
       </div>
+      <div className="flex justify-end shrink-0">
+        <button type="button" onClick={() => void openReorderSuggestions()} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 hover:bg-amber-100">
+          <AlertTriangle size={14} /> Reorder Suggestion
+        </button>
+      </div>
 
       {/* Primary Filters */}
       <div className="bg-white p-3 sm:p-4 rounded-lg border border-slate-200 space-y-3">
@@ -1642,7 +1968,7 @@ const ProductManagement: React.FC = () => {
           {/* Filter button */}
           <button
             type="button"
-            onClick={() => setShowFilterTools(prev => !prev)}
+            onClick={() => setShowFilterTools(true)}
             className={`shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-bold uppercase transition-colors ${
               showFilterTools || activeFilterCount > 0
                 ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
@@ -1656,13 +1982,87 @@ const ProductManagement: React.FC = () => {
                 {activeFilterCount}
               </span>
             )}
-            {showFilterTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            <ChevronDown size={14} />
           </button>
         </div>
 
-        {showFilterTools && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 shadow-inner space-y-3">
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)_minmax(0,0.8fr)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500">
+            ပြသနေသည် <span className="font-black text-slate-800">{productGroups.reduce((sum, group) => sum + group.products.length, 0).toLocaleString()}</span> ခု
+            <span className="mx-1 text-slate-300">/</span>{productGroups.length.toLocaleString()} အုပ်စု
+          </span>
+          {(activeFilterCount > 0 || searchTerm.trim()) && (
+            <button type="button" onClick={resetProductFilters} className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700">
+              <RotateCcw size={12} /> အားလုံးဖျက်ရန်
+            </button>
+          )}
+        </div>
+
+        {(activeFilterCount > 0 || searchTerm.trim()) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {searchTerm.trim() && (
+              <button type="button" onClick={() => setSearchTerm('')} className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                Search: {searchTerm.trim()} <X size={12} />
+              </button>
+            )}
+            {filterCondition !== 'All' && (
+              <button type="button" onClick={() => setFilterCondition('All')} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                အခြေအနေ: {filterCondition} <X size={12} />
+              </button>
+            )}
+            {filterStatus !== 'All' && (
+              <button type="button" onClick={() => setFilterStatus('All')} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                လက်ကျန်: {filterStatus === 'In Stock' ? 'ရှိ' : 'ကုန်'} <X size={12} />
+              </button>
+            )}
+            {filterTracking !== 'All' && (
+              <button type="button" onClick={() => setFilterTracking('All')} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                မှတ်တမ်း: {filterTracking} <X size={12} />
+              </button>
+            )}
+            {filterArchive !== 'Active' && (
+              <button type="button" onClick={() => setFilterArchive('Active')} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                Status: {filterArchive === 'Archived' ? 'Archived' : 'အားလုံး'} <X size={12} />
+              </button>
+            )}
+            {filterBrandId !== 'All' && (
+              <button type="button" onClick={() => setFilterBrandId('All')} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                ဘရန်း: {brands.find(brand => brand.id === filterBrandId)?.name || 'ရွေးထားသည်'} <X size={12} />
+              </button>
+            )}
+            {filterCategoryId !== 'All' && (
+              <button type="button" onClick={() => setFilterCategoryId('All')} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                အမျိုးအစား: {flatCategoryOptions.find(category => category.id === filterCategoryId)?.displayName || 'ရွေးထားသည်'} <X size={12} />
+              </button>
+            )}
+            {filterLowStockOnly && (
+              <button type="button" onClick={() => setFilterLowStockOnly(false)} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                လက်ကျန်နည်း <X size={12} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showFilterTools && (
+        <div className="fixed inset-0 z-[120] bg-slate-900/30" onClick={() => setShowFilterTools(false)}>
+          <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-800">စစ်ထုတ်ရန်</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-400">လိုအပ်တဲ့ အခြေအနေတွေကို ရွေးပါ</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => { setShowFilterTools(false); handleOpenStockHistory(null); }} className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-2 text-[11px] font-bold text-teal-700 hover:bg-teal-100">
+                  <ClipboardList size={13} /> Stock History
+                </button>
+                <button type="button" onClick={() => setShowFilterTools(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="ပိတ်ရန်">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
               <FilterSegment
                 label="အခြေအနေ"
                 value={filterCondition}
@@ -1696,10 +2096,17 @@ const ProductManagement: React.FC = () => {
                   { value: 'Qty', label: 'Qty' },
                 ]}
               />
-            </div>
-
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+              <FilterSegment
+                label="စာရင်းအခြေအနေ"
+                value={filterArchive}
+                onChange={(value) => setFilterArchive(value)}
+                options={[
+                  { value: 'Active', label: 'အသုံးပြုနေသည်' },
+                  { value: 'Archived', label: 'Archive လုပ်ထားသည်' },
+                  { value: 'All', label: 'အားလုံး' },
+                ]}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
                 <FilterSelect
                   label="ဘရန်း"
                   value={filterBrandId}
@@ -1719,7 +2126,7 @@ const ProductManagement: React.FC = () => {
                 </FilterSelect>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end lg:pb-0.5">
+              <div className="grid gap-2">
                 <button
                   type="button"
                   onClick={() => setFilterLowStockOnly(v => !v)}
@@ -1735,19 +2142,40 @@ const ProductManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={resetProductFilters}
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center justify-center gap-1.5 text-xs font-bold uppercase whitespace-nowrap transition-colors"
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-600 hover:text-rose-700 hover:bg-rose-50 inline-flex items-center justify-center gap-1.5 text-xs font-bold uppercase transition-colors"
                 >
-                  <RotateCcw size={13} /> Reset
+                  <RotateCcw size={13} /> အားလုံးဖျက်ရန်
                 </button>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+
+            <button type="button" onClick={() => setShowFilterTools(false)} className="mt-6 w-full rounded-lg bg-indigo-600 px-4 py-3 text-xs font-black text-white hover:bg-indigo-700">
+              ရလဒ်များကို ကြည့်ရန်
+            </button>
+          </aside>
+        </div>
+      )}
+
 
       {/* Main Ledger Groups */}
-      <div className="bg-white rounded-lg border border-slate-200 flex flex-col flex-1 overflow-hidden">
-        <div className="flex-1 overflow-auto custom-scrollbar relative">
+      <BulkSelectionToolbar
+        visibleCount={visibleMasterProducts.length}
+        selectedCount={bulk.selectedCount}
+        allVisibleSelected={bulk.allVisibleSelected}
+        someVisibleSelected={bulk.someVisibleSelected}
+        onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+        onClear={bulk.clear}
+        selectedRows={bulk.selectedRows}
+        selectedTotal={selectedStockValue}
+        totalLabel="ရွေးထားသော တန်ဖိုး"
+        actions={[
+          { key: 'physical-count', label: 'Physical Stock Count', icon: <CheckCheck size={13} />, tone: 'amber', allowed: canPhysicalStockCount },
+          { key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' },
+        ]}
+        onAction={handleBulkAction}
+      />
+      <div className="bg-white rounded-lg border border-slate-200 flex min-h-0 flex-[3] flex-col overflow-hidden shadow-sm">
+        <div className="min-h-0 flex-1 overflow-auto custom-scrollbar relative">
           <table className="w-full text-left border-collapse min-w-[1080px]">
             <thead className="sticky top-0 z-30 bg-slate-50 border-b border-slate-200">
               <tr>
@@ -1780,6 +2208,7 @@ const ProductManagement: React.FC = () => {
                       className={`group ${hasSerialProducts ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : hasLowStock ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-slate-50'}`}
                     >
                       <td className="px-3 text-center">
+                        <input type="checkbox" checked={bulk.selectedIds.has(primaryProduct.id)} onChange={() => bulk.toggle(primaryProduct.id)} onClick={(event) => event.stopPropagation()} className="mb-1 h-4 w-4 accent-indigo-600" aria-label={`Select ${primaryProduct.name}`} />
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleGroup(group.groupId); }}
                           className={`p-1.5 rounded-md ${isExpanded ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
@@ -1888,6 +2317,13 @@ const ProductManagement: React.FC = () => {
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <button
+                            onClick={() => void openProductDetail(primaryProduct)}
+                            title="Product details"
+                            className="p-1.5 bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-700 hover:text-white rounded-md"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
                             onClick={() => { setBarcodeProduct(primaryProduct); setIsBarcodeModalOpen(true); }}
                             title="Barcode print"
                             className="p-1.5 bg-violet-50 text-violet-700 border border-violet-100 hover:bg-violet-600 hover:text-white rounded-md"
@@ -1903,9 +2339,7 @@ const ProductManagement: React.FC = () => {
                               <Hash size={14} />
                             </button>
                           )}
-                          {singleProduct ? (
-                            <button onClick={() => handleOpenModal(primaryProduct)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
-                          ) : (
+                          {!singleProduct && (
                             <button onClick={() => toggleGroup(group.groupId)} title="Product variants" className={`p-1.5 border rounded-md ${isExpanded ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-700 hover:text-white'}`}><LayoutList size={14} /></button>
                           )}
                           {canDelete && singleProduct && (
@@ -2015,8 +2449,6 @@ const ProductManagement: React.FC = () => {
                                               </button>
                                             )}
                                             <button onClick={() => handleOpenWarrantyEdit(p)} title="အာမခံ ပြင်ဆင်" className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white rounded-md"><Shield size={14} /></button>
-                                            <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
-
                                             {canDelete && (
                                               <button onClick={() => handleDeleteProduct(p)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
                                             )}
@@ -2063,8 +2495,6 @@ const ProductManagement: React.FC = () => {
                                                 <Hash size={14} />
                                               </button>
                                             )}
-                                            <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
-
                                             {canDelete && (
                                               <button onClick={() => handleDeleteProduct(p)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
                                             )}
@@ -2119,7 +2549,6 @@ const ProductManagement: React.FC = () => {
                                                 <button onClick={() => handleOpenAssignSerials(p)} title="Assign serial numbers to unlinked stock" className="p-1.5 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-md"><Hash size={14} /></button>
                                               )}
                                               <button onClick={() => { setSelectedSerialGroup(group); startEditSerial(s); }} title="Edit Serial Warranty" className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white rounded-md"><Shield size={14} /></button>
-                                              <button onClick={() => handleOpenModal(p)} title="Edit Product" className="p-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-md"><Edit2 size={14} /></button>
                                               {canDelete && (
                                                 <button onClick={() => handleDeleteProduct(p)} title="Delete Product" className="p-1.5 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-md"><Trash2 size={14} /></button>
                                               )}
@@ -2578,6 +3007,260 @@ const ProductManagement: React.FC = () => {
             <div className="p-6 border-t border-slate-100 bg-white flex justify-center shrink-0">
                <button onClick={() => setIsSerialModalOpen(false)} className="px-10 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-800 transition-all">ပိတ်ရန်</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {reorderOpen && (
+        <div className="fixed inset-0 z-[114] flex items-center justify-center bg-slate-900/40 p-3 backdrop-blur-sm" onClick={() => setReorderOpen(false)}>
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4">
+              <div><h3 className="text-base font-black text-slate-800">Reorder Suggestion</h3><p className="mt-1 text-xs font-semibold text-slate-400">Low stock products ကို supplier အလိုက် စုစည်းထားသည်</p></div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={exportReorderSuggestions} disabled={reorderLoading || reorderSuggestions.length === 0} title="Export reorder suggestions" className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"><Download size={13} /> Export</button>
+                <button type="button" onClick={printReorderSuggestions} disabled={reorderLoading || reorderSuggestions.length === 0} title="Print reorder suggestions" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"><Printer size={13} /> Print</button>
+                <button type="button" onClick={() => setReorderOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-white"><X size={18} /></button>
+              </div>
+            </div>
+            {reorderLoading ? <div className="p-16 text-center text-sm font-bold text-slate-500"><Loader2 className="mx-auto mb-2 animate-spin" size={20} />တွက်ချက်နေသည်...</div> : reorderSuggestions.length === 0 ? <div className="p-16 text-center text-sm font-semibold text-slate-400">ပြန်မှာယူရန် product မရှိပါ။</div> : <div className="flex-1 overflow-auto p-4"><div className="space-y-4">{Array.from(new Set(reorderSuggestions.map((row) => row.supplierName || 'No supplier history'))).map((supplier) => <section key={supplier} className="overflow-hidden rounded-xl border border-slate-200"><div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-black text-slate-700">Supplier: {supplier}</div><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-xs"><thead className="border-b border-slate-100 bg-white text-[10px] font-black uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Product</th><th className="px-4 py-3 text-right">Stock</th><th className="px-4 py-3 text-right">Reorder Level</th><th className="px-4 py-3 text-right">Order Qty</th><th className="px-4 py-3 text-right">Current Cost</th></tr></thead><tbody className="divide-y divide-slate-100">{reorderSuggestions.filter((row) => (row.supplierName || 'No supplier history') === supplier).map((row) => <tr key={row.productId} className="hover:bg-amber-50/40"><td className="px-4 py-3"><p className="font-black text-slate-800">{row.productName}</p><p className="mt-0.5 text-[10px] font-bold text-slate-400">{row.productCode}</p></td><td className="px-4 py-3 text-right font-black text-rose-600">{row.currentStock.toLocaleString()}</td><td className="px-4 py-3 text-right font-semibold text-slate-600">{row.reorderLevel.toLocaleString()}</td><td className="px-4 py-3 text-right font-black text-amber-700">+{row.suggestedQuantity.toLocaleString()}</td><td className="px-4 py-3 text-right font-bold text-slate-700">{(row.currentCost || 0).toLocaleString()} Ks</td></tr>)}</tbody></table></div></section>)}</div></div>}
+          </div>
+        </div>
+      )}
+
+      {physicalCountOpen && (
+        <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-900/40 p-3 backdrop-blur-sm" onClick={() => !physicalCountSaving && setPhysicalCountOpen(false)}>
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4 sm:p-5">
+              <div className="min-w-0"><h3 className="truncate text-base font-black text-slate-800">Physical Stock Count</h3><p className="mt-1 text-xs font-semibold text-slate-400">System stock နဲ့ လက်တွေ့ရေတွက်ထားတဲ့ stock ကိုတိုက်စစ်ပါ</p></div>
+              <button type="button" onClick={() => setPhysicalCountOpen(false)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              <div className="mb-4 overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[680px] text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Product</th><th className="px-3 py-3 text-right">System stock</th><th className="px-3 py-3 text-right">Counted stock</th><th className="px-3 py-3 text-right">Difference</th><th className="px-3 py-3">Note</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {physicalCountRows.map(({ product, countedStock }, index) => {
+                      const systemStock = Number(product.stockQty ?? product.currentStock ?? 0);
+                      const counted = Math.max(0, Math.trunc(Number(countedStock) || 0));
+                      const difference = counted - systemStock;
+                      const serialTracked = product.hasSerial !== false;
+                      return <tr key={product.id}>
+                        <td className="px-3 py-3"><p className="font-black text-slate-800">{product.name}</p><p className="text-[10px] font-bold text-slate-400">{product.productCode}</p></td>
+                        <td className="px-3 py-3 text-right font-black text-slate-700">{systemStock.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right"><input type="number" min="0" disabled={serialTracked} value={countedStock} onChange={(event) => setPhysicalCountRows((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, countedStock: event.target.value } : row))} className="w-24 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-2 text-right text-xs font-black text-indigo-700 outline-none focus:border-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" /></td>
+                        <td className={`px-3 py-3 text-right font-black ${difference === 0 ? 'text-slate-400' : difference > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{difference > 0 ? '+' : ''}{difference.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-[11px] font-semibold text-slate-400">{serialTracked ? 'Serial number စစ်ဆေးရန်' : difference === 0 ? 'ကွာခြားမှုမရှိ' : 'သိမ်းမည့် adjustment'}</td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-[11px] font-black text-slate-500">Checked by<input value="လက်ရှိ user" readOnly className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-500" /></label>
+                <label className="text-[11px] font-black text-slate-500">Checked date<input type="datetime-local" value={physicalCountDate} onChange={(event) => setPhysicalCountDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700" /></label>
+                <label className="text-[11px] font-black text-slate-500 sm:col-span-2">Reason<textarea rows={2} value={physicalCountReason} onChange={(event) => setPhysicalCountReason(event.target.value)} placeholder="ဥပမာ: Monthly stock count / shelf check" className="mt-1 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white" /></label>
+              </div>
+              {physicalCountRows.some(({ product }) => product.hasSerial !== false) && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Serial product တွေကို serial number စာရင်းနဲ့ သီးခြားစစ်ရန်လိုပါသည်။ ဒီ batch မှာ quantity-only product များကိုသာ adjustment သိမ်းပါမယ်။</p>}
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-white p-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setPhysicalCountOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50">မလုပ်တော့</button>
+              <button type="button" onClick={() => void savePhysicalCount()} disabled={physicalCountSaving || !physicalCountReason.trim()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-black text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">{physicalCountSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Count သိမ်းမည်</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailProduct && (
+        <div className="fixed inset-0 z-[110] bg-slate-900/30" onClick={() => setDetailProduct(null)}>
+          <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50 p-5">
+              <div className="flex min-w-0 items-center gap-3">
+                {detailProduct.photoBase64 ? <img src={detailProduct.photoBase64} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain" /> : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500"><Package size={24} /></div>}
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-black text-slate-800">{detailProduct.name}</h3>
+                  <p className="truncate text-xs font-bold text-slate-400">{detailProduct.productCode}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDetailProduct(null)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700"><X size={18} /></button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid grid-cols-2 gap-3">
+                <InventoryMetricCard label="Available" value={`${(detailProduct.stockQty ?? detailProduct.currentStock ?? 0).toLocaleString()} units`} icon={<CheckCircle2 size={16} />} tone="emerald" />
+                <InventoryMetricCard label="Reorder level" value={`${(detailProduct.reorderLevel ?? 0).toLocaleString()} units`} icon={<AlertTriangle size={16} />} tone="amber" />
+              </div>
+              <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Category / Brand</span><span className="text-right text-xs font-black text-slate-800">{detailProduct.categoryName || '-'} / {detailProduct.brandName || '-'}</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Selling price</span><span className="text-xs font-black text-indigo-700">{(detailProduct.sellingPrice || 0).toLocaleString()} Ks</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Cost price</span><span className="text-xs font-black text-slate-800">{(detailProduct.costPrice || 0).toLocaleString()} Ks</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Tracking</span><span className="text-xs font-black text-slate-800">{detailProduct.hasSerial === false ? 'Quantity' : 'Serial'}</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Location</span><span className="text-right text-xs font-black text-teal-700">{detailProduct.warehouseName || '-'} / {detailProduct.shelfLocation || '-'}</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Warranty</span><span className="text-right text-xs font-black text-slate-800">{detailProduct.warrantyTerms || `${detailProduct.warrantyMonths || 0} months`}</span></div>
+              </div>
+              {canViewProductPriceHistory && <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Price History / Weighted Average Cost</p></div>
+                {detailPriceLoading ? <div className="p-5 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-1 animate-spin" size={16} />Loading...</div> : detailPriceHistory.length === 0 ? <p className="p-4 text-xs font-semibold text-slate-400">Purchase price history မရှိသေးပါ။</p> : <div className="max-h-48 divide-y divide-slate-100 overflow-y-auto">{detailPriceHistory.map((row) => <div key={`${row.purchaseId}-${row.purchaseDate}`} className="grid grid-cols-2 gap-2 p-3 text-[11px]"><div><p className="font-black text-slate-700">{row.purchaseCode} · {row.supplierName || '-'}</p><p className="text-slate-400">{row.purchaseDate ? new Date(row.purchaseDate).toLocaleDateString() : '-'}</p></div><div className="text-right"><p className="font-bold text-indigo-700">Unit: {row.unitCost.toLocaleString()} Ks</p><p className="font-black text-emerald-700">WAC: {row.weightedAverageCost.toLocaleString()} Ks</p></div></div>)}</div>}
+              </div>}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => { setDetailProduct(null); handleOpenStockHistory(detailProduct); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5 text-xs font-bold text-teal-700 hover:bg-teal-100"><ClipboardList size={14} /> Stock History</button>
+                <button type="button" onClick={() => { setDetailProduct(null); handleOpenModal(detailProduct); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100"><Edit2 size={14} /> Edit</button>
+              </div>
+              <button type="button" onClick={() => void toggleProductArchive()} className={`w-full rounded-lg border px-3 py-2.5 text-xs font-bold ${detailProduct.archived ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'}`}>
+                {detailProduct.archived ? 'Product ကို ပြန်အသုံးပြုမည်' : 'Product ကို Archive လုပ်မည်'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {stockHistoryOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={closeStockHistory}>
+          <div className="bg-white w-full max-w-6xl rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-teal-600">Stock History</p>
+                <h3 className="text-lg font-black text-slate-800">{stockHistoryProduct ? stockHistoryProduct.name : 'ကုန်ပစ္စည်းအားလုံး'}</h3>
+                <p className="text-xs text-slate-500">{stockHistoryProduct ? stockHistoryProduct.productCode : 'ကုန်ပစ္စည်းအားလုံးရဲ့ stock movement မှတ်တမ်း'}</p>
+              </div>
+              <button onClick={closeStockHistory} className="p-2 rounded-lg text-slate-400 hover:bg-white hover:text-slate-700 border border-transparent hover:border-slate-200"><X size={18} /></button>
+            </div>
+
+            <div className="border-b border-slate-100 bg-white p-4">
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1.5fr)_auto_auto_auto_auto]">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <input
+                    value={stockHistorySearch}
+                    onChange={(event) => setStockHistorySearch(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter') void loadStockHistory(1); }}
+                    placeholder="Product, code, reference, supplier/customer ရှာရန်"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold outline-none focus:border-indigo-500 focus:bg-white"
+                  />
+                </div>
+                <input type="date" value={stockHistoryFrom} onChange={(event) => setStockHistoryFrom(event.target.value)} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-semibold text-slate-700" aria-label="From date" />
+                <input type="date" value={stockHistoryTo} onChange={(event) => setStockHistoryTo(event.target.value)} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-semibold text-slate-700" aria-label="To date" />
+                <select value={stockHistoryType} onChange={(event) => setStockHistoryType(event.target.value)} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs font-semibold text-slate-700" aria-label="Movement type">
+                  <option value="">Movement အားလုံး</option>
+                  <option value="PURCHASE">Purchase</option>
+                  <option value="SALE">Sale</option>
+                  <option value="PURCHASE_RETURN">Purchase return</option>
+                  <option value="SALE_RETURN">Sale return</option>
+                  <option value="STOCK_ADJUSTMENT">Stock adjustment</option>
+                  <option value="DAMAGE">Damage</option>
+                </select>
+                <button type="button" onClick={() => void loadStockHistory(1)} disabled={stockHistoryLoading || (!stockHistorySearch.trim() && !stockHistoryFrom && !stockHistoryTo && !stockHistoryType)} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Search size={13} /> ရှာမည်
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] font-semibold text-slate-400">Data များလွန်းမှုမဖြစ်စေရန် filter တစ်ခုရွေးပြီးမှ မှတ်တမ်းကိုပြပါမည်။ တစ်မျက်နှာလျှင် 25 ခု ပြပါမည်။</p>
+            </div>
+
+            {stockHistoryLoading ? (
+              <div className="flex items-center justify-center gap-2 p-16 text-sm font-bold text-slate-500"><Loader2 size={18} className="animate-spin" /> History ဖတ်နေသည်...</div>
+            ) : stockHistory ? (
+              <div className="flex-1 overflow-auto p-5 space-y-5">
+                <div className="flex justify-end">
+                  <button type="button" onClick={exportStockHistory} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"><Download size={13} /> Export</button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <InventoryMetricCard label="Opening Stock" value={`${stockHistory.openingBalance.toLocaleString()} units`} icon={<Layers size={17} />} tone="slate" />
+                  <InventoryMetricCard label="Total In" value={`+${stockHistory.totalIn.toLocaleString()} units`} icon={<Package size={17} />} tone="emerald" />
+                  <InventoryMetricCard label="Total Out" value={`-${stockHistory.totalOut.toLocaleString()} units`} icon={<ClipboardList size={17} />} tone="rose" />
+                  <InventoryMetricCard label="Closing Stock" value={`${stockHistory.closingBalance.toLocaleString()} units`} icon={<Package size={17} />} tone="teal" />
+                  {stockHistoryProduct && (
+                    <InventoryMetricCard label="Tracking" value={stockHistoryProduct.hasSerial === false ? 'Quantity' : 'Serial'} icon={<Shield size={17} />} tone="amber" />
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div><p className="text-sm font-black text-slate-700">Movement Timeline</p><p className="text-xs text-slate-500">{stockHistoryProduct ? 'Purchase ကလာတာနဲ့ ဘယ်သူ့ကိုရောင်းထားလဲ တစ်နေရာတည်းမှာကြည့်ပါ' : 'ကုန်ပစ္စည်းအားလုံးရဲ့ ဝင်/ထွက် မှတ်တမ်း'}</p></div>
+                    <span className="text-xs font-bold text-slate-500">{stockHistory.movements.length} records</span>
+                  </div>
+                  <div className="p-3 border-b border-slate-100 bg-white">
+                    <BulkSelectionToolbar
+                      visibleCount={stockHistory.movements.length}
+                      selectedCount={stockHistoryBulk.selectedCount}
+                      allVisibleSelected={stockHistoryBulk.allVisibleSelected}
+                      someVisibleSelected={stockHistoryBulk.someVisibleSelected}
+                      onToggleVisible={() => stockHistoryBulk.allVisibleSelected ? stockHistoryBulk.clear() : stockHistoryBulk.selectVisible()}
+                      onClear={stockHistoryBulk.clear}
+                      actions={[]}
+                      selectedRows={stockHistoryBulk.selectedRows}
+                      onAction={() => undefined}
+                      totalLabel=""
+                    />
+                    {stockHistoryBulk.selectedCount > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-slate-600">
+                        <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">ရွေးထားသော In: +{stockHistoryBulk.selectedRows.reduce((sum, row) => sum + row.quantityIn, 0).toLocaleString()}</span>
+                        <span className="rounded-md bg-rose-50 px-2 py-1 text-rose-700">ရွေးထားသော Out: -{stockHistoryBulk.selectedRows.reduce((sum, row) => sum + row.quantityOut, 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  {stockHistory.movements.length === 0 ? (
+                    <div className="p-10 text-center text-sm font-semibold text-slate-400">Stock movement မရှိသေးပါ။</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[800px] text-left text-xs">
+                        <thead className="bg-white border-b border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
+                          <tr>
+                            <th className="w-10 px-3 py-3"><span className="sr-only">ရွေးရန်</span></th>
+                            <th className="px-4 py-3">Date / Time</th>
+                            {!stockHistoryProduct && <th className="px-4 py-3">Product</th>}
+                            <th className="px-4 py-3">Type</th>
+                            <th className="px-4 py-3">Reference</th>
+                            <th className="px-4 py-3">Supplier / Customer</th>
+                            <th className="px-4 py-3 text-right">In</th>
+                            <th className="px-4 py-3 text-right">Out</th>
+                            <th className="px-4 py-3 text-right">Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {stockHistory.movements.map((movement) => {
+                            const inbound = movement.quantityIn > 0;
+                            const selected = stockHistoryBulk.selectedIds.has(movement.id);
+                            return <tr key={movement.id} className={`hover:bg-slate-50 ${selected ? 'bg-indigo-50/60' : ''}`}>
+                              <td className="px-3 py-3 align-top">
+                                <input type="checkbox" checked={selected} onChange={() => stockHistoryBulk.toggle(movement.id)} className="h-4 w-4 accent-indigo-600" aria-label={`${movement.referenceNumber || movement.type} ရွေးရန်`} />
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{new Date(movement.date).toLocaleString()}</td>
+                              {!stockHistoryProduct && (
+                                <td className="px-4 py-3">
+                                  <p className="font-black text-slate-800">{movement.productName || '-'}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{movement.productCode || ''}</p>
+                                </td>
+                              )}
+                              <td className="px-4 py-3"><span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${inbound ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>{movement.type.replace(/_/g, ' ')}</span></td>
+                              <td className="px-4 py-3">{movement.referenceNumber ? <button onClick={() => openHistoryReference(movement)} className="font-black text-indigo-600 hover:underline">{movement.referenceNumber}</button> : <span className="text-slate-400">Adjustment</span>}</td>
+                              <td className="px-4 py-3 font-semibold text-slate-600">{movement.partyName || '-'}</td>
+                              <td className="px-4 py-3 text-right font-black text-emerald-600">{movement.quantityIn ? `+${movement.quantityIn}` : '-'}</td>
+                              <td className="px-4 py-3 text-right font-black text-rose-600">{movement.quantityOut ? `-${movement.quantityOut}` : '-'}</td>
+                              <td className="px-4 py-3 text-right font-black text-slate-800">{movement.balance.toLocaleString()}</td>
+                            </tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                {stockHistory.totalPages && stockHistory.totalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <span className="text-xs font-semibold text-slate-500">
+                      {stockHistory.totalElements?.toLocaleString()} records · Page {stockHistoryPage} / {stockHistory.totalPages}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button type="button" disabled={stockHistoryPage <= 1} onClick={() => void loadStockHistory(stockHistoryPage - 1)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40">နောက်သို့</button>
+                      <button type="button" disabled={stockHistoryPage >= (stockHistory.totalPages || 1)} onClick={() => void loadStockHistory(stockHistoryPage + 1)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40">ရှေ့သို့</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-2 p-16 text-center">
+                <Filter size={30} className="text-slate-300" />
+                <p className="text-sm font-black text-slate-600">Filter လုပ်ပြီးမှ Stock History ကိုကြည့်ပါ</p>
+                <p className="text-xs font-semibold text-slate-400">Search, date သို့မဟုတ် movement type တစ်ခုရွေးပြီး ရှာမည်ကိုနှိပ်ပါ။</p>
+              </div>
+            )}
           </div>
         </div>
       )}

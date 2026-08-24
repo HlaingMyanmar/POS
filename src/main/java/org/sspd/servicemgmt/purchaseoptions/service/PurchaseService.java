@@ -128,6 +128,8 @@ public class PurchaseService {
             detailEntities.add(PurchaseDetail.builder()
                     .purchase(purchase).product(product)
                     .qty(dDto.getQty()).unitCost(dDto.getUnitCost()).subtotal(subtotal)
+                    .batchNumber(dDto.getBatchNumber())
+                    .expiryDate(dDto.getExpiryDate())
                     .warrantyMonths(dDto.getWarrantyMonths() != null ? dDto.getWarrantyMonths() : 0)
                     .build());
 

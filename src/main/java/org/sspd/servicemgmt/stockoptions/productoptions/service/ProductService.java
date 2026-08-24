@@ -26,12 +26,21 @@ import org.sspd.servicemgmt.stockoptions.manufacturingoptions.enums.Manufacturin
 import org.sspd.servicemgmt.stockoptions.manufacturingoptions.repository.ManufacturingOrderRepository;
 import org.sspd.servicemgmt.unitsoptions.model.Unit;
 import org.sspd.servicemgmt.unitsoptions.repository.UnitRepository;
+import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
+import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.PriceHistoryDTO;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.ReorderSuggestionDTO;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +54,7 @@ public class ProductService {
     private final UnitRepository unitRepository;
     private final ProductSerialRepository productSerialRepository;
     private final ManufacturingOrderRepository manufacturingOrderRepository;
+    private final PurchaseRepository purchaseRepository;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_CREATE')")
     @Transactional
@@ -144,13 +154,31 @@ public class ProductService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_DELETE')")
     @Transactional
     public void delete(Integer id){
+        archive(id);
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_PRODUCT_DELETE', 'CAN_ACCESS_PRODUCT_UPDATE')")
+    @Transactional
+    public void archive(Integer id){
         Product existingEntity = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
         if (manufacturingOrderRepository.existsByFinishedProductIdAndStatus(id, ManufacturingStatus.COMPLETED)) {
-            throw new IllegalStateException("ထုတ်လုပ်ရေးမှ ဖန်တီးထားသော ကုန်ပစ္စည်းကို ဖျက်မရပါ။ ထုတ်လုပ်ရေး မှတ်တမ်းကို ဦးစွာ စစ်ဆေးပါ။");
+            throw new IllegalStateException("ထုတ်လုပ်ရေးမှ ဖန်တီးထားသော ကုန်ပစ္စည်းကို archive မလုပ်ရပါ။ ထုတ်လုပ်ရေး မှတ်တမ်းကို ဦးစွာ စစ်ဆေးပါ။");
         }
-        productRepository.delete(existingEntity);
-        messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_DELETE");
+        existingEntity.setArchived(Boolean.TRUE);
+        productRepository.save(existingEntity);
+        messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_ARCHIVED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")
+    @Transactional
+    public ProductDTO setArchived(Integer id, boolean archived){
+        Product existingEntity = productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
+        existingEntity.setArchived(archived);
+        Product savedEntity = productRepository.save(existingEntity);
+        messagingTemplate.convertAndSend(PRODUCT_TOPIC, archived ? "PRODUCT_ARCHIVED" : "PRODUCT_RESTORED");
+        return toDtoWithAvailability(savedEntity);
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
@@ -164,6 +192,85 @@ public class ProductService {
                     return reorder > 0 && stock <= reorder;
                 })
                 .toList();
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @Transactional(readOnly = true)
+    public List<ReorderSuggestionDTO> reorderSuggestions() {
+        Map<Integer, Purchase> latestPurchaseByProduct = latestPurchaseByProduct();
+        return findAll().stream()
+                .filter(product -> (product.getReorderLevel() != null && product.getReorderLevel() > 0)
+                        && (product.getStockQty() == null ? 0 : product.getStockQty()) <= product.getReorderLevel())
+                .map(product -> {
+                    int current = product.getStockQty() == null ? 0 : product.getStockQty();
+                    int reorderLevel = product.getReorderLevel() == null ? 0 : product.getReorderLevel();
+                    Purchase latest = latestPurchaseByProduct.get(product.getId());
+                    return ReorderSuggestionDTO.builder()
+                            .productId(product.getId())
+                            .productCode(product.getProductCode())
+                            .productName(product.getName())
+                            .currentStock(current)
+                            .reorderLevel(reorderLevel)
+                            .suggestedQuantity(Math.max(1, reorderLevel * 2 - current))
+                            .supplierId(latest != null && latest.getSupplier() != null ? latest.getSupplier().getId() : null)
+                            .supplierName(latest != null && latest.getSupplier() != null ? latest.getSupplier().getName() : "No supplier history")
+                            .currentCost(product.getCostPrice())
+                            .build();
+                })
+                .sorted(Comparator.comparing(ReorderSuggestionDTO::getSupplierName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ReorderSuggestionDTO::getProductName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @Transactional(readOnly = true)
+    public List<PriceHistoryDTO> priceHistory(Integer productId) {
+        List<Purchase> purchases = purchaseRepository.findAll().stream()
+                .filter(purchase -> purchase.getDetails() != null && purchase.getDetails().stream()
+                        .anyMatch(detail -> detail.getProduct() != null && productId.equals(detail.getProduct().getId())))
+                .sorted(Comparator.comparing(Purchase::getPurchaseDate, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        List<PriceHistoryDTO> history = new ArrayList<>();
+        int cumulativeQty = 0;
+        BigDecimal cumulativeValue = BigDecimal.ZERO;
+        for (Purchase purchase : purchases) {
+            purchase.getDetails().stream()
+                    .filter(detail -> detail.getProduct() != null && productId.equals(detail.getProduct().getId()))
+                    .forEach(detail -> {
+                        int qty = detail.getQty() == null ? 0 : detail.getQty();
+                        BigDecimal cost = detail.getUnitCost() == null ? BigDecimal.ZERO : detail.getUnitCost();
+                        int nextQty = cumulativeQty + qty;
+                        BigDecimal nextValue = cumulativeValue.add(cost.multiply(BigDecimal.valueOf(qty)));
+                        BigDecimal average = nextQty > 0 ? nextValue.divide(BigDecimal.valueOf(nextQty), 2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                        history.add(PriceHistoryDTO.builder()
+                                .purchaseId(purchase.getId())
+                                .purchaseCode(purchase.getPurchaseCode())
+                                .purchaseDate(purchase.getPurchaseDate())
+                                .supplierId(purchase.getSupplier() != null ? purchase.getSupplier().getId() : null)
+                                .supplierName(purchase.getSupplier() != null ? purchase.getSupplier().getName() : null)
+                                .quantity(qty)
+                                .unitCost(cost)
+                                .weightedAverageCost(average)
+                                .build());
+                    });
+        }
+        Collections.reverse(history);
+        return history;
+    }
+
+    private Map<Integer, Purchase> latestPurchaseByProduct() {
+        Map<Integer, Purchase> latest = new HashMap<>();
+        purchaseRepository.findAll().forEach(purchase -> {
+            if (purchase.getDetails() == null) return;
+            purchase.getDetails().forEach(detail -> {
+                if (detail.getProduct() == null) return;
+                Purchase existing = latest.get(detail.getProduct().getId());
+                if (existing == null || (purchase.getPurchaseDate() != null && purchase.getPurchaseDate().isAfter(existing.getPurchaseDate()))) {
+                    latest.put(detail.getProduct().getId(), purchase);
+                }
+            });
+        });
+        return latest;
     }
 
 

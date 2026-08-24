@@ -9,8 +9,10 @@ import { accountingApiService } from '../services/accountingapiservice';
 import { supplierService } from '../services/supplierapiservice';
 import { staffService } from '../services/staffapiservice';
 import { productService } from '../services/productapiservice';
-import { AppRoute, PurchaseDTO, PurchaseDetailDTO, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO } from '../types';
-import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp } from 'lucide-react';
+import { AppRoute, PurchaseDTO, PurchaseDetailDTO, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO, ProductStockHistoryMovementDTO } from '../types';
+import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Calendar, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { useBulkSelection } from '../hooks/useBulkSelection';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
 import { getCachedCompanySettings } from '../utils/companySettings';
 import { getFromSession } from '../utils/storageHelper';
@@ -96,6 +98,8 @@ const PurchaseManagement: React.FC = () => {
   const [viewPurchase, setViewPurchase] = useState<PurchaseDTO | null>(null);
   const [relatedReturns, setRelatedReturns] = useState<PurchaseReturnDTO[]>([]);
   const [relatedReturnsLoading, setRelatedReturnsLoading] = useState(false);
+  const [purchaseHistoryPayments, setPurchaseHistoryPayments] = useState<PaymentTransactionDTO[]>([]);
+  const [purchaseStockMovements, setPurchaseStockMovements] = useState<ProductStockHistoryMovementDTO[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierDTO[]>([]);
   const [staffs, setStaffs] = useState<StaffDTO[]>([]);
   const [products, setProducts] = useState<ProductDTO[]>([]);
@@ -147,7 +151,7 @@ const PurchaseManagement: React.FC = () => {
   });
   
   const [details, setDetails] = useState<PurchaseDetailForm[]>([
-    { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }
+    { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, batchNumber: '', expiryDate: '', itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }
   ]);
 
   const fetchPurchases = useCallback(async (page: number, size: number, search: string, from: string, to: string) => {
@@ -228,7 +232,7 @@ const PurchaseManagement: React.FC = () => {
   };
 
   const handleAddRow = () => {
-    setDetails([...details, { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }]);
+    setDetails([...details, { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, batchNumber: '', expiryDate: '', itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }]);
   };
 
   const handleRemoveRow = (index: number) => {
@@ -416,6 +420,8 @@ const PurchaseManagement: React.FC = () => {
           qty: d.qty,
           unitCost: d.unitCost,
           subtotal: d.subtotal,
+          batchNumber: d.batchNumber?.trim() || undefined,
+          expiryDate: d.expiryDate || undefined,
           warrantyMonths: d.warrantyMonths ?? 0,
           itemWarranties: (d.itemWarranties && d.itemWarranties.length > 0
             ? d.itemWarranties
@@ -458,7 +464,7 @@ const PurchaseManagement: React.FC = () => {
         setRemark('');
         setSelectedPaymentMethodId(0);
         setTransactionNo('');
-        setDetails([{ productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }]);
+        setDetails([{ productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, batchNumber: '', expiryDate: '', itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }]);
       }
     } catch (error: any) {
       Swal.fire({
@@ -474,17 +480,22 @@ const PurchaseManagement: React.FC = () => {
   const openView = useCallback(async (id: number) => {
     setRelatedReturnsLoading(true);
     setRelatedReturns([]);
+    setPurchaseHistoryPayments([]);
+    setPurchaseStockMovements([]);
     try {
-      const [purchase, purchaseReturns] = await Promise.all([
-        purchaseApiService.getById(id),
-        purchaseReturnApiService.getByPurchaseId(id)
+      const purchase = await purchaseApiService.getById(id);
+      const productIds = [...new Set((purchase.details || []).map((detail) => detail.productId))];
+      const [purchaseReturns, payments, stockHistories] = await Promise.all([
+        purchaseReturnApiService.getByPurchaseId(id),
+        accountingApiService.getTransactionsByRef(id, 'Purchase'),
+        Promise.all(productIds.map((productId) => productService.getStockHistory(productId, { size: 100 })))
       ]);
-
       setViewPurchase(purchase);
       setRelatedReturns(purchaseReturns || []);
+      setPurchaseHistoryPayments(payments || purchase.payments || []);
+      setPurchaseStockMovements(stockHistories.flatMap((history) => history.movements || []).filter((movement) => movement.referenceId === id));
     } catch (e) {
       Swal.fire('Error', 'Failed to load purchase', 'error');
-      setRelatedReturns([]);
     } finally {
       setRelatedReturnsLoading(false);
     }
@@ -493,6 +504,8 @@ const PurchaseManagement: React.FC = () => {
   const closeView = () => {
     setViewPurchase(null);
     setRelatedReturns([]);
+    setPurchaseHistoryPayments([]);
+    setPurchaseStockMovements([]);
     setRelatedReturnsLoading(false);
   };
 
@@ -771,6 +784,23 @@ const PurchaseManagement: React.FC = () => {
     const statusKey = getStatusKey(p);
     return filterStatus === 'All' || statusKey === filterStatus.toLowerCase();
   });
+  const visiblePurchaseRows = useMemo(() => filteredPurchases.filter((purchase): purchase is typeof purchase & { id: number } => typeof purchase.id === 'number'), [filteredPurchases]);
+  const bulk = useBulkSelection<PurchaseDTO & { id: number }>(visiblePurchaseRows);
+
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Purchase Code', 'Date', 'Supplier', 'Staff', 'Total', 'Due'],
+      ...bulk.selectedRows.map((purchase) => [purchase.id, purchase.purchaseCode || '', purchase.purchaseDate || '', purchase.supplierName || '', purchase.staffName || '', purchase.totalAmount || 0, purchase.dueAmount || 0])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `purchases-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
 
   const paidCount = filteredPurchases.filter((p) => getStatusKey(p) === 'paid').length;
   const statusStyles: Record<string, string> = {
@@ -1036,6 +1066,19 @@ const PurchaseManagement: React.FC = () => {
               </div>
             </div>
             <div className="overflow-auto max-h-[58vh] custom-scrollbar">
+              <BulkSelectionToolbar
+                visibleCount={visiblePurchaseRows.length}
+                selectedCount={bulk.selectedCount}
+                allVisibleSelected={bulk.allVisibleSelected}
+                someVisibleSelected={bulk.someVisibleSelected}
+                onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+                onClear={bulk.clear}
+                selectedRows={bulk.selectedRows}
+                selectedTotal={bulk.selectedRows.reduce((sum, purchase) => sum + (Number(purchase.totalAmount) || 0), 0)}
+                totalLabel="Selected Total"
+                actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]}
+                onAction={handleBulkAction}
+              />
               {purchasesLoading ? (
                 <div className="p-8 text-center text-slate-400">ဖတ်နေသည်...</div>
               ) : (
@@ -1050,9 +1093,11 @@ const PurchaseManagement: React.FC = () => {
                     <col className="w-[124px]" />
                     <col className="w-[126px]" />
                     <col className="w-[230px]" />
+                    <col className="w-[230px]" />
                   </colgroup>
                   <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
                     <tr className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                            <th className="px-3 py-3 text-center">Select</th>
                       <th className="px-3 py-3 text-left">#</th>
                       <th className="px-3 py-3 text-left">ဘောင်ချာ</th>
                       <th className="px-3 py-3 text-left">ပေးသွင်းသူ</th>
@@ -1072,6 +1117,7 @@ const PurchaseManagement: React.FC = () => {
                         const canPay = statusKey !== 'paid' && p.dueAmount > 0;
                         return (
                           <tr key={p.id!} className="h-[58px] hover:bg-slate-50/80 transition-colors">
+                                                        <td className="px-3 py-3 text-center"><input type="checkbox" checked={bulk.selectedIds.has(p.id as number)} onChange={() => bulk.toggle(p.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select purchase ${p.purchaseCode || p.id}`} /></td>
                             <td className="px-3 py-3 text-xs font-semibold tabular-nums text-slate-400">{purchasePage * purchasePageSize + index + 1}</td>
                             <td className="px-3 py-3 font-mono text-xs font-bold text-slate-800"><span className="block truncate">{p.purchaseCode || `#${p.id}`}</span></td>
                             <td className="px-3 py-3 font-semibold text-slate-700"><span className="block truncate">{p.supplierName || '-'}</span></td>
@@ -1121,7 +1167,7 @@ const PurchaseManagement: React.FC = () => {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={9} className="px-4 py-10 text-center text-slate-400">လက်ရှိ filter နှင့်ကိုက်ညီသော ဝယ်ယူမှုဘောင်ချာ မရှိပါ။</td>
+                        <td colSpan={10} className="px-4 py-10 text-center text-slate-400">လက်ရှိ filter နှင့်ကိုက်ညီသော ဝယ်ယူမှုဘောင်ချာ မရှိပါ။</td>
                       </tr>
                     )}
                   </tbody>
@@ -1357,6 +1403,7 @@ const PurchaseManagement: React.FC = () => {
                     <th className="px-4 py-3 border-b border-slate-100">ပစ္စည်း</th>
                     <th className="px-4 py-3 border-b border-slate-100 w-24">Qty</th>
                     <th className="px-4 py-3 border-b border-slate-100 w-32">ဝယ်ဈေး</th>
+                    <th className="px-4 py-3 border-b border-slate-100 w-36">Batch / Expiry</th>
                     <th className="px-4 py-3 border-b border-slate-100 w-24">Warranty (လ)</th>
                     <th className="px-4 py-3 border-b border-slate-100 w-32 text-right">စုစုပေါင်း</th>
                     <th className="px-4 py-3 border-b border-slate-100 w-12"></th>
@@ -1395,6 +1442,23 @@ const PurchaseManagement: React.FC = () => {
                             onChange={(e) => handleDetailChange(dIndex, 'qty', e.target.value)}
                             className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none"
                           />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              value={detail.batchNumber || ''}
+                              onChange={(e) => handleDetailChange(dIndex, 'batchNumber', e.target.value)}
+                              placeholder="Batch no."
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
+                            />
+                            <input
+                              type="date"
+                              value={detail.expiryDate || ''}
+                              onChange={(e) => handleDetailChange(dIndex, 'expiryDate', e.target.value)}
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
+                            />
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <input
@@ -2034,6 +2098,40 @@ const PurchaseManagement: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+
+              <div className="pt-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Payment History</h4>
+                  <span className="text-[11px] text-slate-400">{purchaseHistoryPayments.length} payment(s)</span>
+                </div>
+                {purchaseHistoryPayments.length === 0 ? (
+                  <div className="py-3 text-xs text-slate-400">No payment history found.</div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full min-w-[620px] text-left text-sm">
+                      <thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Payment Method</th><th className="border-b px-3 py-2">Transaction No</th><th className="border-b px-3 py-2 text-right">Amount</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">{purchaseHistoryPayments.map((payment, index) => <tr key={payment.id || `${payment.transactionNo}-${index}`}><td className="px-3 py-2 text-slate-600">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleString() : '-'}</td><td className="px-3 py-2 text-slate-600">{payment.paymentMethodName || (payment.paymentMethodId ? `#${payment.paymentMethodId}` : '-')}</td><td className="px-3 py-2 text-slate-500">{payment.transactionNo || '-'}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(payment.amount || 0)}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Stock Movement</h4>
+                  <span className="text-[11px] text-slate-400">{purchaseStockMovements.length} movement(s)</span>
+                </div>
+                {purchaseStockMovements.length === 0 ? (
+                  <div className="py-3 text-xs text-slate-400">No stock movement found for this purchase.</div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full min-w-[680px] text-left text-sm">
+                      <thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Product</th><th className="border-b px-3 py-2">Type</th><th className="border-b px-3 py-2 text-right">In</th><th className="border-b px-3 py-2 text-right">Balance</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">{purchaseStockMovements.map((movement, index) => <tr key={movement.id || `${movement.productId}-${index}`}><td className="px-3 py-2 text-slate-600">{movement.date ? new Date(movement.date).toLocaleString() : '-'}</td><td className="px-3 py-2"><p className="font-semibold text-slate-700">{movement.productName || '-'}</p><p className="text-[10px] text-slate-400">{movement.productCode || ''}</p></td><td className="px-3 py-2 text-slate-500">{movement.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">+{movement.quantityIn.toLocaleString()}</td><td className="px-3 py-2 text-right font-bold text-slate-700">{movement.balance.toLocaleString()}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
 
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-2">

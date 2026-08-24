@@ -55,6 +55,7 @@ export interface UserDTO {
   authProvider: string;
   isActive: boolean;
   roles: string[];
+  staffId?: number;
 }
 
 export interface BrandDTO {
@@ -101,6 +102,9 @@ export interface ProductDTO {
   warrantyMonths?: number;
   warrantyTerms?: string;
   remark?: string;
+  archived?: boolean;
+  warehouseName?: string;
+  shelfLocation?: string;
   categoryId?: number;
   categoryName?: string;
   brandId?: number;
@@ -109,6 +113,59 @@ export interface ProductDTO {
   unitName?: string;
   availableSerialCount?: number;
   unlinkedQty?: number;
+}
+
+export interface ReorderSuggestionDTO {
+  productId: number;
+  productCode: string;
+  productName: string;
+  currentStock: number;
+  reorderLevel: number;
+  suggestedQuantity: number;
+  supplierId?: number;
+  supplierName?: string;
+  currentCost?: number;
+}
+
+export interface PriceHistoryDTO {
+  purchaseId: number;
+  purchaseCode: string;
+  purchaseDate: string;
+  supplierId?: number;
+  supplierName?: string;
+  quantity: number;
+  unitCost: number;
+  weightedAverageCost: number;
+}
+
+export interface ProductStockHistoryMovementDTO {
+  id: number;
+  productId?: number;
+  productName?: string;
+  productCode?: string;
+  date: string;
+  type: string;
+  referenceId?: number;
+  referenceNumber?: string;
+  partyName?: string;
+  quantityIn: number;
+  quantityOut: number;
+  balance: number;
+}
+
+export interface ProductStockHistoryDTO {
+  productId?: number;
+  productName: string;
+  currentStock: number;
+  openingBalance: number;
+  totalIn: number;
+  totalOut: number;
+  closingBalance: number;
+  page?: number;
+  size?: number;
+  totalPages?: number;
+  totalElements?: number;
+  movements: ProductStockHistoryMovementDTO[];
 }
 
 export enum AdjustmentType {
@@ -497,6 +554,8 @@ export interface PurchaseDetailDTO {
   qty: number;
   unitCost: number;
   subtotal: number;
+  batchNumber?: string;
+  expiryDate?: string;
   warrantyMonths?: number;
   warrantyTerms?: string;
   itemWarranties?: number[];

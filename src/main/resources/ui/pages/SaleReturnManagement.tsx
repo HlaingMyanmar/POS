@@ -1,17 +1,19 @@
 ﻿
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CreditCard, Eye, FileText, List, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, User, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Download, Eye, FileText, List, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, User, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { saleReturnApiService } from '../services/salereturnapiservice';
 import { saleApiService } from '../services/saleapiservice';
+import { productService } from '../services/productapiservice';
 import { customerService } from '../services/customerapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
-import { productService } from '../services/productapiservice';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO } from '../types';
+import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, ProductStockHistoryMovementDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO } from '../types';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 
 type DetailForm = SaleReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
 
@@ -107,6 +109,7 @@ const SaleReturnManagement: React.FC = () => {
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [viewRow, setViewRow] = useState<SaleReturnDTO | null>(null);
+  const [returnStockMovements, setReturnStockMovements] = useState<ProductStockHistoryMovementDTO[]>([]);
 
   const [customerId, setCustomerId] = useState(0);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -438,6 +441,11 @@ const SaleReturnManagement: React.FC = () => {
     try {
       const data = await saleReturnApiService.getById(id);
       setViewRow(data);
+      setReturnStockMovements([]);
+      const productIds = [...new Set((data.details || []).map((detail) => detail.productId))];
+      const histories = await Promise.allSettled(productIds.map((productId) => productService.getStockHistory(productId, { size: 100 })));
+      setReturnStockMovements(histories.flatMap((result) => result.status === 'fulfilled' ? result.value.movements || [] : []).filter((movement) => movement.referenceId === id));
+                  <button onClick={() => { setViewRow(null); setReturnStockMovements([]); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"><X size={18} /></button>
     } catch (e: any) {
       Swal.fire('Error', e.message || 'Failed to load sale return', 'error');
     }
@@ -549,6 +557,18 @@ const SaleReturnManagement: React.FC = () => {
     total: filtered.reduce((s, r) => s + (r.totalReturnAmount || 0), 0),
     refund: filtered.reduce((s, r) => s + (r.refundAmount ?? r.totalReturnAmount ?? 0), 0)
   }), [filtered, totalElements]);
+  const visibleReturnRows = useMemo(() => filtered.filter((row): row is typeof row & { id: number } => typeof row.id === 'number'), [filtered]);
+  const bulk = useBulkSelection<SaleReturnDTO & { id: number }>(visibleReturnRows);
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Return Code', 'Date', 'Customer', 'Total', 'Refund'],
+      ...bulk.selectedRows.map((row) => [row.id, row.returnCode || '', row.returnDate || '', row.customerName || '', row.totalReturnAmount || 0, row.refundAmount ?? row.totalReturnAmount ?? 0])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `sale-returns-selected-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+    bulk.clear();
+  };
 
   if (showForm) {
     return (
@@ -757,11 +777,15 @@ const SaleReturnManagement: React.FC = () => {
             {masterLoading && <span className="text-[11px] text-slate-400">Master data ဖတ်နေသည်...</span>}
           </div>
         </div>
+        <div className="px-4 pt-3">
+          <BulkSelectionToolbar visibleCount={visibleReturnRows.length} selectedCount={bulk.selectedCount} allVisibleSelected={bulk.allVisibleSelected} someVisibleSelected={bulk.someVisibleSelected} onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()} onClear={bulk.clear} selectedRows={bulk.selectedRows} selectedTotal={bulk.selectedRows.reduce((sum, row) => sum + (Number(row.totalReturnAmount) || 0), 0)} totalLabel="Selected Total" actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]} onAction={handleBulkAction} />
+        </div>
         <div className="overflow-auto max-h-[65vh] custom-scrollbar">
           {loading ? <div className="p-8 text-center text-slate-400">Loading...</div> : (
             <table className="w-full text-left border-collapse min-w-[920px]">
               <thead className="sticky top-0 bg-white z-10 shadow-sm">
                 <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                  <th className="px-3 py-3 border-b border-slate-100">Select</th>
                   <th className="px-4 py-3 border-b border-slate-100">Return No</th>
                   <th className="px-4 py-3 border-b border-slate-100">မူရင်း Sale</th>
                   <th className="px-4 py-3 border-b border-slate-100">ဖောက်သည်</th>
@@ -775,6 +799,7 @@ const SaleReturnManagement: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filtered.length > 0 ? filtered.map((r) => (
                   <tr key={r.id || r.returnCode} className="hover:bg-slate-50 text-xs">
+                    <td className="px-3 py-3 text-center"><input type="checkbox" checked={bulk.selectedIds.has(r.id as number)} onChange={() => bulk.toggle(r.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select sale return ${r.returnCode || r.id}`} /></td>
                     <td className="px-4 py-3 font-medium text-slate-800">{r.returnCode || `#${r.id}`}</td>
                     <td className="px-4 py-3 text-slate-600">{r.saleId > 0 ? <Link to={`${AppRoute.SALES}?saleId=${r.saleId}`} className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium">{saleLabelById(r.saleId)}</Link> : '-'}</td>
                     <td className="px-4 py-3 text-slate-600">{r.customerName || customerLabelById(sales.find((s) => s.id === r.saleId)?.customerId)}</td>
@@ -842,6 +867,8 @@ const SaleReturnManagement: React.FC = () => {
                 <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">ပစ္စည်း</th><th className="px-3 py-2 border-b w-16">အရေအတွက်</th><th className="px-3 py-2 border-b text-right">တစ်ခုဈေး</th><th className="px-3 py-2 border-b text-right">စုစုပေါင်း</th><th className="px-3 py-2 border-b">Serials</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `Product #${d.productId}`}</td><td className="px-3 py-2">{d.qty}</td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
               </table>
+              <section className="pt-2"><div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Refund Payment History</h4><span className="text-[11px] text-slate-400">{viewRow.payments?.length || 0} payment(s)</span></div>{!viewRow.payments?.length ? <p className="py-3 text-xs text-slate-400">No refund payment history found.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Payment Method</th><th className="border-b px-3 py-2">Transaction No</th><th className="border-b px-3 py-2 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">{viewRow.payments.map((payment, index) => <tr key={payment.id || `${payment.transactionNo}-${index}`}><td className="px-3 py-2 text-slate-600">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleString() : '-'}</td><td className="px-3 py-2 text-slate-600">{payment.paymentMethodName || (payment.paymentMethodId ? `#${payment.paymentMethodId}` : '-')}</td><td className="px-3 py-2 text-slate-500">{payment.transactionNo || '-'}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">{money(payment.amount || 0)}</td></tr>)}</tbody></table></div>}</section>
+              <section className="pt-2"><div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Stock Movement</h4><span className="text-[11px] text-slate-400">{returnStockMovements.length} movement(s)</span></div>{!returnStockMovements.length ? <p className="py-3 text-xs text-slate-400">No stock movement found for this return.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[650px] text-left text-sm"><thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Product</th><th className="border-b px-3 py-2">Type</th><th className="border-b px-3 py-2 text-right">In</th><th className="border-b px-3 py-2 text-right">Balance</th></tr></thead><tbody className="divide-y divide-slate-100">{returnStockMovements.map((movement, index) => <tr key={movement.id || `${movement.productId}-${index}`}><td className="px-3 py-2 text-slate-600">{movement.date ? new Date(movement.date).toLocaleString() : '-'}</td><td className="px-3 py-2"><p className="font-semibold text-slate-700">{movement.productName || '-'}</p><p className="text-[10px] text-slate-400">{movement.productCode || ''}</p></td><td className="px-3 py-2 text-slate-500">{movement.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">+{movement.quantityIn.toLocaleString()}</td><td className="px-3 py-2 text-right font-bold text-slate-700">{movement.balance.toLocaleString()}</td></tr>)}</tbody></table></div>}</section>
             </div>
           </div>
         </div>

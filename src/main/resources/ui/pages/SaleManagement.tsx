@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
+  Download,
   Eye,
   Filter,
   Loader2,
@@ -37,6 +38,8 @@ import { customerPaymentService } from '../services/customerpaymentapiservice';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { getFromSession } from '../utils/storageHelper';
@@ -53,6 +56,7 @@ import {
   SaleDTO,
   SaleDetailDTO,
   SaleReturnDTO,
+  ProductStockHistoryMovementDTO,
   SerialStatus,
   StaffDTO
 } from '../types';
@@ -254,6 +258,7 @@ const SaleManagement: React.FC = () => {
   const [viewPayments, setViewPayments] = useState<CustomerPaymentDTO[]>([]);
   const [viewReturns, setViewReturns] = useState<SaleReturnDTO[]>([]);
   const [viewReturnsLoading, setViewReturnsLoading] = useState(false);
+  const [viewStockMovements, setViewStockMovements] = useState<ProductStockHistoryMovementDTO[]>([]);
   const [payForm, setPayForm] = useState({ amount: '', paymentMethodId: 0, transactionNo: '', note: '', payments: [] as PaymentTransactionDTO[] });
   const [printPreviewSaleId, setPrintPreviewSaleId] = useState<number | null>(null);
 
@@ -756,6 +761,23 @@ const SaleManagement: React.FC = () => {
       return true;
     });
   }, [rows, filter, staffFilter]);
+  const visibleSaleRows = useMemo(() => filteredRows.filter((row): row is typeof row & { id: number } => typeof row.id === 'number'), [filteredRows]);
+  const bulk = useBulkSelection<SaleDTO & { id: number }>(visibleSaleRows);
+
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Sale Code', 'Date', 'Customer', 'Staff', 'Net Amount', 'Paid', 'Due'],
+      ...bulk.selectedRows.map((sale) => [sale.id, sale.saleCode || '', sale.saleDate || '', sale.customerName || '', sale.staffName || '', sale.netAmount || 0, sale.paidAmount || 0, sale.dueAmount || 0])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sales-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
 
   const stats = useMemo(() => ({
     count: saleTotalElements,
@@ -777,15 +799,19 @@ const SaleManagement: React.FC = () => {
   const openDetail = async (saleId: number) => {
     setViewReturnsLoading(true);
     setViewReturns([]);
+    setViewStockMovements([]);
     try {
-      const [sale, payments, returns] = await Promise.all([
-        saleApiService.getById(saleId),
+      const sale = await saleApiService.getById(saleId);
+      const productIds = [...new Set((sale.details || []).map((detail) => detail.productId))];
+      const [payments, returns, histories] = await Promise.all([
         customerPaymentService.getBySale(saleId),
-        saleReturnApiService.getBySaleId(saleId)
+        saleReturnApiService.getBySaleId(saleId),
+        Promise.allSettled(productIds.map((productId) => productService.getStockHistory(productId, { size: 100 })))
       ]);
       setViewSale(sale);
       setViewPayments(payments || []);
       setViewReturns(returns || []);
+      setViewStockMovements(histories.flatMap((result) => result.status === 'fulfilled' ? result.value.movements || [] : []).filter((movement) => movement.referenceId === saleId));
       setPayForm({
         amount: String(Number(sale.dueAmount) || ''),
         paymentMethodId: methods[0]?.id || 0,
@@ -795,6 +821,7 @@ const SaleManagement: React.FC = () => {
       });
     } catch (e: any) {
       setViewReturns([]);
+      setViewStockMovements([]);
       Swal.fire('Error', e?.message || 'Failed to load sale detail', 'error');
     } finally {
       setViewReturnsLoading(false);
@@ -1837,6 +1864,19 @@ const SaleManagement: React.FC = () => {
               </div>
             </div>
             )}
+            <BulkSelectionToolbar
+              visibleCount={visibleSaleRows.length}
+              selectedCount={bulk.selectedCount}
+              allVisibleSelected={bulk.allVisibleSelected}
+              someVisibleSelected={bulk.someVisibleSelected}
+              onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+              onClear={bulk.clear}
+              selectedRows={bulk.selectedRows}
+              selectedTotal={bulk.selectedRows.reduce((sum, sale) => sum + (Number(sale.netAmount) || 0), 0)}
+              totalLabel="Selected Net"
+              actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]}
+              onAction={handleBulkAction}
+            />
             <div className="overflow-auto max-h-[68vh] rounded-xl border border-slate-200 bg-white">
               <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
                 <colgroup>
@@ -1849,9 +1889,11 @@ const SaleManagement: React.FC = () => {
                   <col className="w-[124px]" />
                   <col className="w-[118px]" />
                   <col className="w-[180px]" />
+                  <col className="w-[180px]" />
                 </colgroup>
                 <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                   <tr>
+                    <th className="px-3 py-3 text-center">Select</th>
                     <th className="px-3 py-3 text-left">ဘောင်ချာ</th>
                     <th className="px-3 py-3 text-left">ရက်စွဲ</th>
                     <th className="px-3 py-3 text-left">ဖောက်သည်</th>
@@ -1865,12 +1907,13 @@ const SaleManagement: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredRows.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-400">ရောင်းချမှု မတွေ့ပါ။</td></tr>
+                    <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400">ရောင်းချမှု မတွေ့ပါ။</td></tr>
                   ) : filteredRows.map((r) => {
                     const state = getSaleState(r);
                     const isDue = (Number(r.dueAmount) || 0) > 0;
                     return (
                       <tr key={r.id || r.saleCode} className="h-[58px] hover:bg-slate-50/80 transition-colors">
+                        <td className="px-3 py-3 text-center">{typeof r.id === 'number' && <input type="checkbox" checked={bulk.selectedIds.has(r.id)} onChange={() => bulk.toggle(r.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select sale ${r.saleCode || r.id}`} />}</td>
                         <td className="px-3 py-3 font-mono text-xs font-bold text-slate-800"><span className="block truncate">{r.saleCode || `#${r.id}`}</span></td>
                         <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{fmtDate(r.saleDate)}</span></td>
                         <td className="px-3 py-3 font-semibold text-slate-700"><span className="block truncate">{r.customerName || '—'}</span></td>
@@ -2017,7 +2060,7 @@ const SaleManagement: React.FC = () => {
                 <button onClick={() => viewSale.id && setPrintPreviewSaleId(viewSale.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">
                   <Printer size={13} /> Print
                 </button>
-                <button onClick={() => { setViewSale(null); setViewReturns([]); setViewReturnsLoading(false); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <button onClick={() => { setViewSale(null); setViewReturns([]); setViewStockMovements([]); setViewReturnsLoading(false); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                   <X size={16} />
                 </button>
               </div>
@@ -2159,6 +2202,11 @@ const SaleManagement: React.FC = () => {
                       </table>
                     </div>
                   </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 p-4">
+                  <div className="mb-3 flex items-center justify-between"><h4 className="text-sm font-bold text-slate-800">Stock Movement</h4><span className="text-xs text-slate-500">{viewStockMovements.length}</span></div>
+                  {!viewStockMovements.length ? <p className="py-3 text-xs text-slate-400">No stock movement found for this sale.</p> : <div className="overflow-x-auto rounded-lg border border-slate-100"><table className="w-full min-w-[650px] text-xs"><thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Product</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-right">Out</th><th className="px-3 py-2 text-right">Balance</th></tr></thead><tbody className="divide-y divide-slate-100">{viewStockMovements.map((movement, index) => <tr key={movement.id || `${movement.productId}-${index}`}><td className="px-3 py-2 text-slate-500">{movement.date ? new Date(movement.date).toLocaleString() : '-'}</td><td className="px-3 py-2"><p className="font-semibold text-slate-700">{movement.productName || '-'}</p><p className="text-[10px] text-slate-400">{movement.productCode || ''}</p></td><td className="px-3 py-2 text-slate-500">{movement.type}</td><td className="px-3 py-2 text-right font-bold text-rose-700">-{movement.quantityOut.toLocaleString()}</td><td className="px-3 py-2 text-right font-bold text-slate-700">{movement.balance.toLocaleString()}</td></tr>)}</tbody></table></div>}
                 </div>
 
                 <div className="rounded-lg border border-slate-200 p-4">

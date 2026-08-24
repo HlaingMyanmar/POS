@@ -3,8 +3,10 @@ import { useDataEvents } from '../hooks/useDataEvents';
 import { accountingApiService } from '../services/accountingapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { PaymentTransactionDTO, PaymentMethodDTO } from '../types';
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Minus, RefreshCw, Save, Search, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, Minus, RefreshCw, Save, Search, X } from 'lucide-react';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 
 const money = (v: number | undefined) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
@@ -110,6 +112,23 @@ const PaymentTransactionManagement: React.FC = () => {
   const totalIn  = useMemo(() => filtered.filter(t => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0), [filtered]);
   const totalOut = useMemo(() => filtered.filter(t => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0), [filtered]);
   const netFlow  = totalIn - totalOut;
+  const visiblePaymentRows = useMemo(() => filtered.filter((transaction): transaction is PaymentTransactionDTO & { id: number } => typeof transaction.id === 'number'), [filtered]);
+  const bulk = useBulkSelection<PaymentTransactionDTO & { id: number }>(visiblePaymentRows);
+
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Date', 'Type', 'Reference', 'Entity', 'Method', 'Transaction No', 'Amount'],
+      ...bulk.selectedRows.map((transaction) => [transaction.id, transaction.paymentDate || '', transaction.referenceType || '', transaction.referenceCode || '', transaction.entityName || '', transaction.paymentMethodName || '', transaction.transactionNo || '', transaction.amount])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `payments-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
 
   const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setTypeFilter(''); setDirFilter(''); };
 
@@ -249,6 +268,17 @@ const PaymentTransactionManagement: React.FC = () => {
       </div>
 
       {/* Table */}
+      <BulkSelectionToolbar
+        visibleCount={visiblePaymentRows.length}
+        selectedCount={bulk.selectedCount}
+        allVisibleSelected={bulk.allVisibleSelected}
+        someVisibleSelected={bulk.someVisibleSelected}
+        onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+        onClear={bulk.clear}
+        selectedRows={bulk.selectedRows}
+        actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]}
+        onAction={handleBulkAction}
+      />
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-auto max-h-[65vh] custom-scrollbar">
           {loading ? (
@@ -257,6 +287,7 @@ const PaymentTransactionManagement: React.FC = () => {
             <table className="w-full text-left border-collapse min-w-[820px]">
               <thead className="sticky top-0 bg-white z-10 shadow-sm">
                 <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                  <th className="px-3 py-3 border-b border-slate-100">Select</th>
                   <th className="px-4 py-3 border-b border-slate-100">Date / Time</th>
                   <th className="px-4 py-3 border-b border-slate-100">Direction</th>
                   <th className="px-4 py-3 border-b border-slate-100">Type</th>
@@ -273,6 +304,7 @@ const PaymentTransactionManagement: React.FC = () => {
                   const typeLabel = TYPE_LABELS[t.referenceType ?? ''] ?? (t.referenceType ?? '-');
                   return (
                     <tr key={t.id} className="hover:bg-slate-50 text-xs">
+                      <td className="px-3 py-3 text-center">{typeof t.id === 'number' && <input type="checkbox" checked={bulk.selectedIds.has(t.id)} onChange={() => bulk.toggle(t.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select payment ${t.id}`} />}</td>
                       <td className="px-4 py-3 text-slate-700">
                         <div className="font-medium">{fmtDate(t.paymentDate as any)}</div>
                         <div className="text-slate-400 text-[10px]">{fmtTime(t.paymentDate as any)}</div>

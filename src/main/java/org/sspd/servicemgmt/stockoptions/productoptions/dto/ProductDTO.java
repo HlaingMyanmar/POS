@@ -36,4 +36,7 @@ public class ProductDTO {
     private Integer warrantyMonths;
     private String warrantyTerms;
     private String photoBase64;
+    private Boolean archived;
+    private String warehouseName;
+    private String shelfLocation;
 }

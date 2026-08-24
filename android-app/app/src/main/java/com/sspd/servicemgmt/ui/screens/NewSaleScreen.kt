@@ -106,7 +106,8 @@ fun NewSaleScreen(
     val focAmount = state.cart.filter { it.foc }.sumOf { it.unitPrice * it.qty.toLong() }
     val subtotal = maxOf(0L, gross - focAmount - lineDisc)
     val overallD = state.overallDiscount.toLongOrNull() ?: 0L
-    val net      = maxOf(0L, subtotal - overallD)
+    val tax      = maxOf(0L, state.taxAmount.toLongOrNull() ?: 0L)
+    val net      = maxOf(0L, subtotal - overallD) + tax
     val paid     = state.paidAmount.toLongOrNull() ?: net
     val due      = maxOf(0L, net - paid)
 
@@ -396,6 +397,8 @@ fun NewSaleScreen(
                         HorizontalDivider(color = BorderColor)
                         Spacer(Modifier.height(8.dp))
                         InputRow("Overall Discount (Ks)", state.overallDiscount) { vm.setOverallDiscount(it) }
+                        Spacer(Modifier.height(8.dp))
+                        InputRow("Tax / VAT (Ks)", state.taxAmount) { vm.setTaxAmount(it) }
                         Spacer(Modifier.height(8.dp))
                         // Paid amount — cannot exceed net
                         InputRow(

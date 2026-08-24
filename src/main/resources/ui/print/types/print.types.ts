@@ -71,6 +71,7 @@ export interface InvoiceData {
   // Totals
   subtotal: string;
   discount: string;
+  tax?: string;
   netAmount: string;
   paid: string;
   balanceDue: string;
@@ -94,6 +95,7 @@ export interface PrintOptions {
   sign2Label?: string;
   /** Override rows-per-page for unusual content density */
   rowsOverride?: number;
+  copyType?: 'CUSTOMER' | 'SHOP' | 'BOTH';
 }
 
 export const DEFAULT_PRINT_OPTIONS: Required<PrintOptions> = {
@@ -107,6 +109,7 @@ export const DEFAULT_PRINT_OPTIONS: Required<PrintOptions> = {
   sign1Label: 'Prepared By',
   sign2Label: 'Received By',
   rowsOverride: 0,
+  copyType: 'CUSTOMER',
 };
 
 // ─── Page pagination result ──────────────────────────────────────────────────
@@ -147,4 +150,5 @@ export interface PrintApiRequest {
   showQrCode: boolean;
   sign1Label: string;
   sign2Label: string;
+  copyType?: 'CUSTOMER' | 'SHOP' | 'BOTH';
 }

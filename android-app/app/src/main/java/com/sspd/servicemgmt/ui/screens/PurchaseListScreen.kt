@@ -100,6 +100,12 @@ fun PurchaseListScreen(
                 .background(ScreenBg)
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.overdueItems.isNotEmpty() || state.reorderSuggestions.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SummaryBox("Overdue", state.overdueItems.size.toString(), Danger, Modifier.weight(1f))
+                        SummaryBox("Reorder", state.reorderSuggestions.size.toString(), Color(0xFFD97706), Modifier.weight(1f))
+                    }
+                }
                 OutlinedTextField(
                     value = voucherText,
                     onValueChange = { voucherText = it },

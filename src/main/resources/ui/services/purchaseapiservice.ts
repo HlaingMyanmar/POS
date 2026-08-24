@@ -1,5 +1,5 @@
-import { api } from './api';
-import { ApiResponse, PurchaseDTO } from '../types';
+import { api, BASE_URL, getAccessToken } from './api';
+import { ApiResponse, PurchaseDTO, ReorderSuggestionDTO } from '../types';
 
 export interface PurchasePage {
   content: PurchaseDTO[];
@@ -60,5 +60,50 @@ export const purchaseApiService = {
   create: async (data: PurchaseDTO): Promise<PurchaseDTO> => {
     const res = await api.post<any, ApiResponse<PurchaseDTO>>('/v1/purchases', data);
     return res.data;
+  },
+
+  confirmDraft: async (id: number, data?: Partial<PurchaseDTO>): Promise<PurchaseDTO> => {
+    const res = await api.post<any, ApiResponse<PurchaseDTO>>(`/v1/purchases/${id}/confirm`, data ?? {});
+    return res.data;
+  },
+
+  cancel: async (id: number): Promise<void> => {
+    await api.delete<any, ApiResponse<void>>(`/v1/purchases/${id}`);
+  },
+
+  updateAttachment: async (id: number, attachmentName?: string, attachmentData?: string): Promise<PurchaseDTO> => {
+    const res = await api.put<any, ApiResponse<PurchaseDTO>>(`/v1/purchases/${id}/attachment`, {
+      attachmentName: attachmentName ?? null,
+      attachmentData: attachmentData ?? null,
+    });
+    return res.data;
+  },
+
+  getOverdue: async (): Promise<PurchaseDTO[]> => {
+    const res = await api.get<any, ApiResponse<PurchaseDTO[]>>('/v1/purchases/overdue');
+    return res.data ?? [];
+  },
+
+  getReorderSuggestions: async (): Promise<ReorderSuggestionDTO[]> => {
+    const res = await api.get<any, ApiResponse<ReorderSuggestionDTO[]>>('/v1/purchases/reorder-suggestions');
+    return res.data ?? [];
+  },
+
+  exportExcel: async (dateFrom = '', dateTo = ''): Promise<void> => {
+    const token = getAccessToken();
+    const params = new URLSearchParams();
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+    const res = await fetch(`${BASE_URL}/v1/purchases/export/excel?${params.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `purchases_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 };

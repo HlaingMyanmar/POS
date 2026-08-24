@@ -63,6 +63,10 @@
         <span class="inv-summary-row__label">Discount</span>
         <span class="inv-summary-row__value" th:text="${inv.discount}">0</span>
       </div>
+      <div class="inv-summary-row" th:if="${not #strings.isEmpty(inv.tax) and inv.tax != '0.00'}">
+        <span class="inv-summary-row__label">Tax / VAT</span>
+        <span class="inv-summary-row__value" th:text="${inv.tax}">0</span>
+      </div>
       <div class="inv-summary-row inv-summary-row--sub">
         <span class="inv-summary-row__label">Net Amount</span>
         <span class="inv-summary-row__value" th:text="${inv.netAmount}">0</span>

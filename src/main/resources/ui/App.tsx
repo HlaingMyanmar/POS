@@ -22,6 +22,7 @@ import PaymentTransactionManagement from './pages/PaymentTransactionManagement';
 import JournalEntryManagement from './pages/JournalEntryManagement';
 import PurchaseManagement from './pages/PurchaseManagement';
 import PurchaseReturnManagement from './pages/PurchaseReturnManagement';
+import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
 import SaleManagement from './pages/SaleManagement';
 import SaleReturnManagement from './pages/SaleReturnManagement';
 import StockAdjustmentManagement from './pages/StockAdjustmentManagement';
@@ -249,6 +250,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.OPENING_STOCK}       element={guard(<OpeningStockPage />,           'CAN_ACCESS_PRODUCT_READ')} />
           <Route path={AppRoute.MANUFACTURING}       element={guard(<ManufacturingManagement />,    'CAN_ACCESS_PRODUCT_READ')} />
           <Route path={AppRoute.PURCHASES}           element={guard(<PurchaseManagement />,         'CAN_ACCESS_PURCHASE_READ')} />
+          <Route path={AppRoute.PURCHASE_ORDERS}     element={guard(<PurchaseOrderManagement />,    'CAN_ACCESS_PURCHASE_ORDER_READ')} />
           <Route path={AppRoute.PURCHASE_RETURNS}    element={guard(<PurchaseReturnManagement />,   'CAN_ACCESS_PURCHASE_RETURN_READ')} />
           <Route path={AppRoute.SALES}               element={guard(<SaleManagement />,             'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.SALE_RETURNS}        element={guard(<SaleReturnManagement />,       'CAN_ACCESS_SALE_RETURN_READ')} />

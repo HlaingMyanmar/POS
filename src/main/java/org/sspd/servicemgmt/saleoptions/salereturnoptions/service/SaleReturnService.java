@@ -13,6 +13,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.Paym
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.creditoptions.service.CreditAlertService;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
@@ -73,6 +74,7 @@ public class SaleReturnService {
     private final CreditAlertService creditAlertService;
     private final AccountResolver accountResolver;
     private final PaymentBalanceValidator paymentBalanceValidator;
+    private final CashDrawerService cashDrawerService;
 
     private static final String SALE_RETURN_TOPIC = "/topic/sale-return";
 
@@ -184,6 +186,8 @@ public class SaleReturnService {
         }
 
         entity.setDetails(detailEntities);
+        BigDecimal returnedTax = calculateReturnedTax(sale, total, existingReturns);
+        total = total.add(returnedTax);
         entity.setTotalReturnAmount(total);
 
         BigDecimal refund = paymentTotal(dto.getPayments(), dto.getRefundAmount() != null ? dto.getRefundAmount() : total);
@@ -422,20 +426,36 @@ public class SaleReturnService {
                     ? line.transactionNo()
                     : saleReturn.getTransactionNo());
             paymentTransactionRepository.save(paymentTx);
+            if (line.method().getAccount() != null
+                    && line.method().getAccount().getId().equals(accountResolver.cash().getId())) {
+                cashDrawerService.recordCashRefund(line.amount());
+            }
         }
     }
 
     private void createReturnJournal(SaleReturn saleReturn, BigDecimal refund, List<PaymentTransactionDTO> payments) {
         BigDecimal total = saleReturn.getTotalReturnAmount() != null ? saleReturn.getTotalReturnAmount() : BigDecimal.ZERO;
         BigDecimal creditPortion = total.subtract(refund);
+        BigDecimal preTaxReturn = saleReturn.getDetails() == null ? BigDecimal.ZERO : saleReturn.getDetails().stream()
+                .map(d -> d.getSubtotal() != null ? d.getSubtotal() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal returnedTax = total.subtract(preTaxReturn).max(BigDecimal.ZERO);
 
         List<JournalDetailDTO> details = new ArrayList<>();
 
         JournalDetailDTO drSalesReturn = new JournalDetailDTO();
         drSalesReturn.setAccountId(accountResolver.salesRtn().getId());
-        drSalesReturn.setDebit(total);
+        drSalesReturn.setDebit(preTaxReturn);
         drSalesReturn.setCredit(BigDecimal.ZERO);
         details.add(drSalesReturn);
+
+        if (returnedTax.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO drTax = new JournalDetailDTO();
+            drTax.setAccountId(accountResolver.taxPayable().getId());
+            drTax.setDebit(returnedTax);
+            drTax.setCredit(BigDecimal.ZERO);
+            details.add(drTax);
+        }
 
         if (refund.compareTo(BigDecimal.ZERO) > 0) {
             for (PaymentLine line : resolvePaymentLines(payments, refund, saleReturn.getPaymentMethod())) {
@@ -463,6 +483,23 @@ public class SaleReturnService {
         journalDTO.setDetails(details);
 
         journalWriter.write(journalDTO);
+    }
+
+    private BigDecimal calculateReturnedTax(Sale sale, BigDecimal preTaxReturn, List<SaleReturn> existingReturns) {
+        BigDecimal saleTax = sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO;
+        BigDecimal taxableBase = (sale.getNetAmount() != null ? sale.getNetAmount() : BigDecimal.ZERO).subtract(saleTax);
+        if (saleTax.compareTo(BigDecimal.ZERO) <= 0 || taxableBase.compareTo(BigDecimal.ZERO) <= 0) return BigDecimal.ZERO;
+
+        BigDecimal alreadyReturnedTax = existingReturns.stream().map(existing -> {
+            BigDecimal returnTotal = existing.getTotalReturnAmount() != null ? existing.getTotalReturnAmount() : BigDecimal.ZERO;
+            BigDecimal returnBase = existing.getDetails() == null ? BigDecimal.ZERO : existing.getDetails().stream()
+                    .map(d -> d.getSubtotal() != null ? d.getSubtotal() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            return returnTotal.subtract(returnBase).max(BigDecimal.ZERO);
+        }).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal proportional = preTaxReturn.multiply(saleTax).divide(taxableBase, 2, RoundingMode.HALF_UP);
+        return proportional.min(saleTax.subtract(alreadyReturnedTax).max(BigDecimal.ZERO));
     }
 
     private Integer resolveCashAccount(PaymentMethod method) {

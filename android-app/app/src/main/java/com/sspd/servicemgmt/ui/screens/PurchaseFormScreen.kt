@@ -136,6 +136,8 @@ fun PurchaseFormScreen(
             return@Scaffold
         }
 
+        // Keep line-entry cards full width. Splitting complex serial/product
+        // cards into narrow landscape columns makes them wrap and grow taller.
         LazyColumn(
             modifier            = Modifier.fillMaxSize().padding(padding).background(ScreenBg),
             contentPadding      = PaddingValues(12.dp),
@@ -170,7 +172,19 @@ fun PurchaseFormScreen(
                         PickerField("ပေးသွင်းသူ", state.selectedSupplier?.name ?: "ရွေးရန်", Icons.Outlined.Storefront, vm::openSupplierPicker)
                         PickerField("ဝန်ထမ်း",    state.selectedStaff?.name    ?: "ရွေးရန်", Icons.Outlined.Person,    vm::openStaffPicker)
                         DateField("ဝယ်ယူသည့်ရက်", state.purchaseDate, vm::setPurchaseDate)
-                        DateField("ပေးရန်ရက်",      state.dueDate,      vm::setDueDate, optional = true)
+                        Text("ငွေချေကာလ", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(0 to "Cash", 7 to "7", 15 to "15", 30 to "30", 45 to "45", 60 to "60").forEach { (days, label) ->
+                                FilterChip(
+                                    selected = state.paymentTermDays == days,
+                                    onClick = { vm.setPaymentTermDays(days) },
+                                    label = { Text(label, fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                        Text("Supplier default: ${state.selectedSupplier?.defaultCreditDays ?: 30} ရက်", fontSize = 10.sp, color = PurchaseColor)
+                        DateField("ပေးရန်ရက်", state.dueDate, vm::setDueDate, optional = true)
                         OutlinedTextField(
                             value         = state.remark,
                             onValueChange = vm::setRemark,

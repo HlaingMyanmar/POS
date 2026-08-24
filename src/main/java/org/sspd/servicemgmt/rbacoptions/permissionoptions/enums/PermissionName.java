@@ -122,6 +122,13 @@ public enum PermissionName {
     CAN_ACCESS_PURCHASE_STAFF_OVERRIDE("Purchase အတွက် အခြား Staff ရွေးခွင့်"),
     CAN_ACCESS_PURCHASE_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_UPDATE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_DELETE("Purchase Cancel/Void (ဖျက်သိမ်း/ပြန်လည်စီစဉ်) လုပ်ခွင့်"),
+
+    CAN_ACCESS_PURCHASE_ORDER_CREATE("Purchase Order အသစ် ဖန်တီးခွင့်"),
+    CAN_ACCESS_PURCHASE_ORDER_READ("Purchase Order များကို ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_PURCHASE_ORDER_UPDATE("Purchase Order များကို ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_PURCHASE_ORDER_DELETE("Purchase Order များကို ဖျက်သိမ်းခွင့်"),
+    CAN_ACCESS_PURCHASE_ORDER_RECEIVE("Purchase Order ပစ္စည်းလက်ခံခွင့် (Goods Receipt)"),
 
     CAN_ACCESS_PURCHASE_RETURN_CREATE("Purchase Return အသစ် ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_RETURN_READ("Purchase Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
@@ -141,10 +148,22 @@ public enum PermissionName {
     CAN_ACCESS_SALE_BACKDATE("Sale ကို နောက်ကျသောရက်စွဲဖြင့် သိမ်းခွင့်"),
     CAN_ACCESS_SALE_FUTUREDATE("Sale ကို အနာဂတ်ရက်စွဲဖြင့် သိမ်းခွင့်"),
     CAN_ACCESS_SALE_STAFF_OVERRIDE("Sale အတွက် အခြား Staff ရွေးခွင့်"),
+    CAN_ACCESS_SALE_PRICE_EDIT("Edit sale item unit price"),
+    CAN_ACCESS_SALE_DISCOUNT_OVERRIDE("Override role discount limit"),
+    CAN_ACCESS_SALE_VOID("Void a sale with a reason"),
     CAN_ACCESS_SALE_RETURN_CREATE("Sale Return ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_RETURN_READ("Sale Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_RETURN_UPDATE("Sale Return အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_SALE_RETURN_DELETE("Sale Return အချက်အလက်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+
+    CAN_ACCESS_CASH_DRAWER_READ("View cash drawer sessions and movements"),
+    CAN_ACCESS_CASH_DRAWER_MANAGE("Open, close, cash-in and cash-out a drawer"),
+
+    CAN_ACCESS_QUOTATION_CREATE("Create quotations"),
+    CAN_ACCESS_QUOTATION_READ("View quotations"),
+    CAN_ACCESS_QUOTATION_UPDATE("Update draft quotations"),
+    CAN_ACCESS_QUOTATION_CANCEL("Cancel quotations"),
+    CAN_ACCESS_QUOTATION_CONVERT_TO_SALE("Convert accepted quotations to sales"),
 
 
     // Credit / AR controls

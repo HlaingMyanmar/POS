@@ -225,6 +225,8 @@ export interface SupplierDTO {
   address?: string;
   openingBalance: number;
   currentBalance: number;
+  defaultCreditDays?: number;
+  creditLimit?: number;
 }
 
 export interface CustomerGroupDTO {
@@ -382,12 +384,17 @@ export interface SaleDTO {
   dueDate?: string;
   totalAmount?: number;
   discountAmount?: number;
+  taxAmount?: number;
   foc?: boolean;
   netAmount?: number;
   paidAmount?: number;
   dueAmount?: number;
   paymentStatus?: string;
   creditStatus?: string;
+  voided?: boolean;
+  voidReason?: string;
+  voidedBy?: string;
+  voidedAt?: string;
   remark?: string;
   paymentMethodId?: number;
   paymentAccountId?: number;
@@ -573,6 +580,7 @@ export interface PurchaseDTO {
   staffName?: string;
   purchaseDate?: string;
   dueDate?: string;
+  paymentTermDays?: number;
   totalAmount: number;
   discountAmount?: number;
   paidAmount: number;
@@ -584,6 +592,77 @@ export interface PurchaseDTO {
   paymentStatus?: string;
   remark?: string;
   details: PurchaseDetailDTO[];
+  paymentMethodId?: number;
+  transactionNo?: string;
+  payments?: PaymentTransactionDTO[];
+  // DRAFT / CONFIRMED / CANCELLED (undefined = CONFIRMED legacy)
+  status?: string;
+  taxAmount?: number;
+  otherCharges?: number;
+  attachmentName?: string;
+  attachmentData?: string;
+  poId?: number;
+}
+
+export interface ReorderSuggestionDTO {
+  productId: number;
+  productName: string;
+  productCode: string;
+  hasSerial?: boolean;
+  stockQty: number;
+  reorderLevel: number;
+  suggestedQty: number;
+  lastCost?: number;
+}
+
+export interface PurchaseOrderDetailDTO {
+  id?: number;
+  productId: number;
+  productName?: string;
+  qty: number;
+  receivedQty?: number;
+  unitCost: number;
+  subtotal: number;
+  itemWarranties?: number[];
+  warrantyMonths?: number;
+  serialNumbers?: string[];
+  serialConditions?: string[];
+  serialPhotos?: string[];
+}
+
+export interface PurchaseOrderDTO {
+  id?: number;
+  poCode?: string;
+  supplierId: number;
+  supplierName?: string;
+  staffId: number;
+  staffName?: string;
+  orderDate?: string;
+  expectedDate?: string;
+  status?: string; // OPEN / PARTIAL / RECEIVED / CANCELLED
+  totalAmount: number;
+  remark?: string;
+  details: PurchaseOrderDetailDTO[];
+}
+
+export interface PurchaseOrderReceiveLine {
+  detailId: number;
+  qty: number;
+  warrantyMonths?: number;
+  itemWarranties?: number[];
+  serialNumbers?: string[];
+  serialConditions?: string[];
+  serialPhotos?: string[];
+}
+
+export interface PurchaseOrderReceivePayload {
+  staffId: number;
+  lines?: PurchaseOrderReceiveLine[];
+  dueDate?: string;
+  discountAmount?: number;
+  taxAmount?: number;
+  otherCharges?: number;
+  remark?: string;
   paymentMethodId?: number;
   transactionNo?: string;
   payments?: PaymentTransactionDTO[];
@@ -883,6 +962,7 @@ export enum AppRoute {
   EXPENSE_INCOME = '/accounting/expense-income',
   PURCHASES = '/procurement/purchases',
   PURCHASE_RETURNS = '/procurement/purchase-returns',
+  PURCHASE_ORDERS = '/procurement/purchase-orders',
   SALE_RETURNS = '/sale-returns',
   STOCK_ADJUSTMENTS = '/inventory/stock-adjustments',
   PROFIT_LOSS = '/reports/profit-loss',

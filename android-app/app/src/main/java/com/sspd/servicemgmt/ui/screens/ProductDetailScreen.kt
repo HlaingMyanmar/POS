@@ -367,6 +367,10 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                 "Brand"            to (p.brandName ?: "—"),
                                 "Unit"             to (p.unitName ?: "—"),
                                 "ရောင်းဈေး"        to "${p.sellingPrice.fmt()} Ks",
+                                "အရင်းဈေး"        to "${(p.costPrice ?: 0.0).fmt()} Ks",
+                                "အမြတ်"           to "${(p.sellingPrice - (p.costPrice ?: 0.0)).fmt()} Ks",
+                                "Margin"          to (if (p.sellingPrice > 0) "${(((p.sellingPrice - (p.costPrice ?: 0.0)) / p.sellingPrice) * 100).fmt()}%" else "—"),
+                                "Stock Value"     to "${((p.costPrice ?: 0.0) * avail).fmt()} Ks",
                                 "လက်ကျန်"          to "$avail ခု",
                                 "Reorder Level"    to (p.reorderLevel?.let { "$it ခု" } ?: "—"),
                                 "အာမခံ"            to (p.warrantyMonths?.let { fmtWarranty(it).ifEmpty { "—" } } ?: "—"),
@@ -378,7 +382,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                     Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                         color = TextMain, modifier = Modifier.weight(1f))
                                 }
-                                if (i < 7) HorizontalDivider(color = BorderColor)
+                                if (i < 11) HorizontalDivider(color = BorderColor)
                             }
                         }
                     }

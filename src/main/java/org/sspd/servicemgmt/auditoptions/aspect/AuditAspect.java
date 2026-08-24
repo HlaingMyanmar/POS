@@ -64,10 +64,12 @@ public class AuditAspect {
     private String inferAction(String name) {
         String n = name.toLowerCase();
         if (n.startsWith("save") || n.startsWith("create") || n.startsWith("add")) return "CREATE";
-        if (n.startsWith("update") || n.startsWith("modify") || n.startsWith("edit")) return "UPDATE";
+        if (n.startsWith("update") || n.startsWith("modify") || n.startsWith("edit") || n.startsWith("change")) return "UPDATE";
         if (n.startsWith("delete") || n.startsWith("void") || n.startsWith("remove") || n.startsWith("cancel")) return "DELETE";
         if (n.startsWith("pay") || n.startsWith("mark") || n.startsWith("approve") ||
-            n.startsWith("complete") || n.startsWith("process") || n.startsWith("reverse")) return "ACTION";
+            n.startsWith("complete") || n.startsWith("process") || n.startsWith("reverse") ||
+            n.startsWith("open") || n.startsWith("close") || n.startsWith("cashin") || n.startsWith("cashout") ||
+            n.startsWith("convert")) return "ACTION";
         return null;
     }
 
@@ -81,7 +83,7 @@ public class AuditAspect {
     private String extractResourceId(Object result) {
         if (result == null) return null;
         try {
-            for (String m : new String[]{"getSaleCode","getPurchaseCode","getJobNo","getReturnCode","getCode","getTransactionNo"}) {
+            for (String m : new String[]{"getSaleCode","getPurchaseCode","getQuotationCode","getJobNo","getReturnCode","getCode","getTransactionNo"}) {
                 try {
                     Method met = result.getClass().getMethod(m);
                     Object val = met.invoke(result);

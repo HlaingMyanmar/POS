@@ -24,6 +24,7 @@ public class PrintInvoiceData {
     // ── Invoice meta ─────────────────────────────────────────────────────────
     private String documentType; // SALE | BOOKING | SERVICE_JOB | SERVICE_DONE | PURCHASE
     private String invoiceTitle;
+    private String copyLabel;
     private String invoiceNo;
     private String invoiceDate;
     private String dueDate;
@@ -45,6 +46,7 @@ public class PrintInvoiceData {
     // ── Totals ───────────────────────────────────────────────────────────────
     private String subtotal;
     private String discount;
+    private String tax;
     private String netAmount;
     private String commission;
     private String paid;

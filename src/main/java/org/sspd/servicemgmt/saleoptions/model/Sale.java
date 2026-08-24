@@ -58,6 +58,9 @@ public class Sale {
     @Column(name = "discount_amount", precision = 15, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
+    @Column(name = "tax_amount", precision = 15, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
     @Builder.Default
     @Column(name = "is_foc")
     private Boolean foc = Boolean.FALSE;
@@ -77,6 +80,25 @@ public class Sale {
 
     @Column(columnDefinition = "TEXT")
     private String remark;
+
+    @Builder.Default
+    @Column(name = "is_voided", nullable = false)
+    private Boolean voided = Boolean.FALSE;
+
+    @Column(name = "void_reason", columnDefinition = "TEXT")
+    private String voidReason;
+
+    @Column(name = "voided_by", length = 100)
+    private String voidedBy;
+
+    @Column(name = "voided_at")
+    private LocalDateTime voidedAt;
+
+    @Column(name = "quotation_id")
+    private Integer quotationId;
+
+    @Column(name = "quotation_code", length = 50)
+    private String quotationCode;
 
     @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SaleDetail> details = new ArrayList<>();

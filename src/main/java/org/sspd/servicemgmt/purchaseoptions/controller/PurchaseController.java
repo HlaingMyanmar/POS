@@ -78,4 +78,80 @@ public class PurchaseController {
                 new ApiResponse<>(true, "Purchase Updated Successfully", updatedPurchase)
         );
     }
+
+    /**
+     * ၃။(က) Supplier invoice attachment ပြောင်းလဲခြင်း / ဖယ်ရှားခြင်း (metadata only — stock/accounting မထိ)
+     * body: { "attachmentName": "...", "attachmentData": "data:image/png;base64,..." } — null both = remove
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_UPDATE')")
+    @PutMapping("/{id}/attachment")
+    public ResponseEntity<ApiResponse<PurchaseDTO>> updateAttachment(@PathVariable Integer id,
+                                                                     @RequestBody java.util.Map<String, String> body) {
+        PurchaseDTO updatedPurchase = service.updateAttachment(id, body.get("attachmentName"), body.get("attachmentData"));
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Attachment Updated Successfully", updatedPurchase)
+        );
+    }
+
+    /**
+     * ၄။ Draft voucher → Confirm (stock, serial, accounting side effects run here)
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_UPDATE')")
+    @PostMapping("/{id}/confirm")
+    public ResponseEntity<ApiResponse<PurchaseDTO>> confirm(@PathVariable Integer id,
+                                                            @RequestBody(required = false) PurchaseDTO dto) {
+        PurchaseDTO confirmed = service.confirmDraft(id, dto);
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Purchase Confirmed Successfully", confirmed)
+        );
+    }
+
+    /**
+     * ၅။ Cancel / Void — draft is deleted; confirmed is reversed (stock + journal)
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_DELETE')")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> cancel(@PathVariable Integer id) {
+        service.cancel(id);
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Purchase Cancelled Successfully", null)
+        );
+    }
+
+    /**
+     * ၆။ Overdue payables — vouchers past their due date with remaining balance
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/overdue")
+    public ResponseEntity<ApiResponse<java.util.List<PurchaseDTO>>> getOverdue() {
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Overdue Payables Retrieved", service.getOverdue())
+        );
+    }
+
+    /**
+     * ၇။ Reorder suggestions — products at/below reorder level for quick purchase drafting
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/reorder-suggestions")
+    public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.purchaseoptions.dto.ReorderSuggestionDTO>>> getReorderSuggestions() {
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Reorder Suggestions Retrieved", service.getReorderSuggestions())
+        );
+    }
+
+    /**
+     * ၈။ Excel export (.xlsx) of purchases in a date range
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/export/excel")
+    public ResponseEntity<byte[]> exportExcel(@RequestParam(required = false) String dateFrom,
+                                              @RequestParam(required = false) String dateTo) throws java.io.IOException {
+        byte[] bytes = service.exportExcel(dateFrom, dateTo);
+        String filename = "purchases_" + java.time.LocalDate.now() + ".xlsx";
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
+    }
 }

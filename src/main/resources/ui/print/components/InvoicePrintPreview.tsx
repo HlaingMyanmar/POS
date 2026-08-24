@@ -42,6 +42,7 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
   const [zoom, setZoom]                     = useState(100);
   const [voucherSetting, setVoucherSetting] = useState<VoucherSettingDto | null>(null);
   const [settingsReady, setSettingsReady]   = useState(false);
+  const [copyType, setCopyType] = useState<'CUSTOMER' | 'SHOP' | 'BOTH'>('CUSTOMER');
 
   const PAPER_MAP: Record<string, PaperSize> = { A4: 'A4', A5: 'A5', POS_80MM: 'POS_80MM', POS_58MM: 'POS_58MM' };
 
@@ -70,6 +71,7 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
     sign1Label:         voucherSetting?.sign1Label        || 'Prepared By',
     sign2Label:         voucherSetting?.sign2Label        || 'Received By',
     rowsOverride: 0,
+    copyType,
   };
 
   const { html, loading, error, load } = useHtmlPreview();
@@ -81,7 +83,7 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
     if (!settingsReady) return;
     load(documentType, documentId, options);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentType, documentId, paperSize, settingsReady]);
+  }, [documentType, documentId, paperSize, copyType, settingsReady]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -158,6 +160,14 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
             <ZoomIn size={14} />
           </button>
         </div>
+
+        {documentType === 'SALE' && (
+          <select value={copyType} onChange={(event) => setCopyType(event.target.value as typeof copyType)} title="Print copy" style={{ padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, color: '#475569', background: '#fff' }}>
+            <option value="CUSTOMER">Customer Copy</option>
+            <option value="SHOP">Shop Copy</option>
+            <option value="BOTH">Both Copies</option>
+          </select>
+        )}
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 6 }}>

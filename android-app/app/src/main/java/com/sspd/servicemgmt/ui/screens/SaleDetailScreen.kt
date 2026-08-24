@@ -42,6 +42,8 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
+    var showVoidDialog by remember { mutableStateOf(false) }
+    var voidReason by remember { mutableStateOf("") }
 
     LaunchedEffect(state.paySuccess) {
         if (state.paySuccess) { snackbar.showSnackbar("ငွေဆပ်မှု အောင်မြင်ပါသည် ✓"); vm.clearPaySuccess() }
@@ -57,7 +59,29 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
             paymentMethods = state.paymentMethods,
             paying         = state.paying,
             onDismiss      = { vm.dismissPayDialog() },
-            onPay          = { amount, methodId, note -> vm.payDue(amount, methodId, note) }
+            onPay          = { amount, methodId, transactionNo, note -> vm.payDue(amount, methodId, transactionNo, note) }
+        )
+    }
+
+    if (showVoidDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!state.voiding) showVoidDialog = false },
+            title = { Text("Void Sale") },
+            text = {
+                OutlinedTextField(
+                    value = voidReason,
+                    onValueChange = { voidReason = it },
+                    label = { Text("Reason (required)") },
+                    minLines = 2
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = voidReason.isNotBlank() && !state.voiding,
+                    onClick = { vm.voidSale(voidReason) { showVoidDialog = false } }
+                ) { Text(if (state.voiding) "Voiding..." else "Void", color = Danger) }
+            },
+            dismissButton = { TextButton(onClick = { showVoidDialog = false }) { Text("Cancel") } }
         )
     }
 
@@ -78,6 +102,11 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
                 },
                 actions = {
                     state.sale?.let { sale ->
+                        if (sale.voided != true) {
+                            IconButton(onClick = { showVoidDialog = true }) {
+                                Icon(Icons.Outlined.Block, "Void Sale", tint = Color.White)
+                            }
+                        }
                         IconButton(onClick = { shareSale(context, sale) }) {
                             Icon(Icons.Outlined.Share, "မျှဝေရန်", tint = Color.White)
                         }
@@ -137,6 +166,15 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
                                 fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Primary
                             )
                             SaleStatusBadge(sale.paymentStatus)
+                        }
+                        if (sale.voided == true) {
+                            Spacer(Modifier.height(8.dp))
+                            Surface(color = DangerBg, shape = RoundedCornerShape(8.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                    Text("VOIDED", color = Danger, fontWeight = FontWeight.ExtraBold)
+                                    Text(sale.voidReason ?: "-", color = TextMuted, fontSize = 12.sp)
+                                }
+                            }
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
@@ -211,6 +249,9 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
                         if ((sale.discountAmount ?: 0.0) > 0) {
                             SaleSummaryRow("ရောင်းပြန်",  "-${sale.discountAmount.fmtD()} Ks", Warning)
                         }
+                        if ((sale.taxAmount ?: 0.0) > 0) {
+                            SaleSummaryRow("Tax / VAT", "+${sale.taxAmount.fmtD()} Ks", Color(0xFFD97706))
+                        }
                         HorizontalDivider(color = BorderColor)
                         SaleSummaryRow("စုစုပေါင်း",  "${sale.netAmount.fmtD()} Ks",    Primary, bold = true)
                         SaleSummaryRow("ပေးပြီး",     "${sale.paidAmount.fmtD()} Ks",   Success)
@@ -236,7 +277,7 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
             }
 
             // ── Pay Due button ────────────────────────────────────────
-            if ((sale.dueAmount ?: 0.0) > 0) {
+            if ((sale.dueAmount ?: 0.0) > 0 && sale.voided != true) {
                 item {
                     Button(
                         onClick = { vm.showPayDialog() },
@@ -428,11 +469,12 @@ private fun PayDueDialog(
     paymentMethods: List<PaymentMethodDTO>,
     paying:         Boolean,
     onDismiss:      () -> Unit,
-    onPay:          (amount: Double, methodId: Int, note: String?) -> Unit
+    onPay:          (amount: Double, methodId: Int, transactionNo: String?, note: String?) -> Unit
 ) {
     var amountStr  by remember { mutableStateOf(String.format("%.0f", dueAmount)) }
     var selectedPm by remember { mutableStateOf<PaymentMethodDTO?>(null) }
     var note       by remember { mutableStateOf("") }
+    var transactionNo by remember { mutableStateOf("") }
     var showPmPick by remember { mutableStateOf(false) }
     var error      by remember { mutableStateOf("") }
 
@@ -506,6 +548,12 @@ private fun PayDueDialog(
                 }
                 // Note
                 OutlinedTextField(
+                    value = transactionNo, onValueChange = { transactionNo = it },
+                    label = { Text("Transaction / Reference No. (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true, shape = RoundedCornerShape(10.dp)
+                )
+                OutlinedTextField(
                     value = note, onValueChange = { note = it },
                     label = { Text("မှတ်ချက် (optional)") },
                     modifier = Modifier.fillMaxWidth(),
@@ -523,7 +571,7 @@ private fun PayDueDialog(
                         amt == null || amt <= 0 -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ထည့်ပါ"
                         amt > dueAmount + 0.01  -> error = "ဆပ်မည့် ပမာဏ ကျန်ငွေထက် မကျော်ရပါ"
                         selectedPm == null      -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
-                        else -> onPay(amt, selectedPm!!.id, note.ifBlank { null })
+                        else -> onPay(amt, selectedPm!!.id, transactionNo.ifBlank { null }, note.ifBlank { null })
                     }
                 },
                 enabled = !paying,

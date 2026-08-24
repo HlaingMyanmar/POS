@@ -21,6 +21,7 @@ public class SaleDTO {
     private LocalDate dueDate;
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;
+    private BigDecimal taxAmount;
     private Boolean foc;
     private BigDecimal netAmount;
     private BigDecimal paidAmount;
@@ -28,6 +29,12 @@ public class SaleDTO {
     private String paymentStatus;
     private String creditStatus;
     private String remark;
+    private Boolean voided;
+    private String voidReason;
+    private String voidedBy;
+    private LocalDateTime voidedAt;
+    private Integer quotationId;
+    private String quotationCode;
     private Boolean managerOverride;
     private Integer managerId;
     private String overrideNote;

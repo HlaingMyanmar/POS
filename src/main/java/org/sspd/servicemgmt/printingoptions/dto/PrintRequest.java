@@ -23,6 +23,8 @@ public class PrintRequest {
     private boolean showQrCode = false;
     private String sign1Label = "Prepared By";
     private String sign2Label = "Received By";
+    /** CUSTOMER, SHOP, or BOTH copies. */
+    private String copyType = "CUSTOMER";
 
     private String  headerFontFamily;
     private Integer headerFontSizePx;

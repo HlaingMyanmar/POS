@@ -155,6 +155,10 @@ class ProductDetailViewModel(
     }
 
     fun deleteSerial(serial: ProductSerialDTO) {
+        if (!serial.status.equals("AVAILABLE", ignoreCase = true)) {
+            _uiState.update { it.copy(uploadError = "Available serial ကိုသာ ဖျက်နိုင်ပါသည်") }
+            return
+        }
         val id = serial.id ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(deletingSerialId = id) }

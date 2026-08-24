@@ -56,11 +56,25 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun selectSupplier(v: SupplierDTO?)           = _uiState.update { it.copy(selectedSupplier = v) }
+    fun selectSupplier(v: SupplierDTO?) = _uiState.update { state ->
+        val days = maxOf(0, v?.defaultCreditDays ?: 30)
+        val due = runCatching { LocalDate.parse(state.purchaseDate).plusDays(days.toLong()).toString() }.getOrDefault(state.dueDate)
+        state.copy(selectedSupplier = v, paymentTermDays = days, dueDate = due)
+    }
     fun selectStaff(v: StaffDTO?)                 = _uiState.update { it.copy(selectedStaff = v) }
     fun selectPaymentMethod(v: PaymentMethodDTO?) = _uiState.update { it.copy(selectedPaymentMethod = v) }
-    fun setPurchaseDate(v: String)                = _uiState.update { it.copy(purchaseDate = v) }
-    fun setDueDate(v: String)                     = _uiState.update { it.copy(dueDate = v) }
+    fun setPurchaseDate(v: String) = _uiState.update { state ->
+        val due = if (state.paymentTermDays >= 0) runCatching {
+            LocalDate.parse(v).plusDays(state.paymentTermDays.toLong()).toString()
+        }.getOrDefault(state.dueDate) else state.dueDate
+        state.copy(purchaseDate = v, dueDate = due)
+    }
+    fun setDueDate(v: String)                     = _uiState.update { it.copy(dueDate = v, paymentTermDays = -1) }
+    fun setPaymentTermDays(days: Int) = _uiState.update { state ->
+        val safeDays = maxOf(0, days)
+        val due = runCatching { LocalDate.parse(state.purchaseDate).plusDays(safeDays.toLong()).toString() }.getOrDefault(state.dueDate)
+        state.copy(paymentTermDays = safeDays, dueDate = due)
+    }
     fun setPaidAmount(v: String)                  = _uiState.update { it.copy(paidAmount = v.filterMoney()) }
     fun setPaymentTransactionNo(v: String)        = _uiState.update { it.copy(paymentTransactionNo = v) }
     fun setDiscountAmount(v: String)              = _uiState.update { it.copy(discountAmount = v.filterMoney()) }
@@ -244,6 +258,9 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         if (discount < 0)      return fail("Discount မမှန်ပါ")
         if (discount > gross)  return fail("Discount သည် စုစုပေါင်းတန်ဖိုးထက် မကျော်ရပါ")
         if (paid > net)        return fail("Paid amount သည် Net amount ထက် မကျော်ရပါ")
+        if (net - paid > 0 && s.dueDate.isBlank()) return fail("အကြွေးဝယ်ယူမှုအတွက် ငွေချေရမည့်ရက် လိုအပ်သည်")
+        if (s.dueDate.isNotBlank() && runCatching { LocalDate.parse(s.dueDate).isBefore(LocalDate.parse(s.purchaseDate)) }.getOrDefault(true))
+            return fail("ငွေချေရမည့်ရက်သည် ဝယ်ရက်ထက် မစောရပါ")
         if (paid > 0 && s.selectedPaymentMethod == null && splitPayments.isEmpty())
             return fail("ငွေပေးချေမှုနည်းလမ်း ရွေးပါ")
 
@@ -292,6 +309,7 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
             staffId         = staff.id,
             purchaseDate    = "${s.purchaseDate}T00:00:00",
             dueDate         = s.dueDate.ifBlank { null },
+            paymentTermDays = s.paymentTermDays.takeIf { it >= 0 },
             discountAmount  = discount,
             paidAmount      = paid,
             remark          = s.remark.ifBlank { null },
@@ -349,6 +367,7 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val splitPayments         : List<PaymentTransactionDTO> = emptyList(),
         val purchaseDate          : String = LocalDate.now().toString(),
         val dueDate               : String = "",
+        val paymentTermDays       : Int = 30,
         val discountAmount        : String = "0",
         val paidAmount            : String = "0",
         val paymentTransactionNo  : String = "",

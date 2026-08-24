@@ -168,6 +168,15 @@ class ProductFormViewModel(
         if (s.selectedBrand == null) { _uiState.update { it.copy(error = "Brand ရွေးပါ") }; return }
         if (s.selectedCategory == null) { _uiState.update { it.copy(error = "အမျိုးအစား ရွေးပါ") }; return }
         if (s.selectedUnit == null) { _uiState.update { it.copy(error = "Unit ရွေးပါ") }; return }
+        val sellingPrice = s.sellingPrice.toDoubleOrNull()
+        val costPrice = s.costPrice.toDoubleOrNull()
+        val stockQty = s.stockQty.toIntOrNull()
+        val reorderLevel = s.reorderLevel.toIntOrNull()
+        if (sellingPrice == null || sellingPrice <= 0.0) { _uiState.update { it.copy(error = "ရောင်းဈေးသည် သုညထက်ကြီးရပါမည်") }; return }
+        if (costPrice == null || costPrice < 0.0) { _uiState.update { it.copy(error = "အရင်းဈေး မှန်ကန်စွာဖြည့်ပါ") }; return }
+        if (sellingPrice < costPrice) { _uiState.update { it.copy(error = "ရောင်းဈေးသည် အရင်းဈေးထက် မနည်းရပါ") }; return }
+        if (!s.hasSerial && (stockQty == null || stockQty < 0)) { _uiState.update { it.copy(error = "လက်ကျန်အရေအတွက် မှန်ကန်စွာဖြည့်ပါ") }; return }
+        if (reorderLevel == null || reorderLevel < 0) { _uiState.update { it.copy(error = "Reorder level မှန်ကန်စွာဖြည့်ပါ") }; return }
 
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, error = null) }
@@ -177,14 +186,14 @@ class ProductFormViewModel(
                     id = productId ?: 0,
                     name = s.name.trim(),
                     hasSerial = s.hasSerial,
-                    stockQty = if (s.hasSerial) 0 else s.stockQty.toIntOrNull() ?: 0,
+                    stockQty = if (s.hasSerial) 0 else stockQty ?: 0,
                     productType = s.productType,
-                    sellingPrice = s.sellingPrice.toDoubleOrNull() ?: 0.0,
-                    costPrice = s.costPrice.toDoubleOrNull(),
+                    sellingPrice = sellingPrice,
+                    costPrice = costPrice,
                     categoryId = s.selectedCategory.id,
                     brandId = s.selectedBrand.id,
                     unitId = s.selectedUnit.id,
-                    reorderLevel = s.reorderLevel.toIntOrNull() ?: 0,
+                    reorderLevel = reorderLevel,
                     warrantyMonths = s.warrantyMonths.toIntOrNull() ?: 0,
                     warrantyTerms = s.warrantyTerms.ifBlank { null },
                     remark = s.remark.ifBlank { null }

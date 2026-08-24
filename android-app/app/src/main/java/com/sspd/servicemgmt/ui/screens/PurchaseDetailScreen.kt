@@ -96,6 +96,7 @@ fun PurchaseDetailScreen(onBack: () -> Unit) {
                         InfoRow("ဝန်ထမ်း", purchase.staffName ?: "-")
                         InfoRow("ငွေချေမှု", purchase.paymentStatus ?: "-")
                         InfoRow("ပေးရန်ရက်", purchase.dueDate ?: "-")
+                        InfoRow("ငွေချေကာလ", purchase.paymentTermDays?.let { "$it ရက်" } ?: "-")
                         if (!purchase.remark.isNullOrBlank()) InfoRow("မှတ်ချက်", purchase.remark)
                     }
                 }

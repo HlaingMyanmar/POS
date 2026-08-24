@@ -23,4 +23,6 @@ public class SupplierDTO {
     private String address;
     private BigDecimal openingBalance;
     private BigDecimal currentBalance;
+    private Integer defaultCreditDays;
+    private BigDecimal creditLimit;
 }

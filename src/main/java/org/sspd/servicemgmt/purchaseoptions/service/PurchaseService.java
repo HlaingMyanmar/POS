@@ -24,6 +24,7 @@ import org.sspd.servicemgmt.purchaseoptions.dto.PurchaseDTO;
 import org.sspd.servicemgmt.purchaseoptions.mapper.PurchaseMapper;
 import org.sspd.servicemgmt.purchaseoptions.model.PaymentStatus;
 import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
+import org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.dto.PurchaseDetailDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetail;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetailWarranty;
@@ -54,7 +55,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -76,6 +79,7 @@ public class PurchaseService {
     private final AccountResolver accounts;
     private final PaymentBalanceValidator paymentBalanceValidator;
     private final CompanySettingsService companySettingsService;
+    private final org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnRepository purchaseReturnRepository;
 
     private static final String PURCHASE_TOPIC = "/topic/purchase";
 
@@ -89,21 +93,29 @@ public class PurchaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
         validateStaffSelection(staff);
 
-        // Duplicate submission guard — same supplier+staff+total within 15 seconds
-        BigDecimal estimatedTotal = dto.getDetails().stream()
-                .map(d -> d.getUnitCost().multiply(BigDecimal.valueOf(d.getQty())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        long recentCount = purchaseRepository.countRecentDuplicates(
-                dto.getSupplierId(), dto.getStaffId(), estimatedTotal,
-                LocalDateTime.now().minusSeconds(15));
-        if (recentCount > 0) {
-            throw new RuntimeException("Duplicate purchase detected. ထပ်မနှိပ်ပါနှင့် — ခဏ စောင့်ပါ။");
+        boolean draft = PurchaseStatus.DRAFT.name().equalsIgnoreCase(dto.getStatus());
+
+        // Duplicate submission guard — same supplier+staff+total within 15 seconds (confirmed only)
+        if (!draft) {
+            BigDecimal estimatedTotal = dto.getDetails().stream()
+                    .map(d -> d.getUnitCost().multiply(BigDecimal.valueOf(d.getQty())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            long recentCount = purchaseRepository.countRecentDuplicates(
+                    dto.getSupplierId(), dto.getStaffId(), estimatedTotal,
+                    LocalDateTime.now().minusSeconds(15));
+            if (recentCount > 0) {
+                throw new RuntimeException("Duplicate purchase detected. ထပ်မနှိပ်ပါနှင့် — ခဏ စောင့်ပါ။");
+            }
         }
 
         Purchase purchase = mapper.toEntity(dto);
         purchase.setSupplier(supplier);
         purchase.setStaff(staff);
         purchase.setPurchaseCode("PENDING");
+        purchase.setStatus(draft ? PurchaseStatus.DRAFT : PurchaseStatus.CONFIRMED);
+        applyAttachment(purchase, dto);
+
+        validateTaxAndCharges(dto);
 
         BigDecimal calculatedTotal = BigDecimal.ZERO;
         List<PurchaseDetail> detailEntities = new ArrayList<>();
@@ -113,13 +125,18 @@ public class PurchaseService {
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
 
             boolean hasSerials = dDto.getSerialNumbers() != null && !dDto.getSerialNumbers().isEmpty();
-            if (Boolean.TRUE.equals(product.getHasSerial())) {
-                if (!hasSerials)
-                    throw new RuntimeException("Serial numbers required for: " + product.getName());
-                if (dDto.getSerialNumbers().size() != dDto.getQty())
-                    throw new RuntimeException("Serial count must match Qty for: " + product.getName());
-            } else if (hasSerials) {
-                throw new RuntimeException("Product is non-serial. Purchase without serials, then use manual Assign Serials for: " + product.getName());
+            if (!draft) {
+                if (Boolean.TRUE.equals(product.getHasSerial())) {
+                    if (!hasSerials)
+                        throw new RuntimeException("Serial numbers required for: " + product.getName());
+                    if (dDto.getSerialNumbers().size() != dDto.getQty())
+                        throw new RuntimeException("Serial count must match Qty for: " + product.getName());
+                } else if (hasSerials) {
+                    throw new RuntimeException("Product is non-serial. Purchase without serials, then use manual Assign Serials for: " + product.getName());
+                }
+            } else {
+                if (dDto.getQty() == null || dDto.getQty() <= 0)
+                    throw new RuntimeException("Qty must be greater than zero for draft: " + product.getName());
             }
 
             BigDecimal subtotal = dDto.getUnitCost().multiply(BigDecimal.valueOf(dDto.getQty()));
@@ -133,12 +150,14 @@ public class PurchaseService {
                     .warrantyMonths(dDto.getWarrantyMonths() != null ? dDto.getWarrantyMonths() : 0)
                     .build());
 
+            if (draft) continue;  // Draft → stock/serial/accounting side effects deferred until confirm
+
             PurchaseDetail detailEntity = detailEntities.get(detailEntities.size() - 1);
             List<Integer> itemWarranties = normalizeItemWarranties(dDto);
             LocalDate warrantyStart = (dto.getPurchaseDate() != null ? dto.getPurchaseDate() : LocalDateTime.now()).toLocalDate();
 
             if (hasSerials) {
-                updateAverageCost(product, dDto.getUnitCost(), dDto.getQty(),
+                updateAverageCost(product, effectiveUnitCost(dDto.getUnitCost(), dto), dDto.getQty(),
                         serialRepository.countByProductIdAndStatus(product.getId(), SerialStatus.Available).intValue());
                 for (int i = 0; i < dDto.getSerialNumbers().size(); i++) {
                     String sn = dDto.getSerialNumbers().get(i);
@@ -170,7 +189,7 @@ public class PurchaseService {
                 }
             } else if (!Boolean.TRUE.equals(product.getHasSerial())) {
                 int current = product.getStockQty() != null ? product.getStockQty() : 0;
-                updateAverageCost(product, dDto.getUnitCost(), dDto.getQty(), current);
+                updateAverageCost(product, effectiveUnitCost(dDto.getUnitCost(), dto), dDto.getQty(), current);
                 product.setStockQty(current + dDto.getQty());
                 productRepository.save(product);
                 for (int i = 0; i < dDto.getQty(); i++) {
@@ -191,6 +210,10 @@ public class PurchaseService {
                     .referenceType("Purchase").build());
         }
 
+        if (detailEntities.isEmpty()) {
+            throw new RuntimeException("Purchase must have at least one detail line.");
+        }
+
         purchase.setDetails(detailEntities);
         purchase.setTotalAmount(calculatedTotal);
         BigDecimal discountAmount = dto.getDiscountAmount() != null ? dto.getDiscountAmount() : BigDecimal.ZERO;
@@ -200,8 +223,31 @@ public class PurchaseService {
         if (discountAmount.compareTo(calculatedTotal) > 0) {
             throw new RuntimeException("Discount amount cannot exceed purchase total.");
         }
-        BigDecimal netAmount = calculatedTotal.subtract(discountAmount);
+        BigDecimal taxAmount = safe(dto.getTaxAmount());
+        BigDecimal otherCharges = safe(dto.getOtherCharges());
+        BigDecimal netAmount = calculatedTotal.subtract(discountAmount).add(taxAmount).add(otherCharges);
         purchase.setDiscountAmount(discountAmount);
+        purchase.setTaxAmount(taxAmount);
+        purchase.setOtherCharges(otherCharges);
+
+        if (draft) {
+            purchase.setPaidAmount(BigDecimal.ZERO);
+            purchase.setReturnAmount(BigDecimal.ZERO);
+            purchase.setRefundAmount(BigDecimal.ZERO);
+            purchase.setNetAmount(netAmount);
+            purchase.setSupplierCreditAmount(BigDecimal.ZERO);
+            purchase.setDueAmount(netAmount);
+            purchase.setPaymentStatus(PaymentStatus.Pending);
+            if (purchase.getPurchaseDate() == null)
+                purchase.setPurchaseDate(LocalDateTime.now());
+
+            Purchase savedDraft = purchaseRepository.save(purchase);
+            savedDraft.setPurchaseCode(generatePurchaseCode(savedDraft.getId()));
+            savedDraft = purchaseRepository.save(savedDraft);
+            messagingTemplate.convertAndSend(PURCHASE_TOPIC, "PURCHASE_DRAFT_CREATED");
+            return enrichWarrantyItems(mapper.toDto(savedDraft), savedDraft);
+        }
+
         purchase.setPaidAmount(paymentTotal(dto.getPayments(), dto.getPaidAmount()));
         if (purchase.getPaidAmount().compareTo(netAmount) > 0) {
             throw new RuntimeException("Paid amount cannot exceed net purchase amount.");
@@ -211,6 +257,7 @@ public class PurchaseService {
         purchase.setNetAmount(netAmount);
         purchase.setSupplierCreditAmount(BigDecimal.ZERO);
         purchase.setDueAmount(netAmount.subtract(purchase.getPaidAmount()));
+        validateSupplierCreditLimit(supplier, purchase.getDueAmount());
 
         if (purchase.getDueAmount().compareTo(BigDecimal.ZERO) <= 0)
             purchase.setPaymentStatus(PaymentStatus.Paid);
@@ -412,6 +459,44 @@ public class PurchaseService {
 
     // ── Helper Methods ───────────────────────────────────────────
 
+    private BigDecimal safe(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private void applyAttachment(Purchase purchase, PurchaseDTO dto) {
+        if (dto.getAttachmentName() != null || dto.getAttachmentData() != null) {
+            purchase.setAttachmentName(dto.getAttachmentName());
+            purchase.setAttachmentData(dto.getAttachmentData());
+        }
+    }
+
+    private void validateTaxAndCharges(PurchaseDTO dto) {
+        if (safe(dto.getTaxAmount()).compareTo(BigDecimal.ZERO) < 0)
+            throw new RuntimeException("Tax amount cannot be negative.");
+        if (safe(dto.getOtherCharges()).compareTo(BigDecimal.ZERO) < 0)
+            throw new RuntimeException("Other charges cannot be negative.");
+    }
+
+    /**
+     * Landing-cost aware unit cost — allocates discount (negative share), tax and
+     * other charges proportionally over the line subtotal so average cost reflects
+     * the true landed cost of each item.
+     */
+    private BigDecimal effectiveUnitCost(BigDecimal unitCost, PurchaseDTO dto) {
+        if (unitCost == null) return BigDecimal.ZERO;
+        BigDecimal subtotal = dto.getDetails().stream()
+                .map(d -> safe(d.getUnitCost()).multiply(BigDecimal.valueOf(d.getQty() != null ? d.getQty() : 0)))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (subtotal.compareTo(BigDecimal.ZERO) <= 0) return unitCost;
+        BigDecimal landedTotal = subtotal
+                .subtract(safe(dto.getDiscountAmount()))
+                .add(safe(dto.getTaxAmount()))
+                .add(safe(dto.getOtherCharges()));
+        if (landedTotal.compareTo(subtotal) == 0) return unitCost;
+        return unitCost.multiply(landedTotal).divide(subtotal, 2, java.math.RoundingMode.HALF_UP);
+    }
+
+
     private void syncSupplierBalance(Supplier supplier) {
         BigDecimal totalDue = purchaseRepository.sumDueAmountBySupplierId(supplier.getId());
         if (totalDue == null) totalDue = BigDecimal.ZERO;
@@ -533,12 +618,107 @@ public class PurchaseService {
         }
     }
 
+    /**
+     * ✅ Reorder suggestions — active products at/below their reorder level,
+     * with suggested qty = top-up back to the reorder level.
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @Transactional(readOnly = true)
+    public List<org.sspd.servicemgmt.purchaseoptions.dto.ReorderSuggestionDTO> getReorderSuggestions() {
+        return productRepository.findReorderNeeded().stream()
+                .map(p -> org.sspd.servicemgmt.purchaseoptions.dto.ReorderSuggestionDTO.builder()
+                        .productId(p.getId())
+                        .productName(p.getName())
+                        .productCode(p.getProductCode())
+                        .hasSerial(p.getHasSerial())
+                        .stockQty(p.getStockQty() != null ? p.getStockQty() : 0)
+                        .reorderLevel(p.getReorderLevel() != null ? p.getReorderLevel() : 0)
+                        .suggestedQty(Math.max(1, (p.getReorderLevel() != null ? p.getReorderLevel() : 0) - (p.getStockQty() != null ? p.getStockQty() : 0)))
+                        .lastCost(p.getCostPrice())
+                        .build())
+                .toList();
+    }
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
     @Transactional(readOnly = true)
     public PurchaseDTO findById(Integer id) {
         Purchase purchase = purchaseRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
         return enrichWarrantyItems(mapper.toDto(purchase), purchase);
+    }
+
+    /**
+     * ✅ Overdue payables — CONFIRMED vouchers with dueAmount > 0 whose dueDate has passed.
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @Transactional(readOnly = true)
+    public List<PurchaseDTO> getOverdue() {
+        return purchaseRepository.findOverduePayables(LocalDate.now()).stream()
+                .map(mapper::toDto)
+                .toList();
+    }
+
+    private static final String[] EXCEL_HEADERS = {
+        "ဘောင်ချာနံပါတ်", "ရက်စွဲ", "ပေးသွင်းသူ", "ဝန်ထမ်း", "ကုန်ဖိုး",
+        "သက်သာစွာ", "အခွန်", "အခြားကုန်ကျစရိတ်", "ကျသင့်ငွေ",
+        "ပေးချေပြီး", "ပေးရန်ကျန်", "ငွေပေးချေမှု", "အခြေအနေ"
+    };
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @Transactional(readOnly = true)
+    public byte[] exportExcel(String dateFrom, String dateTo) throws java.io.IOException {
+        LocalDateTime from = parseDate(dateFrom, false);
+        LocalDateTime to = parseDate(dateTo, true);
+        List<PurchaseDTO> purchases = purchaseRepository
+                .findBySearchAndDateRange(null, from, to, org.springframework.data.domain.PageRequest.of(0, Integer.MAX_VALUE, Sort.by("id").descending()))
+                .getContent().stream()
+                .map(mapper::toDto)
+                .toList();
+
+        try (var wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             var out = new java.io.ByteArrayOutputStream()) {
+
+            var sheet = wb.createSheet("ဝယ်ယူမှုများ");
+
+            var headerStyle = wb.createCellStyle();
+            var headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.INDIGO.getIndex());
+            headerStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
+            headerFont.setColor(org.apache.poi.ss.usermodel.IndexedColors.WHITE.getIndex());
+
+            var headerRow = sheet.createRow(0);
+            for (int i = 0; i < EXCEL_HEADERS.length; i++) {
+                var cell = headerRow.createCell(i);
+                cell.setCellValue(EXCEL_HEADERS[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, 5000);
+            }
+
+            int rowNum = 1;
+            for (PurchaseDTO p : purchases) {
+                var row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(p.getPurchaseCode() != null ? p.getPurchaseCode() : "#" + p.getId());
+                row.createCell(1).setCellValue(p.getPurchaseDate() != null ? p.getPurchaseDate().toLocalDate().toString() : "");
+                row.createCell(2).setCellValue(p.getSupplierName() != null ? p.getSupplierName() : "");
+                row.createCell(3).setCellValue(p.getStaffName() != null ? p.getStaffName() : "");
+                row.createCell(4).setCellValue(safe(p.getTotalAmount()).doubleValue());
+                row.createCell(5).setCellValue(safe(p.getDiscountAmount()).doubleValue());
+                row.createCell(6).setCellValue(safe(p.getTaxAmount()).doubleValue());
+                row.createCell(7).setCellValue(safe(p.getOtherCharges()).doubleValue());
+                row.createCell(8).setCellValue(safe(p.getNetAmount()).doubleValue());
+                row.createCell(9).setCellValue(safe(p.getPaidAmount()).doubleValue());
+                row.createCell(10).setCellValue(safe(p.getDueAmount()).doubleValue());
+                row.createCell(11).setCellValue(p.getPaymentStatus() != null ? p.getPaymentStatus() : "");
+                row.createCell(12).setCellValue(p.getStatus() != null ? p.getStatus() : "CONFIRMED");
+            }
+
+            wb.write(out);
+            return out.toByteArray();
+        }
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_UPDATE')")
@@ -614,6 +794,311 @@ public class PurchaseService {
         return enrichWarrantyItems(mapper.toDto(savedPurchase), savedPurchase);
     }
 
+    /**
+     * ✅ Replace / remove supplier invoice attachment — metadata only, no stock/accounting impact.
+     * Pass null for both arguments to clear the attachment.
+     */
+    public PurchaseDTO updateAttachment(Integer id, String attachmentName, String attachmentData) {
+        Purchase purchase = purchaseRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        if (attachmentData != null && attachmentData.length() > 4_500_000) {
+            throw new RuntimeException("Attachment too large (max ~3MB)");
+        }
+        purchase.setAttachmentName(attachmentName);
+        purchase.setAttachmentData(attachmentData);
+        Purchase saved = purchaseRepository.save(purchase);
+        return enrichWarrantyItems(mapper.toDto(saved), saved);
+    }
+
+    /**
+     * ✅ Draft → Confirm — applies the deferred side effects:
+     * stock in, serial creation, warranty items, average cost, payment transactions and journal.
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_UPDATE')")
+    @Transactional
+    public PurchaseDTO confirmDraft(Integer id, PurchaseDTO overrides) {
+        Purchase purchase = purchaseRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        if (!purchase.isDraft())
+            throw new RuntimeException("Only draft purchases can be confirmed.");
+        if (purchase.getDetails() == null || purchase.getDetails().isEmpty())
+            throw new RuntimeException("Draft purchase has no detail lines.");
+
+        Supplier supplier = purchase.getSupplier();
+        Staff staff = purchase.getStaff();
+
+        // Duplicate submission guard
+        BigDecimal estimatedTotal = purchase.getTotalAmount() != null ? purchase.getTotalAmount() : BigDecimal.ZERO;
+        long recentCount = purchaseRepository.countRecentDuplicates(
+                supplier.getId(), staff.getId(), estimatedTotal,
+                LocalDateTime.now().minusSeconds(15));
+        if (recentCount > 0)
+            throw new RuntimeException("Duplicate purchase detected. ထပ်မနှိပ်ပါနှင့် — ခဏ စောင့်ပါ။");
+
+        // Merge header overrides (dates / remark / discount / tax / charges / attachment)
+        PurchaseDTO dto = mapper.toDto(purchase);
+        if (overrides != null) {
+            if (overrides.getPurchaseDate() != null) purchase.setPurchaseDate(overrides.getPurchaseDate());
+            if (overrides.getDueDate() != null) purchase.setDueDate(overrides.getDueDate());
+            if (overrides.getRemark() != null) purchase.setRemark(overrides.getRemark());
+            if (overrides.getDiscountAmount() != null) dto.setDiscountAmount(overrides.getDiscountAmount());
+            if (overrides.getTaxAmount() != null) dto.setTaxAmount(overrides.getTaxAmount());
+            if (overrides.getOtherCharges() != null) dto.setOtherCharges(overrides.getOtherCharges());
+            applyAttachment(purchase, overrides);
+            dto.setPayments(overrides.getPayments());
+            dto.setPaymentMethodId(overrides.getPaymentMethodId());
+            dto.setTransactionNo(overrides.getTransactionNo());
+            dto.setPaidAmount(overrides.getPaidAmount());
+        }
+        validateStaffSelection(purchase.getStaff());
+        validateTaxAndCharges(dto);
+        LocalDate warrantyStart = (purchase.getPurchaseDate() != null ? purchase.getPurchaseDate() : LocalDateTime.now()).toLocalDate();
+
+        Map<Integer, PurchaseDetailDTO> overrideByProduct = new HashMap<>();
+        if (overrides != null && overrides.getDetails() != null) {
+            for (PurchaseDetailDTO od : overrides.getDetails()) {
+                if (od.getProductId() != null) overrideByProduct.put(od.getProductId(), od);
+            }
+        }
+
+        BigDecimal calculatedTotal = BigDecimal.ZERO;
+
+        for (PurchaseDetail detail : purchase.getDetails()) {
+            Product product = detail.getProduct();
+            int qty = detail.getQty() != null ? detail.getQty() : 0;
+            BigDecimal subtotal = safe(detail.getUnitCost()).multiply(BigDecimal.valueOf(qty));
+            calculatedTotal = calculatedTotal.add(subtotal);
+
+            PurchaseDetailDTO od = overrideByProduct.get(product.getId());
+
+            List<Integer> itemWarranties;
+            List<String> serials = List.of();
+            List<String> conditions = List.of();
+            List<String> photos = List.of();
+            if (od != null) {
+                itemWarranties = normalizeItemWarranties(od);
+                if (od.getSerialNumbers() != null && !od.getSerialNumbers().isEmpty()) serials = od.getSerialNumbers();
+                if (od.getSerialConditions() != null) conditions = od.getSerialConditions();
+                if (od.getSerialPhotos() != null) photos = od.getSerialPhotos();
+            } else {
+                int bulkMonths = detail.getWarrantyMonths() != null ? detail.getWarrantyMonths() : 0;
+                itemWarranties = java.util.stream.IntStream.range(0, qty).mapToObj(i -> bulkMonths).toList();
+                serials = detail.getWarrantyItems() == null ? List.of() : detail.getWarrantyItems().stream()
+                        .sorted(Comparator.comparing(PurchaseDetailWarranty::getItemIndex))
+                        .map(PurchaseDetailWarranty::getSerialNumber)
+                        .filter(sn -> sn != null && !sn.isBlank())
+                        .toList();
+            }
+
+            boolean hasSerials = Boolean.TRUE.equals(product.getHasSerial());
+            if (hasSerials && serials.isEmpty())
+                throw new RuntimeException("Serial numbers required for: " + product.getName());
+            if (hasSerials && serials.size() != qty)
+                throw new RuntimeException("Serial count must match Qty for: " + product.getName());
+            if (!hasSerials && !serials.isEmpty())
+                throw new RuntimeException("Product is non-serial. Remove serials for: " + product.getName());
+
+            if (hasSerials) {
+                updateAverageCost(product, effectiveUnitCost(detail.getUnitCost(), dto), qty,
+                        serialRepository.countByProductIdAndStatus(product.getId(), SerialStatus.Available).intValue());
+                for (int i = 0; i < serials.size(); i++) {
+                    String sn = serials.get(i);
+                    if (serialRepository.existsBySerialNumber(sn))
+                        throw new RuntimeException("Serial '" + sn + "' already exists!");
+                    Integer months = itemWarranties.size() > i ? itemWarranties.get(i) : 0;
+                    String condition = conditions.size() > i ? conditions.get(i) : null;
+                    String photo = photos.size() > i ? photos.get(i) : null;
+                    serialRepository.save(ProductSerial.builder()
+                            .product(product)
+                            .serialNumber(sn)
+                            .status(SerialStatus.Available)
+                            .warrantyMonths(months)
+                            .warrantyStartDate(warrantyStart)
+                            .warrantyEndDate(warrantyStart.plusMonths(months != null ? months : 0))
+                            .condition(condition)
+                            .photoBase64(photo)
+                            .build());
+                    detail.getWarrantyItems().add(PurchaseDetailWarranty.builder()
+                            .purchaseDetail(detail)
+                            .itemIndex(i + 1)
+                            .serialNumber(sn)
+                            .warrantyMonths(months != null ? months : 0)
+                            .warrantyStartDate(warrantyStart)
+                            .warrantyEndDate(warrantyStart.plusMonths(months != null ? months : 0))
+                            .build());
+                }
+            } else {
+                int current = product.getStockQty() != null ? product.getStockQty() : 0;
+                updateAverageCost(product, effectiveUnitCost(detail.getUnitCost(), dto), qty, current);
+                product.setStockQty(current + qty);
+                productRepository.save(product);
+                for (int i = 0; i < qty; i++) {
+                    Integer months = itemWarranties.size() > i ? itemWarranties.get(i) : 0;
+                    detail.getWarrantyItems().add(PurchaseDetailWarranty.builder()
+                            .purchaseDetail(detail)
+                            .itemIndex(i + 1)
+                            .serialNumber(null)
+                            .warrantyMonths(months != null ? months : 0)
+                            .warrantyStartDate(warrantyStart)
+                            .warrantyEndDate(warrantyStart.plusMonths(months != null ? months : 0))
+                            .build());
+                }
+            }
+
+            stockMovementService.recordMovement(StockMovement.builder()
+                    .product(product).movementType(MovementType.IN).qty(qty)
+                    .referenceType("Purchase").build());
+        }
+
+        purchase.setStatus(PurchaseStatus.CONFIRMED);
+        purchase.setTotalAmount(calculatedTotal);
+        BigDecimal discountAmount = safe(dto.getDiscountAmount());
+        if (discountAmount.compareTo(BigDecimal.ZERO) < 0 || discountAmount.compareTo(calculatedTotal) > 0)
+            throw new RuntimeException("Invalid discount amount.");
+        BigDecimal netAmount = calculatedTotal.subtract(discountAmount)
+                .add(safe(dto.getTaxAmount())).add(safe(dto.getOtherCharges()));
+        purchase.setDiscountAmount(discountAmount);
+        purchase.setNetAmount(netAmount);
+        purchase.setPaidAmount(paymentTotal(dto.getPayments(), dto.getPaidAmount()));
+        if (purchase.getPaidAmount().compareTo(netAmount) > 0)
+            throw new RuntimeException("Paid amount cannot exceed net purchase amount.");
+        purchase.setDueAmount(netAmount.subtract(purchase.getPaidAmount()));
+        validateSupplierCreditLimit(supplier, purchase.getDueAmount());
+        if (purchase.getDueAmount().compareTo(BigDecimal.ZERO) <= 0)
+            purchase.setPaymentStatus(PaymentStatus.Paid);
+        else if (purchase.getPaidAmount().compareTo(BigDecimal.ZERO) > 0)
+            purchase.setPaymentStatus(PaymentStatus.Partial);
+        else
+            purchase.setPaymentStatus(PaymentStatus.Pending);
+        purchase.setDueDate(resolveDueDate(dto, purchase));
+
+        Purchase savedPurchase = purchaseRepository.save(purchase);
+        syncSupplierBalance(supplier);
+
+        createPurchasePaymentTransactions(savedPurchase, dto);
+        createPurchaseJournal(savedPurchase, dto);
+
+        messagingTemplate.convertAndSend(PURCHASE_TOPIC, "PURCHASE_CONFIRMED");
+        return enrichWarrantyItems(mapper.toDto(savedPurchase), savedPurchase);
+    }
+
+    /**
+     * ✅ Cancel / Void a purchase.
+     * - DRAFT      → hard delete (no side effects were applied).
+     * - CONFIRMED  → soft cancel with full reversal: stock out, serial removal,
+     *                reversing journal ("VOID") and supplier balance re-sync.
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_DELETE')")
+    @Transactional
+    public void cancel(Integer id) {
+        Purchase purchase = purchaseRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        if (purchase.isCancelled())
+            throw new RuntimeException("Purchase is already cancelled.");
+
+        if (purchase.isDraft()) {
+            purchaseRepository.delete(purchase);
+            messagingTemplate.convertAndSend(PURCHASE_TOPIC, "PURCHASE_CANCELLED");
+            return;
+        }
+
+        if (!purchaseReturnRepository.findByPurchaseId(id).isEmpty())
+            throw new RuntimeException("Cannot cancel. This voucher already has purchase returns. Use returns instead.");
+
+        for (PurchaseDetail detail : purchase.getDetails()) {
+            Product product = detail.getProduct();
+            int qty = detail.getQty() != null ? detail.getQty() : 0;
+
+            List<String> serials = detail.getWarrantyItems() == null ? List.of() : detail.getWarrantyItems().stream()
+                    .sorted(Comparator.comparing(PurchaseDetailWarranty::getItemIndex))
+                    .map(PurchaseDetailWarranty::getSerialNumber)
+                    .filter(sn -> sn != null && !sn.isBlank())
+                    .toList();
+
+            if (!serials.isEmpty()) {
+                for (String sn : serials) {
+                    ProductSerial serial = serialRepository.findBySerialNumber(sn)
+                            .orElseThrow(() -> new RuntimeException("Serial '" + sn + "' not found while cancelling."));
+                    if (serial.getStatus() != SerialStatus.Available)
+                        throw new RuntimeException("Cannot cancel. Serial '" + sn + "' is no longer available (" + serial.getStatus() + ").");
+                    serialRepository.delete(serial);
+                }
+            } else if (!Boolean.TRUE.equals(product.getHasSerial())) {
+                int current = product.getStockQty() != null ? product.getStockQty() : 0;
+                if (current < qty)
+                    throw new RuntimeException("Cannot cancel. Insufficient stock for '" + product.getName()
+                            + "' (current: " + current + ", needed to reverse: " + qty + ").");
+                product.setStockQty(current - qty);
+                productRepository.save(product);
+            } else {
+                // Serial product without stored serial rows — nothing to reverse on serials.
+            }
+
+            stockMovementService.recordMovement(StockMovement.builder()
+                    .product(product).movementType(MovementType.OUT).qty(qty)
+                    .referenceType("Purchase-Cancel").build());
+        }
+
+        createCancelJournal(purchase);
+
+        purchase.setStatus(PurchaseStatus.CANCELLED);
+        purchase.setDueAmount(BigDecimal.ZERO);
+        purchase.setSupplierCreditAmount(BigDecimal.ZERO);
+        purchaseRepository.save(purchase);
+        syncSupplierBalance(purchase.getSupplier());
+
+        messagingTemplate.convertAndSend(PURCHASE_TOPIC, "PURCHASE_CANCELLED");
+    }
+
+    /**
+     * ✅ Cancel Journal — exact mirror of the original purchase journal.
+     * CR: Purchases (net) | DR: Accounts Payable (due) | DR: Cash/Bank/KPay (paid lines)
+     */
+    private void createCancelJournal(Purchase p) {
+        BigDecimal net = p.getNetAmount() != null ? p.getNetAmount()
+                : (p.getTotalAmount() != null ? p.getTotalAmount() : BigDecimal.ZERO);
+        if (net.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        JournalEntryDTO journalDTO = new JournalEntryDTO();
+        journalDTO.setReferenceNo((p.getPurchaseCode() != null ? p.getPurchaseCode() : String.valueOf(p.getId())) + "-VOID");
+        journalDTO.setEntryDate(LocalDateTime.now());
+        journalDTO.setDescription("Cancel Purchase from: " + p.getSupplier().getName());
+        journalDTO.setStaffId(p.getStaff().getId());
+
+        List<JournalDetailDTO> details = new ArrayList<>();
+
+        JournalDetailDTO crPurchases = new JournalDetailDTO();
+        crPurchases.setAccountId(accounts.purchases().getId());  // EXP-007
+        crPurchases.setDebit(BigDecimal.ZERO);
+        crPurchases.setCredit(net);
+        details.add(crPurchases);
+
+        BigDecimal originalDue = p.getDueAmount() != null ? p.getDueAmount() : BigDecimal.ZERO;
+        if (originalDue.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO drPayable = new JournalDetailDTO();
+            drPayable.setAccountId(accounts.payable().getId());  // LIA-002
+            drPayable.setDebit(originalDue);
+            drPayable.setCredit(BigDecimal.ZERO);
+            details.add(drPayable);
+        }
+
+        BigDecimal paidReversed = BigDecimal.ZERO;
+        List<PaymentTransaction> txns = paymentTransactionRepository.findByReferenceIdAndReferenceType(p.getId(), ReferenceType.Purchase);
+        for (PaymentTransaction tx : txns) {
+            if (tx.getAmount() == null || tx.getAmount().compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (tx.getPaymentMethod() == null || tx.getPaymentMethod().getAccount() == null) continue;
+            JournalDetailDTO drCash = new JournalDetailDTO();
+            drCash.setAccountId(tx.getPaymentMethod().getAccount().getId());
+            drCash.setDebit(tx.getAmount());
+            drCash.setCredit(BigDecimal.ZERO);
+            details.add(drCash);
+            paidReversed = paidReversed.add(tx.getAmount());
+        }
+
+        journalDTO.setDetails(details);
+        journalWriter.write(journalDTO);
+    }
+
     private List<Integer> normalizeItemWarranties(PurchaseDetailDTO dDto) {
         int qty = dDto.getQty() != null ? dDto.getQty() : 0;
         int bulkMonths = dDto.getWarrantyMonths() != null ? dDto.getWarrantyMonths() : 0;
@@ -640,12 +1125,37 @@ public class PurchaseService {
     }
 
     private LocalDate resolveDueDate(PurchaseDTO dto, Purchase purchase) {
-        if (dto.getDueDate() != null) return dto.getDueDate();
-        if (purchase.getDueAmount().compareTo(BigDecimal.ZERO) <= 0) return null;
+        if (purchase.getDueAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            purchase.setPaymentTermDays(0);
+            return null;
+        }
         LocalDate baseDate = purchase.getPurchaseDate() != null
                 ? purchase.getPurchaseDate().toLocalDate()
                 : LocalDate.now();
-        return baseDate.plusDays(30);
+        if (dto.getDueDate() != null) {
+            if (dto.getDueDate().isBefore(baseDate)) {
+                throw new RuntimeException("Due date cannot be before purchase date.");
+            }
+            int days = Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(baseDate, dto.getDueDate()));
+            purchase.setPaymentTermDays(days);
+            return dto.getDueDate();
+        }
+        int supplierDays = purchase.getSupplier() != null && purchase.getSupplier().getDefaultCreditDays() != null
+                ? purchase.getSupplier().getDefaultCreditDays() : 30;
+        int days = dto.getPaymentTermDays() != null ? dto.getPaymentTermDays() : supplierDays;
+        if (days < 0) throw new RuntimeException("Payment term days cannot be negative.");
+        purchase.setPaymentTermDays(days);
+        return baseDate.plusDays(days);
+    }
+
+    private void validateSupplierCreditLimit(Supplier supplier, BigDecimal newDue) {
+        BigDecimal limit = supplier.getCreditLimit() != null ? supplier.getCreditLimit() : BigDecimal.ZERO;
+        if (limit.compareTo(BigDecimal.ZERO) <= 0 || newDue.compareTo(BigDecimal.ZERO) <= 0) return;
+        BigDecimal current = supplier.getCurrentBalance() != null ? supplier.getCurrentBalance() : BigDecimal.ZERO;
+        if (current.add(newDue).compareTo(limit) > 0) {
+            throw new RuntimeException("Supplier credit limit exceeded. Limit: " + limit
+                    + ", current balance: " + current + ", new due: " + newDue);
+        }
     }
 
     private PurchaseDTO enrichWarrantyItems(PurchaseDTO dto, Purchase purchase) {

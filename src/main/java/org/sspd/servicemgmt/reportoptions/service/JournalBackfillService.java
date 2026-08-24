@@ -99,8 +99,12 @@ public class JournalBackfillService {
             saveDetail(entry, accountResolver.receivable(), due, BigDecimal.ZERO);
         }
 
-        // CR Sales Revenue
-        saveDetail(entry, accountResolver.sales(), BigDecimal.ZERO, net);
+        // CR Sales Revenue and output tax liability separately.
+        BigDecimal tax = safe(sale.getTaxAmount()).min(net);
+        saveDetail(entry, accountResolver.sales(), BigDecimal.ZERO, net.subtract(tax));
+        if (tax.compareTo(BigDecimal.ZERO) > 0) {
+            saveDetail(entry, accountResolver.taxPayable(), BigDecimal.ZERO, tax);
+        }
     }
 
     // ── Purchases ──────────────────────────────────────────────────────────────

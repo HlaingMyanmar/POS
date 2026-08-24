@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.time.LocalDate;
 
 @Data
 public class PurchaseDetailDTO {
@@ -13,6 +14,8 @@ public class PurchaseDetailDTO {
     private Integer qty;
     private BigDecimal unitCost;
     private BigDecimal subtotal;
+    private String batchNumber;
+    private LocalDate expiryDate;
     private Integer warrantyMonths;
     private List<Integer> itemWarranties;
     private List<String> serialNumbers;

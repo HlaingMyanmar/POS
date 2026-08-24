@@ -11,6 +11,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.stockoptions.productoptions.dto.ImportResultDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.dto.ProductDTO;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.PriceHistoryDTO;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.ReorderSuggestionDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.service.ProductService;
 
 import java.io.IOException;
@@ -37,6 +39,18 @@ public class ProductController {
         return ResponseEntity.ok(
                 new ApiResponse<>(true, "Low Stock Product List", service.findLowStock())
         );
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @GetMapping("/reorder-suggestions")
+    public ResponseEntity<ApiResponse<List<ReorderSuggestionDTO>>> getReorderSuggestions() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Reorder suggestions", service.reorderSuggestions()));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_PRICE_HISTORY_READ')")
+    @GetMapping("/{id}/price-history")
+    public ResponseEntity<ApiResponse<List<PriceHistoryDTO>>> getPriceHistory(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Product price history", service.priceHistory(id)));
     }
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
     @GetMapping("/{id}")
@@ -72,11 +86,19 @@ public class ProductController {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_DELETE')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>>deleteProduct(@PathVariable Integer id){
-        service.delete(id);
+        service.archive(id);
         return ResponseEntity.ok(
-                new ApiResponse<>(true, "Product Deleted Successfully",null)
+            new ApiResponse<>(true, "Product Archived Successfully",null)
         );
     }
+
+        @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")
+        @PutMapping("/{id}/archive")
+        public ResponseEntity<ApiResponse<ProductDTO>> setArchived(
+            @PathVariable Integer id,
+            @RequestParam boolean archived) {
+        return ResponseEntity.ok(new ApiResponse<>(true, archived ? "Product Archived" : "Product Restored", service.setArchived(id, archived)));
+        }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
     @GetMapping("/{id}/next-serial-seq")

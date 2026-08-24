@@ -44,6 +44,8 @@ public enum PermissionName {
     CAN_ACCESS_PRODUCT_READ("ကုန်ပစ္စည်း (Product) စာရင်းအားလုံးကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_PRODUCT_UPDATE("ရှိပြီးသား ကုန်ပစ္စည်း (Product) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_PRODUCT_DELETE("ကုန်ပစ္စည်း (Product) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+    CAN_ACCESS_PRODUCT_PRICE_HISTORY_READ("ကုန်ပစ္စည်း Price History နှင့် Weighted Average Cost ကို ကြည့်ရှုခွင့်ပြုသည်"),
+    CAN_ACCESS_PHYSICAL_STOCK_COUNT("Physical Stock Count ပြုလုပ်ခွင့်ပြုသည်"),
 
     // Product Serial Management
     CAN_ACCESS_PRODUCT_SERIAL_CREATE("ကုန်ပစ္စည်း Serial Number အသစ်များ ဖန်တီးခွင့်ပြုသည်"),

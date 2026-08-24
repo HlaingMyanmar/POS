@@ -8,6 +8,7 @@ import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "purchase_details")
@@ -28,6 +29,12 @@ public class PurchaseDetail {
     private Integer qty;
     private BigDecimal unitCost;
     private BigDecimal subtotal;
+
+    @Column(name = "batch_number", length = 100)
+    private String batchNumber;
+
+    @Column(name = "expiry_date")
+    private LocalDate expiryDate;
 
     @Builder.Default
     @Column(name = "warranty_months")

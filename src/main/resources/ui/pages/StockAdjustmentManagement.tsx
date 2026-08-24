@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  Download,
   Eye,
   Plus,
   RefreshCw,
@@ -20,6 +21,8 @@ import { staffService } from '../services/staffapiservice';
 import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
 import { AdjustmentType, ProductDTO, ProductSerialDTO, StaffDTO, StockAdjustmentDTO } from '../types';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 
 type TypeFilter = 'ALL' | AdjustmentType;
 
@@ -433,6 +436,23 @@ const StockAdjustmentManagement: React.FC = () => {
       return true;
     });
   }, [dateFrom, dateTo, rows, typeFilter]);
+  const visibleAdjustmentRows = useMemo(() => filteredRows.filter((row): row is StockAdjustmentDTO & { id: number } => typeof row.id === 'number'), [filteredRows]);
+  const bulk = useBulkSelection<StockAdjustmentDTO & { id: number }>(visibleAdjustmentRows);
+
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Product', 'Type', 'Qty Before', 'Qty Change', 'Qty After', 'Staff', 'Date', 'Reason'],
+      ...bulk.selectedRows.map((row) => [row.id, row.productName || row.productId, row.adjustmentType, row.qtyBefore ?? '', row.qtyChange, row.qtyAfter ?? '', row.staffName || row.staffId, row.createdAt || '', row.reason || ''])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `stock-adjustments-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
 
   const stats = useMemo(() => ({
     total: totalElements,
@@ -808,6 +828,18 @@ const StockAdjustmentManagement: React.FC = () => {
         </div>
       </div>
 
+      <BulkSelectionToolbar
+        visibleCount={visibleAdjustmentRows.length}
+        selectedCount={bulk.selectedCount}
+        allVisibleSelected={bulk.allVisibleSelected}
+        someVisibleSelected={bulk.someVisibleSelected}
+        onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+        onClear={bulk.clear}
+        selectedRows={bulk.selectedRows}
+        actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]}
+        onAction={handleBulkAction}
+      />
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h3 className="font-bold text-slate-800 text-sm">Adjustment History</h3>
@@ -817,6 +849,7 @@ const StockAdjustmentManagement: React.FC = () => {
           <table className="w-full min-w-[980px] lg:min-w-[1320px] text-left border-collapse">
             <thead className="sticky top-0 bg-white z-10 shadow-sm">
               <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+                <th className="px-3 py-3 border-b border-slate-100">Select</th>
                 <th className="px-4 py-3 border-b border-slate-100">#</th>
                 <th className="px-4 py-3 border-b border-slate-100">Product</th>
                 <th className="px-4 py-3 border-b border-slate-100">Type</th>
@@ -835,6 +868,7 @@ const StockAdjustmentManagement: React.FC = () => {
                 <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400 text-sm">No stock adjustments found.</td></tr>
               ) : filteredRows.map((row, index) => (
                 <tr key={row.id || `${row.productId}-${index}`} className="hover:bg-slate-50 text-xs">
+                  <td className="px-3 py-3 text-center">{typeof row.id === 'number' && <input type="checkbox" checked={bulk.selectedIds.has(row.id)} onChange={() => bulk.toggle(row.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select adjustment ${row.id}`} />}</td>
                   <td className="px-4 py-3 text-slate-500">{index + 1}</td>
                   <td className="px-4 py-3 text-slate-700 font-medium">
                     <div>{row.productName || `Product #${row.productId}`}</div>

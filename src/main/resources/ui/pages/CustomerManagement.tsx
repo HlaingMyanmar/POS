@@ -10,6 +10,7 @@ import {
   Clock3,
   CreditCard,
   DollarSign,
+  Download,
   Loader2,
   Pencil,
   Plus,
@@ -28,6 +29,8 @@ import { saleApiService } from '../services/saleapiservice';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { CreditAlertDTO, CustomerCreditTermDTO, CustomerCreditTermHistoryDTO, CustomerDTO, CustomerPaymentDTO, PaymentMethodDTO, SaleDTO } from '../types';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 
 type ModalTab = 'basic' | 'credit' | 'payments' | 'history';
 type StatusFilter = 'all' | 'normal' | 'hold' | 'blacklist' | 'hasDue' | 'overdue';
@@ -205,6 +208,22 @@ const CustomerManagement: React.FC = () => {
     }
     return pages;
   }, [customerTotalPages, safeCustomerPage]);
+  const bulk = useBulkSelection<CustomerDTO>(pagedCustomers);
+
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['ID', 'Name', 'Phone', 'Address', 'Credit Hold', 'Blacklisted'],
+      ...bulk.selectedRows.map((customer) => [customer.id, customer.name, customer.phone || '', customer.address || '', customer.creditHold ? 'Yes' : 'No', customer.blacklisted ? 'Yes' : 'No'])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `customers-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
 
   const statusMeta = (customer: CustomerDTO) => {
     if (customer.blacklisted) {
@@ -541,10 +560,24 @@ const CustomerManagement: React.FC = () => {
             ))}
           </div>
         </div>
+        <div className="px-4 pt-3">
+          <BulkSelectionToolbar
+            visibleCount={pagedCustomers.length}
+            selectedCount={bulk.selectedCount}
+            allVisibleSelected={bulk.allVisibleSelected}
+            someVisibleSelected={bulk.someVisibleSelected}
+            onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+            onClear={bulk.clear}
+            selectedRows={bulk.selectedRows}
+            actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]}
+            onAction={handleBulkAction}
+          />
+        </div>
         <div className="overflow-auto max-h-[70vh]">
           <table className="w-full min-w-[1280px] text-sm">
             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase">
               <tr>
+                <th className="px-3 py-3 text-center"><span className="sr-only">Select</span></th>
                 <th className="px-4 py-3 text-left">ID</th>
                 <th className="px-4 py-3 text-left">အမည်</th>
                 <th className="px-4 py-3 text-left">ဖုန်း</th>
@@ -559,7 +592,7 @@ const CustomerManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredCustomers.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">ဖောက်သည် ရှာမတွေ့ပါ</td>
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-400">ဖောက်သည် ရှာမတွေ့ပါ</td>
                 </tr>
               )}
               {pagedCustomers.map((customer) => {
@@ -572,6 +605,7 @@ const CustomerManagement: React.FC = () => {
 
                 return (
                   <tr key={customer.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-3 text-center"><input type="checkbox" checked={bulk.selectedIds.has(customer.id)} onChange={() => bulk.toggle(customer.id)} className="h-4 w-4 accent-indigo-600" aria-label={`Select ${customer.name}`} /></td>
                     <td className="px-4 py-3 text-slate-600">#{customer.id}</td>
                     <td className="px-4 py-3">
                       <div>

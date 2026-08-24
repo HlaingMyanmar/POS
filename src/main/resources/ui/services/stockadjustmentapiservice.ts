@@ -59,5 +59,10 @@ export const stockAdjustmentApiService = {
   create: async (data: StockAdjustmentDTO): Promise<StockAdjustmentDTO> => {
     const res = await api.post<any, ApiResponse<StockAdjustmentDTO>>('/v1/stock-adjustments', data);
     return normalizeStockAdjustment((res.data || {}) as AnyRecord);
+  },
+
+  createPhysicalCount: async (data: StockAdjustmentDTO): Promise<StockAdjustmentDTO> => {
+    const res = await api.post<any, ApiResponse<StockAdjustmentDTO>>('/v1/stock-adjustments/physical-count', data);
+    return normalizeStockAdjustment((res.data || {}) as AnyRecord);
   }
 };

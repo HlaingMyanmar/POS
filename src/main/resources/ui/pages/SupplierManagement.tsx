@@ -11,6 +11,9 @@ import {
 import { useDataEvents } from '../hooks/useDataEvents';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { Download } from 'lucide-react';
 
 const SupplierManagement: React.FC = () => {
   const [suppliers, setSuppliers] = useState<SupplierDTO[]>([]);
@@ -31,6 +34,7 @@ const SupplierManagement: React.FC = () => {
     openingBalance: 0
   });
   const [saving, setSaving] = useState(false);
+  const bulk = useBulkSelection<SupplierDTO>(suppliers);
 
   const fetchPaginatedData = useCallback(async () => {
     try {
@@ -127,6 +131,21 @@ const SupplierManagement: React.FC = () => {
     }
   };
 
+  const handleBulkAction = (action: { key: string }) => {
+    if (action.key !== 'export') return;
+    const csv = [
+      ['Code', 'Name', 'Phone', 'Address', 'Current Balance'],
+      ...bulk.selectedRows.map((supplier) => [supplier.code, supplier.name, supplier.phone || '', supplier.address || '', String(supplier.currentBalance ?? 0)])
+    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `suppliers-selected-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    bulk.clear();
+  };
+
   if (loading) return (
     <div className="h-full flex items-center justify-center">
       <Loader2 className="animate-spin text-indigo-600" size={32} />
@@ -177,11 +196,26 @@ const SupplierManagement: React.FC = () => {
         </div>
       </div>
 
+      <div className="mx-1">
+        <BulkSelectionToolbar
+          visibleCount={suppliers.length}
+          selectedCount={bulk.selectedCount}
+          allVisibleSelected={bulk.allVisibleSelected}
+          someVisibleSelected={bulk.someVisibleSelected}
+          onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()}
+          onClear={bulk.clear}
+          selectedRows={bulk.selectedRows}
+          actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]}
+          onAction={handleBulkAction}
+        />
+      </div>
+
       <div className="mx-1 flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex-1 overflow-auto custom-scrollbar relative">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 shadow-sm backdrop-blur-sm">
               <tr>
+                <th className="w-12 px-3 text-center"><span className="sr-only">Select</span></th>
                 <th className="px-5 py-3 text-[11px] font-bold text-slate-500">ပေးသွင်းသူ အချက်အလက်</th>
                 <th className="px-4 py-3 text-[11px] font-bold text-slate-500">ဆက်သွယ်ရန်</th>
                 <th className="px-4 py-3 text-[11px] font-bold text-slate-500">လိပ်စာ</th>
@@ -192,6 +226,9 @@ const SupplierManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {suppliers.length > 0 ? suppliers.map((supplier) => (
                 <tr key={supplier.id} className="group border-b border-slate-100 last:border-0 transition-colors hover:bg-indigo-50/30">
+                  <td className="px-3 text-center">
+                    <input type="checkbox" checked={bulk.selectedIds.has(supplier.id)} onChange={() => bulk.toggle(supplier.id)} className="h-4 w-4 accent-indigo-600" aria-label={`Select ${supplier.name}`} />
+                  </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-600 transition-all group-hover:bg-indigo-600 group-hover:text-white">
@@ -238,7 +275,7 @@ const SupplierManagement: React.FC = () => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-40 text-center">
+                  <td colSpan={6} className="px-6 py-40 text-center">
                     <div className="flex flex-col items-center gap-5">
                       <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center border border-dashed border-slate-200">
                         <Truck className="text-slate-200" size={40} />

@@ -405,6 +405,17 @@ public class InvoiceAssemblerService {
             }
         }
 
+        List<PrintInvoiceData.PaymentEntry> purchasePayments = buildPayments(purchaseId, ReferenceType.Purchase);
+        BigDecimal discount = nz(purchase.getDiscountAmount());
+        BigDecimal tax = nz(purchase.getTaxAmount());
+        BigDecimal other = nz(purchase.getOtherCharges());
+        BigDecimal net = purchase.getNetAmount() != null
+                ? purchase.getNetAmount()
+                : nz(purchase.getTotalAmount()).subtract(discount).add(tax).add(other);
+        BigDecimal due = purchase.getDueAmount() != null
+                ? purchase.getDueAmount().max(BigDecimal.ZERO)
+                : net.subtract(nz(purchase.getPaidAmount())).max(BigDecimal.ZERO);
+
         return PrintInvoiceData.builder()
                 .companyName(cs.getCompanyName())
                 .companyAddress(safe(cs.getCompanyAddress()))
@@ -424,12 +435,14 @@ public class InvoiceAssemblerService {
                 .customerAddress(purchase.getSupplier() != null ? safe(purchase.getSupplier().getAddress()) : "")
                 .cashierName(purchase.getStaff() != null ? purchase.getStaff().getName() : "")
                 .lineItems(items)
-                .payments(List.of())
+                .payments(purchasePayments)
                 .subtotal(fmt(purchase.getTotalAmount()))
-                .discount("0")
-                .netAmount(fmt(purchase.getTotalAmount()))
+                .discount(fmt(discount))
+                .tax(fmt(tax))
+                .otherCharges(fmt(other))
+                .netAmount(fmt(net))
                 .paid(fmt(purchase.getPaidAmount()))
-                .balanceDue(fmt(purchase.getDueAmount()))
+                .balanceDue(fmt(due))
                 .remark(safe(purchase.getRemark()))
                 .customerNotice("")
                 .build();
@@ -470,6 +483,10 @@ public class InvoiceAssemblerService {
         if (v == null) return "0";
         return NumberFormat.getNumberInstance(Locale.US)
                 .format(v.setScale(0, java.math.RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal nz(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
     }
 
     private String safe(String s) { return s != null ? s : ""; }

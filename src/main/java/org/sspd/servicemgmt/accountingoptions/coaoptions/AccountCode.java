@@ -16,6 +16,8 @@ public final class AccountCode {
     public static final String INVENTORY            = "ASS-005";  // Inventory / Stock
     public static final String KPAY                 = "ASS-006";  // KPay
     public static final String WAVE_PAY             = "ASS-007";  // Wave Pay
+    public static final String INPUT_TAX_RECEIVABLE = "ASS-009";  // Recoverable Input VAT
+    public static final String SUPPLIER_ADVANCE      = "ASS-010";  // Prepayments to suppliers
     public static final String FIXED_ASSETS         = "ASS-008";  // Fixed Assets & Equipment (ပိုင်ဆိုင်မှု)
 
     // ── Liabilities ─────────────────────────────────
@@ -23,6 +25,7 @@ public final class AccountCode {
     public static final String SALARY_PAYABLE       = "LIA-003";  // Salary Payable
     public static final String CUSTOMER_ADVANCE     = "LIA-004";  // Customer Advance
     public static final String TAX_PAYABLE          = "LIA-005";  // Output VAT / Commercial Tax
+    public static final String WITHHOLDING_TAX_PAYABLE = "LIA-006";
 
     // ── Income ──────────────────────────────────────
     public static final String SALES                = "INC-002";  // Product Sales

@@ -33,6 +33,7 @@ public interface ProductMapper {
     @Mapping(target = "brand", ignore = true)
     @Mapping(target = "unit", ignore = true)
     @Mapping(target = "serials", ignore = true)
+    @Mapping(target = "lastPurchaseCost", ignore = true)
     Product toEntity(ProductDTO dto);
 
     // Update Method
@@ -42,5 +43,6 @@ public interface ProductMapper {
     @Mapping(target = "unit", ignore = true)
     @Mapping(target = "serials", ignore = true)
     @Mapping(target = "photoBase64", ignore = true)
+    @Mapping(target = "lastPurchaseCost", ignore = true)
     void updateEntityFromDto(ProductDTO dto, @MappingTarget Product entity);
 }

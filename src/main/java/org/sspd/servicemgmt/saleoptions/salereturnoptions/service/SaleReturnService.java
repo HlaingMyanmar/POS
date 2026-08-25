@@ -75,6 +75,7 @@ public class SaleReturnService {
     private final AccountResolver accountResolver;
     private final PaymentBalanceValidator paymentBalanceValidator;
     private final CashDrawerService cashDrawerService;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
 
     private static final String SALE_RETURN_TOPIC = "/topic/sale-return";
 
@@ -216,6 +217,7 @@ public class SaleReturnService {
         SaleReturn saved = saleReturnRepository.save(entity);
         saved.setReturnCode(generateReturnCode(saved.getId()));
         saved = saleReturnRepository.save(saved);
+        stockLotService.restoreSaleReturn(saved);
 
         applySaleAdjustments(sale, total, refund);
         recordStockMovements(detailEntities, saved.getId());
@@ -286,6 +288,7 @@ public class SaleReturnService {
         }
 
         List<SaleReturnDetail> details = saleReturnDetailRepository.findAllBySaleReturnIn(List.of(existing));
+        stockLotService.reverseSaleReturn(existing);
 
         // Reverse stock
         for (SaleReturnDetail detail : details) {

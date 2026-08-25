@@ -34,6 +34,19 @@ public class PurchaseOrderController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_READ')")
+    @GetMapping("/overdue")
+    public ResponseEntity<ApiResponse<java.util.List<PurchaseOrderDTO>>> getLate() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Late purchase orders", service.findLate()));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_READ')")
+    @GetMapping("/{id}/goods-receipts")
+    public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.dto.GoodsReceiptDTO>>> getGoodsReceipts(
+            @PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Goods Receipts", service.findGoodsReceipts(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_READ')")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<PurchaseOrderDTO>> getById(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Found", service.findById(id)));
@@ -58,6 +71,20 @@ public class PurchaseOrderController {
     public ResponseEntity<ApiResponse<Void>> cancel(@PathVariable Integer id) {
         service.cancel(id);
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Cancelled", null));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<ApiResponse<PurchaseOrderDTO>> approve(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Approved", service.approve(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApiResponse<PurchaseOrderDTO>> reject(@PathVariable Integer id,
+                                                                @RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Rejected",
+                service.reject(id, body.get("reason"))));
     }
 
     /**

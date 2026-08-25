@@ -34,6 +34,9 @@ public class StockMovement {
     @Column(name = "reference_type")
     private String referenceType; // 'Purchase', 'Sale', 'Return'
 
+    @Column(name = "warehouse_name", length = 120)
+    private String warehouseName;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

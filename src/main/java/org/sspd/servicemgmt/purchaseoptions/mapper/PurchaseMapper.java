@@ -19,6 +19,8 @@ public interface PurchaseMapper {
     @Mapping(source = "supplier.name", target = "supplierName")
     @Mapping(source = "staff.id", target = "staffId")
     @Mapping(source = "staff.name", target = "staffName")
+    @Mapping(target = "poCode", ignore = true)
+    @Mapping(target = "budgetWarnings", ignore = true)
     PurchaseDTO toDto(Purchase entity);
 
     @Mapping(source = "product.id", target = "productId")

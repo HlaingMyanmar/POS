@@ -99,6 +99,12 @@
   <table th:if="${!inv.bookingReceipt}" class="inv-thermal__totals">
     <tr><td>Total</td>      <td class="r" th:text="${inv.subtotal}">0</td></tr>
     <tr><td>Discount</td>   <td class="r" th:text="${inv.discount}">0</td></tr>
+    <tr th:if="${not #strings.isEmpty(inv.tax) and inv.tax != '0.00' and inv.tax != '0'}">
+      <td>Tax / VAT</td> <td class="r" th:text="${inv.tax}">0</td>
+    </tr>
+    <tr th:if="${not #strings.isEmpty(inv.otherCharges) and inv.otherCharges != '0.00' and inv.otherCharges != '0'}">
+      <td>Other</td>     <td class="r" th:text="${inv.otherCharges}">0</td>
+    </tr>
     <tr><td><b>Net</b></td> <td class="r"><b th:text="${inv.netAmount}">0</b></td></tr>
     <tr><td>Paid</td>       <td class="r" th:text="${inv.paid}">0</td></tr>
     <tr><td><b>Due</b></td> <td class="r"><b th:text="${inv.balanceDue}">0</b></td></tr>

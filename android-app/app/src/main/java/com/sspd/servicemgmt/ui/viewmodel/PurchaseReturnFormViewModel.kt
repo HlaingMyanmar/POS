@@ -58,13 +58,41 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
         viewModelScope.launch {
             try {
                 val token = ApiClient.bearer(prefs.authToken)
-                val rows = ApiClient.service.getPurchases(token, search = q, size = 20).body()?.data?.content ?: emptyList()
+                val rows = ApiClient.service.getPurchases(token, search = q, size = 20).body()?.data?.content
+                    ?.filter { row ->
+                        val status = row.status?.uppercase()
+                        status != "CANCELLED" && status != "DRAFT"
+                    }
+                    ?: emptyList()
                 _uiState.update { it.copy(purchaseResults = rows) }
             } catch (_: Exception) {}
         }
     }
 
     fun selectPurchase(purchase: PurchaseDTO) {
+        val status = purchase.status?.uppercase()
+        if (status == "CANCELLED") {
+            _uiState.update {
+                it.copy(
+                    selectedPurchase = null,
+                    purchaseQuery = purchase.purchaseCode ?: "",
+                    purchaseResults = emptyList(),
+                    saveError = "ပယ်ဖျက်ပြီး ဘောင်ချာကို ဝယ်ပြန်ပို့ မလုပ်နိုင်ပါ"
+                )
+            }
+            return
+        }
+        if (status == "DRAFT") {
+            _uiState.update {
+                it.copy(
+                    selectedPurchase = null,
+                    purchaseQuery = purchase.purchaseCode ?: "",
+                    purchaseResults = emptyList(),
+                    saveError = "မူကြမ်းကို အရင်အတည်ပြုပြီးမှ ဝယ်ပြန်ပို့ လုပ်ပါ"
+                )
+            }
+            return
+        }
         _uiState.update {
             it.copy(
                 selectedPurchase = purchase,
@@ -222,6 +250,9 @@ class PurchaseReturnFormViewModel(application: Application) : AndroidViewModel(a
         val selectedItems = s.items.filter { it.qty > 0 }
 
         if (purchase == null) { _uiState.update { it.copy(saveError = "Choose purchase invoice") }; return }
+        val purchaseStatus = purchase.status?.uppercase()
+        if (purchaseStatus == "CANCELLED") { _uiState.update { it.copy(saveError = "ပယ်ဖျက်ပြီး ဘောင်ချာကို ဝယ်ပြန်ပို့ မလုပ်နိုင်ပါ") }; return }
+        if (purchaseStatus == "DRAFT") { _uiState.update { it.copy(saveError = "မူကြမ်းကို အရင်အတည်ပြုပြီးမှ ဝယ်ပြန်ပို့ လုပ်ပါ") }; return }
         if (s.returnContextLoading || !s.returnContextLoaded) { _uiState.update { it.copy(saveError = "Please wait until return history is loaded") }; return }
         if (selectedItems.isEmpty()) { _uiState.update { it.copy(saveError = "Choose return items") }; return }
         if (s.reason.isBlank()) { _uiState.update { it.copy(saveError = "Enter return reason") }; return }

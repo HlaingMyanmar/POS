@@ -8,11 +8,12 @@ type Props = {
   onChange: (payments: PaymentTransactionDTO[]) => void;
   disabled?: boolean;
   label?: string;
+  compact?: boolean;
 };
 
 const emptyLine = (): PaymentTransactionDTO => ({ paymentMethodId: 0, amount: 0, transactionNo: '' });
 
-const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disabled = false, label = 'Split Payment' }) => {
+const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disabled = false, label = 'Split Payment', compact = false }) => {
   const rows = payments.length ? payments : [emptyLine()];
   const total = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
@@ -27,11 +28,11 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+    <div className={`rounded-lg border border-slate-200 bg-slate-50 space-y-2 ${compact ? 'p-2' : 'p-3'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-bold text-slate-700">{label}</p>
-          <p className="text-[11px] text-slate-500">Cash, KPay, Bank စသည်ဖြင့် တစ်ကြောင်းချင်းခွဲပေးနိုင်သည်။</p>
+          {!compact && <p className="text-[11px] text-slate-500">Cash, KPay, Bank စသည်ဖြင့် တစ်ကြောင်းချင်းခွဲပေးနိုင်သည်။</p>}
         </div>
         <button
           type="button"
@@ -44,7 +45,7 @@ const SplitPaymentEditor: React.FC<Props> = ({ methods, payments, onChange, disa
       </div>
 
       {rows.map((row, index) => (
-        <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_120px_36px]">
+        <div key={index} className={`grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_120px_36px] ${compact ? 'gap-1.5' : 'gap-2'}`}>
           <select
             value={row.paymentMethodId || 0}
             disabled={disabled}

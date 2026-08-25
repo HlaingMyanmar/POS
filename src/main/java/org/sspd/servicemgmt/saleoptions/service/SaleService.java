@@ -91,6 +91,7 @@ public class SaleService {
     private final CompanySettingsService companySettingsService;
     private final SimpMessagingTemplate messagingTemplate;
     private final CashDrawerService cashDrawerService;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
 
     private static final BigDecimal CASHIER_DISCOUNT_PERCENT = new BigDecimal("5");
     private static final BigDecimal MANAGER_DISCOUNT_PERCENT = new BigDecimal("20");
@@ -201,6 +202,7 @@ public class SaleService {
         Sale saved = saleRepository.save(sale);
         saved.setSaleCode(generateSaleCode(saved.getId()));
         saved = saleRepository.save(saved);
+        stockLotService.allocateSale(saved);
         recordStockMovements(saved); // always: reduce inventory stock
         createInventoryValuationJournal(saved); // perpetual inventory: DR COGS / CR Inventory
 
@@ -376,6 +378,7 @@ public class SaleService {
             throw new RuntimeException("Void reason is required");
         }
 
+        stockLotService.restoreSaleVoid(existing);
         reverseStock(existing);
         recordVoidedCashRefund(existing);
         paymentTransactionRepository.deleteByReferenceIdAndReferenceType(existing.getId(), ReferenceType.Sale);

@@ -30,6 +30,9 @@ public class PurchaseDetail {
     private BigDecimal unitCost;
     private BigDecimal subtotal;
 
+    @Column(name = "allocated_landed_cost")
+    private BigDecimal allocatedLandedCost = BigDecimal.ZERO;
+
     @Column(name = "batch_number", length = 100)
     private String batchNumber;
 

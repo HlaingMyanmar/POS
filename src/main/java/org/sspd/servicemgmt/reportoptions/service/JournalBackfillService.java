@@ -127,7 +127,7 @@ public class JournalBackfillService {
     }
 
     private void backfillPurchase(Purchase purchase) {
-        BigDecimal total = safe(purchase.getTotalAmount());
+        BigDecimal total = safe(purchase.getNetAmount());
         BigDecimal paid  = safe(purchase.getPaidAmount());
         BigDecimal due   = safe(purchase.getDueAmount());
         if (total.compareTo(BigDecimal.ZERO) == 0) return;
@@ -139,8 +139,12 @@ public class JournalBackfillService {
                 .staff(purchase.getStaff())
                 .build());
 
-        // DR Purchases
-        saveDetail(entry, accountResolver.purchases(), total, BigDecimal.ZERO);
+        BigDecimal tax = safe(purchase.getTaxAmount()).min(total);
+        BigDecimal purchaseCost = total.subtract(tax);
+        if (purchaseCost.signum() > 0)
+            saveDetail(entry, accountResolver.purchases(), purchaseCost, BigDecimal.ZERO);
+        if (tax.signum() > 0)
+            saveDetail(entry, accountResolver.inputTaxReceivable(), tax, BigDecimal.ZERO);
 
         // CR Accounts Payable
         if (due.compareTo(BigDecimal.ZERO) > 0) {

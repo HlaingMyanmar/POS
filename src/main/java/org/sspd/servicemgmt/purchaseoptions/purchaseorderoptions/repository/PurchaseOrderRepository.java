@@ -6,8 +6,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.POStatus;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.PurchaseOrder;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,4 +21,7 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, In
     Page<PurchaseOrder> findBySearch(@Param("search") String search, Pageable pageable);
 
     List<PurchaseOrder> findBySupplierIdAndStatusIn(Integer supplierId, List<String> statuses);
+
+    @Query("SELECT o FROM PurchaseOrder o WHERE o.status IN :statuses AND o.expectedDate IS NOT NULL AND o.expectedDate < :today ORDER BY o.expectedDate ASC")
+    List<PurchaseOrder> findLateOpen(@Param("statuses") List<POStatus> statuses, @Param("today") LocalDate today);
 }

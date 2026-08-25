@@ -1,5 +1,7 @@
 package org.sspd.servicemgmt.exceptionhandler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -14,6 +16,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
@@ -72,13 +76,27 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntimeException(RuntimeException ex) {
-        ex.printStackTrace(); // print full stack to server console
+        if (isUnexpected(ex)) {
+            log.error("Unhandled server error", ex);
+            return new ResponseEntity<>(
+                    new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal server error", System.currentTimeMillis()),
+                    HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+        log.warn("Request rejected: {}", ex.getMessage());
         ErrorResponse error = new ErrorResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                ex.getMessage() != null ? ex.getMessage() : "Internal server error",
+                HttpStatus.BAD_REQUEST.value(),
+                ex.getMessage() != null ? ex.getMessage() : "Request failed",
                 System.currentTimeMillis()
         );
-        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    private boolean isUnexpected(RuntimeException ex) {
+        return ex instanceof NullPointerException
+                || ex instanceof IndexOutOfBoundsException
+                || ex instanceof ClassCastException
+                || ex instanceof ArithmeticException;
     }
 
 }

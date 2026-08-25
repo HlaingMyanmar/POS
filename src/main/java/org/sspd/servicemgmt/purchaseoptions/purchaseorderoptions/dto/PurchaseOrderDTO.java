@@ -18,6 +18,11 @@ public class PurchaseOrderDTO {
     private LocalDateTime orderDate;
     private LocalDate expectedDate;
     private String status;
+    private String approvedBy;
+    private LocalDateTime approvedAt;
+    private String rejectedBy;
+    private LocalDateTime rejectedAt;
+    private String rejectionReason;
     private BigDecimal totalAmount;
     private String remark;
     private List<PurchaseOrderDetailDTO> details;

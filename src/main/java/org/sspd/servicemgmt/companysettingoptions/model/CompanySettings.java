@@ -75,4 +75,20 @@ public class CompanySettings {
     @Builder.Default
     @Column(name = "booking_digits")
     private Integer bookingDigits = 6;
+
+    @Builder.Default
+    @Column(name = "po_prefix", length = 20)
+    private String poPrefix = "PO";
+
+    @Builder.Default
+    @Column(name = "po_digits")
+    private Integer poDigits = 5;
+
+    @Builder.Default
+    @Column(name = "purchase_return_prefix", length = 20)
+    private String purchaseReturnPrefix = "PRN";
+
+    @Builder.Default
+    @Column(name = "purchase_return_digits")
+    private Integer purchaseReturnDigits = 5;
 }

@@ -17,4 +17,8 @@ public class PaymentTransactionDTO {
 
     private String referenceCode; // PUR-001 သို့မဟုတ် INV-001
     private String entityName;
+    private Boolean reversed;
+    private java.time.LocalDateTime reversedAt;
+    private String reversedBy;
+    private String reversalReason;
 }

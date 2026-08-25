@@ -1,5 +1,5 @@
 import { api } from './api';
-import { ApiResponse, PurchaseOrderDTO, PurchaseOrderReceivePayload, PurchaseDTO } from '../types';
+import { ApiResponse, PurchaseOrderDTO, PurchaseOrderReceivePayload, PurchaseDTO, GoodsReceiptDTO } from '../types';
 
 export interface PurchaseOrderPage {
   content: PurchaseOrderDTO[];
@@ -12,6 +12,7 @@ export interface PurchaseOrderPage {
 export interface PurchaseOrderReceiveResult {
   order?: PurchaseOrderDTO;
   purchase?: PurchaseDTO;
+  goodsReceipt?: GoodsReceiptDTO;
 }
 
 export const purchaseOrderApiService = {
@@ -47,8 +48,28 @@ export const purchaseOrderApiService = {
     await api.delete<any, ApiResponse<void>>(`/v1/purchase-orders/${id}`);
   },
 
+  approve: async (id: number): Promise<PurchaseOrderDTO> => {
+    const res = await api.post<any, ApiResponse<PurchaseOrderDTO>>(`/v1/purchase-orders/${id}/approve`, {});
+    return res.data;
+  },
+
+  reject: async (id: number, reason: string): Promise<PurchaseOrderDTO> => {
+    const res = await api.post<any, ApiResponse<PurchaseOrderDTO>>(`/v1/purchase-orders/${id}/reject`, { reason });
+    return res.data;
+  },
+
   receive: async (id: number, payload: PurchaseOrderReceivePayload): Promise<PurchaseOrderReceiveResult> => {
     const res = await api.post<any, ApiResponse<PurchaseOrderReceiveResult>>(`/v1/purchase-orders/${id}/receive`, payload);
     return res.data;
+  },
+
+  getLate: async (): Promise<PurchaseOrderDTO[]> => {
+    const res = await api.get<any, ApiResponse<PurchaseOrderDTO[]>>('/v1/purchase-orders/overdue');
+    return res.data ?? [];
+  },
+
+  getGoodsReceipts: async (id: number): Promise<GoodsReceiptDTO[]> => {
+    const res = await api.get<any, ApiResponse<GoodsReceiptDTO[]>>(`/v1/purchase-orders/${id}/goods-receipts`);
+    return res.data ?? [];
   }
 };

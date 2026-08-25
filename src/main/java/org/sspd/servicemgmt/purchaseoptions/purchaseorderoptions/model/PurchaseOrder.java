@@ -42,7 +42,22 @@ public class PurchaseOrder {
     private LocalDate expectedDate;
 
     @Enumerated(EnumType.STRING)
-    private POStatus status = POStatus.OPEN;
+    private POStatus status = POStatus.PENDING_APPROVAL;
+
+    @Column(name = "approved_by")
+    private String approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
+    @Column(name = "rejected_by")
+    private String rejectedBy;
+
+    @Column(name = "rejected_at")
+    private LocalDateTime rejectedAt;
+
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
 
     private BigDecimal totalAmount = BigDecimal.ZERO;
 

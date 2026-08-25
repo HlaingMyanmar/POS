@@ -17,6 +17,8 @@ import org.sspd.servicemgmt.purchaseoptions.service.PurchaseService;
 public class PurchaseController {
 
     private final PurchaseService service;
+    private final org.sspd.servicemgmt.purchaseoptions.service.PurchaseImportService importService;
+    private final org.sspd.servicemgmt.purchaseoptions.service.PurchaseInsightService insightService;
 
     /**
      * ၁။ အဝယ်ဘောက်ချာ အားလုံးကိုကြည့်ခြင်း
@@ -44,6 +46,28 @@ public class PurchaseController {
         );
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/trend")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getTrend(
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Trend", service.getTrend(dateFrom, dateTo)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/analytics")
+    public ResponseEntity<ApiResponse<org.sspd.servicemgmt.purchaseoptions.dto.PurchaseAnalyticsDTO>> analytics(
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Purchase analytics", insightService.analytics(dateFrom, dateTo)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @PostMapping("/budget-check")
+    public ResponseEntity<ApiResponse<org.sspd.servicemgmt.purchaseoptions.budget.dto.PurchaseBudgetCheckDTO>> budgetCheck(@RequestBody PurchaseDTO dto) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Budget check", service.checkBudget(dto)));
+    }
+
     /**
      * ၂။ ID ဖြင့် အဝယ်ဘောက်ချာ အသေးစိတ်ကိုရှာခြင်း
      */
@@ -54,6 +78,12 @@ public class PurchaseController {
         return ResponseEntity.ok(
                 new ApiResponse<>(true, "Purchase Details Found", purchase)
         );
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.purchaseoptions.dto.PurchaseTimelineEventDTO>>> timeline(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Purchase timeline", insightService.timeline(id)));
     }
 
     /**
@@ -111,10 +141,12 @@ public class PurchaseController {
      */
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_DELETE')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> cancel(@PathVariable Integer id) {
-        service.cancel(id);
+    public ResponseEntity<ApiResponse<PurchaseDTO>> cancel(@PathVariable Integer id,
+                                                            @RequestParam String reason,
+                                                            @RequestParam(required = false) Integer refundPaymentMethodId) {
+        PurchaseDTO cancelled = service.cancel(id, reason, refundPaymentMethodId);
         return ResponseEntity.ok(
-                new ApiResponse<>(true, "Purchase Cancelled Successfully", null)
+                new ApiResponse<>(true, "Purchase Cancelled Successfully", cancelled)
         );
     }
 
@@ -141,6 +173,19 @@ public class PurchaseController {
     }
 
     /**
+     * ၈။ Top suppliers by purchase amount
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @GetMapping("/top-suppliers")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getTopSuppliers(
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Top Suppliers Retrieved", service.getTopSuppliers(dateFrom, dateTo))
+        );
+    }
+
+    /**
      * ၈။ Excel export (.xlsx) of purchases in a date range
      */
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
@@ -153,5 +198,19 @@ public class PurchaseController {
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                 .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(bytes);
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_CREATE')")
+    @PostMapping(value="/import/preview",consumes=org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<org.sspd.servicemgmt.purchaseoptions.dto.PurchaseImportPreviewDTO>> previewImport(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
+        return ResponseEntity.ok(new ApiResponse<>(true,"Purchase import preview",importService.preview(file)));
+    }
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_CREATE')")
+    @GetMapping("/import/template")
+    public ResponseEntity<byte[]> importTemplate() throws java.io.IOException {
+        return ResponseEntity.ok().header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=purchase_import_template.xlsx")
+                .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(importService.template());
     }
 }

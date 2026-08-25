@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState, useCallback } from 'react';
 import { useDataEvents } from '../../hooks/useDataEvents';
 import { summaryReportService } from '../../services/api';
+import { purchaseApiService, type PurchaseAnalytics } from '../../services/purchaseapiservice';
 import { Truck, TrendingDown } from 'lucide-react';
 import { useRefreshOnTabActivate } from '../../hooks/useRefreshOnTabActivate';
 
@@ -9,6 +10,7 @@ const fmt = (v: any) => Number(v ?? 0).toLocaleString();
 
 export default function PurchaseSummaryReport() {
   const [data,    setData]    = useState<any>(null);
+  const [analytics, setAnalytics] = useState<PurchaseAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [from,    setFrom]    = useState('');
   const [to,      setTo]      = useState('');
@@ -16,8 +18,12 @@ export default function PurchaseSummaryReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await summaryReportService.purchase(from || undefined, to || undefined);
+      const [res, analyticsRes] = await Promise.all([
+        summaryReportService.purchase(from || undefined, to || undefined),
+        purchaseApiService.getAnalytics(from, to).catch(() => null)
+      ]);
       setData(res.data);
+      setAnalytics(analyticsRes);
     } catch {}
     setLoading(false);
   }, [from, to]);
@@ -101,6 +107,43 @@ export default function PurchaseSummaryReport() {
               </table>
             </div>
           </div>
+
+          {analytics && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Tax / VAT', value: fmt(analytics.taxAmount) },
+                { label: 'Withholding', value: fmt(analytics.withholdingTaxAmount) },
+                { label: 'Landed cost', value: fmt(analytics.landedCostAmount) },
+                { label: 'GRN variance', value: `${analytics.grnVarianceCount} / ${analytics.grnCount}` },
+              ].map(k => (
+                <div key={k.label} className="bg-white border border-slate-200 rounded-xl p-4">
+                  <div className="text-xl font-black text-slate-800">{k.value}</div>
+                  <div className="text-xs text-slate-500 mt-1">{k.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {analytics && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {[{title:'By Category',rows:analytics.byCategory},{title:'By Currency',rows:analytics.byCurrency},{title:'By Supplier',rows:analytics.bySupplier}].map(block => (
+                <div key={block.title} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b font-semibold text-sm text-slate-700">{block.title}</div>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {block.rows.map((row, i) => (
+                        <tr key={row.name} className={`border-t ${i % 2 === 0 ? '' : 'bg-slate-50'}`}>
+                          <td className="px-4 py-2.5 font-semibold text-slate-700">{row.name}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-500">{fmt(row.count)}</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-violet-700">{fmt(row.amount)}</td>
+                        </tr>
+                      ))}
+                      {block.rows.length === 0 && <tr><td className="px-4 py-6 text-center text-slate-400">No data</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>

@@ -264,7 +264,7 @@ fun PurchaseFormScreen(
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         val gross = totalAmount(state.lines)
-                        val net   = netAmount(state.lines, state.discountAmount)
+                        val net   = netAmount(state.lines, state.discountAmount, state.taxAmount, state.otherCharges)
                         val paid  = state.paidAmount.toDoubleOrNull() ?: 0.0
                         val due   = maxOf(0.0, net - paid)
 
@@ -280,6 +280,32 @@ fun PurchaseFormScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine      = true,
                             shape           = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value           = state.taxAmount,
+                            onValueChange   = vm::setTaxAmount,
+                            modifier        = Modifier.fillMaxWidth(),
+                            label           = { Text("အခွန် / VAT") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine      = true,
+                            shape           = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value           = state.otherCharges,
+                            onValueChange   = vm::setOtherCharges,
+                            modifier        = Modifier.fillMaxWidth(),
+                            label           = { Text("အခြားကုန်ကျစရိတ်") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine      = true,
+                            shape           = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value         = state.supplierInvoiceNo,
+                            onValueChange = vm::setSupplierInvoiceNo,
+                            modifier      = Modifier.fillMaxWidth(),
+                            label         = { Text("ပေးသွင်းသူ Invoice No.") },
+                            singleLine    = true,
+                            shape         = RoundedCornerShape(10.dp)
                         )
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("ကျသင့်ငွေ", color = PurchaseColor, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)

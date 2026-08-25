@@ -10,17 +10,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.api.PageResponse;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
+import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
 import org.sspd.servicemgmt.purchaseoptions.dto.PurchaseDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.dto.PurchaseDetailDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.dto.PurchaseOrderDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.dto.PurchaseOrderDetailDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.dto.PurchaseOrderReceiveDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.dto.PurchaseOrderReceiveResultDTO;
+import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.dto.GoodsReceiptDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.mapper.PurchaseOrderMapper;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.POStatus;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.PurchaseOrder;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.PurchaseOrderDetail;
+import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.GoodsReceipt;
+import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.GoodsReceiptLine;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.repository.PurchaseOrderRepository;
+import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.repository.GoodsReceiptRepository;
 import org.sspd.servicemgmt.purchaseoptions.service.PurchaseService;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
@@ -45,11 +50,13 @@ public class PurchaseOrderService {
     private static final String PO_TOPIC = "/topic/purchase-order";
 
     private final PurchaseOrderRepository poRepository;
+    private final GoodsReceiptRepository goodsReceiptRepository;
     private final SupplierRepository supplierRepository;
     private final StaffRepository staffRepository;
     private final ProductRepository productRepository;
     private final PurchaseOrderMapper mapper;
     private final PurchaseService purchaseService;
+    private final CompanySettingsService companySettingsService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_CREATE')")
@@ -67,7 +74,7 @@ public class PurchaseOrderService {
         po.setSupplier(supplier);
         po.setStaff(staff);
         po.setPoCode("PENDING");
-        po.setStatus(POStatus.OPEN);
+        po.setStatus(POStatus.PENDING_APPROVAL);
         if (po.getOrderDate() == null) po.setOrderDate(LocalDateTime.now());
 
         BigDecimal total = BigDecimal.ZERO;
@@ -114,6 +121,22 @@ public class PurchaseOrderService {
         return mapper.toDto(getEntity(id));
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_READ')")
+    @Transactional(readOnly = true)
+    public List<PurchaseOrderDTO> findLate() {
+        return poRepository.findLateOpen(
+                List.of(POStatus.OPEN, POStatus.PARTIAL), LocalDate.now())
+                .stream().map(mapper::toDto).toList();
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_READ')")
+    @Transactional(readOnly = true)
+    public List<GoodsReceiptDTO> findGoodsReceipts(Integer purchaseOrderId) {
+        getEntity(purchaseOrderId);
+        return goodsReceiptRepository.findByPurchaseOrderIdOrderByIdDesc(purchaseOrderId)
+                .stream().map(this::toGoodsReceiptDto).toList();
+    }
+
     /**
      * Header/detail edits allowed only while OPEN and nothing received yet.
      */
@@ -121,8 +144,8 @@ public class PurchaseOrderService {
     @Transactional
     public PurchaseOrderDTO update(Integer id, PurchaseOrderDTO dto) {
         PurchaseOrder po = getEntity(id);
-        if (po.getStatus() != POStatus.OPEN)
-            throw new RuntimeException("Only OPEN purchase orders can be edited.");
+        if (po.getStatus() != POStatus.PENDING_APPROVAL && po.getStatus() != POStatus.OPEN)
+            throw new RuntimeException("Only purchase orders awaiting approval can be edited.");
         boolean anyReceived = po.getDetails().stream()
                 .anyMatch(d -> d.getReceivedQty() != null && d.getReceivedQty() > 0);
         if (anyReceived)
@@ -169,6 +192,40 @@ public class PurchaseOrderService {
         messagingTemplate.convertAndSend(PO_TOPIC, "PO_CANCELLED");
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @Transactional
+    public PurchaseOrderDTO approve(Integer id) {
+        PurchaseOrder po = getEntity(id);
+        if (po.getStatus() != POStatus.PENDING_APPROVAL && po.getStatus() != POStatus.OPEN)
+            throw new RuntimeException("Only pending purchase orders can be approved.");
+        po.setStatus(POStatus.APPROVED);
+        po.setApprovedBy(currentUsername());
+        po.setApprovedAt(LocalDateTime.now());
+        po.setRejectedBy(null);
+        po.setRejectedAt(null);
+        po.setRejectionReason(null);
+        PurchaseOrder saved = poRepository.save(po);
+        messagingTemplate.convertAndSend(PO_TOPIC, "PO_APPROVED");
+        return mapper.toDto(saved);
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @Transactional
+    public PurchaseOrderDTO reject(Integer id, String reason) {
+        if (reason == null || reason.isBlank())
+            throw new RuntimeException("Rejection reason is required.");
+        PurchaseOrder po = getEntity(id);
+        if (po.getStatus() != POStatus.PENDING_APPROVAL && po.getStatus() != POStatus.OPEN)
+            throw new RuntimeException("Only pending purchase orders can be rejected.");
+        po.setStatus(POStatus.REJECTED);
+        po.setRejectedBy(currentUsername());
+        po.setRejectedAt(LocalDateTime.now());
+        po.setRejectionReason(reason.trim());
+        PurchaseOrder saved = poRepository.save(po);
+        messagingTemplate.convertAndSend(PO_TOPIC, "PO_REJECTED");
+        return mapper.toDto(saved);
+    }
+
     /**
      * ✅ Goods Receipt — receives PO lines, creates the actual Purchase voucher
      * (stock + serials + accounting run inside PurchaseService.save) and updates
@@ -178,8 +235,8 @@ public class PurchaseOrderService {
     @Transactional
     public PurchaseOrderReceiveResultDTO receive(Integer id, PurchaseOrderReceiveDTO receive) {
         PurchaseOrder po = getEntity(id);
-        if (po.getStatus() != POStatus.OPEN && po.getStatus() != POStatus.PARTIAL)
-            throw new RuntimeException("Only OPEN or PARTIAL orders can be received.");
+        if (po.getStatus() != POStatus.APPROVED && po.getStatus() != POStatus.OPEN && po.getStatus() != POStatus.PARTIAL)
+            throw new RuntimeException("Purchase Order must be approved before goods can be received.");
 
         Map<Integer, PurchaseOrderReceiveDTO.ReceiveLine> lineByDetailId = receive.getLines() == null
                 ? Map.of()
@@ -189,11 +246,13 @@ public class PurchaseOrderService {
 
         List<PurchaseOrderDetail> toReceive = po.getDetails().stream()
                 .filter(d -> {
-                    Integer orderedRemaining = (d.getQty() != null ? d.getQty() : 0) - (d.getReceivedQty() != null ? d.getReceivedQty() : 0);
+                    Integer orderedRemaining = safeInt(d.getQty()) - safeInt(d.getReceivedQty())
+                            - safeInt(d.getDamagedQty()) - safeInt(d.getRejectedQty());
                     if (orderedRemaining <= 0) return false;
                     if (!lineByDetailId.isEmpty()) {
                         var line = lineByDetailId.get(d.getId());
-                        return line != null && line.getQty() != null && line.getQty() > 0;
+                        return line != null && (safeInt(line.getQty()) + safeInt(line.getDamagedQty())
+                                + safeInt(line.getRejectedQty())) > 0;
                     }
                     return true; // no explicit lines → receive everything remaining
                 })
@@ -212,20 +271,39 @@ public class PurchaseOrderService {
         purchaseDto.setOtherCharges(receive.getOtherCharges());
         purchaseDto.setRemark(receive.getRemark() != null ? receive.getRemark()
                 : ("Goods Receipt for PO " + po.getPoCode()));
+        purchaseDto.setPoId(po.getId());
+        purchaseDto.setSupplierInvoiceNo(receive.getSupplierInvoiceNo());
         purchaseDto.setPaymentMethodId(receive.getPaymentMethodId());
         purchaseDto.setTransactionNo(receive.getTransactionNo());
         purchaseDto.setPayments(receive.getPayments());
 
         List<PurchaseDetailDTO> details = new ArrayList<>();
+        Map<Integer, Integer> acceptedByDetail = new java.util.HashMap<>();
+        Map<Integer, Integer> damagedByDetail = new java.util.HashMap<>();
+        Map<Integer, Integer> rejectedByDetail = new java.util.HashMap<>();
+        Map<Integer, BigDecimal> invoiceCostByDetail = new java.util.HashMap<>();
+        boolean hasVariance = false;
         for (PurchaseOrderDetail pod : toReceive) {
             var line = lineByDetailId.get(pod.getId());
             int qty = line != null && line.getQty() != null ? line.getQty()
-                    : (pod.getQty() - safeInt(pod.getReceivedQty()));
+                    : (safeInt(pod.getQty()) - safeInt(pod.getReceivedQty())
+                    - safeInt(pod.getDamagedQty()) - safeInt(pod.getRejectedQty()));
+            int damaged = line != null ? safeInt(line.getDamagedQty()) : 0;
+            int rejected = line != null ? safeInt(line.getRejectedQty()) : 0;
 
-            int already = safeInt(pod.getReceivedQty());
-            if (already + qty > safeInt(pod.getQty()))
-                throw new RuntimeException("Receive quantity exceeds ordered remaining for: "
+            int alreadyAccounted = safeInt(pod.getReceivedQty()) + safeInt(pod.getDamagedQty()) + safeInt(pod.getRejectedQty());
+            if (qty < 0 || damaged < 0 || rejected < 0 || alreadyAccounted + qty + damaged + rejected > safeInt(pod.getQty()))
+                throw new RuntimeException("Accepted/damaged/rejected quantity exceeds ordered remaining for: "
                         + pod.getProduct().getName());
+            BigDecimal invoiceCost = line != null && line.getInvoiceUnitCost() != null
+                    ? line.getInvoiceUnitCost() : pod.getUnitCost();
+            if (invoiceCost.compareTo(BigDecimal.ZERO) < 0)
+                throw new RuntimeException("Invoice unit cost cannot be negative.");
+            if (invoiceCost.compareTo(pod.getUnitCost()) != 0) hasVariance = true;
+            acceptedByDetail.put(pod.getId(), qty);
+            damagedByDetail.put(pod.getId(), damaged);
+            rejectedByDetail.put(pod.getId(), rejected);
+            invoiceCostByDetail.put(pod.getId(), invoiceCost);
 
             Product product = pod.getProduct();
             int bulkMonths = line != null && line.getWarrantyMonths() != null ? line.getWarrantyMonths()
@@ -234,38 +312,77 @@ public class PurchaseOrderService {
                     ? line.getItemWarranties()
                     : java.util.stream.IntStream.range(0, qty).mapToObj(i -> bulkMonths).toList();
 
-            details.add(PurchaseDetailDTO.builder()
+            if (qty > 0) details.add(PurchaseDetailDTO.builder()
                     .productId(product.getId())
                     .qty(qty)
-                    .unitCost(pod.getUnitCost())
-                    .subtotal(pod.getUnitCost().multiply(BigDecimal.valueOf(qty)))
+                    .unitCost(invoiceCost)
+                    .subtotal(invoiceCost.multiply(BigDecimal.valueOf(qty)))
                     .warrantyMonths(bulkMonths)
                     .itemWarranties(itemWarranties)
                     .serialNumbers(line != null && line.getSerialNumbers() != null ? line.getSerialNumbers() : null)
                     .serialConditions(line != null && line.getSerialConditions() != null ? line.getSerialConditions() : null)
                     .serialPhotos(line != null && line.getSerialPhotos() != null ? line.getSerialPhotos() : null)
+                    .batchNumber(line != null ? line.getBatchNumber() : null)
+                    .expiryDate(line != null ? line.getExpiryDate() : null)
                     .build());
         }
-        purchaseDto.setDetails(details);
-
-        PurchaseDTO createdPurchase = purchaseService.save(purchaseDto);
+        if (hasVariance && (receive.getVarianceReason() == null || receive.getVarianceReason().isBlank()))
+            throw new RuntimeException("Variance reason is required when invoice price differs from PO price.");
+        PurchaseDTO createdPurchase = null;
+        if (!details.isEmpty()) {
+            purchaseDto.setDetails(details);
+            createdPurchase = purchaseService.save(purchaseDto);
+        }
 
         // Update received quantities + status
         for (PurchaseOrderDetail pod : toReceive) {
-            var line = lineByDetailId.get(pod.getId());
-            int qty = line != null && line.getQty() != null ? line.getQty()
-                    : (safeInt(pod.getQty()) - safeInt(pod.getReceivedQty()));
+            int qty = acceptedByDetail.getOrDefault(pod.getId(), 0);
             pod.setReceivedQty(safeInt(pod.getReceivedQty()) + qty);
+            pod.setDamagedQty(safeInt(pod.getDamagedQty()) + damagedByDetail.getOrDefault(pod.getId(), 0));
+            pod.setRejectedQty(safeInt(pod.getRejectedQty()) + rejectedByDetail.getOrDefault(pod.getId(), 0));
         }
         boolean allReceived = po.getDetails().stream()
-                .allMatch(d -> safeInt(d.getReceivedQty()) >= safeInt(d.getQty()));
+                .allMatch(d -> safeInt(d.getReceivedQty()) + safeInt(d.getDamagedQty())
+                        + safeInt(d.getRejectedQty()) >= safeInt(d.getQty()));
         po.setStatus(allReceived ? POStatus.RECEIVED : POStatus.PARTIAL);
         PurchaseOrder savedPo = poRepository.save(po);
 
         messagingTemplate.convertAndSend(PO_TOPIC, "PO_RECEIVED");
+        PurchaseDTO linked = createdPurchase;
+        if (linked != null) {
+            linked.setPoId(po.getId());
+            linked.setPoCode(savedPo.getPoCode());
+        }
+        GoodsReceipt grn = GoodsReceipt.builder()
+                .grnCode("PENDING")
+                .purchaseOrder(savedPo)
+                .purchaseId(linked != null ? linked.getId() : null)
+                .supplierInvoiceNo(receive.getSupplierInvoiceNo())
+                .receivedAt(LocalDateTime.now())
+                .receivedBy(currentUsername())
+                .matchStatus(hasVariance ? "VARIANCE" : "MATCHED")
+                .varianceReason(receive.getVarianceReason())
+                .build();
+        List<GoodsReceiptLine> grnLines = new ArrayList<>();
+        for (PurchaseOrderDetail pod : toReceive) {
+            int accepted = acceptedByDetail.getOrDefault(pod.getId(), 0);
+            BigDecimal invoiceCost = invoiceCostByDetail.getOrDefault(pod.getId(), pod.getUnitCost());
+            grnLines.add(GoodsReceiptLine.builder().goodsReceipt(grn).poDetailId(pod.getId())
+                    .productId(pod.getProduct().getId()).productName(pod.getProduct().getName())
+                    .orderedQty(pod.getQty()).acceptedQty(accepted)
+                    .damagedQty(damagedByDetail.getOrDefault(pod.getId(), 0))
+                    .rejectedQty(rejectedByDetail.getOrDefault(pod.getId(), 0))
+                    .poUnitCost(pod.getUnitCost()).invoiceUnitCost(invoiceCost)
+                    .priceVariance(invoiceCost.subtract(pod.getUnitCost())).build());
+        }
+        grn.setLines(grnLines);
+        grn = goodsReceiptRepository.save(grn);
+        grn.setGrnCode(String.format("GRN-%06d", grn.getId()));
+        grn = goodsReceiptRepository.save(grn);
         return PurchaseOrderReceiveResultDTO.builder()
                 .order(mapper.toDto(savedPo))
-                .purchase(createdPurchase)
+                .purchase(linked)
+                .goodsReceipt(toGoodsReceiptDto(grn))
                 .build();
     }
 
@@ -276,11 +393,34 @@ public class PurchaseOrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase Order not found: " + id));
     }
 
+    private String currentUsername() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        return authentication != null ? authentication.getName() : "SYSTEM";
+    }
+
     private String generatePoCode(Integer id) {
-        return String.format("PO-%05d", id);
+        var cfg = companySettingsService.getSettings();
+        String prefix = cfg.getPoPrefix() != null && !cfg.getPoPrefix().isBlank() ? cfg.getPoPrefix() : "PO";
+        int digits = cfg.getPoDigits() != null ? cfg.getPoDigits() : 5;
+        return String.format("%s-%0" + digits + "d", prefix, id);
     }
 
     private int safeInt(Integer value) {
         return value != null ? value : 0;
+    }
+
+    private GoodsReceiptDTO toGoodsReceiptDto(GoodsReceipt grn) {
+        return GoodsReceiptDTO.builder().id(grn.getId()).grnCode(grn.getGrnCode())
+                .purchaseOrderId(grn.getPurchaseOrder().getId()).poCode(grn.getPurchaseOrder().getPoCode())
+                .purchaseId(grn.getPurchaseId()).supplierInvoiceNo(grn.getSupplierInvoiceNo())
+                .receivedAt(grn.getReceivedAt()).receivedBy(grn.getReceivedBy())
+                .matchStatus(grn.getMatchStatus()).varianceReason(grn.getVarianceReason())
+                .lines(grn.getLines().stream().map(line -> GoodsReceiptDTO.Line.builder()
+                        .productId(line.getProductId()).productName(line.getProductName())
+                        .orderedQty(line.getOrderedQty()).acceptedQty(line.getAcceptedQty())
+                        .damagedQty(line.getDamagedQty()).rejectedQty(line.getRejectedQty())
+                        .poUnitCost(line.getPoUnitCost()).invoiceUnitCost(line.getInvoiceUnitCost())
+                        .priceVariance(line.getPriceVariance()).build()).toList()).build();
     }
 }

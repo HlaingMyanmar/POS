@@ -38,8 +38,26 @@ public class PurchaseDTO {
     // DRAFT / CONFIRMED / CANCELLED
     private String status;
     private BigDecimal taxAmount;
+    private String taxMode;
+    private BigDecimal taxRate;
+    private BigDecimal withholdingTaxAmount;
     private BigDecimal otherCharges;
+    private String landedCostAllocationMethod;
+    private String warehouseName;
+    private String currencyCode;
+    private BigDecimal exchangeRate;
+    private BigDecimal foreignNetAmount;
     private String attachmentName;
     private String attachmentData;
     private Integer poId;
+    private String poCode;
+    private String supplierInvoiceNo;
+    private String cancelReason;
+    private String cancelledBy;
+    private LocalDateTime cancelledAt;
+    private Boolean creditLimitOverride;
+    private String creditOverrideReason;
+    private String creditOverrideBy;
+    private LocalDateTime creditOverrideAt;
+    private java.util.List<String> budgetWarnings;
 }

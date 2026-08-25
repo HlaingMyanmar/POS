@@ -47,10 +47,11 @@ fun PurchaseListScreen(
     var searchText by remember { mutableStateOf(state.search) }
     var voucherText by remember { mutableStateOf("") }
     LaunchedEffect(state.search) { searchText = state.search }
-    val visibleItems = remember(state.items, state.statusFilter, state.dateFrom, state.dateTo) {
-        state.items.filter { purchase ->
+    val visibleItems = remember(state.items, state.overdueItems, state.statusFilter, state.dateFrom, state.dateTo) {
+        val source = if (state.statusFilter == StatusFilter.OVERDUE) state.overdueItems else state.items
+        source.filter { purchase ->
             val matchesStatus = when (state.statusFilter) {
-                StatusFilter.ALL -> true
+                StatusFilter.ALL, StatusFilter.OVERDUE -> true
                 StatusFilter.PAID -> statusKey(purchase) == "paid"
                 StatusFilter.PARTIAL -> statusKey(purchase) == "partial"
                 StatusFilter.DUE -> statusKey(purchase) == "due"
@@ -149,6 +150,7 @@ fun PurchaseListScreen(
                     item { DateChip("ဒီလ", state.dateShortcut == DateShortcut.MONTH) { vm.applyDateShortcut(DateShortcut.MONTH) } }
                     item { DateChip("အားလုံး", state.dateShortcut == DateShortcut.ALL) { vm.applyDateShortcut(DateShortcut.ALL) } }
                     item { DateChip("ပေးရန်ကျန်", state.statusFilter == StatusFilter.DUE, danger = true) { vm.setStatusFilter(StatusFilter.DUE) } }
+                    item { DateChip("ကြွေးကျန်", state.statusFilter == StatusFilter.OVERDUE, danger = true) { vm.setStatusFilter(StatusFilter.OVERDUE) } }
                     item { DateChip("အားလုံး", state.statusFilter == StatusFilter.ALL) { vm.setStatusFilter(StatusFilter.ALL) } }
                 }
 

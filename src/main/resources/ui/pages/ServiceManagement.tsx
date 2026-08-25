@@ -1,19 +1,20 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { serviceTypeService, serviceItemService, subServiceTypeService, exportService } from '../services/api';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
 const emptyType = { name: '', description: '', isActive: true };
-const emptyItem = { item: '', price: '', serviceTypeId: '', subServiceTypeId: '', isActive: true };
+const emptyItem = { item: '', price: '', costPrice: '', minPrice: '', maxPrice: '', commissionPercent: '0', warrantyMonths: '0', durationMinutes: '0', description: '', focDefault: false, taxRate: '0', skillRequired: '', supportedDeviceTypes: '', defaultRequiredParts: '', serviceTypeId: '', subServiceTypeId: '', isActive: true };
 const emptySubType = { name: '', description: '', isActive: true, serviceTypeId: 0 };
 
 const ServiceItemsTable: React.FC<{
   items: any[];
   onEdit: (item: any) => void;
   onDelete: (id: number) => void;
+  onHistory: (item: any) => void;
   showType: boolean;
-}> = ({ items, onEdit, onDelete, showType }) => (
+}> = ({ items, onEdit, onDelete, onHistory, showType }) => (
   <div className="overflow-x-auto">
     <table className="w-full min-w-[760px] text-sm">
       <thead className="bg-purple-600 text-left">
@@ -23,6 +24,8 @@ const ServiceItemsTable: React.FC<{
           {showType && <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အမျိုးအစား</th>}
           <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အုပ်စုခွဲ</th>
           <th className="px-4 py-3.5 text-right text-[13px] font-extrabold text-white tracking-wide">ဈေးနှုန်း</th>
+          <th className="px-4 py-3.5 text-right text-[13px] font-extrabold text-white tracking-wide">ကုန်ကျ</th>
+          <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အာမခံ</th>
           <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">အခြေအနေ</th>
           <th className="px-4 py-3.5 text-[13px] font-extrabold text-white tracking-wide">လုပ်ဆောင်ချက်</th>
         </tr>
@@ -35,6 +38,8 @@ const ServiceItemsTable: React.FC<{
             {showType && <td className="px-4 py-3">{item.serviceTypeName || '-'}</td>}
             <td className="px-4 py-3 text-slate-500">{item.subServiceTypeName || '-'}</td>
             <td className="px-4 py-3 text-right">{Number(item.price).toLocaleString()}</td>
+            <td className="px-4 py-3 text-right text-slate-500">{Number(item.costPrice || 0).toLocaleString()}</td>
+            <td className="px-4 py-3 text-slate-500">{item.warrantyMonths ? `${item.warrantyMonths} လ` : '-'}</td>
             <td className="px-4 py-3">
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                 {item.isActive ? 'Active' : 'Inactive'}
@@ -43,6 +48,7 @@ const ServiceItemsTable: React.FC<{
             <td className="px-4 py-3">
               <div className="flex gap-2">
                 <button onClick={() => onEdit(item)} className="text-indigo-600 hover:underline text-xs">Edit</button>
+                <button onClick={() => onHistory(item)} className="text-amber-600 hover:underline text-xs">History</button>
                 <button onClick={() => onDelete(item.id)} className="text-red-500 hover:underline text-xs">Delete</button>
               </div>
             </td>
@@ -65,6 +71,8 @@ const ServiceManagement: React.FC = () => {
   const [editItemId, setEditItemId] = useState<number|null>(null);
   const [showTypeModal, setShowTypeModal] = useState(false);
   const [showItemModal, setShowItemModal] = useState(false);
+  const [priceHistory, setPriceHistory] = useState<any[]>([]);
+  const [historyItem, setHistoryItem] = useState<any|null>(null);
 
   // Sub types for item form dropdown
   const [itemSubTypes, setItemSubTypes] = useState<any[]>([]);
@@ -191,7 +199,7 @@ const ServiceManagement: React.FC = () => {
 
   const openItemModal = async (row?: any) => {
     const form = row
-      ? { item: row.item, price: row.price, serviceTypeId: row.serviceTypeId, subServiceTypeId: row.subServiceTypeId ?? '', isActive: row.isActive }
+      ? { item: row.item, price: row.price, costPrice: row.costPrice ?? '', minPrice: row.minPrice ?? '', maxPrice: row.maxPrice ?? '', commissionPercent: row.commissionPercent ?? 0, warrantyMonths: row.warrantyMonths ?? 0, durationMinutes: row.durationMinutes ?? 0, description: row.description ?? '', focDefault: Boolean(row.focDefault), taxRate: row.taxRate ?? 0, skillRequired: row.skillRequired ?? '', supportedDeviceTypes: row.supportedDeviceTypes ?? '', defaultRequiredParts: row.defaultRequiredParts ?? '', serviceTypeId: row.serviceTypeId, subServiceTypeId: row.subServiceTypeId ?? '', isActive: row.isActive }
       : emptyItem;
     setItemForm(form);
     setEditItemId(row?.id ?? null);
@@ -207,6 +215,13 @@ const ServiceManagement: React.FC = () => {
       const payload = {
         ...itemForm,
         price: Number(itemForm.price),
+        costPrice: Number(itemForm.costPrice || 0),
+        minPrice: itemForm.minPrice === '' ? null : Number(itemForm.minPrice),
+        maxPrice: itemForm.maxPrice === '' ? null : Number(itemForm.maxPrice),
+        commissionPercent: Number(itemForm.commissionPercent || 0),
+        warrantyMonths: Number(itemForm.warrantyMonths || 0),
+        durationMinutes: Number(itemForm.durationMinutes || 0),
+        taxRate: Number(itemForm.taxRate || 0),
         serviceTypeId: Number(itemForm.serviceTypeId),
         subServiceTypeId: itemForm.subServiceTypeId ? Number(itemForm.subServiceTypeId) : null,
       };
@@ -216,6 +231,17 @@ const ServiceManagement: React.FC = () => {
       if (res.success) { loadAll(); setShowItemModal(false); }
       else Swal.fire('Error', res.message, 'error');
     } catch { Swal.fire('Error', 'Failed', 'error'); } finally { setSavingItem(false); }
+  };
+
+  const viewPriceHistory = async (item: any) => {
+    try {
+      const res = await serviceItemService.getPriceHistory(item.id);
+      if (!res.success) return Swal.fire('Error', res.message, 'error');
+      setPriceHistory(res.data ?? []);
+      setHistoryItem(item);
+    } catch {
+      Swal.fire('Error', 'ဈေးနှုန်းမှတ်တမ်း ဖတ်မရပါ', 'error');
+    }
   };
 
   const deleteItem = async (id: number) => {
@@ -379,9 +405,9 @@ const ServiceManagement: React.FC = () => {
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-indigo-700">{group.items.length} ခု</span>
               </div>
-              <ServiceItemsTable items={group.items} onEdit={openItemModal} onDelete={deleteItem} showType={false} />
+              <ServiceItemsTable items={group.items} onEdit={openItemModal} onDelete={deleteItem} onHistory={viewPriceHistory} showType={false} />
             </section>
-          )) : <ServiceItemsTable items={filteredItems} onEdit={openItemModal} onDelete={deleteItem} showType />}
+          )) : <ServiceItemsTable items={filteredItems} onEdit={openItemModal} onDelete={deleteItem} onHistory={viewPriceHistory} showType />}
         </div>
       )}
       </div>{/* end card wrapper */}
@@ -445,6 +471,25 @@ const ServiceManagement: React.FC = () => {
         </div>
       )}
 
+      {historyItem && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[80vh] overflow-auto">
+            <div className="sticky top-0 flex items-center justify-between border-b bg-white px-5 py-4">
+              <div><h2 className="font-semibold text-lg">Price History</h2><p className="text-xs text-slate-500">{historyItem.code} - {historyItem.item}</p></div>
+              <button onClick={() => setHistoryItem(null)} className="rounded-lg border px-3 py-1.5 text-sm">Close</button>
+            </div>
+            {priceHistory.length === 0 ? <p className="p-8 text-center text-sm text-slate-400">No price changes yet.</p> : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left"><tr><th className="px-4 py-3">Changed At</th><th className="px-4 py-3">Price</th><th className="px-4 py-3">Cost</th><th className="px-4 py-3">Changed By</th></tr></thead>
+                <tbody className="divide-y">{priceHistory.map(row => (
+                  <tr key={row.id}><td className="px-4 py-3">{row.changedAt ? new Date(row.changedAt).toLocaleString() : '-'}</td><td className="px-4 py-3">{Number(row.oldPrice || 0).toLocaleString()} → {Number(row.newPrice || 0).toLocaleString()}</td><td className="px-4 py-3">{Number(row.oldCost || 0).toLocaleString()} → {Number(row.newCost || 0).toLocaleString()}</td><td className="px-4 py-3">{row.changedBy || 'SYSTEM'}</td></tr>
+                ))}</tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Item Modal */}
       {showItemModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -474,6 +519,48 @@ const ServiceManagement: React.FC = () => {
             <input type="number" placeholder="Price" value={itemForm.price}
               onChange={e => setItemForm((p: any) => ({ ...p, price: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" min="0" placeholder="Minimum Price" value={itemForm.minPrice}
+                onChange={e => setItemForm((p: any) => ({ ...p, minPrice: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <input type="number" min="0" placeholder="Maximum Price" value={itemForm.maxPrice}
+                onChange={e => setItemForm((p: any) => ({ ...p, maxPrice: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" placeholder="ကုန်ကျစရိတ်" value={itemForm.costPrice}
+                onChange={e => setItemForm((p: any) => ({ ...p, costPrice: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <input type="number" placeholder="အာမခံ (လ)" value={itemForm.warrantyMonths}
+                onChange={e => setItemForm((p: any) => ({ ...p, warrantyMonths: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <input type="number" placeholder="ကြာချိန် (မိနစ်)" value={itemForm.durationMinutes}
+                onChange={e => setItemForm((p: any) => ({ ...p, durationMinutes: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <input type="number" placeholder="အခွန် %" value={itemForm.taxRate}
+                onChange={e => setItemForm((p: any) => ({ ...p, taxRate: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <input type="number" min="0" max="100" placeholder="Commission %" value={itemForm.commissionPercent}
+                onChange={e => setItemForm((p: any) => ({ ...p, commissionPercent: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <input placeholder="လိုအပ်သော ကျွမ်းကျင်မှု" value={itemForm.skillRequired}
+              onChange={e => setItemForm((p: any) => ({ ...p, skillRequired: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <textarea placeholder="Supported Device Types (comma separated)" value={itemForm.supportedDeviceTypes}
+              onChange={e => setItemForm((p: any) => ({ ...p, supportedDeviceTypes: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+            <textarea placeholder="Default Required Parts (one per line)" value={itemForm.defaultRequiredParts}
+              onChange={e => setItemForm((p: any) => ({ ...p, defaultRequiredParts: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+            <textarea placeholder="ဖော်ပြချက်" value={itemForm.description}
+              onChange={e => setItemForm((p: any) => ({ ...p, description: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={Boolean(itemForm.focDefault)}
+                onChange={e => setItemForm((p: any) => ({ ...p, focDefault: e.target.checked }))} />
+              FOC default (အာမခံ/အခမဲ့)
+            </label>
             {editItemId && (
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={itemForm.isActive}

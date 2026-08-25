@@ -83,6 +83,21 @@ public class BookingController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Converted to Service Job(s)", service.convertToJob(id)));
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
+    @PostMapping("/{id}/attachments")
+    ResponseEntity<ApiResponse<org.sspd.servicemgmt.bookingoptions.dto.BookingAttachmentDTO>> addAttachment(
+            @PathVariable Integer id,
+            @RequestBody org.sspd.servicemgmt.bookingoptions.dto.BookingAttachmentDTO dto) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Attached", service.addAttachment(id, dto)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
+    @DeleteMapping("/{id}/attachments/{attachmentId}")
+    ResponseEntity<ApiResponse<Void>> deleteAttachment(@PathVariable Integer id, @PathVariable Integer attachmentId) {
+        service.deleteAttachment(id, attachmentId);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Attachment deleted", null));
+    }
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_DELETE')")
     @DeleteMapping("/{id}")
     ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {

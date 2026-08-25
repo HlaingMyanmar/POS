@@ -59,6 +59,12 @@ public class ServiceJobController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
+    @GetMapping("/overdue")
+    ResponseEntity<ApiResponse<List<ServiceJobDTO>>> getOverdue() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Overdue Jobs", service.findOverdue()));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
     @GetMapping("/used-serial-numbers")
     ResponseEntity<ApiResponse<java.util.Set<String>>> getUsedSerialNumbers(
             @RequestParam(required = false) Integer excludeJobId) {
@@ -83,8 +89,10 @@ public class ServiceJobController {
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
     @PatchMapping("/{id}/status")
     ResponseEntity<ApiResponse<ServiceJobDTO>> updateStatus(
-            @PathVariable Integer id, @RequestParam ServiceJobStatus status) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Status Updated", service.updateStatus(id, status)));
+            @PathVariable Integer id,
+            @RequestParam ServiceJobStatus status,
+            @RequestParam(required = false) String holdReason) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Status Updated", service.updateStatus(id, status, holdReason)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_SETTLE')")
@@ -113,6 +121,43 @@ public class ServiceJobController {
             @PathVariable Integer id, @RequestBody ReworkRequestDTO dto) {
         return ResponseEntity.status(201).body(
             new ApiResponse<>(true, "Rework Job Created", service.createRework(id, dto)));
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SERVICE_JOB_VOID','CAN_ACCESS_SERVICE_JOB_DELETE')")
+    @PostMapping("/{id}/void")
+    ResponseEntity<ApiResponse<ServiceJobDTO>> voidSettlement(
+            @PathVariable Integer id, @RequestBody java.util.Map<String, Object> body) {
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Settlement voided", service.voidSettlement(id, reason)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PostMapping("/{id}/approve-estimate")
+    ResponseEntity<ApiResponse<ServiceJobDTO>> approveEstimate(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Estimate approved", service.approveEstimate(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PostMapping("/{id}/notify")
+    ResponseEntity<ApiResponse<org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO>> notifyCustomer(
+            @PathVariable Integer id,
+            @RequestBody org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO dto) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Notification logged", service.notifyCustomer(id, dto)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PostMapping("/{id}/attachments")
+    ResponseEntity<ApiResponse<org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobAttachmentDTO>> addAttachment(
+            @PathVariable Integer id,
+            @RequestBody org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobAttachmentDTO dto) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Attached", service.addAttachment(id, dto)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @DeleteMapping("/{id}/attachments/{attachmentId}")
+    ResponseEntity<ApiResponse<Void>> deleteAttachment(@PathVariable Integer id, @PathVariable Integer attachmentId) {
+        service.deleteAttachment(id, attachmentId);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Attachment deleted", null));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_DELETE')")

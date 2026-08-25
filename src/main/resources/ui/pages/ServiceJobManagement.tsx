@@ -7,6 +7,7 @@ import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { productService } from '../services/productapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { customerService } from '../services/customerapiservice';
+import { customerPaymentService } from '../services/customerpaymentapiservice';
 import { creditTermService } from '../services/credittermapiservice';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
@@ -14,15 +15,17 @@ import { PaymentTransactionDTO } from '../types';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { getFromSession } from '../utils/storageHelper';
+import { compressImageFile } from '../utils/imageCompression';
 
 /* ── Status config ─────────────────────────────────────────────── */
-const STATUS_LIST = ['RECEIVED','INSPECTING','IN_PROGRESS','COMPLETED','DELIVERED','CANCELLED'] as const;
+const STATUS_LIST = ['RECEIVED','INSPECTING','IN_PROGRESS','WAITING_PARTS','COMPLETED','DELIVERED','CANCELLED'] as const;
 type JobStatus = typeof STATUS_LIST[number];
 
 const STATUS_COLOR: Record<JobStatus, string> = {
   RECEIVED:    'bg-orange-100 text-orange-700',
   INSPECTING:  'bg-blue-100 text-blue-700',
   IN_PROGRESS: 'bg-purple-100 text-purple-700',
+  WAITING_PARTS: 'bg-amber-100 text-amber-800',
   COMPLETED:   'bg-emerald-100 text-emerald-700',
   DELIVERED:   'bg-green-100 text-green-700',
   CANCELLED:   'bg-red-100 text-red-700',
@@ -32,14 +35,23 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   RECEIVED:    'လက်ခံပြီး',
   INSPECTING:  'စစ်ဆေးနေ',
   IN_PROGRESS: 'ပြင်ဆင်နေ',
+  WAITING_PARTS: 'ပစ္စည်းစောင့်',
   COMPLETED:   'ပြီးစီး',
   DELIVERED:   'Closed / ပိတ်ပြီး',
   CANCELLED:   'ပယ်ဖျက်',
 };
 
-const ACTIVE_STATUSES    = ['RECEIVED', 'INSPECTING', 'IN_PROGRESS'];
+const ACTIVE_STATUSES    = ['RECEIVED', 'INSPECTING', 'IN_PROGRESS', 'WAITING_PARTS'];
 const DONE_STATUSES      = ['COMPLETED'];
 const ARCHIVED_STATUSES  = ['DELIVERED', 'CANCELLED'];
+const NEXT_STATUS: Record<string, string[]> = {
+  RECEIVED: ['INSPECTING', 'CANCELLED'],
+  INSPECTING: ['IN_PROGRESS', 'WAITING_PARTS', 'CANCELLED'],
+  WAITING_PARTS: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['WAITING_PARTS', 'COMPLETED', 'CANCELLED'],
+  COMPLETED: ['DELIVERED'], DELIVERED: [], CANCELLED: [],
+};
+const selectableStatuses = (current: string) => [current, ...(NEXT_STATUS[current] || [])];
 type WorkTab = 'active' | 'payment' | 'handover' | 'closed' | 'all';
 const needsPayment = (job: any) => job.status === 'COMPLETED' && (!job.paymentStatus || Number(job.dueAmount || 0) > 0);
 const readyForHandover = (job: any) => job.status === 'COMPLETED' && Boolean(job.paymentStatus) && Number(job.dueAmount || 0) <= 0;
@@ -69,11 +81,11 @@ const getLocalToday = () => {
 
 /* ── Empty states ──────────────────────────────────────────────── */
 const emptyForm = {
-  customerId: '', assignedStaffId: '',
-  itemName: '', problemDesc: '', diagnosisNotes: '',
+  customerId: '', assignedStaffId: '', helperStaffId: '',
+  itemName: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
   deviceConditions: '', estimatedCompletion: '', estimatedCost: '', remark: '',
-  status: 'RECEIVED',
-  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyCovered: boolean }[],
+  status: 'RECEIVED', holdReason: '', priority: 'NORMAL',
+  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyMonths: number; warrantyCovered: boolean }[],
   productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[] }[],
 };
 
@@ -315,6 +327,7 @@ export default function ServiceJobManagement() {
   const [creditPayForm, setCreditPayForm] = useState({ paidAmount: '', paymentMethodId: '', paymentAccountId: '', transactionNo: '', payments: [] as PaymentTransactionDTO[] });
 
   const [printId, setPrintId]   = useState<number | null>(null);
+  const [logJob, setLogJob]     = useState<any>(null);
   const [showRework, setShowRework] = useState(false);
   const [reworkParent, setReworkParent] = useState<any>(null);
   const [reworkForm, setReworkForm] = useState(emptyRework);
@@ -462,6 +475,11 @@ export default function ServiceJobManagement() {
     setForm({
       customerId:          String(j.customerId ?? ''),
       assignedStaffId:     j.assignedStaffId ? String(j.assignedStaffId) : '',
+      helperStaffId:       j.helperStaffId ? String(j.helperStaffId) : '',
+      serialNo:            j.serialNo ?? '',
+      color:               j.color ?? '',
+      accessories:         j.accessories ?? '',
+      itemCondition:       j.itemCondition ?? '',
       itemName:            j.itemName ?? '',
       problemDesc:         j.problemDesc ?? '',
       diagnosisNotes:      j.diagnosisNotes ?? '',
@@ -470,11 +488,14 @@ export default function ServiceJobManagement() {
       estimatedCost:       j.estimatedCost ? String(j.estimatedCost) : '',
       remark:              j.remark ?? '',
       status:              j.status ?? 'RECEIVED',
+      holdReason:          j.holdReason ?? '',
+      priority:            j.priority ?? 'NORMAL',
       lines: (j.lines ?? []).map((l: any) => ({
         serviceItemId:   l.serviceItemId ?? '',
         serviceItemName: l.serviceItemName ?? '',
         qty:             l.qty ?? 1,
         price:           Number(l.price ?? 0),
+        warrantyMonths:  Number(l.warrantyMonths || 0),
         warrantyCovered: Boolean(l.warrantyCovered),
       })),
       productParts: (j.productParts ?? []).map((p: any) => {
@@ -535,6 +556,11 @@ export default function ServiceJobManagement() {
     const payload = {
       customerId:          form.customerId ? Number(form.customerId) : undefined,
       assignedStaffId:     form.assignedStaffId ? Number(form.assignedStaffId) : null,
+      helperStaffId:       form.helperStaffId ? Number(form.helperStaffId) : null,
+      serialNo:            form.serialNo || null,
+      color:               form.color || null,
+      accessories:         form.accessories || null,
+      itemCondition:       form.itemCondition || null,
       itemName:            form.itemName || null,
       problemDesc:         form.problemDesc || null,
       diagnosisNotes:      form.diagnosisNotes || null,
@@ -543,10 +569,13 @@ export default function ServiceJobManagement() {
       estimatedCost:       form.estimatedCost ? Number(form.estimatedCost) : null,
       remark:              form.remark || null,
       status:              form.status,
+      holdReason:          form.holdReason || null,
+      priority:            form.priority || 'NORMAL',
       lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => ({
         serviceItemId: Number(l.serviceItemId),
         qty: Number(l.qty || 1),
-        warrantyMonths: 0,
+        price: Number(l.price || 0),
+        warrantyMonths: Number(l.warrantyMonths || 0),
         warrantyCovered: Boolean(l.warrantyCovered),
       })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
@@ -577,6 +606,11 @@ export default function ServiceJobManagement() {
     const payload = {
       customerId:          form.customerId ? Number(form.customerId) : undefined,
       assignedStaffId:     form.assignedStaffId ? Number(form.assignedStaffId) : null,
+      helperStaffId:       form.helperStaffId ? Number(form.helperStaffId) : null,
+      serialNo:            form.serialNo || null,
+      color:               form.color || null,
+      accessories:         form.accessories || null,
+      itemCondition:       form.itemCondition || null,
       itemName:            form.itemName || null,
       problemDesc:         form.problemDesc || null,
       diagnosisNotes:      form.diagnosisNotes || null,
@@ -585,7 +619,15 @@ export default function ServiceJobManagement() {
       estimatedCost:       form.estimatedCost ? Number(form.estimatedCost) : null,
       remark:              form.remark || null,
       status:              form.status,
-      lines:               form.lines.filter((l: any) => l.serviceItemId),
+      holdReason:          form.holdReason || null,
+      priority:            form.priority || 'NORMAL',
+      lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => ({
+        serviceItemId: Number(l.serviceItemId),
+        qty: Number(l.qty || 1),
+        price: Number(l.price || 0),
+        warrantyMonths: Number(l.warrantyMonths || 0),
+        warrantyCovered: Boolean(l.warrantyCovered),
+      })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
         productId: Number(p.productId),
         qty: p.qty,
@@ -599,7 +641,7 @@ export default function ServiceJobManagement() {
     if (!res.success) { Swal.fire('အမှား', res.message, 'error'); return; }
 
     if (form.status !== origStatus) {
-      const statusRes = await serviceJobService.updateStatus(editId, form.status);
+      const statusRes = await serviceJobService.updateStatus(editId, form.status, form.status === 'WAITING_PARTS' ? form.holdReason : undefined);
       if (!statusRes.success) { Swal.fire('အမှား', statusRes.message, 'error'); load(); return; }
     }
     setShowEdit(false);
@@ -681,18 +723,74 @@ export default function ServiceJobManagement() {
 
   /* ── Deliver ───────────────────────────────────────────────── */
   const handleDeliver = async (id: number) => {
-    const { isConfirmed } = await Swal.fire({
-      title: 'ပစ္စည်းပြန်ပေးပြီးကြောင်း အတည်ပြုမည်',
-      text: 'ပစ္စည်းပေးအပ်ပြီး Closed အဖြစ်မှတ်မည်',
-      icon: 'question', showCancelButton: true,
-      confirmButtonText: 'Closed လုပ်မည်', cancelButtonText: 'မလုပ်တော့',
+    const confirmation = await Swal.fire({
+      title: 'ပစ္စည်းပေးအပ်မှု အတည်ပြုရန်', input: 'text',
+      inputLabel: 'ပစ္စည်းလက်ခံယူသူအမည် / ဖုန်း', inputPlaceholder: 'အမည် သို့မဟုတ် ဖုန်းနံပါတ်',
+      icon: 'question', showCancelButton: true, confirmButtonText: 'ပေးအပ်ပြီး ပိတ်မည်', cancelButtonText: 'မလုပ်တော့',
+      inputValidator: value => value?.trim() ? null : 'လက်ခံယူသူအမည် သို့မဟုတ် ဖုန်း ဖြည့်ပါ',
     });
-    if (!isConfirmed) return;
+    if (!confirmation.isConfirmed) return;
     const res = await serviceJobService.deliver(id);
     if (res.success) {
-      Swal.fire({ icon: 'success', title: 'Job ပိတ်ပြီး!', timer: 1200, showConfirmButton: false });
+      await serviceJobService.notify(id, { channel: 'HANDOVER', note: `Delivered to ${String(confirmation.value).trim()}` });
+      Swal.fire({ icon: 'success', title: 'ပစ္စည်းပေးအပ်ပြီး Job ပိတ်ထားပါသည်', timer: 1400, showConfirmButton: false });
       load();
     } else Swal.fire('အမှား', res.message, 'error');
+  };
+  const handleVoid = async (job: any) => {
+    const { isConfirmed, value } = await Swal.fire({
+      title: 'Settlement ပြန်ဖျက်မည်', input: 'text', inputPlaceholder: 'အကြောင်းရင်း *',
+      icon: 'warning', showCancelButton: true, confirmButtonText: 'Void', confirmButtonColor: '#ef4444',
+      inputValidator: (v) => v && v.trim() ? null : 'အကြောင်းရင်းလိုအပ်သည်',
+    });
+    if (!isConfirmed) return;
+    const res = await serviceJobService.voidSettlement(job.id, value);
+    if (res.success) { Swal.fire({ icon: 'success', title: 'Void ပြီး', timer: 1200, showConfirmButton: false }); load(); }
+    else Swal.fire('အမှား', res.message, 'error');
+  };
+
+  const handleApplyCredit = async (job: any) => {
+    const due = Number(job.dueAmount || 0);
+    if (due <= 0) { Swal.fire('မရှိပါ', 'ကျန်ငွေမရှိပါ', 'info'); return; }
+    const customer = customers.find((c: any) => c.id === job.customerId);
+    const advance = Number(customer?.advanceBalance || 0);
+    if (advance <= 0) { Swal.fire('Credit မရှိ', 'ဖောက်သည် advance မရှိပါ', 'info'); return; }
+    const max = Math.min(due, advance);
+    const { isConfirmed, value } = await Swal.fire({
+      title: 'Customer credit သုံးမည်', input: 'number', inputValue: max,
+      text: `Advance ${advance.toLocaleString()} · Due ${due.toLocaleString()}`,
+      showCancelButton: true, confirmButtonText: 'သုံးမည်',
+    });
+    if (!isConfirmed) return;
+    try {
+      await customerPaymentService.applyCredit({
+        customerId: job.customerId, serviceJobId: job.id, staffId: currentUser.staffId,
+        amount: Number(value || max), reason: 'Service job credit apply',
+      });
+      Swal.fire({ icon: 'success', title: 'Credit သုံးပြီး', timer: 1200, showConfirmButton: false });
+      load();
+    } catch (e: any) { Swal.fire('အမှား', e.message || 'မသုံးနိုင်ပါ', 'error'); }
+  };
+
+  const handleApproveEstimate = async (job: any) => {
+    const confirmation = await Swal.fire({
+      title: 'Estimate အတည်ပြုချက်', text: `${Number(job.estimatedCost || 0).toLocaleString()} Ks ကို customer အတည်ပြုပါသလား?`,
+      input: 'select', inputOptions: { PHONE: 'Phone', IN_PERSON: 'In person', MESSAGE: 'Message', SIGNATURE: 'Signature' },
+      inputPlaceholder: 'အတည်ပြုသည့်နည်းလမ်း', showCancelButton: true, confirmButtonText: 'အတည်ပြုမည်',
+      inputValidator: value => value ? null : 'အတည်ပြုသည့်နည်းလမ်းရွေးပါ',
+    });
+    if (!confirmation.isConfirmed) return;
+    const noteResult = await Swal.fire({ title: 'အတည်ပြုချက်မှတ်ချက်', input: 'text', inputPlaceholder: 'Customer အမည် / မှတ်ချက်', showCancelButton: true, confirmButtonText: 'သိမ်းမည်' });
+    if (!noteResult.isConfirmed) return;
+    const res = await serviceJobService.approveEstimate(job.id);
+    if (res.success) {
+      await serviceJobService.notify(job.id, { channel: confirmation.value, note: `Estimate ${Number(job.estimatedCost || 0).toLocaleString()} Ks approved${noteResult.value ? ` — ${noteResult.value}` : ''}` });
+      Swal.fire({ icon: 'success', title: 'Estimate အတည်ပြုပြီး', timer: 1000, showConfirmButton: false }); load();
+    } else Swal.fire('အမှား', res.message, 'error');
+  };
+  const openLog = async (job: any) => {
+    const res = await serviceJobService.getById(job.id);
+    setLogJob(res.success ? res.data : job);
   };
 
   const openRework = (job: any) => {
@@ -1041,6 +1139,16 @@ export default function ServiceJobManagement() {
                             <RotateCcw size={14} /> Return
                           </button>
                         )}
+                        {j.paymentStatus && j.status === 'COMPLETED' && (
+                          <button onClick={() => handleVoid(j)} className="px-2 py-1 text-xs border border-rose-200 rounded-lg text-rose-700 font-bold">Void</button>
+                        )}
+                        {Number(j.dueAmount) > 0 && (
+                          <button onClick={() => handleApplyCredit(j)} className="px-2 py-1 text-xs border border-indigo-200 rounded-lg text-indigo-700 font-bold">Credit</button>
+                        )}
+                        {!j.estimateApproved && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
+                          <button onClick={() => handleApproveEstimate(j)} className="px-2 py-1 text-xs border border-slate-200 rounded-lg font-bold">Estimate ✓</button>
+                        )}
+                        <button onClick={() => openLog(j)} className="px-2 py-1 text-xs border rounded-lg font-bold">မှတ်တမ်း</button>
                       </div>
                     </td>
                   </tr>
@@ -1169,6 +1277,13 @@ export default function ServiceJobManagement() {
                     {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
+                  <select value={form.helperStaffId} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                    <option value="">— မရှိ —</option>
+                    {staffList.filter((staff: any) => String(staff.id) !== form.assignedStaffId).map((staff: any) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -1176,6 +1291,12 @@ export default function ServiceJobManagement() {
                 <input value={form.itemName} onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
                   placeholder="ဥပမာ - Apple iPhone 14 Pro"
                   className="w-full border rounded-xl px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div><label className="block text-xs text-slate-500 mb-1">Serial No.</label><input value={form.serialNo} onChange={e => setForm(p => ({ ...p, serialNo: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-slate-500 mb-1">အရောင်</label><input value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-slate-500 mb-1">ပါပစ္စည်းများ</label><input value={form.accessories} onChange={e => setForm(p => ({ ...p, accessories: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-slate-500 mb-1">လက်ခံချိန်အခြေအနေ</label><input value={form.itemCondition} onChange={e => setForm(p => ({ ...p, itemCondition: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1219,7 +1340,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyCovered: false }] }))}
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 {form.lines.length > 0 ? (
@@ -1249,7 +1370,7 @@ export default function ServiceJobManagement() {
                               setForm(p => {
                                 const lines = [...p.lines];
                                 if (si) {
-                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0) };
+                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0), warrantyMonths: Number(si.warrantyMonths || 0), warrantyCovered: Boolean(si.focDefault) };
                                 } else {
                                   lines[li] = { ...lines[li], serviceItemId: '', serviceItemName: '', price: 0 };
                                 }
@@ -1308,7 +1429,20 @@ export default function ServiceJobManagement() {
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">အခြေအနေ</label>
                   <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
                     className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
-                    {STATUS_LIST.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                    {selectableStatuses(origStatus).map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                  </select>
+                  {form.status === 'WAITING_PARTS' && (
+                    <input value={form.holdReason} placeholder="ပစ္စည်းစောင့်ရသည့်အကြောင်း" className="mt-2 w-full border rounded-xl px-3 py-2 text-sm"
+                      onChange={e => setForm(p => ({ ...p, holdReason: e.target.value }))} />
+                  )}
+                  <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                    className="mt-2 w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                    {['LOW','NORMAL','HIGH','URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <label className="mt-2 block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
+                  <select value={form.helperStaffId} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                    <option value="">— မရှိ —</option>
+                    {staffList.filter((staff: any) => String(staff.id) !== form.assignedStaffId).map((staff: any) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1327,6 +1461,12 @@ export default function ServiceJobManagement() {
                 <input value={form.itemName} onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
                   placeholder="ဥပမာ - Apple iPhone 14 Pro"
                   className="w-full border rounded-xl px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div><label className="block text-xs text-slate-500 mb-1">Serial No.</label><input value={form.serialNo} onChange={e => setForm(p => ({ ...p, serialNo: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-slate-500 mb-1">အရောင်</label><input value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-slate-500 mb-1">ပါပစ္စည်းများ</label><input value={form.accessories} onChange={e => setForm(p => ({ ...p, accessories: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-slate-500 mb-1">လက်ခံချိန်အခြေအနေ</label><input value={form.itemCondition} onChange={e => setForm(p => ({ ...p, itemCondition: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
               </div>
 
               {/* Problem + Diagnosis */}
@@ -1374,7 +1514,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyCovered: false }] }))}
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 {form.lines.length > 0 ? (
@@ -1404,7 +1544,7 @@ export default function ServiceJobManagement() {
                               setForm(p => {
                                 const lines = [...p.lines];
                                 if (si) {
-                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0) };
+                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0), warrantyMonths: Number(si.warrantyMonths || 0), warrantyCovered: Boolean(si.focDefault) };
                                 } else {
                                   lines[li] = { ...lines[li], serviceItemId: '', serviceItemName: '', price: 0 };
                                 }
@@ -1928,6 +2068,73 @@ export default function ServiceJobManagement() {
                 className="px-6 py-2 text-sm bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 shadow">
                 ငွေပေးချေမယ်
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {logJob && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 py-6 px-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between rounded-t-2xl bg-slate-800 px-5 py-3 text-white">
+              <h3 className="font-bold">{logJob.jobNo} မှတ်တမ်း</h3>
+              <button onClick={() => setLogJob(null)}>✕</button>
+            </div>
+            <div className="space-y-4 p-5 text-sm">
+              {logJob.overdue && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700 font-bold">SLA ကျော်နေသည်</p>}
+              <p className="text-xs text-slate-500">Priority: {logJob.priority || 'NORMAL'} · Technician time: {logJob.technicianMinutes || 0} min</p>
+              <section>
+                <p className="mb-2 text-xs font-black uppercase text-slate-500">Timeline</p>
+                <div className="space-y-1">
+                  {(logJob.activities || []).map((a: any) => (
+                    <div key={a.id} className="rounded-lg border px-3 py-2">
+                      <b>{a.eventType}</b> <span className="text-xs text-slate-400">{a.fromStatus} → {a.toStatus}</span>
+                      <p className="text-xs text-slate-600">{a.note} · {a.actor} · {a.occurredAt ? new Date(a.occurredAt).toLocaleString() : ''}</p>
+                    </div>
+                  ))}
+                  {(!logJob.activities || logJob.activities.length === 0) && <p className="text-slate-400">မှတ်တမ်းမရှိသေးပါ</p>}
+                </div>
+              </section>
+              <section>
+                <p className="mb-2 text-xs font-black uppercase text-slate-500">ဓာတ်ပုံ</p>
+                <input type="file" accept="image/*" className="text-xs" onChange={async e => {
+                  const file = e.target.files?.[0]; if (!file) return;
+                  const dataUrl = await compressImageFile(file);
+                  await serviceJobService.addAttachment(logJob.id, { attachmentType: 'PHOTO', fileName: file.name, contentType: 'image/jpeg', dataUrl });
+                  openLog(logJob);
+                }} />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(logJob.attachments || []).map((a: any) => (
+                    <div key={a.id} className="relative">
+                      <img src={a.dataUrl} alt="" className="h-20 w-20 rounded-lg border object-cover" />
+                      <button className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-rose-500 text-[10px] text-white"
+                        onClick={async () => { await serviceJobService.removeAttachment(logJob.id, a.id); openLog(logJob); }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <p className="mb-2 text-xs font-black uppercase text-slate-500">ဖောက်သည် အကြောင်းကြား</p>
+                <div className="flex gap-2">
+                  <select id="notify-channel" className="rounded-lg border px-2 py-1 text-xs">
+                    <option value="CALL">Call</option>
+                    <option value="SMS">SMS</option>
+                    <option value="NOTE">Note</option>
+                  </select>
+                  <input id="notify-note" placeholder="မှတ်ချက်" className="flex-1 rounded-lg border px-2 py-1 text-xs" />
+                  <button className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-bold text-white" onClick={async () => {
+                    const channel = (document.getElementById('notify-channel') as HTMLSelectElement).value;
+                    const note = (document.getElementById('notify-note') as HTMLInputElement).value;
+                    await serviceJobService.notify(logJob.id, { channel, note });
+                    openLog(logJob);
+                  }}>မှတ်မည်</button>
+                </div>
+                <div className="mt-2 space-y-1">
+                  {(logJob.notifications || []).map((n: any) => (
+                    <p key={n.id} className="text-xs text-slate-600">{n.channel} · {n.note} · {n.actor}</p>
+                  ))}
+                </div>
+              </section>
             </div>
           </div>
         </div>

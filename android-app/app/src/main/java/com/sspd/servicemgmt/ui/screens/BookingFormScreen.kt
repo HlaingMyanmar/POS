@@ -36,6 +36,28 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     val state by vm.uiState.collectAsStateWithLifecycle()
 
     var showShelfSheet by rememberSaveable { mutableStateOf(false) }
+    var showPaySheet by rememberSaveable { mutableStateOf(false) }
+    var showServiceSheet by rememberSaveable { mutableStateOf(false) }
+    var showPhotoSheet by rememberSaveable { mutableStateOf(false) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val galleryLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            val bmp = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P)
+                android.graphics.ImageDecoder.decodeBitmap(
+                    android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
+                )
+            else @Suppress("DEPRECATION") android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+            vm.addPendingPhoto(com.sspd.servicemgmt.utils.ImageCodec.bitmapToDataUri(bmp))
+        }
+    }
+    val cameraLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.TakePicturePreview()
+    ) { bmp -> bmp?.let { vm.addPendingPhoto(com.sspd.servicemgmt.utils.ImageCodec.bitmapToDataUri(it)) } }
+    val dpState = rememberDatePickerState()
 
     // ── New Customer Dialog ───────────────────────────────────────────────────
     if (state.showNewCustomerDialog) {
@@ -130,6 +152,86 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
                 Spacer(Modifier.height(32.dp))
             }
         }
+    }
+
+    if (showPaySheet) {
+        ModalBottomSheet(onDismissRequest = { showPaySheet = false }) {
+            Column(Modifier.padding(16.dp)) {
+                Text("ငွေပေးချေနည်း", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(8.dp))
+                state.paymentMethods.forEach { m ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { vm.selectPayMethod(m); showPaySheet = false }.padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(m.methodName, fontSize = 14.sp)
+                        if (state.selectedPayMethod?.id == m.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
+                    }
+                    HorizontalDivider(color = BorderColor)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+    if (showServiceSheet) {
+        ModalBottomSheet(onDismissRequest = { showServiceSheet = false }) {
+            Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+                Text("ဝန်ဆောင်မှု ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(8.dp))
+                state.serviceItems.forEach { item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { vm.addServiceLine(item); showServiceSheet = false }.padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.item, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            if (!item.serviceTypeName.isNullOrBlank())
+                                Text(item.serviceTypeName, fontSize = 11.sp, color = TextMuted)
+                        }
+                        Text("${String.format("%,.0f", item.price)} Ks", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold)
+                    }
+                    HorizontalDivider(color = BorderColor)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+    if (showPhotoSheet) {
+        ModalBottomSheet(onDismissRequest = { showPhotoSheet = false }) {
+            Column(Modifier.padding(16.dp)) {
+                Text("လက်ခံဓာတ်ပုံ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                ListItem(
+                    headlineContent = { Text("ကင်မရာ") },
+                    leadingContent = { Icon(Icons.Outlined.CameraAlt, null, tint = Primary) },
+                    modifier = Modifier.clickable { showPhotoSheet = false; cameraLauncher.launch(null) }
+                )
+                ListItem(
+                    headlineContent = { Text("Gallery") },
+                    leadingContent = { Icon(Icons.Outlined.PhotoLibrary, null, tint = Primary) },
+                    modifier = Modifier.clickable { showPhotoSheet = false; galleryLauncher.launch("image/*") }
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dpState.selectedDateMillis?.let { millis ->
+                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd 09:00", java.util.Locale.getDefault())
+                        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                        vm.setAppointmentDate(sdf.format(java.util.Date(millis)))
+                    }
+                    showDatePicker = false
+                }) { Text("ရွေးမည်") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("ပယ်ဖျက်") } }
+        ) { DatePicker(state = dpState) }
     }
 
     Scaffold(
@@ -315,6 +417,111 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
             )
 
             OutlinedTextField(
+                value           = state.depositAmount,
+                onValueChange   = { vm.setDepositAmount(it) },
+                label           = { Text("လက်ခံငွေ / Deposit (Ks)") },
+                leadingIcon     = { Icon(Icons.Outlined.AccountBalanceWallet, null) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                modifier        = Modifier.fillMaxWidth(),
+                singleLine      = true,
+                shape           = RoundedCornerShape(12.dp)
+            )
+
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth().clickable { showPaySheet = true },
+                shape    = RoundedCornerShape(12.dp),
+                border   = BorderStroke(1.dp, BorderColor)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(state.selectedPayMethod?.methodName ?: "ငွေပေးချေနည်း (deposit အတွက်)", fontSize = 13.sp,
+                        color = if (state.selectedPayMethod != null) TextMain else TextMuted)
+                    Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true },
+                shape    = RoundedCornerShape(12.dp),
+                border   = BorderStroke(1.dp, BorderColor)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.CalendarToday, null, tint = Primary, modifier = Modifier.size(18.dp))
+                        Text(state.appointmentDate.ifBlank { "ချိန်းဆိုရက် ရွေးပါ" }, fontSize = 13.sp,
+                            color = if (state.appointmentDate.isNotBlank()) TextMain else TextMuted)
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            SectionHeader(Icons.Outlined.Checklist, "ပစ္စည်းအခြေအနေ")
+            state.checklist.forEachIndexed { index, item ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(item.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(78.dp))
+                    FilterChip(
+                        selected = item.status == "Good",
+                        onClick = { vm.updateChecklist(index, item.copy(status = "Good")) },
+                        label = { Text("ကောင်း", fontSize = 10.sp) }
+                    )
+                    FilterChip(
+                        selected = item.status == "Issue",
+                        onClick = { vm.updateChecklist(index, item.copy(status = "Issue")) },
+                        label = { Text("ပျက်", fontSize = 10.sp) }
+                    )
+                    OutlinedTextField(
+                        value = item.notice,
+                        onValueChange = { vm.updateChecklist(index, item.copy(notice = it)) },
+                        placeholder = { Text("မှတ်ချက်", fontSize = 11.sp) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp)
+                    )
+                }
+            }
+
+            SectionHeader(Icons.Outlined.Build, "ဝန်ဆောင်မှုစာရင်း")
+            state.serviceLines.forEachIndexed { index, line ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(line.serviceName, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    OutlinedTextField(
+                        value = line.qty, onValueChange = { vm.updateServiceLine(index, line.copy(qty = it.filter(Char::isDigit))) },
+                        label = { Text("Qty", fontSize = 10.sp) }, modifier = Modifier.width(64.dp), singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = line.price, onValueChange = { vm.updateServiceLine(index, line.copy(price = it)) },
+                        label = { Text("ဈေး", fontSize = 10.sp) }, modifier = Modifier.width(90.dp), singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    IconButton(onClick = { vm.removeServiceLine(index) }) {
+                        Icon(Icons.Outlined.Close, null, tint = Danger, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            OutlinedButton(onClick = { showServiceSheet = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp)) {
+                Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("ဝန်ဆောင်မှု ထည့်ရန်")
+            }
+
+            SectionHeader(Icons.Outlined.PhotoCamera, "လက်ခံဓာတ်ပုံ")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { showPhotoSheet = true }, shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Outlined.AddAPhoto, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("ပုံထည့်ရန်")
+                }
+                Text("${state.existingPhotos.size + state.pendingPhotos.size} ပုံ", fontSize = 12.sp, color = TextMuted, modifier = Modifier.align(Alignment.CenterVertically))
+            }
+
+            OutlinedTextField(
                 value           = state.remark,
                 onValueChange   = { vm.setRemark(it) },
                 label           = { Text("မှတ်ချက်") },
@@ -486,6 +693,14 @@ private fun DeviceCard(
                 maxLines      = 3,
                 shape         = RoundedCornerShape(10.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
+            OutlinedTextField(
+                value         = device.deviceConditions,
+                onValueChange = { onChange(device.copy(deviceConditions = it)) },
+                label         = { Text("ပစ္စည်းအခြေအနေ မှတ်ချက်") },
+                modifier      = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                maxLines      = 2,
+                shape         = RoundedCornerShape(10.dp)
             )
         }
     }

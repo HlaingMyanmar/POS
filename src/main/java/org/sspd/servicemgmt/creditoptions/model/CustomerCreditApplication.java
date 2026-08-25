@@ -23,9 +23,12 @@ public class CustomerCreditApplication {
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "sale_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sale_id")
     private Sale sale;
+
+    @Column(name = "service_job_id")
+    private Integer serviceJobId;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;

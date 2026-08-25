@@ -32,7 +32,8 @@ export const customerPaymentService = {
 
   applyCredit: async (payload: {
     customerId: number;
-    saleId: number;
+    saleId?: number;
+    serviceJobId?: number;
     staffId?: number;
     amount: number;
     reason?: string;

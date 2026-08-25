@@ -1,4 +1,4 @@
-﻿
+
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { AuthResponse, User, DashboardStats, ApiResponse, PagedData } from '../types';
@@ -201,6 +201,7 @@ export const subServiceTypeService = {
 export const serviceItemService = {
   getAll: () => api.get<any, ApiResponse<any[]>>('/v1/services'),
   getActive: () => api.get<any, ApiResponse<any[]>>('/v1/services/active'),
+  getPriceHistory: (id: number) => api.get<any, ApiResponse<any[]>>(`/v1/services/${id}/price-history`),
   create: (dto: any) => api.post<any, ApiResponse<any>>('/v1/services', dto),
   update: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/services/${id}`, dto),
   remove: (id: number) => api.delete<any, ApiResponse<any>>(`/v1/services/${id}`),
@@ -221,6 +222,8 @@ export const bookingService = {
   updateStatus: (id: number, status: string) =>
     api.patch<any, ApiResponse<any>>(`/v1/bookings/${id}/status?status=${status}`),
   convertToJob: (id: number) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/convert-to-job`, {}),
+  addAttachment: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/attachments`, dto),
+  removeAttachment: (id: number, attachmentId: number) => api.delete<any, ApiResponse<any>>(`/v1/bookings/${id}/attachments/${attachmentId}`),
   remove: (id: number) => api.delete<any, ApiResponse<any>>(`/v1/bookings/${id}`),
 };
 
@@ -237,12 +240,18 @@ export const serviceJobService = {
   getByStatus: (status: string) => api.get<any, ApiResponse<any[]>>(`/v1/service-jobs/status/${status}`),
   create: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-jobs', dto),
   update: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-jobs/${id}`, dto),
-  updateStatus: (id: number, status: string) =>
-    api.patch<any, ApiResponse<any>>(`/v1/service-jobs/${id}/status?status=${status}`),
+  updateStatus: (id: number, status: string, holdReason?: string) =>
+    api.patch<any, ApiResponse<any>>(`/v1/service-jobs/${id}/status?status=${status}${holdReason ? `&holdReason=${encodeURIComponent(holdReason)}` : ''}`),
   settle: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/settle`, dto),
   payDue: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/pay-due`, dto),
   deliver: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/deliver`, {}),
   rework: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/rework`, dto),
+  voidSettlement: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/void`, { reason }),
+  approveEstimate: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-estimate`, {}),
+  notify: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/notify`, dto),
+  addAttachment: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/attachments`, dto),
+  removeAttachment: (id: number, attachmentId: number) => api.delete<any, ApiResponse<any>>(`/v1/service-jobs/${id}/attachments/${attachmentId}`),
+  getOverdue: () => api.get<any, ApiResponse<any[]>>('/v1/service-jobs/overdue'),
   remove: (id: number) => api.delete<any, ApiResponse<any>>(`/v1/service-jobs/${id}`),
   getUsedSerialNumbers: (excludeJobId?: number) => {
     const q = excludeJobId != null ? `?excludeJobId=${excludeJobId}` : '';

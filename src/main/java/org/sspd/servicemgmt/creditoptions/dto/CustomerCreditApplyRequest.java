@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 public class CustomerCreditApplyRequest {
     private Integer customerId;
     private Integer saleId;
+    private Integer serviceJobId;
     private Integer staffId;
     private BigDecimal amount;
     private String reason;

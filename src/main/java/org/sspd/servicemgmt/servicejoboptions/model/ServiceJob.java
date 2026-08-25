@@ -155,6 +155,46 @@ public class ServiceJob {
     @Column(columnDefinition = "TEXT")
     private String remark;
 
+    @Builder.Default
+    @Column(name = "voided")
+    private Boolean voided = Boolean.FALSE;
+
+    @Column(name = "void_reason", columnDefinition = "TEXT")
+    private String voidReason;
+
+    @Column(name = "voided_by", length = 120)
+    private String voidedBy;
+
+    @Column(name = "voided_at")
+    private LocalDateTime voidedAt;
+
+    @Builder.Default
+    @Column(name = "estimate_approved")
+    private Boolean estimateApproved = Boolean.FALSE;
+
+    @Column(name = "estimate_approved_at")
+    private LocalDateTime estimateApprovedAt;
+
+    @Column(name = "estimate_approved_by", length = 120)
+    private String estimateApprovedBy;
+
+    @Builder.Default
+    @Column(name = "priority", length = 20)
+    private String priority = "NORMAL";
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "helper_staff_id")
+    private Staff helperStaff;
+
+    @Column(name = "hold_reason", length = 500)
+    private String holdReason;
+
+    @Column(name = "work_started_at")
+    private LocalDateTime workStartedAt;
+
+    @Column(name = "last_notified_at")
+    private LocalDateTime lastNotifiedAt;
+
     @OneToMany(mappedBy = "serviceJob", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ServiceJobLine> lines;
 

@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface CustomerCreditApplicationRepository extends JpaRepository<CustomerCreditApplication, Integer> {
     List<CustomerCreditApplication> findBySaleIdOrderByIdDesc(Integer saleId);
+    List<CustomerCreditApplication> findByServiceJobIdOrderByIdDesc(Integer serviceJobId);
 }

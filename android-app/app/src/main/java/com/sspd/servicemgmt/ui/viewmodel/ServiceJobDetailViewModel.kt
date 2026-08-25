@@ -5,12 +5,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.sspd.servicemgmt.api.ApiClient
+import com.sspd.servicemgmt.api.CustomerCreditApplyRequest
 import com.sspd.servicemgmt.api.PaymentMethodDTO
 import com.sspd.servicemgmt.api.PaymentTransactionDTO
 import com.sspd.servicemgmt.api.ProductSerialDTO
+import com.sspd.servicemgmt.api.ReworkRequestDTO
+import com.sspd.servicemgmt.api.ServiceJobAttachmentDTO
 import com.sspd.servicemgmt.api.ServiceJobDTO
+import com.sspd.servicemgmt.api.ServiceJobNotificationDTO
 import com.sspd.servicemgmt.api.ServiceJobPayDueRequest
 import com.sspd.servicemgmt.api.SettleJobRequest
+import com.sspd.servicemgmt.api.StaffDTO
 import com.sspd.servicemgmt.utils.PreferenceManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +47,7 @@ class ServiceJobDetailViewModel(
                 val token   = ApiClient.bearer(prefs.authToken)
                 val jobD    = async { ApiClient.service.getServiceJobById(token, jobId) }
                 val pmD     = async { ApiClient.service.getActivePaymentMethods(token) }
+                val staffD  = async { ApiClient.service.getActiveStaff(token) }
                 val jobData = jobD.await().body()?.data
                 val allSerials = (jobData?.productParts ?: emptyList()).flatMap { it.serialNumbers ?: emptyList() }
                 val snMap: Map<String, ProductSerialDTO> = if (allSerials.isNotEmpty()) {
@@ -54,6 +60,7 @@ class ServiceJobDetailViewModel(
                     it.copy(
                         job               = jobData,
                         paymentMethods    = pmD.await().body()?.data ?: emptyList(),
+                        staff             = staffD.await().body()?.data ?: emptyList(),
                         serialWarrantyMap = snMap,
                         loading           = false
                     )
@@ -66,14 +73,14 @@ class ServiceJobDetailViewModel(
 
     // ── Status Update ─────────────────────────────────────────────────────────
 
-    fun updateStatus(status: String) {
+    fun updateStatus(status: String, holdReason: String? = null) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
-                val res   = ApiClient.service.updateServiceJobStatus(token, jobId, status)
+                val res   = ApiClient.service.updateServiceJobStatus(token, jobId, status, holdReason)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး") }
+                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
@@ -174,6 +181,157 @@ class ServiceJobDetailViewModel(
     fun clearActionSuccess() = _uiState.update { it.copy(actionSuccess = null) }
     fun clearActionError()   = _uiState.update { it.copy(actionError = null) }
 
+    fun showHoldDialog() = _uiState.update { it.copy(showHoldDialog = true) }
+    fun dismissHoldDialog() = _uiState.update { it.copy(showHoldDialog = false) }
+
+    fun showReworkDialog() = _uiState.update { it.copy(showReworkDialog = true) }
+    fun dismissReworkDialog() = _uiState.update { it.copy(showReworkDialog = false) }
+
+    fun showVoidDialog() = _uiState.update { it.copy(showVoidDialog = true) }
+    fun dismissVoidDialog() = _uiState.update { it.copy(showVoidDialog = false) }
+
+    fun showCreditDialog() {
+        viewModelScope.launch {
+            val customerId = _uiState.value.job?.customerId
+            val bal = if (customerId != null) creditBalance(customerId) else 0.0
+            _uiState.update { it.copy(showCreditDialog = true, creditBalance = bal) }
+        }
+    }
+    fun dismissCreditDialog() = _uiState.update { it.copy(showCreditDialog = false) }
+
+    fun showNotifyDialog() = _uiState.update { it.copy(showNotifyDialog = true) }
+    fun dismissNotifyDialog() = _uiState.update { it.copy(showNotifyDialog = false) }
+
+    fun createRework(request: ReworkRequestDTO) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.createRework(token, jobId, request)
+                if (res.isSuccessful && res.body()?.data != null) {
+                    _uiState.update {
+                        it.copy(actionLoading = false, showReworkDialog = false, actionSuccess = "Rework Job ${res.body()!!.data?.jobNo} ဖန်တီးပြီး")
+                    }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Rework မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun voidSettlement(reason: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.voidServiceJobSettlement(token, jobId, mapOf("reason" to reason))
+                if (res.isSuccessful && res.body()?.data != null) {
+                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, showVoidDialog = false, actionSuccess = "Settlement ပြန်ဖျက်ပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Void မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun applyCredit(amount: Double, staffId: Int, reason: String?) {
+        val job = _uiState.value.job ?: return
+        val customerId = job.customerId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.applyCustomerCredit(
+                    token,
+                    CustomerCreditApplyRequest(
+                        customerId = customerId,
+                        serviceJobId = jobId,
+                        staffId = staffId,
+                        amount = amount,
+                        reason = reason
+                    )
+                )
+                if (res.isSuccessful) {
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, showCreditDialog = false, actionSuccess = "Credit သုံးပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Credit မသုံးနိုင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun approveEstimate() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.approveServiceJobEstimate(token, jobId)
+                if (res.isSuccessful && res.body()?.data != null) {
+                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun notifyCustomer(channel: String, note: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.notifyServiceJobCustomer(
+                    token, jobId, ServiceJobNotificationDTO(channel = channel, note = note)
+                )
+                if (res.isSuccessful) {
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, showNotifyDialog = false, actionSuccess = "အကြောင်းကြားမှတ်တမ်း သိမ်းပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun addPhoto(dataUrl: String, type: String = "JOB_PHOTO") {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.addServiceJobAttachment(
+                    token, jobId,
+                    ServiceJobAttachmentDTO(attachmentType = type, fileName = "job-photo.jpg", contentType = "image/jpeg", dataUrl = dataUrl)
+                )
+                if (res.isSuccessful) {
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, actionSuccess = "ဓာတ်ပုံ သိမ်းပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "ပုံမသိမ်းနိုင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    suspend fun creditBalance(customerId: Int): Double {
+        return runCatching {
+            ApiClient.service.getCustomerCreditSummary(ApiClient.bearer(prefs.authToken), customerId)
+                .body()?.data?.availableCredit ?: 0.0
+        }.getOrDefault(0.0)
+    }
+
     // ── Delete ────────────────────────────────────────────────────────────────
 
     fun showDeleteDialog()    = _uiState.update { it.copy(showDeleteDialog = true, actionError = null) }
@@ -200,12 +358,19 @@ class ServiceJobDetailViewModel(
     data class UiState(
         val job:               ServiceJobDTO?               = null,
         val paymentMethods:    List<PaymentMethodDTO>        = emptyList(),
+        val staff:             List<StaffDTO>                = emptyList(),
         val serialWarrantyMap: Map<String, ProductSerialDTO> = emptyMap(),
         val loading:           Boolean                      = true,
         val actionLoading:     Boolean                      = false,
         val showSettleDialog:  Boolean                      = false,
         val showPayDueDialog:  Boolean                      = false,
         val showDeleteDialog:  Boolean                      = false,
+        val showReworkDialog:  Boolean                      = false,
+        val showVoidDialog:    Boolean                      = false,
+        val showCreditDialog:  Boolean                      = false,
+        val showNotifyDialog:  Boolean                      = false,
+        val showHoldDialog:    Boolean                      = false,
+        val creditBalance:     Double                       = 0.0,
         val deleteLoading:     Boolean                      = false,
         val actionSuccess:     String?                      = null,
         val actionError:       String?                      = null

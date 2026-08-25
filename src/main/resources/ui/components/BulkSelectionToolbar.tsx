@@ -5,7 +5,7 @@ export type BulkAction<T> = {
   key: string;
   label: string;
   icon?: React.ReactNode;
-  tone?: 'neutral' | 'indigo' | 'amber' | 'rose';
+  tone?: 'neutral' | 'indigo' | 'emerald' | 'amber' | 'rose';
   dangerous?: boolean;
   allowed?: boolean;
   confirm?: (rows: T[]) => Promise<boolean> | boolean;
@@ -28,6 +28,7 @@ type Props<T> = {
 const toneClass = {
   neutral: 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
   indigo: 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
+  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
   amber: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
   rose: 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
 };

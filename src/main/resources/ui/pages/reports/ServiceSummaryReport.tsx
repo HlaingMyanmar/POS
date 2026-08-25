@@ -11,6 +11,7 @@ const STATUS_COLOR: Record<string, string> = {
   RECEIVED:    'bg-slate-100 text-slate-600',
   INSPECTING:  'bg-blue-100 text-blue-700',
   IN_PROGRESS: 'bg-purple-100 text-purple-700',
+  WAITING_PARTS: 'bg-amber-100 text-amber-800',
   COMPLETED:   'bg-emerald-100 text-emerald-700',
   DELIVERED:   'bg-green-100 text-green-700',
   CANCELLED:   'bg-red-100 text-red-700',
@@ -61,13 +62,14 @@ export default function ServiceSummaryReport() {
         <>
           {/* Total Jobs KPI */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 inline-flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
-              <Wrench size={22} className="text-emerald-600" />
-            </div>
             <div>
               <div className="text-2xl font-black text-emerald-700">{fmt(data.totalJobs)}</div>
               <div className="text-xs text-slate-500">Total Service Jobs</div>
             </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border bg-white p-3"><p className="text-xs text-slate-400">Rework</p><p className="text-xl font-black text-amber-700">{fmt(data.reworkCount)}</p></div>
+            <div className="rounded-xl border bg-white p-3"><p className="text-xs text-slate-400">Overdue</p><p className="text-xl font-black text-rose-700">{fmt(data.overdueCount)}</p></div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -111,6 +113,25 @@ export default function ServiceSummaryReport() {
               </table>
             </div>
           </div>
+          {(data.byStaff ?? []).length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b font-semibold text-sm text-slate-700">Technician စွမ်းဆောင်ရည်</div>
+              <table className="w-full text-sm">
+                <thead><tr><th className="px-4 py-2 text-left">Staff</th><th className="px-4 py-2 text-right">Jobs</th><th className="px-4 py-2 text-right">ပြီး</th><th className="px-4 py-2 text-right">Rework</th><th className="px-4 py-2 text-right">Revenue</th></tr></thead>
+                <tbody>
+                  {data.byStaff.map((s: any) => (
+                    <tr key={s.staffId} className="border-t">
+                      <td className="px-4 py-2">{s.staffName}</td>
+                      <td className="px-4 py-2 text-right">{fmt(s.jobs)}</td>
+                      <td className="px-4 py-2 text-right">{fmt(s.completed)}</td>
+                      <td className="px-4 py-2 text-right">{fmt(s.rework)}</td>
+                      <td className="px-4 py-2 text-right font-bold">{fmt(s.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>

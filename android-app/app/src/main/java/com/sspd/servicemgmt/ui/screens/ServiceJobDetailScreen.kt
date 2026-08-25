@@ -3,11 +3,14 @@
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -24,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.api.PaymentMethodDTO
 import com.sspd.servicemgmt.api.PaymentTransactionDTO
 import com.sspd.servicemgmt.api.ProductSerialDTO
+import com.sspd.servicemgmt.api.ReworkRequestDTO
 import com.sspd.servicemgmt.api.ServiceJobDTO
 import com.sspd.servicemgmt.api.ServiceJobLineDTO
 import com.sspd.servicemgmt.api.ServiceJobPartDTO
@@ -108,6 +112,119 @@ fun ServiceJobDetailScreen(
             loading        = state.actionLoading,
             onDismiss      = { vm.dismissPayDueDialog() },
             onPay          = { amt, mid, txn, note, payments -> vm.payDue(amt, mid, txn, note, payments) }
+        )
+    }
+
+    if (state.showHoldDialog) {
+        var hold by remember { mutableStateOf(state.job?.holdReason ?: "") }
+        AlertDialog(
+            onDismissRequest = { vm.dismissHoldDialog() },
+            title = { Text("ပစ္စည်းစောင့်", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                OutlinedTextField(
+                    value = hold, onValueChange = { hold = it },
+                    label = { Text("အကြောင်းအရာ") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(onClick = { vm.updateStatus("WAITING_PARTS", hold.ifBlank { "Waiting for parts" }) }, enabled = !state.actionLoading) {
+                    Text("သိမ်းမည်")
+                }
+            },
+            dismissButton = { TextButton(onClick = { vm.dismissHoldDialog() }) { Text("မလုပ်တော့ပါ") } }
+        )
+    }
+
+    if (state.showVoidDialog) {
+        var reason by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { vm.dismissVoidDialog() },
+            title = { Text("Settlement ပြန်ဖျက်မည်", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                OutlinedTextField(
+                    value = reason, onValueChange = { reason = it },
+                    label = { Text("အကြောင်းအရာ *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { if (reason.isNotBlank()) vm.voidSettlement(reason.trim()) },
+                    enabled = reason.isNotBlank() && !state.actionLoading,
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) { Text("Void") }
+            },
+            dismissButton = { TextButton(onClick = { vm.dismissVoidDialog() }) { Text("မလုပ်တော့ပါ") } }
+        )
+    }
+
+    if (state.showNotifyDialog) {
+        var channel by remember { mutableStateOf("CALL") }
+        var note by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { vm.dismissNotifyDialog() },
+            title = { Text("ဖောက်သည် အကြောင်းကြား", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("CALL" to "ဖုန်း", "SMS" to "SMS", "NOTE" to "မှတ်ချက်").forEach { (k, l) ->
+                            FilterChip(selected = channel == k, onClick = { channel = k }, label = { Text(l, fontSize = 11.sp) })
+                        }
+                    }
+                    OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("မှတ်ချက်") }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(onClick = { vm.notifyCustomer(channel, note.ifBlank { "Ready for pickup" }) }, enabled = !state.actionLoading) {
+                    Text("မှတ်တမ်းတင်မည်")
+                }
+            },
+            dismissButton = { TextButton(onClick = { vm.dismissNotifyDialog() }) { Text("မလုပ်တော့ပါ") } }
+        )
+    }
+
+    if (state.showCreditDialog) {
+        var amount by remember { mutableStateOf("") }
+        val due = state.job?.dueAmount ?: 0.0
+        val max = minOf(due, state.creditBalance)
+        AlertDialog(
+            onDismissRequest = { vm.dismissCreditDialog() },
+            title = { Text("ဖောက်သည် credit သုံးမည်", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Advance: ${String.format("%,.0f", state.creditBalance)} Ks", fontSize = 13.sp)
+                    Text("ကျန်ငွေ: ${String.format("%,.0f", due)} Ks", fontSize = 13.sp, color = Danger)
+                    OutlinedTextField(
+                        value = amount, onValueChange = { amount = it },
+                        label = { Text("သုံးမည့်ပမာဏ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                val staffId = state.job?.assignedStaffId ?: state.staff.firstOrNull()?.id
+                Button(
+                    onClick = {
+                        val v = amount.toDoubleOrNull() ?: 0.0
+                        if (staffId != null && v > 0) vm.applyCredit(v.coerceAtMost(max), staffId, "Job credit apply")
+                    },
+                    enabled = !state.actionLoading && max > 0
+                ) { Text("သုံးမည်") }
+            },
+            dismissButton = { TextButton(onClick = { vm.dismissCreditDialog() }) { Text("မလုပ်တော့ပါ") } }
+        )
+    }
+
+    if (state.showReworkDialog) {
+        ReworkDialog(
+            job = state.job,
+            staff = state.staff,
+            paymentMethods = state.paymentMethods,
+            loading = state.actionLoading,
+            onDismiss = { vm.dismissReworkDialog() },
+            onSubmit = { vm.createRework(it) }
         )
     }
 
@@ -229,34 +346,41 @@ fun ServiceJobDetailScreen(
             }
             item {
                 val statuses = listOf(
-                    "RECEIVED"    to "လက်ခံပြီး",
-                    "INSPECTING"  to "စစ်ဆေးဆဲ",
-                    "IN_PROGRESS" to "လုပ်ဆဲ",
-                    "COMPLETED"   to "ပြီးဆုံး",
-                    "DELIVERED"   to "ပြန်ပေးပြီး"
+                    "RECEIVED"      to "လက်ခံပြီး",
+                    "INSPECTING"    to "စစ်ဆေးဆဲ",
+                    "IN_PROGRESS"   to "လုပ်ဆဲ",
+                    "WAITING_PARTS" to "ပစ္စည်းစောင့်",
+                    "COMPLETED"     to "ပြီးဆုံး",
+                    "DELIVERED"     to "ပြန်ပေးပြီး"
                 )
                 val canChange = job.status?.uppercase() !in listOf("DELIVERED", "CANCELLED")
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     statuses.forEach { (key, label) ->
                         val isCurrent = job.status?.uppercase() == key
                         FilterChip(
                             selected = isCurrent,
-                            onClick  = { if (!isCurrent && canChange && !state.actionLoading) vm.updateStatus(key) },
+                            onClick  = {
+                                if (!isCurrent && canChange && !state.actionLoading) {
+                                    if (key == "WAITING_PARTS") vm.showHoldDialog()
+                                    else vm.updateStatus(key)
+                                }
+                            },
                             label    = { Text(label, fontSize = 10.sp) },
-                            modifier = Modifier.weight(1f),
                             colors   = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = when (key) {
                                     "COMPLETED", "DELIVERED" -> SuccessBg
                                     "CANCELLED" -> DangerBg
+                                    "WAITING_PARTS" -> WarningBg
                                     "IN_PROGRESS" -> VioletBg
                                     else -> WarningBg
                                 },
                                 selectedLabelColor = when (key) {
                                     "COMPLETED", "DELIVERED" -> Success
                                     "CANCELLED" -> Danger
+                                    "WAITING_PARTS" -> Warning
                                     "IN_PROGRESS" -> Violet
                                     else -> Warning
                                 }
@@ -382,6 +506,70 @@ fun ServiceJobDetailScreen(
                         Text("ကျန်ငွေ ${job.dueAmount.fmtD()} Ks ဆပ်မည်", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
+                item {
+                    OutlinedButton(
+                        onClick = { vm.showCreditDialog() },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !state.actionLoading
+                    ) {
+                        Icon(Icons.Outlined.AccountBalanceWallet, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("ဖောက်သည် credit သုံးမည်", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (job.status?.uppercase() == "DELIVERED") {
+                item {
+                    Button(
+                        onClick = { vm.showReworkDialog() },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Warning),
+                        enabled = !state.actionLoading
+                    ) {
+                        Icon(Icons.Outlined.Replay, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Rework / Warranty ပြန်ပြင်", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
+
+            if (job.paymentStatus != null && job.status?.uppercase() != "DELIVERED" && job.voided != true) {
+                item {
+                    OutlinedButton(
+                        onClick = { vm.showVoidDialog() },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+                        enabled = !state.actionLoading
+                    ) {
+                        Text("Settlement ပြန်ဖျက် (Void)", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if ((job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true && job.status?.uppercase() !in listOf("DELIVERED", "CANCELLED")) {
+                item {
+                    OutlinedButton(
+                        onClick = { vm.approveEstimate() },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !state.actionLoading
+                    ) { Text("Estimate အတည်ပြုမည်", fontWeight = FontWeight.Bold) }
+                }
+            }
+
+            if (job.status?.uppercase() == "COMPLETED") {
+                item {
+                    OutlinedButton(
+                        onClick = { vm.showNotifyDialog() },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !state.actionLoading
+                    ) { Text("ဖောက်သည် အကြောင်းကြားမှတ်တမ်း", fontWeight = FontWeight.Bold) }
+                }
             }
 
             if (!job.remark.isNullOrBlank()) {
@@ -409,6 +597,7 @@ private fun JobDetailStatusBadge(status: String?) {
         "RECEIVED"    -> Triple(WarningBg,  Warning, "လက်ခံပြီး")
         "INSPECTING"  -> Triple(VioletBg,   Violet,  "စစ်ဆေးဆဲ")
         "IN_PROGRESS" -> Triple(VioletBg,   Violet,  "လုပ်ဆဲ")
+        "WAITING_PARTS" -> Triple(WarningBg, Warning, "ပစ္စည်းစောင့်")
         "COMPLETED"   -> Triple(SuccessBg,  Success, "ပြီးဆုံး")
         "DELIVERED"   -> Triple(SuccessBg,  Success, "ပြန်ပေးပြီး")
         "CANCELLED"   -> Triple(DangerBg,   Danger,  "ပယ်ဖျက်")
@@ -926,3 +1115,131 @@ private fun SplitPaymentRow(payment: PaymentTransactionDTO, onRemove: () -> Unit
 private fun Double.formatDialogMoney(): String = if (this % 1.0 == 0.0) toLong().toString() else toString()
 
 private fun Double?.fmtD() = String.format("%,.0f", this ?: 0.0)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReworkDialog(
+    job: ServiceJobDTO?,
+    staff: List<StaffDTO>,
+    paymentMethods: List<PaymentMethodDTO>,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (ReworkRequestDTO) -> Unit
+) {
+    var reworkType by remember { mutableStateOf("WARRANTY") }
+    var problem by remember { mutableStateOf("") }
+    var staffId by remember { mutableStateOf(job?.assignedStaffId) }
+    var mode by remember { mutableStateOf("SERVICE_ONLY") }
+    var originalPartId by remember { mutableStateOf<Int?>(null) }
+    var disposition by remember { mutableStateOf("QUARANTINE") }
+    var refundAmt by remember { mutableStateOf("") }
+    var refundMethodId by remember { mutableStateOf<Int?>(null) }
+    var err by remember { mutableStateOf("") }
+    val parts = job?.productParts ?: emptyList()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rework / Warranty Job", fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("အမျိုးအစား", fontSize = 11.sp, color = TextMuted)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("WARRANTY" to "အာမခံ", "ADDITIONAL" to "ထပ်ဆောင်း", "REPLACEMENT" to "လဲပေး").forEach { (k, l) ->
+                        FilterChip(selected = reworkType == k, onClick = { reworkType = k }, label = { Text(l, fontSize = 10.sp) })
+                    }
+                }
+                OutlinedTextField(
+                    value = problem, onValueChange = { problem = it; err = "" },
+                    label = { Text("ပြန်လာသည့် ပြဿနာ *") },
+                    modifier = Modifier.fillMaxWidth(), maxLines = 3
+                )
+                Text("နည်းပညာဆရာ", fontSize = 11.sp, color = TextMuted)
+                staff.take(8).forEach { s ->
+                    FilterChip(
+                        selected = staffId == s.id,
+                        onClick = { staffId = s.id },
+                        label = { Text(s.name, fontSize = 11.sp) }
+                    )
+                }
+                Text("ဖြေရှင်းနည်း", fontSize = 11.sp, color = TextMuted)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("SERVICE_ONLY" to "ပြင်ပေး", "REPLACE_SAME" to "လဲပေး", "REFUND" to "ပြန်အမ်း").forEach { (k, l) ->
+                        FilterChip(selected = mode == k, onClick = { mode = k }, label = { Text(l, fontSize = 10.sp) })
+                    }
+                }
+                if (mode != "SERVICE_ONLY") {
+                    if (parts.isEmpty()) {
+                        Text("မူလ Job တွင် part မရှိပါ — SERVICE_ONLY သုံးပါ", color = Danger, fontSize = 12.sp)
+                    } else {
+                        parts.forEach { p ->
+                            FilterChip(
+                                selected = originalPartId == p.id,
+                                onClick = { originalPartId = p.id },
+                                label = { Text(p.productName ?: "Part #${p.id}", fontSize = 11.sp) }
+                            )
+                        }
+                        Text("အဟောင်းပစ္စည်း", fontSize = 11.sp, color = TextMuted)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("QUARANTINE" to "သိမ်း", "REUSE" to "ပြန်သုံး", "DAMAGED" to "ပျက်").forEach { (k, l) ->
+                                FilterChip(selected = disposition == k, onClick = { disposition = k }, label = { Text(l, fontSize = 10.sp) })
+                            }
+                        }
+                    }
+                }
+                if (mode == "REFUND") {
+                    OutlinedTextField(
+                        value = refundAmt, onValueChange = { refundAmt = it },
+                        label = { Text("ပြန်အမ်းငွေ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    paymentMethods.forEach { m ->
+                        FilterChip(
+                            selected = refundMethodId == m.id,
+                            onClick = { refundMethodId = m.id },
+                            label = { Text(m.methodName, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                if (err.isNotBlank()) Text(err, color = Danger, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (problem.isBlank()) { err = "ပြဿနာ ဖြည့်ပါ"; return@Button }
+                    if (mode != "SERVICE_ONLY" && originalPartId == null) { err = "မူလ part ရွေးပါ"; return@Button }
+                    if (mode == "REPLACE_SAME") {
+                        val part = parts.find { it.id == originalPartId }
+                        if (part?.productId == null) { err = "Replacement ပစ္စည်း မရှိပါ"; return@Button }
+                    }
+                    if (mode == "REFUND" && (refundAmt.toDoubleOrNull() ?: 0.0) <= 0.0) {
+                        err = "ပြန်အမ်းငွေ ဖြည့်ပါ"; return@Button
+                    }
+                    val part = parts.find { it.id == originalPartId }
+                    onSubmit(
+                        ReworkRequestDTO(
+                            reworkType = reworkType,
+                            problemDesc = problem.trim(),
+                            assignedStaffId = staffId,
+                            resolutionMode = mode,
+                            originalPartId = originalPartId,
+                            oldPartDisposition = if (mode == "SERVICE_ONLY") null else disposition,
+                            replacementProductId = if (mode == "REPLACE_SAME") part?.productId else null,
+                            replacementQty = if (mode == "REPLACE_SAME") (part?.qty ?: 1) else null,
+                            replacementSerialNumbers = if (mode == "REPLACE_SAME") part?.serialNumbers else null,
+                            refundAmount = refundAmt.toDoubleOrNull(),
+                            refundPaymentMethodId = refundMethodId
+                        )
+                    )
+                },
+                enabled = !loading,
+                colors = ButtonDefaults.buttonColors(containerColor = Warning)
+            ) {
+                if (loading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                else Text("Rework ဖန်တီးမည်", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !loading) { Text("ပယ်ဖျက်") } }
+    )
+}

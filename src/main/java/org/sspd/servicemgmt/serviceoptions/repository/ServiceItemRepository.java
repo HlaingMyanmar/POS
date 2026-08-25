@@ -14,4 +14,6 @@ public interface ServiceItemRepository extends JpaRepository<ServiceItem, Intege
     Optional<ServiceItem> findTopByOrderByIdDesc();
     boolean existsByCode(String code);
     boolean existsByItem(String item);
+    boolean existsByItemIgnoreCase(String item);
+    boolean existsByItemIgnoreCaseAndIdNot(String item, Integer id);
 }

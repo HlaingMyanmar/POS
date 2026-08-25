@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.serviceoptions.dto.ServiceItemDTO;
+import org.sspd.servicemgmt.serviceoptions.dto.ServiceItemPriceHistoryDTO;
 import org.sspd.servicemgmt.serviceoptions.service.ServiceItemService;
 
 import java.util.List;
@@ -34,6 +35,12 @@ public class ServiceItemController {
     @GetMapping("/by-type/{typeId}")
     ResponseEntity<ApiResponse<List<ServiceItemDTO>>> getByType(@PathVariable Integer typeId) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Services by type", service.findByType(typeId)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_READ')")
+    @GetMapping("/{id}/price-history")
+    ResponseEntity<ApiResponse<List<ServiceItemPriceHistoryDTO>>> getPriceHistory(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Service price history", service.findPriceHistory(id)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_CREATE')")

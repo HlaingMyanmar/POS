@@ -34,6 +34,18 @@ public interface BookingRepository extends JpaRepository<Booking, Integer> {
     Optional<Booking> findByIdWithDevices(@Param("id") Integer id);
 
     @Query("""
+        SELECT CASE WHEN COUNT(d) > 0 THEN true ELSE false END
+        FROM BookingDevice d
+        JOIN d.booking b
+        WHERE LOWER(d.serialNumber) = LOWER(:serial)
+          AND b.status NOT IN (org.sspd.servicemgmt.bookingoptions.model.BookingStatus.Converted,
+                               org.sspd.servicemgmt.bookingoptions.model.BookingStatus.Cancelled,
+                               org.sspd.servicemgmt.bookingoptions.model.BookingStatus.Completed)
+          AND (:excludeId IS NULL OR b.id <> :excludeId)
+        """)
+    boolean existsOpenSerial(@Param("serial") String serial, @Param("excludeId") Integer excludeId);
+
+    @Query("""
         SELECT b FROM Booking b
         WHERE (:search IS NULL OR :search = ''
                OR LOWER(b.customer.name) LIKE LOWER(CONCAT('%',:search,'%'))

@@ -11,6 +11,18 @@ public class ServiceItemDTO {
     private String code;
     private String item;
     private BigDecimal price;
+    private BigDecimal costPrice;
+    private Integer warrantyMonths;
+    private Integer durationMinutes;
+    private String description;
+    private Boolean focDefault;
+    private BigDecimal taxRate;
+    private String skillRequired;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
+    private BigDecimal commissionPercent;
+    private String supportedDeviceTypes;
+    private String defaultRequiredParts;
     @JsonProperty("isActive")
     private boolean isActive;
     private Integer serviceTypeId;

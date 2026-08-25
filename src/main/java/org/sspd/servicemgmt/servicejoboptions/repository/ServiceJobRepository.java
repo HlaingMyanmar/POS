@@ -14,6 +14,28 @@ import java.util.Optional;
 
 @Repository
 public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer> {
+    @Query("""
+        SELECT CASE WHEN COUNT(j) > 0 THEN true ELSE false END
+        FROM ServiceJob j
+        WHERE LOWER(j.serialNo) = LOWER(:serial)
+          AND j.status NOT IN (org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.DELIVERED,
+                               org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED)
+          AND COALESCE(j.voided, false) = false
+          AND (:excludeJobId IS NULL OR j.id <> :excludeJobId)
+        """)
+    boolean existsOpenDeviceSerial(@Param("serial") String serial, @Param("excludeJobId") Integer excludeJobId);
+
+    @Query("""
+        SELECT j FROM ServiceJob j
+        WHERE j.estimatedCompletion IS NOT NULL
+          AND j.estimatedCompletion < :now
+          AND j.status NOT IN (
+                org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.COMPLETED,
+                org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.DELIVERED,
+                org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED)
+        """)
+    List<ServiceJob> findOverdue(@Param("now") LocalDateTime now);
+
     Optional<ServiceJob> findTopByOrderByIdDesc();
     List<ServiceJob> findByStatus(ServiceJobStatus status);
     List<ServiceJob> findByStatusAndPaymentStatusIsNullOrderByReceivedDateDesc(ServiceJobStatus status);

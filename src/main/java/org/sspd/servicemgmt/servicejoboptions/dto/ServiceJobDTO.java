@@ -74,6 +74,24 @@ public class ServiceJobDTO {
     private String refundTransactionNo;
     private String refundDate;
     private String remark;
+    private Boolean voided;
+    private String voidReason;
+    private String voidedBy;
+    private String voidedAt;
+    private Boolean estimateApproved;
+    private String estimateApprovedAt;
+    private String estimateApprovedBy;
+    private String priority;
+    private Integer helperStaffId;
+    private String helperStaffName;
+    private String holdReason;
+    private String workStartedAt;
+    private String lastNotifiedAt;
+    private Long technicianMinutes;
+    private Boolean overdue;
     private List<ServiceJobLineDTO> lines;
     private List<ServiceJobPartDTO> productParts;
+    private List<ServiceJobActivityDTO> activities;
+    private List<ServiceJobAttachmentDTO> attachments;
+    private List<ServiceJobNotificationDTO> notifications;
 }

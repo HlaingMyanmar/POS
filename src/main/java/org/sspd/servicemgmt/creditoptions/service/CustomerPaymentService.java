@@ -32,6 +32,8 @@ import org.sspd.servicemgmt.purchaseoptions.model.PaymentStatus;
 import org.sspd.servicemgmt.saleoptions.model.CreditStatus;
 import org.sspd.servicemgmt.saleoptions.model.Sale;
 import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
 
@@ -48,6 +50,7 @@ public class CustomerPaymentService {
     private final CustomerCreditApplicationRepository creditApplicationRepository;
     private final CustomerRepository customerRepository;
     private final SaleRepository saleRepository;
+    private final ServiceJobRepository serviceJobRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final StaffRepository staffRepository;
@@ -59,7 +62,7 @@ public class CustomerPaymentService {
     private final AccountResolver accounts;
     private final AccountingPeriodGuard periodGuard;
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_CREATE')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_CREATE','CAN_ACCESS_BOOKING_CREATE','CAN_ACCESS_CUSTOMER_PAYMENT_CREATE')")
     @Transactional
     public CustomerPaymentDTO createAdvancePayment(CustomerPaymentDTO dto) {
         if (dto.getSaleId() != null) {
@@ -187,25 +190,32 @@ public class CustomerPaymentService {
         return toDto(repository.save(payment));
     }
 
-    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_PAYMENT_CREATE','CAN_ACCESS_SALE_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_PAYMENT_CREATE','CAN_ACCESS_SALE_UPDATE','CAN_ACCESS_SERVICE_JOB_SETTLE')")
     @Transactional
     public Map<String, Object> applyCredit(CustomerCreditApplyRequest request) {
         periodGuard.assertOpen(LocalDateTime.now(), "apply customer credit");
         Customer customer = customerRepository.findById(request.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        if (request.getStaffId() == null || !staffRepository.existsById(request.getStaffId()))
+            throw new RuntimeException("Valid staff is required.");
+        BigDecimal amount = safe(request.getAmount());
+        if (amount.compareTo(BigDecimal.ZERO) <= 0)
+            throw new RuntimeException("Credit amount must be greater than zero.");
+        if (amount.compareTo(safe(customer.getAdvanceBalance())) > 0)
+            throw new RuntimeException("Insufficient customer credit.");
+        if (request.getServiceJobId() != null) {
+            return applyCreditToJob(customer, request, amount);
+        }
+        if (request.getSaleId() == null)
+            throw new RuntimeException("Sale or service job is required.");
         Sale target = saleRepository.findById(request.getSaleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found"));
         if (!customer.getId().equals(target.getCustomer().getId()))
             throw new RuntimeException("Target invoice belongs to another customer.");
         if (Boolean.TRUE.equals(target.getVoided()))
             throw new RuntimeException("Cannot apply credit to a voided sale.");
-        if (request.getStaffId() == null || !staffRepository.existsById(request.getStaffId()))
-            throw new RuntimeException("Valid staff is required.");
-        BigDecimal amount = safe(request.getAmount());
-        if (amount.compareTo(BigDecimal.ZERO) <= 0 || amount.compareTo(safe(target.getDueAmount())) > 0)
+        if (amount.compareTo(safe(target.getDueAmount())) > 0)
             throw new RuntimeException("Credit amount must be within the invoice due amount.");
-        if (amount.compareTo(safe(customer.getAdvanceBalance())) > 0)
-            throw new RuntimeException("Insufficient customer credit.");
 
         customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).subtract(amount));
         customerRepository.save(customer);
@@ -238,12 +248,54 @@ public class CustomerPaymentService {
         return result;
     }
 
+    private Map<String, Object> applyCreditToJob(Customer customer, CustomerCreditApplyRequest request, BigDecimal amount) {
+        ServiceJob job = serviceJobRepository.findById(request.getServiceJobId())
+                .orElseThrow(() -> new ResourceNotFoundException("Service job not found"));
+        if (!customer.getId().equals(job.getCustomer().getId()))
+            throw new RuntimeException("Target job belongs to another customer.");
+        if (Boolean.TRUE.equals(job.getVoided()))
+            throw new RuntimeException("Cannot apply credit to a voided job.");
+        if (amount.compareTo(safe(job.getDueAmount())) > 0)
+            throw new RuntimeException("Credit amount must be within the job due amount.");
+
+        customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).subtract(amount));
+        customerRepository.save(customer);
+        applyToServiceJob(job, amount);
+
+        CustomerCreditApplication application = CustomerCreditApplication.builder()
+                .applicationNo("PENDING").customer(customer).serviceJobId(job.getId()).amount(amount)
+                .appliedAt(LocalDateTime.now()).appliedBy(currentUsername()).reason(request.getReason())
+                .build();
+        application = creditApplicationRepository.save(application);
+        application.setApplicationNo(String.format("CCA-%06d", application.getId()));
+        application = creditApplicationRepository.save(application);
+
+        JournalEntryDTO entry = new JournalEntryDTO();
+        entry.setReferenceNo(application.getApplicationNo());
+        entry.setEntryDate(application.getAppliedAt());
+        entry.setDescription("Apply customer credit to " + job.getJobNo());
+        entry.setStaffId(request.getStaffId());
+        entry.setDetails(List.of(
+                line(accounts.custAdvance().getId(), amount, BigDecimal.ZERO),
+                line(accounts.receivable().getId(), BigDecimal.ZERO, amount)
+        ));
+        journalWriter.write(entry);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("applicationNo", application.getApplicationNo());
+        result.put("amount", amount);
+        result.put("remainingDue", job.getDueAmount());
+        result.put("advanceBalance", customer.getAdvanceBalance());
+        result.put("serviceJobId", job.getId());
+        return result;
+    }
+
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_PAYMENT_READ','CAN_ACCESS_SALE_READ')")
     @Transactional(readOnly = true)
     public List<Map<String, Object>> receivables(Integer customerId) {
         customerRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
-        return saleRepository.findCustomerReceivablesFifo(customerId).stream().map(s -> {
+        List<Map<String, Object>> rows = saleRepository.findCustomerReceivablesFifo(customerId).stream().map(s -> {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("saleId", s.getId());
             row.put("saleCode", s.getSaleCode());
@@ -252,8 +304,24 @@ public class CustomerPaymentService {
             row.put("netAmount", s.getNetAmount());
             row.put("paidAmount", s.getPaidAmount());
             row.put("dueAmount", s.getDueAmount());
+            row.put("type", "SALE");
             return row;
-        }).toList();
+        }).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        for (ServiceJob job : serviceJobRepository.findByCustomerId(customerId)) {
+            if (safe(job.getDueAmount()).signum() <= 0) continue;
+            if (Boolean.TRUE.equals(job.getVoided())) continue;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("serviceJobId", job.getId());
+            row.put("saleCode", job.getJobNo());
+            row.put("saleDate", job.getReceivedDate());
+            row.put("dueDate", job.getDueDate());
+            row.put("netAmount", job.getNetAmount());
+            row.put("paidAmount", job.getPaidAmount());
+            row.put("dueAmount", job.getDueAmount());
+            row.put("type", "SERVICE_JOB");
+            rows.add(row);
+        }
+        return rows;
     }
 
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_PAYMENT_READ','CAN_ACCESS_SALE_READ')")
@@ -344,6 +412,17 @@ public class CustomerPaymentService {
         if (newDue.signum() <= 0) sale.setDueDate(null);
         saleRepository.save(sale);
         creditAlertService.evaluateDueAlerts(sale);
+    }
+
+    private void applyToServiceJob(ServiceJob job, BigDecimal amount) {
+        BigDecimal newPaid = safe(job.getPaidAmount()).add(amount);
+        BigDecimal newDue = safe(job.getDueAmount()).subtract(amount).max(BigDecimal.ZERO);
+        job.setPaidAmount(newPaid);
+        job.setDueAmount(newDue);
+        job.setPaymentStatus(newDue.signum() <= 0 ? PaymentStatus.Paid : PaymentStatus.Partial);
+        job.setCreditStatus(creditStatus(newDue, job.getDueDate()));
+        if (newDue.signum() <= 0) job.setDueDate(null);
+        serviceJobRepository.save(job);
     }
 
     private void reverseFromSale(Sale sale, BigDecimal amount) {

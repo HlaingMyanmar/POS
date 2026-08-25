@@ -20,6 +20,9 @@ public class BookingDTO {
     private String bookingDate;
     private String appointmentDate;
     private BigDecimal totalAmount;
+    private BigDecimal depositAmount;
+    private Integer advancePaymentId;
+    private String signatureData;
     private BookingStatus status;
     private String remark;
     private Integer paymentAccountId;
@@ -39,4 +42,5 @@ public class BookingDTO {
     private List<BookingDeviceInfoDTO> deviceInfos;
     private List<BookingDetailDTO> details;
     private List<BookingDeviceDTO> devices;
+    private List<BookingAttachmentDTO> attachments;
 }

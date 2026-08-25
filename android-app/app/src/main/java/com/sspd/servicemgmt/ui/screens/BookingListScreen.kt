@@ -329,6 +329,7 @@ private fun BookingCard(
 private fun BookingStatusBadge(status: String?) {
     val (bg, color, label) = when (status?.uppercase()) {
         "PENDING"     -> Triple(WarningBg,    Warning, "စောင့်ဆိုင်း")
+        "CONFIRMED"   -> Triple(VioletBg,     Violet,  "အတည်ပြု")
         "IN_STORAGE"  -> Triple(VioletBg,     Violet,  "သိမ်းထားပြီး")
         "IN_PROGRESS" -> Triple(VioletBg,     Violet,  "လုပ်ဆဲ")
         "CONVERTED"   -> Triple(SuccessBg,    Success, "အလုပ်ပြောင်းပြီး")

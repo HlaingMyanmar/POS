@@ -217,7 +217,11 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                         modifier = Modifier.fillMaxWidth().clickable {
                             if (lineIdx < state.lines.size) {
                                 val line = state.lines[lineIdx]
-                                vm.updateLine(lineIdx, line.copy(serviceItem = si, price = String.format("%.0f", si.price)))
+                                vm.updateLine(lineIdx, line.copy(
+                                    serviceItem = si,
+                                    price = String.format("%.0f", si.price),
+                                    warrantyMonths = (si.warrantyMonths ?: 0).toString()
+                                ))
                             }
                             showLineItemSheet = -1
                         }.padding(vertical = 10.dp),

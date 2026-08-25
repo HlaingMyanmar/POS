@@ -157,6 +157,25 @@ public class SummaryReportController {
             return m;
         }).toList());
         result.put("totalJobs", byStatus.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum());
+        result.put("reworkCount", serviceJobRepo.countReworkInPeriod(
+                fromDt != null ? fromDt : java.time.LocalDateTime.of(1970, 1, 1, 0, 0),
+                toDt != null ? toDt : java.time.LocalDateTime.now().plusYears(50)));
+        result.put("overdueCount", serviceJobRepo.findOverdue(java.time.LocalDateTime.now()).size());
+        result.put("byStaff", serviceJobRepo.staffServiceStats(
+                fromDt != null ? fromDt : java.time.LocalDateTime.of(1970, 1, 1, 0, 0),
+                toDt != null ? toDt : java.time.LocalDateTime.now().plusYears(50)).stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("staffId", r[0]);
+            m.put("staffName", r[1]);
+            m.put("role", r[2]);
+            m.put("jobs", r[3]);
+            m.put("completed", r[4]);
+            m.put("amount", r[5]);
+            m.put("cancelled", r[6]);
+            m.put("rework", r[7]);
+            m.put("inProgress", r[8]);
+            return m;
+        }).toList());
         result.put("monthly", monthly.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("year",   ((Number) r[0]).intValue());

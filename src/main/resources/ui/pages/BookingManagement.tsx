@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { bookingService, api } from '../services/api';
+import { bookingService, api, serviceItemService } from '../services/api';
+import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { shelfLocationService } from '../services/shelfLocationApiService';
 import { staffService } from '../services/staffapiservice';
 import { ApiResponse } from '../types';
@@ -8,6 +9,7 @@ import Swal from 'sweetalert2';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { getFromSession } from '../utils/storageHelper';
+import { compressImageFile } from '../utils/imageCompression';
 import { BriefcaseBusiness, Pencil, Printer, Trash2 } from 'lucide-react';
 
 const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'Other'];
@@ -36,19 +38,31 @@ interface DeviceEntry {
   model: string;
   serialNumber: string;
   color: string;
+  accessories: string;
   problemDesc: string;
   deviceConditions: string;
+  checklist: { name: string; description: string; status: string; notice: string }[];
 }
 
 const emptyDevice = (): DeviceEntry => ({
   deviceType: 'Phone', brand: '', model: '',
-  serialNumber: '', color: '', problemDesc: '', deviceConditions: '',
+  serialNumber: '', color: '', accessories: '', problemDesc: '', deviceConditions: '', checklist: defaultChecklist(),
 });
+
+const CHECKLIST_ITEMS = ['Screen', 'Body', 'Camera', 'Battery', 'Buttons', 'Ports', 'Speaker', 'Microphone'];
+const defaultChecklist = () => CHECKLIST_ITEMS.map(name => ({ name, description: '', status: 'Good', notice: '' }));
+const parseChecklist = (value?: string) => { try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) && parsed.length ? parsed : defaultChecklist(); } catch { return defaultChecklist(); } };
 
 const emptyForm = {
   customerId: '', staffId: '',
-  totalAmount: '', shelfLocation: '', remark: '',
+  totalAmount: '', depositAmount: '', advancePaymentId: null as number | null, paymentMethodId: '', paymentAccountId: '', transactionNo: '', appointmentDate: '',
+  shelfLocation: '', remark: '', signatureData: '',
   devices: [emptyDevice()] as DeviceEntry[],
+  details: [] as { serviceId: string; serviceName: string; qty: number; price: number }[],
+  deviceInfos: defaultChecklist(),
+  photoDeviceIndex: 0,
+  photos: [] as { fileName: string; contentType: string; dataUrl: string; deviceIndex: number }[],
+  existingPhotos: [] as any[],
 };
 
 /* ── CustomerCombo ────────────────────────────────────────────────────── */
@@ -197,7 +211,7 @@ const DeviceCard: React.FC<{
   index: number;
   device: DeviceEntry;
   total: number;
-  onChange: (idx: number, field: keyof DeviceEntry, val: string) => void;
+  onChange: (idx: number, field: keyof DeviceEntry, val: any) => void;
   onRemove: (idx: number) => void;
 }> = ({ index, device, total, onChange, onRemove }) => (
   <div className="border rounded-xl p-4 bg-slate-50 space-y-3">
@@ -250,6 +264,13 @@ const DeviceCard: React.FC<{
           placeholder="မည်း၊ ဖြူ..."
           className="w-full border rounded-xl px-3 py-2 text-sm" />
       </div>
+      <div className="col-span-2 sm:col-span-3">
+        <label className="block text-xs text-slate-500 mb-1">ပါပစ္စည်းများ</label>
+        <input value={device.accessories}
+          onChange={e => onChange(index, 'accessories', e.target.value)}
+          placeholder="Charger, Case, SIM tray..."
+          className="w-full border rounded-xl px-3 py-2 text-sm" />
+      </div>
     </div>
 
     <div>
@@ -266,6 +287,18 @@ const DeviceCard: React.FC<{
         onChange={e => onChange(index, 'deviceConditions', e.target.value)}
         placeholder="ဥပမာ - ထိပ်ဘယ်ထောင့်တွင် ကွဲကြောင်းသေး၊ Charger မပါ..."
         rows={2} className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
+    </div>
+    <div className="rounded-xl border bg-white p-3">
+      <p className="mb-2 text-[10px] font-black uppercase text-slate-500">ဤပစ္စည်း၏ Condition Checklist</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {device.checklist.map((info, checklistIndex) => <div key={info.name} className="flex items-center gap-2 text-xs">
+          <span className="w-20 font-semibold text-slate-600">{info.name}</span>
+          <select value={info.status} onChange={event => onChange(index, 'checklist', device.checklist.map((current, currentIndex) => currentIndex === checklistIndex ? { ...current, status: event.target.value } : current))} className="min-w-0 flex-1 rounded-lg border px-2 py-1">
+            {['Good','Damaged','Missing','N/A'].map(status => <option key={status}>{status}</option>)}
+          </select>
+          <input value={info.notice} onChange={event => onChange(index, 'checklist', device.checklist.map((current, currentIndex) => currentIndex === checklistIndex ? { ...current, notice: event.target.value } : current))} placeholder="မှတ်ချက်" className="min-w-0 flex-1 rounded-lg border px-2 py-1" />
+        </div>)}
+      </div>
     </div>
   </div>
 );
@@ -286,6 +319,8 @@ export default function BookingManagement() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [shelves, setShelves]     = useState<any[]>([]);
+  const [payMethods, setPayMethods] = useState<any[]>([]);
+  const [serviceItems, setServiceItems] = useState<any[]>([]);
   const [search, setSearch]       = useState('');
   const [defaultDate]             = useState(getLocalToday);
   const [dateFrom, setDateFrom]   = useState(defaultDate);
@@ -312,10 +347,12 @@ export default function BookingManagement() {
 
   const loadReferenceData = async () => {
     try {
-      const [customerRes, staffRes, shelfRes] = await Promise.allSettled([
+      const [customerRes, staffRes, shelfRes, payRes, svcRes] = await Promise.allSettled([
         api.get<any, any>('/v1/customers?size=999'),
         staffService.getAllActive(),
         shelfLocationService.getActive(),
+        paymentMethodService.getAllActive(),
+        serviceItemService.getActive(),
       ]);
 
       if (customerRes.status === 'fulfilled') {
@@ -329,6 +366,11 @@ export default function BookingManagement() {
         if (linkedStaff && !editId) setForm((prev) => ({ ...prev, staffId: String(linkedStaff.id) }));
       }
       if (shelfRes.status === 'fulfilled') setShelves(Array.isArray(shelfRes.value) ? shelfRes.value : []);
+      if (payRes.status === 'fulfilled') setPayMethods(Array.isArray(payRes.value) ? payRes.value : []);
+      if (svcRes.status === 'fulfilled') {
+        const v = svcRes.value as any;
+        setServiceItems(Array.isArray(v?.data) ? v.data : Array.isArray(v) ? v : []);
+      }
     } catch {
       // ignore
     }
@@ -362,8 +404,10 @@ export default function BookingManagement() {
           model:            d.model ?? '',
           serialNumber:     d.serialNumber ?? '',
           color:            d.color ?? '',
+          accessories:      d.accessories ?? '',
           problemDesc:      d.problemDesc ?? '',
           deviceConditions: d.deviceConditions ?? '',
+          checklist: parseChecklist(d.conditionChecklist),
         }))
       : [{
           deviceType:       b.deviceType ?? 'Phone',
@@ -371,17 +415,33 @@ export default function BookingManagement() {
           model:            b.model ?? '',
           serialNumber:     b.serialNumber ?? '',
           color:            b.color ?? '',
+          accessories:      b.accessories ?? '',
           problemDesc:      '',
           deviceConditions: '',
+          checklist: defaultChecklist(),
         }];
 
     setForm({
       customerId:    String(b.customerId ?? ''),
       staffId:       b.staffId ? String(b.staffId) : '',
       totalAmount:   b.totalAmount ? String(b.totalAmount) : '',
+      depositAmount: b.depositAmount ? String(b.depositAmount) : '',
+      advancePaymentId: b.advancePaymentId ?? null,
+      paymentMethodId: b.paymentMethodId ? String(b.paymentMethodId) : '',
+      paymentAccountId: b.paymentAccountId ? String(b.paymentAccountId) : '',
+      transactionNo: b.transactionNo ?? '',
+      appointmentDate: b.appointmentDate ? String(b.appointmentDate).slice(0, 16) : '',
       shelfLocation: b.shelfLocation ?? '',
       remark:        b.remark ?? '',
+      signatureData: b.signatureData ?? '',
       devices,
+      details: (b.details || []).map((d: any) => ({
+        serviceId: String(d.serviceId), serviceName: d.serviceName || '', qty: d.qty || 1, price: Number(d.price || 0),
+      })),
+      deviceInfos: (b.deviceInfos && b.deviceInfos.length > 0) ? b.deviceInfos : defaultChecklist(),
+      photoDeviceIndex: 0,
+      photos: [],
+      existingPhotos: Array.isArray(b.attachments) ? b.attachments : [],
     });
     setEditId(b.id);
     setStep('review');
@@ -411,14 +471,23 @@ export default function BookingManagement() {
     if (hasEmptyBrand) { Swal.fire('Error', 'Device တိုင်းအတွက် Brand ဖြည့်ပါ', 'error'); return; }
     if (hasEmptyProblem) { Swal.fire('Error', 'Device တိုင်းအတွက် ပြဿနာဖော်ပြချက် ဖြည့်ပါ', 'error'); return; }
 
-    // Use first device's fields as the booking-level device info (legacy compat)
+    if (Number(form.depositAmount || 0) > 0 && !form.paymentMethodId) {
+      Swal.fire('Error', 'လက်ခံငွေအတွက် ငွေပေးချေနည်း ရွေးပါ', 'error'); return;
+    }
+
     const first = form.devices[0];
     const payload = {
       customerId:    Number(form.customerId),
       staffId:       form.staffId ? Number(form.staffId) : null,
       totalAmount:   form.totalAmount ? Number(form.totalAmount) : 0,
+      depositAmount: form.depositAmount ? Number(form.depositAmount) : 0,
+      paymentMethodId: form.paymentMethodId ? Number(form.paymentMethodId) : null,
+      paymentAccountId: form.paymentAccountId ? Number(form.paymentAccountId) : null,
+      transactionNo: form.transactionNo || null,
+      appointmentDate: form.appointmentDate ? `${form.appointmentDate}:00` : null,
       shelfLocation: form.shelfLocation || null,
       remark:        form.remark || null,
+      signatureData: form.signatureData || null,
       deviceType:    first.deviceType,
       brand:         first.brand,
       model:         first.model,
@@ -434,7 +503,12 @@ export default function BookingManagement() {
         accessories:      d.accessories || null,
         problemDesc:      d.problemDesc || null,
         deviceConditions: d.deviceConditions || null,
+        conditionChecklist: JSON.stringify(d.checklist || []),
       })),
+      details: form.details.filter(d => d.serviceId).map(d => ({
+        serviceId: Number(d.serviceId), qty: d.qty, price: d.price,
+      })),
+      deviceInfos: form.deviceInfos,
     };
 
     const res = editId
@@ -442,6 +516,12 @@ export default function BookingManagement() {
       : await bookingService.create(payload);
 
     if (res.success) {
+      const bookingId = res.data?.id || editId;
+      if (bookingId && form.photos.length > 0) {
+        for (const photo of form.photos) {
+          await bookingService.addAttachment(bookingId, { ...photo, attachmentType: 'INTAKE_PHOTO_DEVICE_' + (photo.deviceIndex + 1) });
+        }
+      }
       setShowModal(false);
       setStep('customer');
       load();
@@ -556,7 +636,7 @@ export default function BookingManagement() {
                 const devType   = dev?.deviceType ?? b.deviceType;
                 const problem   = dev?.problemDesc ?? b.remark ?? '';
                 const col       = STATUS_COLOR[b.status] ?? 'bg-slate-100 text-slate-600';
-                const canConvert = b.status === 'Pending' || b.status === 'IN_STORAGE';
+                const canConvert = b.status === 'Pending' || b.status === 'IN_STORAGE' || b.status === 'Confirmed';
                 const canEdit   = b.status !== 'Converted' && b.status !== 'Cancelled' && b.status !== 'Completed';
                 const isExpanded = expandedId === b.id;
                 return (
@@ -832,6 +912,117 @@ export default function BookingManagement() {
                       <input value={form.remark} onChange={e => setForm(p => ({ ...p, remark: e.target.value }))}
                         placeholder="နောက်ထပ်မှတ်ချက်..." className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ချိန်းဆိုချိန်</label>
+                      <input type="datetime-local" value={form.appointmentDate} onChange={e => setForm(p => ({ ...p, appointmentDate: e.target.value }))}
+                        className="w-full border rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">လက်ခံငွေ / Deposit</label>
+                      <input type="number" min={0} value={form.depositAmount} disabled={Boolean(form.advancePaymentId)} title={form.advancePaymentId ? 'Transaction ရှိပြီးဖြစ်၍ တိုက်ရိုက်ပြင်မရပါ' : ''} onChange={e => setForm(p => ({ ...p, depositAmount: e.target.value }))}
+                        placeholder="0" className="w-full border rounded-xl px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
+                      {form.advancePaymentId && <p className="mt-1 text-[10px] text-amber-700">Deposit transaction ရှိပြီးဖြစ်၍ ပြင်မရပါ။ ထပ်လက်ခံ/Refund ကို Payment မှလုပ်ပါ။</p>}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ငွေပေးချေနည်း</label>
+                      <select value={form.paymentMethodId} onChange={e => { const method = payMethods.find((m: any) => String(m.id) === e.target.value); setForm(p => ({ ...p, paymentMethodId: e.target.value, paymentAccountId: method?.accountId ? String(method.accountId) : '' })); }}
+                        className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                        <option value="">— Deposit မရှိ —</option>
+                        {payMethods.map((m: any) => <option key={m.id} value={m.id}>{m.methodName || m.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Transaction / Reference No.</label>
+                      <input value={form.transactionNo} onChange={e => setForm(p => ({ ...p, transactionNo: e.target.value }))}
+                        placeholder="KPay၊ Bank reference..." className="w-full border rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">ဝန်ဆောင်မှုစာရင်း</p>
+                      <select className="border rounded-lg px-2 py-1 text-xs" defaultValue=""
+                        onChange={e => {
+                          const item = serviceItems.find((s: any) => String(s.id) === e.target.value);
+                          if (!item) return;
+                          setForm(p => ({ ...p, details: [...p.details, { serviceId: String(item.id), serviceName: item.item, qty: 1, price: Number(item.price || 0) }] }));
+                          e.target.value = '';
+                        }}>
+                        <option value="">+ ဝန်ဆောင်မှု ထည့်ရန်</option>
+                        {serviceItems.map((s: any) => <option key={s.id} value={s.id}>{s.item} — {Number(s.price || 0).toLocaleString()} Ks</option>)}
+                      </select>
+                    </div>
+                    {form.details.length === 0 && <p className="text-xs text-slate-400">Job ပြောင်းချိန်တွင် ဤစာရင်းလိုက်ပါမည်။</p>}
+                    {form.details.map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 font-medium">{d.serviceName}</span>
+                        <input type="number" min={1} value={d.qty} className="w-16 border rounded px-2 py-1 text-xs"
+                          onChange={e => setForm(p => ({ ...p, details: p.details.map((x, idx) => idx === i ? { ...x, qty: Number(e.target.value) || 1 } : x) }))} />
+                        <input type="number" min={0} value={d.price} className="w-24 border rounded px-2 py-1 text-xs"
+                          onChange={e => setForm(p => ({ ...p, details: p.details.map((x, idx) => idx === i ? { ...x, price: Number(e.target.value) || 0 } : x) }))} />
+                        <button className="text-rose-500 text-xs" onClick={() => setForm(p => ({ ...p, details: p.details.filter((_, idx) => idx !== i) }))}>ဖယ်</button>
+                      </div>
+                    ))}
+                  </section>
+
+                  <section className="rounded-xl border p-4 space-y-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">ပစ္စည်းအခြေအနေ Checklist</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {form.deviceInfos.map((info, i) => (
+                        <div key={info.name} className="flex items-center gap-2 text-sm">
+                          <span className="w-24 font-medium text-slate-700">{info.name}</span>
+                          <select value={info.status} className="flex-1 border rounded-lg px-2 py-1 text-xs"
+                            onChange={e => setForm(p => ({ ...p, deviceInfos: p.deviceInfos.map((x, idx) => idx === i ? { ...x, status: e.target.value } : x) }))}>
+                            {['Good', 'Damaged', 'Missing', 'N/A'].map(s => <option key={s}>{s}</option>)}
+                          </select>
+                          <input value={info.notice} placeholder="မှတ်ချက်" className="flex-1 border rounded-lg px-2 py-1 text-xs"
+                            onChange={e => setForm(p => ({ ...p, deviceInfos: p.deviceInfos.map((x, idx) => idx === i ? { ...x, notice: e.target.value } : x) }))} />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border p-4 space-y-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">လက်ခံဓာတ်ပုံ / လက်မှတ်</p>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-slate-600">ဓာတ်ပုံသည်</label>
+                      <select value={form.photoDeviceIndex} onChange={event => setForm(current => ({ ...current, photoDeviceIndex: Number(event.target.value) }))} className="rounded-lg border px-2 py-1 text-xs">
+                        {form.devices.map((device, index) => <option key={index} value={index}>ပစ္စည်း {index + 1} — {device.brand || device.deviceType}</option>)}
+                      </select>
+                    </div>
+                    <input type="file" accept="image/*" multiple className="text-xs"
+                      onChange={e => {
+                        const files = Array.from(e.target.files ?? []) as File[];
+                        files.forEach(async file => {
+                          if (file.size > 10 * 1024 * 1024) { Swal.fire('Too large', file.name, 'warning'); return; }
+                          const dataUrl = await compressImageFile(file);
+                          setForm(p => ({ ...p, photos: [...p.photos, { fileName: file.name, contentType: 'image/jpeg', dataUrl, deviceIndex: p.photoDeviceIndex }] }));
+                        });
+                        e.target.value = '';
+                      }} />
+                    {form.existingPhotos.length > 0 && <div className="flex flex-wrap gap-2 rounded-lg border bg-slate-50 p-2">
+                      {form.existingPhotos.map((photo: any) => <div key={photo.id} className="relative">
+                        <span className="absolute bottom-0 left-0 z-10 rounded-tr bg-slate-900/70 px-1 text-[8px] text-white">{String(photo.attachmentType || '').replace('INTAKE_PHOTO_DEVICE_','ပစ္စည်း ')}</span><a href={photo.dataUrl} target="_blank" rel="noreferrer"><img src={photo.dataUrl} alt={photo.fileName || 'Intake photo'} className="h-16 w-16 object-cover rounded-lg border" /></a>
+                        {editId && <button type="button" className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full w-4 h-4 text-[10px]" onClick={async () => { await bookingService.removeAttachment(editId, photo.id); setForm(current => ({ ...current, existingPhotos: current.existingPhotos.filter((x: any) => x.id !== photo.id) })); }}>×</button>}
+                      </div>)}
+                    </div>}
+                    <div className="flex flex-wrap gap-2">
+                      {form.photos.map((p, i) => (
+                        <div key={i} className="relative">
+                          <img src={p.dataUrl} alt="" className="h-16 w-16 object-cover rounded-lg border" />
+                          <button className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full w-4 h-4 text-[10px]"
+                            onClick={() => setForm(f => ({ ...f, photos: f.photos.filter((_, idx) => idx !== i) }))}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <label className="block text-[11px] text-slate-500 mt-2">ဖောက်သည်လက်မှတ် (ပုံ)</label>
+                    <input type="file" accept="image/*" className="text-xs"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        compressImageFile(file, 1000, 0.82).then(dataUrl => setForm(p => ({ ...p, signatureData: dataUrl })));
+                      }} />
+                    {form.signatureData && <img src={form.signatureData} alt="signature" className="h-16 border rounded bg-white" />}
                   </section>
 
                   <div className="flex justify-between gap-2 pt-2">

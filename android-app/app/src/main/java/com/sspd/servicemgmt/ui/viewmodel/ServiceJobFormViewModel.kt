@@ -426,7 +426,8 @@ class ServiceJobFormViewModel(
                             serviceItemName = l.serviceItem.item,
                             qty             = l.qty.toIntOrNull() ?: 1,
                             price           = l.price.toDoubleOrNull() ?: l.serviceItem.price,
-                            warrantyMonths  = l.warrantyMonths.toIntOrNull() ?: 0
+                            warrantyMonths  = l.warrantyMonths.toIntOrNull() ?: 0,
+                            warrantyCovered = l.serviceItem.focDefault == true
                         )
                     },
                     productParts        = if (validParts.isEmpty()) null else validParts.map { p ->

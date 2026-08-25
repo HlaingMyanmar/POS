@@ -268,12 +268,16 @@ data class BookingDTO(
     val customerId: Int? = null,
     val customerName: String? = null,
     val customerPhone: String? = null,
+    val staffId: Int? = null,
     val staffName: String? = null,
+    val paymentMethodId: Int? = null,
     val paymentMethodName: String? = null,
     val bookingDate: String? = null,
     val appointmentDate: String? = null,
     val status: String? = null,
     val totalAmount: Double? = null,
+    val depositAmount: Double? = null,
+    val signatureData: String? = null,
     val brand: String? = null,
     val model: String? = null,
     val deviceType: String? = null,
@@ -284,7 +288,9 @@ data class BookingDTO(
     val shelfLocation: String? = null,
     val remark: String? = null,
     val devices: List<BookingDeviceDTO>? = null,
-    val details: List<BookingDetailItemDTO>? = null
+    val details: List<BookingDetailItemDTO>? = null,
+    val deviceInfos: List<BookingDeviceInfoDTO>? = null,
+    val attachments: List<BookingAttachmentDTO>? = null
 )
 
 // ─── Service Jobs ────────────────────────────────────────────────────────────
@@ -310,6 +316,13 @@ data class ServiceItemDTO(
     val code: String? = null,
     val item: String = "",
     val price: Double = 0.0,
+    val costPrice: Double? = null,
+    val warrantyMonths: Int? = null,
+    val durationMinutes: Int? = null,
+    val description: String? = null,
+    val focDefault: Boolean? = null,
+    val taxRate: Double? = null,
+    val skillRequired: String? = null,
     val isActive: Boolean = true,
     val serviceTypeId: Int? = null,
     val serviceTypeName: String? = null,
@@ -336,6 +349,24 @@ data class BookingDeviceDTO(
     val deviceConditions: String? = null
 )
 
+data class BookingDeviceInfoDTO(
+    val id: Int? = null,
+    val name: String? = null,
+    val description: String? = null,
+    val status: String? = null,
+    val notice: String? = null
+)
+
+data class BookingAttachmentDTO(
+    val id: Int? = null,
+    val attachmentType: String? = null,
+    val fileName: String? = null,
+    val contentType: String? = null,
+    val dataUrl: String? = null,
+    val uploadedBy: String? = null,
+    val uploadedAt: String? = null
+)
+
 data class BookingDetailItemDTO(
     val id: Int? = null,
     val serviceId: Int? = null,
@@ -352,7 +383,8 @@ data class ServiceJobLineDTO(
     val qty: Int? = null,
     val price: Double? = null,
     val subtotal: Double? = null,
-    val warrantyMonths: Int? = null
+    val warrantyMonths: Int? = null,
+    val warrantyCovered: Boolean? = null
 )
 
 data class ServiceJobPartDTO(
@@ -387,9 +419,71 @@ data class ServiceJobPayDueRequest(
 )
 
 data class ReworkRequestDTO(
-    val reworkType:      String,
-    val problemDesc:     String? = null,
-    val assignedStaffId: Int?   = null
+    val reworkType: String,
+    val problemDesc: String? = null,
+    val assignedStaffId: Int? = null,
+    val replacementItemName: String? = null,
+    val replacementSerialNo: String? = null,
+    val replacementReason: String? = null,
+    val resolutionMode: String? = "SERVICE_ONLY",
+    val originalPartId: Int? = null,
+    val oldPartDisposition: String? = null,
+    val replacementProductId: Int? = null,
+    val replacementQty: Int? = null,
+    val replacementSerialNumbers: List<String>? = null,
+    val warrantyCredit: Double? = null,
+    val refundAmount: Double? = null,
+    val refundPaymentMethodId: Int? = null,
+    val refundTransactionNo: String? = null
+)
+
+data class ServiceJobAttachmentDTO(
+    val id: Int? = null,
+    val attachmentType: String? = null,
+    val fileName: String? = null,
+    val contentType: String? = null,
+    val dataUrl: String? = null,
+    val uploadedBy: String? = null,
+    val uploadedAt: String? = null
+)
+
+data class ServiceJobActivityDTO(
+    val id: Int? = null,
+    val eventType: String? = null,
+    val fromStatus: String? = null,
+    val toStatus: String? = null,
+    val note: String? = null,
+    val actor: String? = null,
+    val occurredAt: String? = null
+)
+
+data class ServiceJobNotificationDTO(
+    val id: Int? = null,
+    val channel: String? = null,
+    val note: String? = null,
+    val actor: String? = null,
+    val notifiedAt: String? = null
+)
+
+data class CustomerCreditApplyRequest(
+    val customerId: Int,
+    val saleId: Int? = null,
+    val serviceJobId: Int? = null,
+    val staffId: Int,
+    val amount: Double,
+    val reason: String? = null
+)
+
+data class CustomerCreditSummaryDTO(
+    val advanceBalance: Double? = null,
+    val availableCredit: Double? = null
+)
+
+data class CustomerCreditApplyResultDTO(
+    val applicationNo: String? = null,
+    val amount: Double? = null,
+    val remainingDue: Double? = null,
+    val advanceBalance: Double? = null
 )
 
 data class ServiceJobDTO(
@@ -432,8 +526,21 @@ data class ServiceJobDTO(
     val shelfLocationCode: String? = null,
     val shelfLocationLabel: String? = null,
     val remark: String? = null,
+    val voided: Boolean? = null,
+    val voidReason: String? = null,
+    val estimateApproved: Boolean? = null,
+    val estimateApprovedAt: String? = null,
+    val priority: String? = null,
+    val helperStaffId: Int? = null,
+    val helperStaffName: String? = null,
+    val holdReason: String? = null,
+    val lastNotifiedAt: String? = null,
+    val overdue: Boolean? = null,
     val lines: List<ServiceJobLineDTO>? = null,
-    val productParts: List<ServiceJobPartDTO>? = null
+    val productParts: List<ServiceJobPartDTO>? = null,
+    val activities: List<ServiceJobActivityDTO>? = null,
+    val attachments: List<ServiceJobAttachmentDTO>? = null,
+    val notifications: List<ServiceJobNotificationDTO>? = null
 )
 
 // ─── Staff ───────────────────────────────────────────────────────────────────

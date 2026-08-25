@@ -524,6 +524,20 @@ interface ApiService {
         @Path("id") id: Int
     ): Response<ApiResponse<List<ServiceJobDTO>>>
 
+    @POST("bookings/{id}/attachments")
+    suspend fun addBookingAttachment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: BookingAttachmentDTO
+    ): Response<ApiResponse<BookingAttachmentDTO>>
+
+    @DELETE("bookings/{id}/attachments/{attachmentId}")
+    suspend fun deleteBookingAttachment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("attachmentId") attachmentId: Int
+    ): Response<ApiResponse<Void>>
+
     // ── Service Jobs ──────────────────────────────────────────────────────────
     @GET("service-jobs")
     suspend fun getServiceJobs(
@@ -571,8 +585,53 @@ interface ApiService {
     suspend fun updateServiceJobStatus(
         @Header("Authorization") auth: String,
         @Path("id") id: Int,
-        @Query("status") status: String
+        @Query("status") status: String,
+        @Query("holdReason") holdReason: String? = null
     ): Response<ApiResponse<ServiceJobDTO>>
+
+    @GET("service-jobs/overdue")
+    suspend fun getOverdueServiceJobs(
+        @Header("Authorization") auth: String
+    ): Response<ApiResponse<List<ServiceJobDTO>>>
+
+    @POST("service-jobs/{id}/void")
+    suspend fun voidServiceJobSettlement(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: Map<String, String>
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/approve-estimate")
+    suspend fun approveServiceJobEstimate(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/notify")
+    suspend fun notifyServiceJobCustomer(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: ServiceJobNotificationDTO
+    ): Response<ApiResponse<ServiceJobNotificationDTO>>
+
+    @POST("service-jobs/{id}/attachments")
+    suspend fun addServiceJobAttachment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: ServiceJobAttachmentDTO
+    ): Response<ApiResponse<ServiceJobAttachmentDTO>>
+
+    @POST("customer-payments/apply-credit")
+    suspend fun applyCustomerCredit(
+        @Header("Authorization") auth: String,
+        @Body body: CustomerCreditApplyRequest
+    ): Response<ApiResponse<CustomerCreditApplyResultDTO>>
+
+    @GET("customer-payments/customer/{customerId}/credit-summary")
+    suspend fun getCustomerCreditSummary(
+        @Header("Authorization") auth: String,
+        @Path("customerId") customerId: Int
+    ): Response<ApiResponse<CustomerCreditSummaryDTO>>
 
     @POST("service-jobs/{id}/settle")
     suspend fun settleServiceJob(

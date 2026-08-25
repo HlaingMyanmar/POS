@@ -127,6 +127,7 @@ fun ServiceJobListScreen(
     val filtered = when (state.filter) {
         "ALL"    -> state.items
         "CREDIT" -> state.items.filter { (it.dueAmount ?: 0.0) > 0 }
+        "OVERDUE" -> state.items.filter { it.overdue == true }
         else     -> state.items.filter { it.status?.uppercase() == state.filter }
     }
 
@@ -211,9 +212,11 @@ fun ServiceJobListScreen(
                     "RECEIVED"    to "လက်ခံပြီး",
                     "INSPECTING"  to "စစ်ဆေးဆဲ",
                     "IN_PROGRESS" to "လုပ်ဆဲ",
+                    "WAITING_PARTS" to "ပစ္စည်းစောင့်",
                     "COMPLETED"   to "ပြီး",
                     "DELIVERED"   to "ပြန်ပေးပြီး",
-                    "CREDIT"      to "ကြွေးကျန်"
+                    "CREDIT"      to "ကြွေးကျန်",
+                    "OVERDUE"     to "SLA ကျော်"
                 ).forEach { (k, v) ->
                     FilterChip(
                         selected = state.filter == k,
@@ -352,6 +355,7 @@ private fun JobStatusBadge(status: String?) {
         "RECEIVED"    -> Triple(WarningBg, Warning, "လက်ခံပြီး")
         "INSPECTING"  -> Triple(WarningBg, Warning, "စစ်ဆေးဆဲ")
         "IN_PROGRESS" -> Triple(VioletBg,  Violet,  "လုပ်ဆဲ")
+        "WAITING_PARTS" -> Triple(WarningBg, Warning, "ပစ္စည်းစောင့်")
         "CANCELLED"   -> Triple(DangerBg,  Danger,  "ပယ်ဖျက်")
         else          -> Triple(BorderColor, TextMuted, status ?: "-")
     }

@@ -121,6 +121,14 @@ fun BookingDetailScreen(onBack: () -> Unit, onJobCreated: () -> Unit = {}, onEdi
                             HorizontalDivider(color = BorderColor)
                             BookingInfoRow(Icons.Outlined.Payments, "ခန့်မှန်းကိုန်", "${String.format("%,.0f", booking.totalAmount)} Ks")
                         }
+                        if ((booking.depositAmount ?: 0.0) > 0) {
+                            HorizontalDivider(color = BorderColor)
+                            BookingInfoRow(Icons.Outlined.AccountBalanceWallet, "လက်ခံငွေ", "${String.format("%,.0f", booking.depositAmount)} Ks")
+                        }
+                        if (!booking.paymentMethodName.isNullOrBlank()) {
+                            HorizontalDivider(color = BorderColor)
+                            BookingInfoRow(Icons.Outlined.Payments, "ငွေပေးချေနည်း", booking.paymentMethodName)
+                        }
                     }
                 }
             }
@@ -176,6 +184,33 @@ fun BookingDetailScreen(onBack: () -> Unit, onJobCreated: () -> Unit = {}, onEdi
                 items(booking.details) { d -> BookingServiceRow(d) }
             }
 
+            if (!booking.deviceInfos.isNullOrEmpty()) {
+                item {
+                    Text("ပစ္စည်းအခြေအနေ", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
+                }
+                item {
+                    Card(shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            booking.deviceInfos.forEach { info ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(info.name ?: "-", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        listOfNotNull(info.status, info.notice?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                                        fontSize = 12.sp, color = TextMuted
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!booking.attachments.isNullOrEmpty()) {
+                item {
+                    Text("လက်ခံဓာတ်ပုံ (${booking.attachments.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
+                }
+            }
+
             // ── Status buttons ────────────────────────────────────────────────
             val canUpdateStatus = booking.status?.uppercase() !in listOf("CANCELLED", "COMPLETED", "Converted".uppercase())
             if (canUpdateStatus) {
@@ -183,7 +218,7 @@ fun BookingDetailScreen(onBack: () -> Unit, onJobCreated: () -> Unit = {}, onEdi
                     Text("အဆင့် ပြောင်းရန်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
                 }
                 item {
-                    val statuses = listOf("Pending" to "စောင့်ဆိုင်း", "IN_STORAGE" to "သိမ်းထားပြီး", "Completed" to "ပြီးဆုံး", "Cancelled" to "ပယ်ဖျက်")
+                    val statuses = listOf("Pending" to "စောင့်ဆိုင်း", "Confirmed" to "အတည်ပြု", "IN_STORAGE" to "သိမ်းထားပြီး", "Cancelled" to "ပယ်ဖျက်")
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         statuses.forEach { (key, label) ->
                             val isCurrent = booking.status.equals(key, ignoreCase = true)
@@ -199,7 +234,7 @@ fun BookingDetailScreen(onBack: () -> Unit, onJobCreated: () -> Unit = {}, onEdi
             }
 
             // ── Convert to Job ────────────────────────────────────────────────
-            val canConvert = booking.status?.uppercase() in listOf("PENDING", "IN_STORAGE")
+            val canConvert = booking.status?.uppercase() in listOf("PENDING", "CONFIRMED", "IN_STORAGE")
             if (canConvert) {
                 item {
                     Button(
@@ -243,6 +278,7 @@ fun BookingDetailScreen(onBack: () -> Unit, onJobCreated: () -> Unit = {}, onEdi
 private fun BookingDetailStatusBadge(status: String?) {
     val (bg, color, label) = when (status?.uppercase()) {
         "PENDING"    -> Triple(WarningBg, Warning, "စောင့်ဆိုင်း")
+        "CONFIRMED"  -> Triple(VioletBg,  Violet,  "အတည်ပြု")
         "IN_STORAGE" -> Triple(VioletBg,  Violet,  "သိမ်းထားပြီး")
         "CONVERTED"  -> Triple(SuccessBg, Success, "အလုပ်ပြောင်းပြီး")
         "COMPLETED"  -> Triple(SuccessBg, Success, "ပြီးဆုံး")

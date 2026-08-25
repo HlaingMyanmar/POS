@@ -14,6 +14,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.Re
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
+import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.creditoptions.service.CreditService;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
@@ -23,8 +24,11 @@ import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
 import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
 import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemRepository;
 import org.sspd.servicemgmt.servicejoboptions.dto.ReworkRequestDTO;
+import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobActivityDTO;
+import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobAttachmentDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobLineDTO;
+import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobPartDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.SettleDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
@@ -32,10 +36,16 @@ import org.sspd.servicemgmt.servicejoboptions.model.ReworkResolutionMode;
 import org.sspd.servicemgmt.servicejoboptions.model.OldPartDisposition;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkPartResolution;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobActivity;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobAttachment;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobNotification;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepository;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRepository;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobNotificationRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ReworkPartResolutionRepository;
 import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
 import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
@@ -90,6 +100,10 @@ public class ServiceJobService {
     private final BookingRepository bookingRepo;
     private final ReworkPartResolutionRepository reworkResolutionRepo;
     private final StockMovementService stockMovementService;
+    private final ServiceJobActivityRepository activityRepo;
+    private final ServiceJobAttachmentRepository attachmentRepo;
+    private final ServiceJobNotificationRepository notificationRepo;
+    private final CashDrawerService cashDrawerService;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
@@ -115,7 +129,7 @@ public class ServiceJobService {
     @Transactional(readOnly = true)
     public ServiceJobDTO findById(Integer id) {
         return toDto(repo.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id)));
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id)), true);
     }
 
     @Transactional(readOnly = true)
@@ -171,6 +185,8 @@ public class ServiceJobService {
             .finalCost(BigDecimal.ZERO)
             .status(ServiceJobStatus.RECEIVED)
             .remark(dto.getRemark())
+            .priority(dto.getPriority() != null && !dto.getPriority().isBlank() ? dto.getPriority() : "NORMAL")
+            .holdReason(dto.getHoldReason())
             .lines(new ArrayList<>())
             .productParts(new ArrayList<>())
             .build();
@@ -178,6 +194,8 @@ public class ServiceJobService {
         Staff technician = dto.getAssignedStaffId() == null ? null : staffRepo.findById(dto.getAssignedStaffId()).orElse(null);
         validateTechnician(technician);
         job.setAssignedStaff(technician);
+        if (dto.getHelperStaffId() != null)
+            job.setHelperStaff(staffRepo.findById(dto.getHelperStaffId()).orElse(null));
         if (dto.getShelfLocationId() != null)
             job.setShelfLocation(shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null));
         if (dto.getEstimatedCompletion() != null && !dto.getEstimatedCompletion().isBlank())
@@ -186,6 +204,7 @@ public class ServiceJobService {
         buildLines(job, dto);
         buildProductParts(job, dto);
         ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "CREATED", null, job.getStatus() != null ? job.getStatus().name() : "RECEIVED", "Job created");
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_CREATED");
         return result;
     }
@@ -194,6 +213,7 @@ public class ServiceJobService {
     public ServiceJobDTO update(Integer id, ServiceJobDTO dto) {
         ServiceJob job = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        BigDecimal previousEstimate = job.getEstimatedCost() != null ? job.getEstimatedCost() : BigDecimal.ZERO;
 
         if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
             throw new IllegalStateException("Delivered or cancelled service jobs cannot be edited");
@@ -219,6 +239,10 @@ public class ServiceJobService {
         if (dto.getDiagnosisNotes() != null)    job.setDiagnosisNotes(dto.getDiagnosisNotes());
         if (dto.getEstimatedCost() != null)     job.setEstimatedCost(dto.getEstimatedCost());
         if (dto.getRemark() != null)           job.setRemark(dto.getRemark());
+        if (dto.getPriority() != null && !dto.getPriority().isBlank()) job.setPriority(dto.getPriority());
+        if (dto.getHoldReason() != null)       job.setHoldReason(dto.getHoldReason());
+        if (dto.getHelperStaffId() != null)
+            job.setHelperStaff(staffRepo.findById(dto.getHelperStaffId()).orElse(null));
         if (dto.getEstimatedCompletion() != null && !dto.getEstimatedCompletion().isBlank())
             job.setEstimatedCompletion(LocalDateTime.parse(dto.getEstimatedCompletion(), FMT));
 
@@ -233,13 +257,27 @@ public class ServiceJobService {
         } else {
             recalculateEstimatedCost(job);
         }
+        BigDecimal currentEstimate = job.getEstimatedCost() != null ? job.getEstimatedCost() : BigDecimal.ZERO;
+        if (previousEstimate.compareTo(currentEstimate) != 0) {
+            job.setEstimateApproved(Boolean.FALSE);
+            job.setEstimateApprovedAt(null);
+            job.setEstimateApprovedBy(null);
+            recordActivity(job, "ESTIMATE_REVISED", null, job.getStatus() != null ? job.getStatus().name() : null,
+                    previousEstimate + " → " + currentEstimate);
+        }
         ServiceJobDTO updated = toDto(repo.save(job));
+        recordActivity(job, "UPDATED", null, job.getStatus() != null ? job.getStatus().name() : null, "Job updated");
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_UPDATED");
         return updated;
     }
 
     @Transactional
     public ServiceJobDTO updateStatus(Integer id, ServiceJobStatus status) {
+        return updateStatus(id, status, null);
+    }
+
+    @Transactional
+    public ServiceJobDTO updateStatus(Integer id, ServiceJobStatus status, String holdReason) {
         ServiceJob job = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
 
@@ -247,15 +285,44 @@ public class ServiceJobService {
             throw new IllegalStateException("Delivered jobs cannot change status.");
         if (job.getStatus() == ServiceJobStatus.CANCELLED)
             throw new IllegalStateException("Cancelled jobs cannot change status.");
-        if (job.getPaymentStatus() != null)
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
             throw new IllegalStateException("This job has already been settled. Status cannot be changed after payment is recorded.");
 
+        ServiceJobStatus from = job.getStatus();
+        validateStatusTransition(from, status);
+        if (status == ServiceJobStatus.WAITING_PARTS && (holdReason == null || holdReason.isBlank()))
+            throw new IllegalArgumentException("ပစ္စည်းစောင့်ရသည့်အကြောင်းရင်း ဖြည့်ပါ။");
+        if (status == ServiceJobStatus.IN_PROGRESS && job.getEstimatedCost() != null
+                && job.getEstimatedCost().compareTo(BigDecimal.ZERO) > 0
+                && !Boolean.TRUE.equals(job.getEstimateApproved()))
+            throw new IllegalStateException("Estimate ကို customer အတည်ပြုပြီးမှ ပြင်ဆင်မှုစတင်နိုင်ပါသည်။");
         job.setStatus(status);
+        if (status == ServiceJobStatus.WAITING_PARTS)
+            job.setHoldReason(holdReason);
+        else if (status != ServiceJobStatus.WAITING_PARTS)
+            job.setHoldReason(null);
+        if (status == ServiceJobStatus.IN_PROGRESS && job.getWorkStartedAt() == null)
+            job.setWorkStartedAt(LocalDateTime.now());
         if (status == ServiceJobStatus.COMPLETED)
             job.setCompletedDate(LocalDateTime.now());
         ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "STATUS", from != null ? from.name() : null, status.name(),
+                status == ServiceJobStatus.WAITING_PARTS ? holdReason : null);
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_STATUS_CHANGED");
         return result;
+    }
+
+    private void validateStatusTransition(ServiceJobStatus from, ServiceJobStatus to) {
+        if (from == null || from == to) return;
+        boolean allowed = switch (from) {
+            case RECEIVED -> to == ServiceJobStatus.INSPECTING || to == ServiceJobStatus.CANCELLED;
+            case INSPECTING -> to == ServiceJobStatus.IN_PROGRESS || to == ServiceJobStatus.WAITING_PARTS || to == ServiceJobStatus.CANCELLED;
+            case WAITING_PARTS -> to == ServiceJobStatus.IN_PROGRESS || to == ServiceJobStatus.CANCELLED;
+            case IN_PROGRESS -> to == ServiceJobStatus.WAITING_PARTS || to == ServiceJobStatus.COMPLETED || to == ServiceJobStatus.CANCELLED;
+            case COMPLETED -> to == ServiceJobStatus.DELIVERED;
+            case DELIVERED, CANCELLED -> false;
+        };
+        if (!allowed) throw new IllegalStateException("Invalid service job status transition: " + from + " → " + to);
     }
 
     private void validateTechnician(Staff selectedStaff) {
@@ -314,6 +381,10 @@ public class ServiceJobService {
                 : org.sspd.servicemgmt.saleoptions.model.CreditStatus.Not_Credit);
         job.setStatus(ServiceJobStatus.COMPLETED);
         if (job.getCompletedDate() == null) job.setCompletedDate(LocalDateTime.now());
+        job.setVoided(Boolean.FALSE);
+        job.setVoidReason(null);
+        job.setVoidedBy(null);
+        job.setVoidedAt(null);
 
         PaymentMethod pm = null;
         if (dto.getPaymentMethodId() != null)
@@ -338,6 +409,9 @@ public class ServiceJobService {
         if (paid.compareTo(BigDecimal.ZERO) > 0) {
             createPaymentTransactions(saved, pm, paid, dto.getTransactionNo(), dto.getPayments());
         }
+        recordActivity(saved, "SETTLED", saved.getStatus().name(), ServiceJobStatus.COMPLETED.name(),
+                "Settled " + saved.getNetAmount());
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_SETTLED");
         return toDto(saved);
     }
 
@@ -420,9 +494,15 @@ public class ServiceJobService {
                 .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         if (job.getStatus() != ServiceJobStatus.COMPLETED)
             throw new IllegalStateException("Only completed jobs can be marked as delivered");
+        BigDecimal due = job.getDueAmount() != null ? job.getDueAmount() : BigDecimal.ZERO;
+        boolean settledOrFree = Boolean.TRUE.equals(job.getFoc())
+                || (job.getPaymentStatus() != null && due.compareTo(BigDecimal.ZERO) <= 0);
+        if (!settledOrFree)
+            throw new IllegalStateException("ငွေရှင်းပြီး သို့မဟုတ် FOC အတည်ပြုပြီးမှ ပစ္စည်းပေးအပ်နိုင်ပါသည်။");
         job.setStatus(ServiceJobStatus.DELIVERED);
         job.setDeliveredDate(LocalDateTime.now());
         ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "DELIVERED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.DELIVERED.name(), null);
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DELIVERED");
         return result;
     }
@@ -678,19 +758,195 @@ public class ServiceJobService {
     }
     @Transactional
     public void delete(Integer id) {
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
+            throw new IllegalStateException("Settled job ကို ဖျက်မရပါ။ Settlement void လုပ်ပါ။");
+        if (job.getStatus() == ServiceJobStatus.DELIVERED)
+            throw new IllegalStateException("ပေးအပ်ပြီးသော Job ကို ဖျက်မရပါ။");
         repo.deleteById(id);
+    }
+
+    @Transactional
+    public ServiceJobDTO voidSettlement(Integer id, String reason) {
+        if (reason == null || reason.isBlank())
+            throw new IllegalArgumentException("Void reason is required");
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (Boolean.TRUE.equals(job.getVoided()))
+            throw new IllegalStateException("Settlement is already voided");
+        if (job.getPaymentStatus() == null)
+            throw new IllegalStateException("Job has not been settled");
+        if (job.getStatus() == ServiceJobStatus.DELIVERED)
+            throw new IllegalStateException("ပေးအပ်ပြီးသော Job ကို void မလုပ်နိုင်ပါ");
+
+        if (job.getSaleId() != null) {
+            try { saleService.voidSale(job.getSaleId(), reason); }
+            catch (Exception ignored) { /* inventory sale may already be void */ }
+            job.setSaleId(null);
+        }
+
+        BigDecimal cashPaid = paymentTransactionRepo
+                .findByReferenceIdAndReferenceType(job.getId(), ReferenceType.Service).stream()
+                .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
+                .filter(tx -> tx.getPaymentMethod() != null && tx.getPaymentMethod().getAccount() != null)
+                .filter(tx -> tx.getPaymentMethod().getAccount().getId().equals(accountResolver.cash().getId()))
+                .map(PaymentTransaction::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (cashPaid.compareTo(BigDecimal.ZERO) > 0)
+            cashDrawerService.recordCashRefund(cashPaid);
+
+        paymentTransactionRepo.findByReferenceIdAndReferenceType(job.getId(), ReferenceType.Service).forEach(tx -> {
+            tx.setReversed(true);
+            tx.setReversedAt(LocalDateTime.now());
+            tx.setReversedBy(currentUsername());
+            tx.setReversalReason(reason.trim());
+            paymentTransactionRepo.save(tx);
+        });
+        journalWriter.reverseByReferenceNo(job.getJobNo());
+        journalWriter.reverseByReferenceNo(job.getJobNo() + "-PAY");
+        journalWriter.reverseByReferenceNo(job.getJobNo() + "-COGS");
+        journalWriter.reverseByReferenceNo(job.getJobNo() + "-RETURN-COST");
+
+        job.setVoided(true);
+        job.setVoidReason(reason.trim());
+        job.setVoidedBy(currentUsername());
+        job.setVoidedAt(LocalDateTime.now());
+        job.setPaidAmount(BigDecimal.ZERO);
+        job.setDueAmount(BigDecimal.ZERO);
+        job.setNetAmount(BigDecimal.ZERO);
+        job.setPaymentStatus(null);
+        job.setCreditStatus(org.sspd.servicemgmt.saleoptions.model.CreditStatus.Not_Credit);
+        job.setStatus(ServiceJobStatus.IN_PROGRESS);
+        ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "VOIDED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.IN_PROGRESS.name(), reason);
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_VOIDED");
+        return result;
+    }
+
+    @Transactional
+    public ServiceJobDTO approveEstimate(Integer id) {
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        job.setEstimateApproved(true);
+        job.setEstimateApprovedAt(LocalDateTime.now());
+        job.setEstimateApprovedBy(currentUsername());
+        ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "ESTIMATE_APPROVED", null, job.getStatus() != null ? job.getStatus().name() : null,
+                "Estimate " + job.getEstimatedCost());
+        return result;
+    }
+
+    @Transactional
+    public ServiceJobNotificationDTO notifyCustomer(Integer id, ServiceJobNotificationDTO dto) {
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        String channel = dto.getChannel() != null ? dto.getChannel().toUpperCase() : "NOTE";
+        ServiceJobNotification saved = notificationRepo.save(ServiceJobNotification.builder()
+            .serviceJob(job)
+            .channel(channel)
+            .note(dto.getNote())
+            .actor(currentUsername())
+            .notifiedAt(LocalDateTime.now())
+            .build());
+        job.setLastNotifiedAt(saved.getNotifiedAt());
+        repo.save(job);
+        recordActivity(job, "NOTIFY", null, job.getStatus() != null ? job.getStatus().name() : null,
+                channel + (dto.getNote() != null ? ": " + dto.getNote() : ""));
+        ServiceJobNotificationDTO out = new ServiceJobNotificationDTO();
+        out.setId(saved.getId());
+        out.setChannel(saved.getChannel());
+        out.setNote(saved.getNote());
+        out.setActor(saved.getActor());
+        out.setNotifiedAt(saved.getNotifiedAt());
+        return out;
+    }
+
+    @Transactional
+    public ServiceJobAttachmentDTO addAttachment(Integer jobId, ServiceJobAttachmentDTO dto) {
+        ServiceJob job = repo.findById(jobId)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + jobId));
+        if (dto.getDataUrl() == null || dto.getDataUrl().isBlank())
+            throw new IllegalArgumentException("Attachment data is required");
+        if (dto.getDataUrl().length() > 4_500_000)
+            throw new IllegalArgumentException("Attachment is too large");
+        ServiceJobAttachment saved = attachmentRepo.save(ServiceJobAttachment.builder()
+            .serviceJob(job)
+            .attachmentType(dto.getAttachmentType() != null ? dto.getAttachmentType() : "PHOTO")
+            .fileName(dto.getFileName())
+            .contentType(dto.getContentType())
+            .dataUrl(dto.getDataUrl())
+            .uploadedBy(currentUsername())
+            .uploadedAt(LocalDateTime.now())
+            .build());
+        recordActivity(job, "ATTACHMENT", null, job.getStatus() != null ? job.getStatus().name() : null, saved.getFileName());
+        return toAttachmentDto(saved);
+    }
+
+    @Transactional
+    public void deleteAttachment(Integer jobId, Integer attachmentId) {
+        ServiceJobAttachment attachment = attachmentRepo.findById(attachmentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Attachment not found"));
+        if (!attachment.getServiceJob().getId().equals(jobId))
+            throw new IllegalArgumentException("Attachment does not belong to this job");
+        attachmentRepo.delete(attachment);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceJobDTO> findOverdue() {
+        return repo.findOverdue(LocalDateTime.now()).stream().map(this::toDto).toList();
+    }
+
+    private void recordActivity(ServiceJob job, String type, String from, String to, String note) {
+        if (job.getId() == null) return;
+        activityRepo.save(ServiceJobActivity.builder()
+            .serviceJob(job)
+            .eventType(type)
+            .fromStatus(from)
+            .toStatus(to)
+            .note(note)
+            .actor(currentUsername())
+            .occurredAt(LocalDateTime.now())
+            .build());
+    }
+
+    private String currentUsername() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null ? authentication.getName() : "system";
+    }
+
+    private ServiceJobAttachmentDTO toAttachmentDto(ServiceJobAttachment a) {
+        ServiceJobAttachmentDTO dto = new ServiceJobAttachmentDTO();
+        dto.setId(a.getId());
+        dto.setAttachmentType(a.getAttachmentType());
+        dto.setFileName(a.getFileName());
+        dto.setContentType(a.getContentType());
+        dto.setDataUrl(a.getDataUrl());
+        dto.setUploadedBy(a.getUploadedBy());
+        dto.setUploadedAt(a.getUploadedAt());
+        return dto;
     }
 
     private void buildLines(ServiceJob job, ServiceJobDTO dto) {
         if (dto.getLines() == null || dto.getLines().isEmpty()) return;
         if (job.getLines() == null) job.setLines(new ArrayList<>());
         BigDecimal total = BigDecimal.ZERO;
+        int minutes = 0;
         for (ServiceJobLineDTO l : dto.getLines()) {
             var svc = serviceItemRepo.findById(l.getServiceItemId())
                 .orElseThrow(() -> new ResourceNotFoundException("Service item not found: " + l.getServiceItemId()));
             int qty = l.getQty() != null ? l.getQty() : 1;
-            BigDecimal price = svc.getPrice();
-            boolean covered = Boolean.TRUE.equals(l.getWarrantyCovered());
+            BigDecimal catalogPrice = svc.getPrice() != null ? svc.getPrice() : BigDecimal.ZERO;
+            BigDecimal price = catalogPrice;
+            if (l.getPrice() != null && l.getPrice().compareTo(catalogPrice) != 0) {
+                if (hasAuthority("CAN_ACCESS_SERVICE_JOB_PRICE_EDIT")) price = l.getPrice();
+            }
+            boolean covered = l.getWarrantyCovered() != null
+                    ? Boolean.TRUE.equals(l.getWarrantyCovered())
+                    : Boolean.TRUE.equals(svc.getFocDefault());
+            int warranty = l.getWarrantyMonths() != null ? l.getWarrantyMonths()
+                    : (svc.getWarrantyMonths() != null ? svc.getWarrantyMonths() : 0);
             BigDecimal sub = covered ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
             job.getLines().add(ServiceJobLine.builder()
                 .serviceJob(job)
@@ -698,12 +954,15 @@ public class ServiceJobService {
                 .qty(qty)
                 .price(price)
                 .subtotal(sub)
-                .warrantyMonths(l.getWarrantyMonths() != null ? l.getWarrantyMonths() : 0)
+                .warrantyMonths(warranty)
                 .warrantyCovered(covered)
                 .build());
             total = total.add(sub);
+            minutes += (svc.getDurationMinutes() != null ? svc.getDurationMinutes() : 0) * qty;
         }
         job.setEstimatedCost(total.add(productPartsTotal(job)));
+        if (job.getEstimatedCompletion() == null && minutes > 0)
+            job.setEstimatedCompletion(LocalDateTime.now().plusMinutes(minutes));
     }
 
     private void buildProductParts(ServiceJob job, ServiceJobDTO dto) {
@@ -911,6 +1170,10 @@ public class ServiceJobService {
     }
 
     private ServiceJobDTO toDto(ServiceJob j) {
+        return toDto(j, false);
+    }
+
+    private ServiceJobDTO toDto(ServiceJob j, boolean detail) {
         ServiceJobDTO dto = new ServiceJobDTO();
         dto.setId(j.getId());
         dto.setJobNo(j.getJobNo());
@@ -1030,6 +1293,54 @@ public class ServiceJobService {
             pd.setWarrantyCovered(Boolean.TRUE.equals(p.getWarrantyCovered()));
             return pd;
         }).toList());
+        dto.setVoided(Boolean.TRUE.equals(j.getVoided()));
+        dto.setVoidReason(j.getVoidReason());
+        dto.setVoidedBy(j.getVoidedBy());
+        dto.setVoidedAt(j.getVoidedAt() != null ? j.getVoidedAt().toString() : null);
+        dto.setEstimateApproved(Boolean.TRUE.equals(j.getEstimateApproved()));
+        dto.setEstimateApprovedAt(j.getEstimateApprovedAt() != null ? j.getEstimateApprovedAt().toString() : null);
+        dto.setEstimateApprovedBy(j.getEstimateApprovedBy());
+        dto.setPriority(j.getPriority() != null ? j.getPriority() : "NORMAL");
+        if (j.getHelperStaff() != null) {
+            dto.setHelperStaffId(j.getHelperStaff().getId());
+            dto.setHelperStaffName(j.getHelperStaff().getName());
+        }
+        dto.setHoldReason(j.getHoldReason());
+        dto.setWorkStartedAt(j.getWorkStartedAt() != null ? j.getWorkStartedAt().toString() : null);
+        dto.setLastNotifiedAt(j.getLastNotifiedAt() != null ? j.getLastNotifiedAt().toString() : null);
+        if (j.getWorkStartedAt() != null) {
+            LocalDateTime end = j.getCompletedDate() != null ? j.getCompletedDate() : LocalDateTime.now();
+            dto.setTechnicianMinutes(java.time.Duration.between(j.getWorkStartedAt(), end).toMinutes());
+        }
+        dto.setOverdue(j.getEstimatedCompletion() != null
+                && j.getEstimatedCompletion().isBefore(LocalDateTime.now())
+                && j.getStatus() != ServiceJobStatus.COMPLETED
+                && j.getStatus() != ServiceJobStatus.DELIVERED
+                && j.getStatus() != ServiceJobStatus.CANCELLED);
+        if (detail && j.getId() != null) {
+            dto.setActivities(activityRepo.findByServiceJobIdOrderByOccurredAtAsc(j.getId()).stream().map(a -> {
+                ServiceJobActivityDTO ad = new ServiceJobActivityDTO();
+                ad.setId(a.getId());
+                ad.setEventType(a.getEventType());
+                ad.setFromStatus(a.getFromStatus());
+                ad.setToStatus(a.getToStatus());
+                ad.setNote(a.getNote());
+                ad.setActor(a.getActor());
+                ad.setOccurredAt(a.getOccurredAt());
+                return ad;
+            }).toList());
+            dto.setAttachments(attachmentRepo.findByServiceJobIdOrderByUploadedAtDesc(j.getId()).stream()
+                .map(this::toAttachmentDto).toList());
+            dto.setNotifications(notificationRepo.findByServiceJobIdOrderByNotifiedAtDesc(j.getId()).stream().map(n -> {
+                ServiceJobNotificationDTO nd = new ServiceJobNotificationDTO();
+                nd.setId(n.getId());
+                nd.setChannel(n.getChannel());
+                nd.setNote(n.getNote());
+                nd.setActor(n.getActor());
+                nd.setNotifiedAt(n.getNotifiedAt());
+                return nd;
+            }).toList());
+        }
         return dto;
     }
 }

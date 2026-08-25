@@ -49,6 +49,17 @@ public class Booking {
     @Column(name = "total_amount", precision = 10, scale = 2)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @Builder.Default
+    @Column(name = "deposit_amount", precision = 15, scale = 2)
+    private BigDecimal depositAmount = BigDecimal.ZERO;
+
+    @Column(name = "advance_payment_id")
+    private Integer advancePaymentId;
+
+    @Lob
+    @Column(name = "signature_data", columnDefinition = "LONGTEXT")
+    private String signatureData;
+
     @Column(name = "invoice_file_path", length = 255)
     private String invoiceFilePath;
 
@@ -92,6 +103,10 @@ public class Booking {
     @Builder.Default
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BookingDevice> devices = new ArrayList<>();
+
+    @Builder.Default
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookingAttachment> attachments = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

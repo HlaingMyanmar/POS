@@ -218,7 +218,20 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
-    fun saveItem(item: String, price: Double, typeId: Int, subTypeId: Int?, active: Boolean) {
+    fun saveItem(
+        item: String,
+        price: Double,
+        costPrice: Double,
+        warrantyMonths: Int,
+        durationMinutes: Int,
+        description: String,
+        focDefault: Boolean,
+        taxRate: Double,
+        skillRequired: String,
+        typeId: Int,
+        subTypeId: Int?,
+        active: Boolean
+    ) {
         val target = _uiState.value.itemDialog?.target
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, actionError = null) }
@@ -228,6 +241,13 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                     id               = target?.id,
                     item             = item.trim(),
                     price            = price,
+                    costPrice        = costPrice,
+                    warrantyMonths   = warrantyMonths,
+                    durationMinutes  = durationMinutes,
+                    description      = description.trim().ifBlank { null },
+                    focDefault       = focDefault,
+                    taxRate          = taxRate,
+                    skillRequired    = skillRequired.trim().ifBlank { null },
                     serviceTypeId    = typeId,
                     subServiceTypeId = subTypeId,
                     isActive         = active

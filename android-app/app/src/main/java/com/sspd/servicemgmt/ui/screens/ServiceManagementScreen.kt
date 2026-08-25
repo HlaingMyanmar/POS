@@ -6,8 +6,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -63,8 +65,8 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
             saving    = state.saving,
             onTypeSelected = { vm.loadSubTypes(it) },
             onDismiss = { vm.closeItemDialog() },
-            onSave    = { item, price, typeId, subTypeId, active ->
-                vm.saveItem(item, price, typeId, subTypeId, active)
+            onSave    = { item, price, cost, warranty, duration, desc, foc, tax, skill, typeId, subTypeId, active ->
+                vm.saveItem(item, price, cost, warranty, duration, desc, foc, tax, skill, typeId, subTypeId, active)
             }
         )
     }
@@ -346,10 +348,20 @@ private fun ItemsList(
                                 )
                             }
                         }
+                        val extras = listOfNotNull(
+                            item.warrantyMonths?.takeIf { it > 0 }?.let { "အာမခံ $it လ" },
+                            item.durationMinutes?.takeIf { it > 0 }?.let { "$it မိနစ်" },
+                            if (item.focDefault == true) "FOC" else null
+                        )
+                        if (extras.isNotEmpty()) {
+                            Text(extras.joinToString(" · "), fontSize = 10.sp, color = TextMuted)
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 4.dp)) {
                         Text("${String.format("%,.0f", item.price)} Ks",
                             fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
+                        if ((item.costPrice ?: 0.0) > 0)
+                            Text("ကုန်ကျ ${String.format("%,.0f", item.costPrice)}", fontSize = 10.sp, color = TextMuted)
                         Spacer(Modifier.height(4.dp))
                         ActiveBadge(item.isActive)
                     }
@@ -434,10 +446,21 @@ private fun ServiceItemDialog(
     saving:         Boolean,
     onTypeSelected: (Int) -> Unit,
     onDismiss:      () -> Unit,
-    onSave:         (item: String, price: Double, typeId: Int, subTypeId: Int?, active: Boolean) -> Unit
+    onSave:         (
+        item: String, price: Double, costPrice: Double, warrantyMonths: Int,
+        durationMinutes: Int, description: String, focDefault: Boolean,
+        taxRate: Double, skillRequired: String, typeId: Int, subTypeId: Int?, active: Boolean
+    ) -> Unit
 ) {
     var itemName      by remember { mutableStateOf(target?.item ?: "") }
     var priceStr      by remember { mutableStateOf(target?.price?.let { String.format("%.0f", it) } ?: "") }
+    var costStr       by remember { mutableStateOf(target?.costPrice?.takeIf { it > 0 }?.let { String.format("%.0f", it) } ?: "") }
+    var warrantyStr   by remember { mutableStateOf((target?.warrantyMonths ?: 0).toString()) }
+    var durationStr   by remember { mutableStateOf((target?.durationMinutes ?: 0).toString()) }
+    var desc          by remember { mutableStateOf(target?.description ?: "") }
+    var focDefault    by remember { mutableStateOf(target?.focDefault == true) }
+    var taxStr        by remember { mutableStateOf((target?.taxRate ?: 0.0).let { if (it == 0.0) "" else String.format("%.1f", it) }) }
+    var skill         by remember { mutableStateOf(target?.skillRequired ?: "") }
     var selectedType  by remember { mutableStateOf(types.find { it.id == target?.serviceTypeId }) }
     var selectedSub   by remember { mutableStateOf<SubServiceTypeDTO?>(null) }
     var active        by remember { mutableStateOf(target?.isActive ?: true) }
@@ -512,7 +535,7 @@ private fun ServiceItemDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = itemName, onValueChange = { itemName = it; err = "" },
                     label = { Text("ဝန်ဆောင်မှုအမည် *") },
@@ -526,6 +549,58 @@ private fun ServiceItemDialog(
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     shape = RoundedCornerShape(10.dp)
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = costStr, onValueChange = { costStr = it },
+                        label = { Text("ကုန်ကျစရိတ်") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f), singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    OutlinedTextField(
+                        value = warrantyStr, onValueChange = { warrantyStr = it.filter(Char::isDigit) },
+                        label = { Text("အာမခံ (လ)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f), singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = durationStr, onValueChange = { durationStr = it.filter(Char::isDigit) },
+                        label = { Text("ကြာချိန် (မိနစ်)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f), singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    OutlinedTextField(
+                        value = taxStr, onValueChange = { taxStr = it },
+                        label = { Text("အခွန် %") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f), singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+                OutlinedTextField(
+                    value = skill, onValueChange = { skill = it },
+                    label = { Text("လိုအပ်သော ကျွမ်းကျင်မှု") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                OutlinedTextField(
+                    value = desc, onValueChange = { desc = it },
+                    label = { Text("ဖော်ပြချက်") },
+                    modifier = Modifier.fillMaxWidth(), maxLines = 2,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("FOC default (အခမဲ့)", fontSize = 13.sp, color = TextMain)
+                    Switch(checked = focDefault, onCheckedChange = { focDefault = it })
+                }
                 // Service Type picker
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth().clickable { showTypeSheet = true },
@@ -564,7 +639,12 @@ private fun ServiceItemDialog(
                         itemName.isBlank()    -> err = "ဝန်ဆောင်မှုအမည် ရိုက်ထည့်ပါ"
                         price == null         -> err = "ဈေးနှုန်း မှန်ကန်စွာ ရိုက်ပါ"
                         selectedType == null  -> err = "ဝန်ဆောင်မှုအမျိုးအစား ရွေးပါ"
-                        else -> onSave(itemName, price, selectedType!!.id!!, selectedSub?.id, active)
+                        else -> onSave(
+                            itemName, price, costStr.toDoubleOrNull() ?: 0.0,
+                            warrantyStr.toIntOrNull() ?: 0, durationStr.toIntOrNull() ?: 0,
+                            desc, focDefault, taxStr.toDoubleOrNull() ?: 0.0, skill,
+                            selectedType!!.id!!, selectedSub?.id, active
+                        )
                     }
                 },
                 enabled = !saving,

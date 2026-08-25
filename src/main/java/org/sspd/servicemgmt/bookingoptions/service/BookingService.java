@@ -5,21 +5,32 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingAttachmentDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingDetailDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDeviceDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDeviceInfoDTO;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
+import org.sspd.servicemgmt.bookingoptions.model.BookingAttachment;
+import org.sspd.servicemgmt.bookingoptions.model.BookingDetail;
 import org.sspd.servicemgmt.bookingoptions.model.BookingDevice;
 import org.sspd.servicemgmt.bookingoptions.model.BookingDeviceInfo;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingAttachmentRepository;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
+import org.sspd.servicemgmt.creditoptions.dto.CustomerPaymentDTO;
+import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+import org.sspd.servicemgmt.serviceoptions.model.ServiceItem;
+import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemRepository;
 import org.sspd.servicemgmt.shelflocationoptions.model.ShelfLocation;
 import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
@@ -47,12 +58,16 @@ public class BookingService {
     private static final String BOOKING_TOPIC = "/topic/booking";
 
     private final BookingRepository bookingRepository;
+    private final BookingAttachmentRepository attachmentRepository;
     private final CustomerRepository customerRepository;
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
     private final ServiceJobRepository serviceJobRepository;
+    private final ServiceItemRepository serviceItemRepository;
     private final ShelfLocationRepository shelfLocationRepository;
     private final CompanySettingsService companySettingsService;
+    private final PaymentMethodRepository paymentMethodRepository;
+    private final CustomerPaymentService customerPaymentService;
     private final SimpMessagingTemplate messagingTemplate;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
@@ -105,13 +120,17 @@ public class BookingService {
         Customer customer = customerRepository.findById(dto.getCustomerId())
             .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
 
+        validateSerials(dto, null);
+
         Booking booking = Booking.builder()
             .invoiceNo(generateInvoiceNo())
             .customer(customer)
-            .appointmentDate(dto.getAppointmentDate() != null
+            .appointmentDate(dto.getAppointmentDate() != null && !dto.getAppointmentDate().isBlank()
                 ? LocalDateTime.parse(dto.getAppointmentDate(), FMT) : null)
             .status(BookingStatus.Pending)
             .totalAmount(dto.getTotalAmount() != null ? dto.getTotalAmount() : BigDecimal.ZERO)
+            .depositAmount(dto.getDepositAmount() != null ? dto.getDepositAmount() : BigDecimal.ZERO)
+            .signatureData(dto.getSignatureData())
             .remark(dto.getRemark())
             .deviceType(dto.getDeviceType())
             .brand(dto.getBrand())
@@ -122,13 +141,19 @@ public class BookingService {
             .shelfLocation(dto.getShelfLocation())
             .build();
 
-        Staff staff = dto.getStaffId() == null ? null : staffRepository.findById(dto.getStaffId()).orElse(null);
+        if (dto.getPaymentMethodId() != null)
+            booking.setPaymentMethod(paymentMethodRepository.findById(dto.getPaymentMethodId()).orElse(null));
+
+        Staff staff = resolveReceiver(dto.getStaffId());
         validateReceiver(staff);
         booking.setStaff(staff);
 
         buildDeviceInfos(booking, dto);
         buildDevices(booking, dto);
-        BookingDTO result = toDto(bookingRepository.save(booking));
+        buildDetails(booking, dto);
+        Booking saved = bookingRepository.save(booking);
+        recordDeposit(saved, dto);
+        BookingDTO result = toDto(bookingRepository.save(saved));
         messagingTemplate.convertAndSend(BOOKING_TOPIC, "BOOKING_CREATED");
         return result;
     }
@@ -144,16 +169,26 @@ public class BookingService {
         if (dto.getCustomerId() != null)
             booking.setCustomer(customerRepository.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")));
-        Staff staff = dto.getStaffId() == null ? null : staffRepository.findById(dto.getStaffId()).orElse(null);
+        Staff staff = resolveReceiver(dto.getStaffId());
         validateReceiver(staff);
         booking.setStaff(staff);
-        if (dto.getAppointmentDate() != null)
+        if (dto.getAppointmentDate() != null && !dto.getAppointmentDate().isBlank())
             booking.setAppointmentDate(LocalDateTime.parse(dto.getAppointmentDate(), FMT));
         if (dto.getStatus() != null)
             booking.setStatus(dto.getStatus());
 
+        validateSerials(dto, id);
         booking.setRemark(dto.getRemark());
         booking.setTotalAmount(dto.getTotalAmount() != null ? dto.getTotalAmount() : BigDecimal.ZERO);
+        if (dto.getDepositAmount() != null) {
+            BigDecimal currentDeposit = booking.getDepositAmount() != null ? booking.getDepositAmount() : BigDecimal.ZERO;
+            if (booking.getAdvancePaymentId() != null && dto.getDepositAmount().compareTo(currentDeposit) != 0)
+                throw new IllegalStateException("လက်ခံငွေ transaction ရှိပြီးဖြစ်၍ Booking မှ တိုက်ရိုက်ပြင်မရပါ။ Deposit ထပ်လက်ခံ/Refund transaction ကိုသုံးပါ။");
+            booking.setDepositAmount(dto.getDepositAmount());
+        }
+        if (dto.getSignatureData() != null) booking.setSignatureData(dto.getSignatureData());
+        if (dto.getPaymentMethodId() != null)
+            booking.setPaymentMethod(paymentMethodRepository.findById(dto.getPaymentMethodId()).orElse(null));
         booking.setDeviceType(dto.getDeviceType());
         booking.setBrand(dto.getBrand());
         booking.setModel(dto.getModel());
@@ -171,10 +206,24 @@ public class BookingService {
             booking.getDevices().clear();
             buildDevices(booking, dto);
         }
+        if (dto.getDetails() != null) {
+            booking.getDetails().clear();
+            buildDetails(booking, dto);
+        }
 
-        BookingDTO updated = toDto(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        if (saved.getAdvancePaymentId() == null) recordDeposit(saved, dto);
+        BookingDTO updated = toDto(bookingRepository.save(saved));
         messagingTemplate.convertAndSend(BOOKING_TOPIC, "BOOKING_UPDATED");
         return updated;
+    }
+
+    private Staff resolveReceiver(Integer staffId) {
+        if (staffId != null) return staffRepository.findById(staffId).orElse(null);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication != null ? authentication.getName() : null;
+        User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
+        return user != null ? user.getStaff() : null;
     }
 
     private void validateReceiver(Staff selectedStaff) {
@@ -198,6 +247,16 @@ public class BookingService {
     public BookingDTO updateStatus(Integer id, BookingStatus status) {
         Booking booking = bookingRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
+        BookingStatus from = booking.getStatus();
+        if (from != status) {
+            boolean allowed = switch (from) {
+                case Pending -> status == BookingStatus.Confirmed || status == BookingStatus.IN_STORAGE || status == BookingStatus.Cancelled;
+                case Confirmed -> status == BookingStatus.IN_STORAGE || status == BookingStatus.Cancelled;
+                case IN_STORAGE -> status == BookingStatus.Cancelled;
+                case Converted, Completed, Cancelled -> false;
+            };
+            if (!allowed) throw new IllegalStateException("Invalid booking status transition: " + from + " → " + status);
+        }
         booking.setStatus(status);
         return toDto(bookingRepository.save(booking));
     }
@@ -249,7 +308,8 @@ public class BookingService {
                     .customer(booking.getCustomer())
                     .assignedStaff(booking.getStaff())
                     .itemName(itemName.isBlank() ? "Device" : itemName)
-                    .itemCondition(itemCondition)
+.itemCondition(device.getConditionChecklist() != null && !device.getConditionChecklist().isBlank()
+                            ? device.getConditionChecklist() : itemCondition)
                     .deviceConditions(device.getDeviceConditions())
                     .serialNo(device.getSerialNumber())
                     .color(device.getColor())
@@ -260,8 +320,10 @@ public class BookingService {
                     .finalCost(BigDecimal.ZERO)
                     .status(ServiceJobStatus.RECEIVED)
                     .bookingId(bookingId)
+                    .priority("NORMAL")
                     .lines(new ArrayList<>())
                     .build();
+                applyBookingServices(job, booking);
                 jobs.add(serviceJobRepository.save(job));
             }
         } else {
@@ -287,8 +349,10 @@ public class BookingService {
                 .finalCost(BigDecimal.ZERO)
                 .status(ServiceJobStatus.RECEIVED)
                 .bookingId(bookingId)
+                .priority("NORMAL")
                 .lines(new ArrayList<>())
                 .build();
+            applyBookingServices(job, booking);
             jobs.add(serviceJobRepository.save(job));
         }
 
@@ -314,8 +378,136 @@ public class BookingService {
 
     @Transactional
     public void delete(Integer id) {
+        Booking booking = bookingRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
+        if (booking.getStatus() == BookingStatus.Converted)
+            throw new IllegalStateException("Job ပြောင်းပြီးသော လက်ခံမှတ်တမ်းကို ဖျက်မရပါ။");
+        if (booking.getAdvancePaymentId() != null)
+            throw new IllegalStateException("Deposit ရှိသော လက်ခံမှတ်တမ်းကို ဖျက်မရပါ။ Cancel လုပ်ပါ။");
         bookingRepository.deleteById(id);
         messagingTemplate.convertAndSend(BOOKING_TOPIC, "BOOKING_DELETED");
+    }
+
+    @Transactional
+    public BookingAttachmentDTO addAttachment(Integer bookingId, BookingAttachmentDTO dto) {
+        Booking booking = bookingRepository.findById(bookingId)
+            .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+        if (dto.getDataUrl() == null || dto.getDataUrl().isBlank())
+            throw new IllegalArgumentException("Attachment data is required");
+        if (dto.getDataUrl().length() > 4_500_000)
+            throw new IllegalArgumentException("Attachment is too large");
+        BookingAttachment saved = attachmentRepository.save(BookingAttachment.builder()
+            .booking(booking)
+            .attachmentType(dto.getAttachmentType() != null ? dto.getAttachmentType() : "INTAKE_PHOTO")
+            .fileName(dto.getFileName())
+            .contentType(dto.getContentType())
+            .dataUrl(dto.getDataUrl())
+            .uploadedBy(currentUsername())
+            .uploadedAt(LocalDateTime.now())
+            .build());
+        return toAttachmentDto(saved);
+    }
+
+    @Transactional
+    public void deleteAttachment(Integer bookingId, Integer attachmentId) {
+        BookingAttachment attachment = attachmentRepository.findById(attachmentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Attachment not found"));
+        if (!attachment.getBooking().getId().equals(bookingId))
+            throw new IllegalArgumentException("Attachment does not belong to this booking");
+        attachmentRepository.delete(attachment);
+    }
+
+    private void applyBookingServices(ServiceJob job, Booking booking) {
+        if (booking.getDetails() == null || booking.getDetails().isEmpty()) return;
+        BigDecimal total = BigDecimal.ZERO;
+        int minutes = 0;
+        for (BookingDetail d : booking.getDetails()) {
+            if (d.getServiceItem() == null) continue;
+            int qty = d.getQty() != null ? d.getQty() : 1;
+            BigDecimal price = d.getPrice() != null ? d.getPrice() : d.getServiceItem().getPrice();
+            boolean foc = Boolean.TRUE.equals(d.getServiceItem().getFocDefault());
+            BigDecimal sub = foc ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
+            job.getLines().add(ServiceJobLine.builder()
+                .serviceJob(job)
+                .serviceItem(d.getServiceItem())
+                .qty(qty)
+                .price(price)
+                .subtotal(sub)
+                .warrantyMonths(d.getServiceItem().getWarrantyMonths() != null ? d.getServiceItem().getWarrantyMonths() : 0)
+                .warrantyCovered(foc)
+                .build());
+            total = total.add(sub);
+            minutes += (d.getServiceItem().getDurationMinutes() != null ? d.getServiceItem().getDurationMinutes() : 0) * qty;
+        }
+        if (total.compareTo(BigDecimal.ZERO) > 0) job.setEstimatedCost(total);
+        if (minutes > 0) job.setEstimatedCompletion(LocalDateTime.now().plusMinutes(minutes));
+    }
+
+    private void recordDeposit(Booking booking, BookingDTO dto) {
+        BigDecimal deposit = dto.getDepositAmount() != null ? dto.getDepositAmount() : booking.getDepositAmount();
+        if (deposit == null || deposit.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (dto.getPaymentMethodId() == null)
+            throw new IllegalArgumentException("လက်ခံငွေအတွက် ငွေပေးချေနည်း ရွေးပါ");
+        CustomerPaymentDTO payment = new CustomerPaymentDTO();
+        payment.setCustomerId(booking.getCustomer().getId());
+        payment.setAmount(deposit);
+        payment.setPaymentMethodId(dto.getPaymentMethodId());
+        payment.setStaffId(booking.getStaff() != null ? booking.getStaff().getId() : dto.getStaffId());
+        payment.setTransactionNo(dto.getTransactionNo());
+        payment.setNote("Booking deposit " + booking.getInvoiceNo());
+        CustomerPaymentDTO saved = customerPaymentService.createAdvancePayment(payment);
+        booking.setAdvancePaymentId(saved.getId());
+        booking.setDepositAmount(deposit);
+    }
+
+    private void validateSerials(BookingDTO dto, Integer excludeBookingId) {
+        List<String> serials = new ArrayList<>();
+        if (dto.getSerialNumber() != null && !dto.getSerialNumber().isBlank())
+            serials.add(dto.getSerialNumber().trim());
+        if (dto.getDevices() != null) {
+            dto.getDevices().stream()
+                .map(BookingDeviceDTO::getSerialNumber)
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::trim)
+                .forEach(serials::add);
+        }
+        long distinct = serials.stream().map(String::toLowerCase).distinct().count();
+        if (distinct != serials.size())
+            throw new IllegalArgumentException("Serial နံပါတ် ထပ်နေပါသည်။");
+        for (String sn : serials) {
+            if (bookingRepository.existsOpenSerial(sn, excludeBookingId))
+                throw new IllegalArgumentException("Serial " + sn + " သည် လက်ခံဆဲ ပစ္စည်းတွင် ရှိပြီးသားဖြစ်သည်။");
+            if (serviceJobRepository.existsOpenDeviceSerial(sn, null))
+                throw new IllegalArgumentException("Serial " + sn + " သည် ပြင်ဆဲ Job တွင် ရှိပြီးသားဖြစ်သည်။");
+        }
+    }
+
+    private void buildDetails(Booking booking, BookingDTO dto) {
+        if (dto.getDetails() == null || dto.getDetails().isEmpty()) return;
+        for (BookingDetailDTO d : dto.getDetails()) {
+            if (d.getServiceId() == null) continue;
+            ServiceItem item = serviceItemRepository.findById(d.getServiceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Service not found: " + d.getServiceId()));
+            int qty = d.getQty() != null ? d.getQty() : 1;
+            BigDecimal price = d.getPrice() != null ? d.getPrice() : item.getPrice();
+            booking.getDetails().add(BookingDetail.builder()
+                .booking(booking)
+                .serviceItem(item)
+                .qty(qty)
+                .price(price)
+                .subtotal(price.multiply(BigDecimal.valueOf(qty)))
+                .build());
+        }
+        BigDecimal serviceTotal = booking.getDetails().stream()
+            .map(BookingDetail::getSubtotal)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (serviceTotal.compareTo(BigDecimal.ZERO) > 0 && (dto.getTotalAmount() == null || dto.getTotalAmount().compareTo(BigDecimal.ZERO) == 0))
+            booking.setTotalAmount(serviceTotal);
+    }
+
+    private String currentUsername() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null ? authentication.getName() : "system";
     }
 
     private void buildDeviceInfos(Booking booking, BookingDTO dto) {
@@ -349,6 +541,7 @@ public class BookingService {
                 .accessories(d.getAccessories())
                 .problemDesc(d.getProblemDesc())
                 .deviceConditions(d.getDeviceConditions())
+                .conditionChecklist(d.getConditionChecklist())
                 .build());
         }
     }
@@ -385,7 +578,14 @@ public class BookingService {
         dto.setAppointmentDate(b.getAppointmentDate() != null ? b.getAppointmentDate().toString() : null);
         dto.setStatus(b.getStatus());
         dto.setTotalAmount(b.getTotalAmount());
+        dto.setDepositAmount(b.getDepositAmount());
+        dto.setAdvancePaymentId(b.getAdvancePaymentId());
+        dto.setSignatureData(b.getSignatureData());
         dto.setRemark(b.getRemark());
+        if (b.getPaymentMethod() != null) {
+            dto.setPaymentMethodId(b.getPaymentMethod().getId());
+            dto.setPaymentMethodName(b.getPaymentMethod().getMethodName());
+        }
         dto.setDeviceType(b.getDeviceType());
         dto.setBrand(b.getBrand());
         dto.setModel(b.getModel());
@@ -404,7 +604,18 @@ public class BookingService {
                 return dd;
               }).toList()
             : List.of());
-        dto.setDetails(List.of());
+        dto.setDetails(b.getDetails() != null
+            ? b.getDetails().stream().map(d -> {
+                BookingDetailDTO dd = new BookingDetailDTO();
+                dd.setId(d.getId());
+                dd.setServiceId(d.getServiceItem() != null ? d.getServiceItem().getId() : null);
+                dd.setServiceName(d.getServiceItem() != null ? d.getServiceItem().getItem() : null);
+                dd.setQty(d.getQty());
+                dd.setPrice(d.getPrice());
+                dd.setSubtotal(d.getSubtotal());
+                return dd;
+              }).toList()
+            : List.of());
         dto.setDevices(b.getDevices() != null
             ? b.getDevices().stream().map(d -> {
                 BookingDeviceDTO dd = new BookingDeviceDTO();
@@ -417,9 +628,24 @@ public class BookingService {
                 dd.setAccessories(d.getAccessories());
                 dd.setProblemDesc(d.getProblemDesc());
                 dd.setDeviceConditions(d.getDeviceConditions());
+                dd.setConditionChecklist(d.getConditionChecklist());
                 return dd;
               }).toList()
             : List.of());
+        dto.setAttachments(attachmentRepository.findByBookingIdOrderByUploadedAtDesc(b.getId()).stream()
+            .map(this::toAttachmentDto).toList());
+        return dto;
+    }
+
+    private BookingAttachmentDTO toAttachmentDto(BookingAttachment a) {
+        BookingAttachmentDTO dto = new BookingAttachmentDTO();
+        dto.setId(a.getId());
+        dto.setAttachmentType(a.getAttachmentType());
+        dto.setFileName(a.getFileName());
+        dto.setContentType(a.getContentType());
+        dto.setDataUrl(a.getDataUrl());
+        dto.setUploadedBy(a.getUploadedBy());
+        dto.setUploadedAt(a.getUploadedAt());
         return dto;
     }
 

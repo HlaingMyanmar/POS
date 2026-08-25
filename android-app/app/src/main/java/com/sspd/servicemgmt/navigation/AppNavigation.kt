@@ -386,6 +386,9 @@ fun AppNavigation() {
                     screen(Screen.PurchaseOrders.route) {
                         PurchaseOrderListScreen(onBack = { nav.popBackStack() })
                     }
+                    screen(Screen.SupplierPayments.route) {
+                        SupplierPaymentScreen(onBack = { nav.popBackStack() })
+                    }
                     screen(Screen.NewPurchase.route) {
                         PurchaseFormScreen(
                             onBack = { nav.popBackStack() },

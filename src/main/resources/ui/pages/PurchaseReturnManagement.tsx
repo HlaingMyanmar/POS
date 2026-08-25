@@ -8,13 +8,14 @@ import { purchaseApiService } from '../services/purchaseapiservice';
 import { productService } from '../services/productapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { supplierService } from '../services/supplierapiservice';
-import { AppRoute, PaymentMethodDTO, PaymentTransactionDTO, PurchaseDTO, PurchaseReturnDTO, PurchaseReturnDetailDTO, ProductStockHistoryMovementDTO, SupplierDTO } from '../types';
+import { AppRoute, PaymentMethodDTO, PaymentTransactionDTO, PurchaseDTO, PurchaseReturnDTO, PurchaseReturnDetailDTO, PurchaseReturnReasonDTO, ProductStockHistoryMovementDTO, SupplierDTO } from '../types';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { getCachedCompanySettings } from '../utils/companySettings';
 import { buildPurchaseReturnVoucherHtml } from './purchaseReturnVoucherTemplate';
+import PortaledCombobox from '../components/PortaledCombobox';
 
 type DetailForm = PurchaseReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
 
@@ -49,8 +50,10 @@ const emptyDetail = (): DetailForm => ({
   qty: 1,
   unitPrice: 0,
   subtotal: 0,
+  allocatedShippingCost: 0,
   productSearch: '',
-  serialNumbers: ['']
+  serialNumbers: [''],
+  reasonId: undefined
 });
 
 const toLocalDateTime = (value?: string) => {
@@ -73,15 +76,41 @@ const normalizePayments = (payments: PaymentTransactionDTO[]) =>
     }))
     .filter((p) => p.paymentMethodId > 0 && p.amount > 0);
 const paymentTotal = (payments: PaymentTransactionDTO[]) => normalizePayments(payments).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+const originalPayableNet = (purchase: PurchaseDTO) => {
+  const grossAfterDiscountAndCharges = Number(purchase.totalAmount || 0)
+    - Number(purchase.discountAmount || 0)
+    + Number(purchase.otherCharges || 0);
+  const withTax = String(purchase.taxMode || 'EXCLUSIVE').toUpperCase() === 'INCLUSIVE'
+    ? grossAfterDiscountAndCharges
+    : grossAfterDiscountAndCharges + Number(purchase.taxAmount || 0);
+  const payable = withTax - Number(purchase.withholdingTaxAmount || 0);
+  return payable > 0 ? payable : Number(purchase.netAmount || 0) + Number(purchase.returnAmount || 0);
+};
 const discountedUnitCost = (purchase: PurchaseDTO, detail: { productId: number; qty: number; unitCost: number; subtotal: number }) => {
   const gross = Number(purchase.totalAmount || 0);
-  const net = Number(purchase.netAmount ?? (gross - Number(purchase.discountAmount || 0)));
+  const net = originalPayableNet(purchase);
   if (gross <= 0 || detail.qty <= 0) return Number(detail.unitCost || 0);
   const lineNet = Number(detail.subtotal || 0) * (net / gross);
   return Math.round((lineNet / detail.qty) * 100) / 100;
 };
 
 const PurchaseReturnManagement: React.FC = () => {
+  const sessionUser = useMemo(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('sspd_user') || '{}') as { roles?: string[]; permissions?: string[] };
+    } catch {
+      return {};
+    }
+  }, []);
+  const isAdmin = (sessionUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role));
+  const canCreateReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_CREATE');
+  const canVoidReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_UPDATE');
+  const canSubmitReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_SUBMIT');
+  const canApproveReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_APPROVE');
+  const canDispatchReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_DISPATCH');
+  const canReceiveReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_RECEIVE');
+  const canSettleReturn = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_SETTLE');
+  const canManageReasons = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_RETURN_REASON_MANAGE');
   const [searchParams] = useSearchParams();
   const [rows, setRows] = useState<PurchaseReturnDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +121,7 @@ const PurchaseReturnManagement: React.FC = () => {
   const [suppliers, setSuppliers] = useState<SupplierDTO[]>([]);
   const [purchases, setPurchases] = useState<PurchaseDTO[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDTO[]>([]);
+  const [returnReasons, setReturnReasons] = useState<PurchaseReturnReasonDTO[]>([]);
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseDTO | null>(null);
   const [selectedPurchaseReturns, setSelectedPurchaseReturns] = useState<PurchaseReturnDTO[]>([]);
 
@@ -118,11 +148,20 @@ const PurchaseReturnManagement: React.FC = () => {
   const [purchaseSearch, setPurchaseSearch] = useState('');
   const [returnDate, setReturnDate] = useState(nowLocalDateTime());
   const [reason, setReason] = useState('');
+  const [resolutionType,setResolutionType]=useState<PurchaseReturnDTO['resolutionType']>('REFUND');
+  const [rmaNumber,setRmaNumber]=useState(''); const [claimDate,setClaimDate]=useState(''); const [expectedResolutionDate,setExpectedResolutionDate]=useState(''); const [supplierContact,setSupplierContact]=useState(''); const [claimStatus,setClaimStatus]=useState('OPEN'); const [replacementExpectedQty,setReplacementExpectedQty]=useState(0); const [replacementReceivedQty,setReplacementReceivedQty]=useState(0);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundPayments, setRefundPayments] = useState<PaymentTransactionDTO[]>([]);
   const [paymentMethodId, setPaymentMethodId] = useState(0);
   const [transactionNo, setTransactionNo] = useState('');
   const [details, setDetails] = useState<DetailForm[]>([emptyDetail()]);
+  const [shippingCostAmount, setShippingCostAmount] = useState(0);
+  const [shippingPayerResponsibility, setShippingPayerResponsibility] = useState<'COMPANY' | 'SUPPLIER' | 'SHARED'>('COMPANY');
+  const [companyShippingPortion, setCompanyShippingPortion] = useState(0);
+  const [supplierShippingPortion, setSupplierShippingPortion] = useState(0);
+  const [shippingAllocationMethod, setShippingAllocationMethod] = useState<'VALUE' | 'QUANTITY' | 'MANUAL'>('VALUE');
+  const [shippingPaymentMethodId, setShippingPaymentMethodId] = useState(0);
+  const [shippingTransactionReference, setShippingTransactionReference] = useState('');
 
   const supplierLabel = useCallback((s?: SupplierDTO) => {
     if (!s) return '';
@@ -149,7 +188,7 @@ const PurchaseReturnManagement: React.FC = () => {
   const loadRows = useCallback(async (page: number, size: number, search: string) => {
     setLoading(true);
     try {
-      const result: PurchaseReturnPage = await purchaseReturnApiService.getAll(page, size, search);
+      const result: PurchaseReturnPage = await purchaseReturnApiService.getAll(page, size, search, { from: dateFrom ? `${dateFrom}T00:00:00` : undefined, to: dateTo ? `${dateTo}T23:59:59` : undefined });
       setRows(result.content);
       setTotalElements(result.totalElements);
       setTotalPages(result.totalPages);
@@ -158,19 +197,24 @@ const PurchaseReturnManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateFrom, dateTo]);
 
   const loadMaster = useCallback(async () => {
     setMasterLoading(true);
     try {
-      const [sup, pur, pm] = await Promise.all([
+      const [sup, pur, pm, reasons] = await Promise.allSettled([
         supplierService.getAll(),
         purchaseApiService.getAll(),
-        paymentMethodService.getAllActive()
+        paymentMethodService.getAllActive(),
+        purchaseReturnApiService.getReasons()
       ]);
-      setSuppliers(sup);
-      setPurchases(pur);
-      setPaymentMethods(pm);
+      setSuppliers(sup.status === 'fulfilled' ? sup.value || [] : []);
+      setPurchases(pur.status === 'fulfilled' ? pur.value || [] : []);
+      setPaymentMethods(pm.status === 'fulfilled' ? pm.value || [] : []);
+      setReturnReasons(reasons.status === 'fulfilled' ? reasons.value || [] : []);
+      [sup, pur, pm, reasons].forEach((result) => {
+        if (result.status === 'rejected') console.error('Failed to load purchase return master data', result.reason);
+      });
     } catch (e) {
       console.error('Failed to load master data', e);
     } finally {
@@ -268,12 +312,14 @@ const PurchaseReturnManagement: React.FC = () => {
 
     const returnedByProduct = new Map<number, number>();
     const returnedSerials = new Set<string>();
-    selectedPurchaseReturns.forEach((ret) => {
+    selectedPurchaseReturns
+      .filter((ret) => String(ret.status || '').toUpperCase() !== 'VOIDED')
+      .forEach((ret) => {
       (ret.details || []).forEach((detail) => {
         returnedByProduct.set(detail.productId, (returnedByProduct.get(detail.productId) || 0) + (Number(detail.qty) || 0));
         (detail.serialNumbers || []).forEach((sn) => returnedSerials.add(normalizeSerial(sn)));
       });
-    });
+      });
 
     const map = new Map<number, PurchaseProductOption>();
     selectedPurchase.details.forEach((detail) => {
@@ -348,10 +394,18 @@ const PurchaseReturnManagement: React.FC = () => {
     setSelectedPurchaseReturns([]);
     setReturnDate(nowLocalDateTime());
     setReason('');
+    setResolutionType('REFUND'); setRmaNumber(''); setClaimDate(''); setExpectedResolutionDate(''); setSupplierContact(''); setClaimStatus('OPEN'); setReplacementExpectedQty(0); setReplacementReceivedQty(0);
     setRefundAmount('');
     setRefundPayments([]);
     setPaymentMethodId(paymentMethods[0]?.id ?? 0);
     setTransactionNo('');
+    setShippingCostAmount(0);
+    setShippingPayerResponsibility('COMPANY');
+    setCompanyShippingPortion(0);
+    setSupplierShippingPortion(0);
+    setShippingAllocationMethod('VALUE');
+    setShippingPaymentMethodId(paymentMethods[0]?.id ?? 0);
+    setShippingTransactionReference('');
     setDetails([emptyDetail()]);
   };
 
@@ -361,7 +415,7 @@ const PurchaseReturnManagement: React.FC = () => {
   const existingRefundAmount = Number(selectedPurchase?.refundAmount || 0);
   const originalPurchaseNet = useMemo(() => {
     if (!selectedPurchase) return 0;
-    return Number(selectedPurchase.totalAmount || 0) - Number(selectedPurchase.discountAmount || 0);
+    return originalPayableNet(selectedPurchase);
   }, [selectedPurchase]);
   const netAfterReturn = useMemo(() => Math.max(0, originalPurchaseNet - existingReturnAmount - total), [originalPurchaseNet, existingReturnAmount, total]);
   const dueAfterReturn = useMemo(() => Math.max(0, netAfterReturn - Number(selectedPurchase?.paidAmount || 0)), [netAfterReturn, selectedPurchase]);
@@ -378,6 +432,31 @@ const PurchaseReturnManagement: React.FC = () => {
   const supplierCreditAfterRefund = useMemo(() => Math.max(0, supplierCreditBeforeRefund - (Number.isNaN(effectiveRefund) ? 0 : effectiveRefund)), [supplierCreditBeforeRefund, effectiveRefund]);
   const totalReturnableQty = useMemo(() => productOptions.reduce((sum, option) => sum + option.returnableQty, 0), [productOptions]);
   const totalSelectedQty = useMemo(() => details.reduce((sum, detail) => sum + (Number(detail.qty) || 0), 0), [details]);
+  const shippingAllocations = useMemo(() => {
+    if (shippingAllocationMethod === 'MANUAL') {
+      return details.map((detail) => Math.round(Number(detail.allocatedShippingCost || 0) * 100) / 100);
+    }
+    const bases = details.map((detail) => shippingAllocationMethod === 'QUANTITY' ? Number(detail.qty || 0) : Number(detail.subtotal || 0));
+    const denominator = bases.reduce((sum, basis) => sum + basis, 0);
+    let allocated = 0;
+    return bases.map((basis, index) => {
+      const amount = index === bases.length - 1
+        ? Math.round((shippingCostAmount - allocated) * 100) / 100
+        : denominator > 0 ? Math.round((shippingCostAmount * basis / denominator) * 100) / 100 : 0;
+      allocated += amount;
+      return amount;
+    });
+  }, [details, shippingAllocationMethod, shippingCostAmount]);
+  const shippingAllocationTotal = useMemo(() => shippingAllocations.reduce((sum, value) => sum + value, 0), [shippingAllocations]);
+  const validShipping = shippingCostAmount >= 0
+    && companyShippingPortion >= 0
+    && supplierShippingPortion >= 0
+    && Math.abs(companyShippingPortion + supplierShippingPortion - shippingCostAmount) < 0.005
+    && (shippingPayerResponsibility !== 'COMPANY' || (supplierShippingPortion === 0 && companyShippingPortion === shippingCostAmount))
+    && (shippingPayerResponsibility !== 'SUPPLIER' || (companyShippingPortion === 0 && supplierShippingPortion === shippingCostAmount))
+    && supplierShippingPortion <= total
+    && Math.abs(shippingAllocationTotal - shippingCostAmount) < 0.005
+    && (companyShippingPortion <= 0 || shippingPaymentMethodId > 0);
   const selectedSerialCount = useMemo(() => details.reduce((sum, detail) => sum + detail.serialNumbers.filter((sn) => sanitizeSerial(sn)).length, 0), [details]);
   const activeReturnCount = useMemo(() => selectedPurchaseReturns.filter((row) => row.status !== 'VOIDED').length, [selectedPurchaseReturns]);
   const refundMode = effectiveRefund > 0 ? 'ငွေသား/ဘဏ်မှ ပြန်အမ်းမည်' : dueAfterReturn > 0 ? 'ပေးရန်ကျန်ငွေထဲမှ လျှော့မည်' : supplierCreditAfterRefund > 0 ? 'Supplier credit အဖြစ်ထားမည်' : 'ငွေကြေးလှုပ်ရှားမှုမရှိ';
@@ -418,7 +497,7 @@ const PurchaseReturnManagement: React.FC = () => {
     && details.length > 0
     && details.every((d) => {
       const option = productOptionById(d.productId);
-      return d.productId > 0 && d.qty > 0 && d.unitPrice > 0 && !!option && d.qty <= option.returnableQty;
+      return d.productId > 0 && d.qty > 0 && d.unitPrice > 0 && !!d.reasonId && !!option && d.qty <= option.returnableQty;
     })
     && reason.trim().length > 0
     && serialValidation.qtyMatchesSerialCount
@@ -426,6 +505,7 @@ const PurchaseReturnManagement: React.FC = () => {
     && serialValidation.uniqueAcrossRows
     && serialValidation.belongsToSelectedProduct
     && validRefund
+    && validShipping
     && (!paymentRequired || paymentMethodId > 0 || normalizedRefundPayments.length > 0);
 
   const onDetailChange = (index: number, field: 'qty' | 'unitPrice', value: string) => {
@@ -446,15 +526,42 @@ const PurchaseReturnManagement: React.FC = () => {
     }));
   };
 
-  const onProductSearch = (index: number, value: string) => {
-    const match = productOptions.find((p) => productLabel(p).toLowerCase() === value.toLowerCase());
+  const onShippingCostChange = (value: number) => {
+    const amount = Math.max(0, value || 0);
+    setShippingCostAmount(amount);
+    if (shippingPayerResponsibility === 'COMPANY') {
+      setCompanyShippingPortion(amount);
+      setSupplierShippingPortion(0);
+    } else if (shippingPayerResponsibility === 'SUPPLIER') {
+      setCompanyShippingPortion(0);
+      setSupplierShippingPortion(amount);
+    }
+  };
+
+  const onShippingPayerChange = (payer: 'COMPANY' | 'SUPPLIER' | 'SHARED') => {
+    setShippingPayerResponsibility(payer);
+    if (payer === 'COMPANY') {
+      setCompanyShippingPortion(shippingCostAmount);
+      setSupplierShippingPortion(0);
+    } else if (payer === 'SUPPLIER') {
+      setCompanyShippingPortion(0);
+      setSupplierShippingPortion(shippingCostAmount);
+    } else {
+      const company = Math.round(shippingCostAmount / 2 * 100) / 100;
+      setCompanyShippingPortion(company);
+      setSupplierShippingPortion(Math.round((shippingCostAmount - company) * 100) / 100);
+    }
+  };
+
+  const onProductSelect = (index: number, productId: number) => {
+    const match = productOptions.find((p) => p.productId === productId);
     setDetails((prev) => prev.map((d, i) => {
       if (i !== index) return d;
       const unitPrice = match ? (d.unitPrice > 0 ? d.unitPrice : match.unitPrice) : d.unitPrice;
       const qty = match ? Math.min(Math.max(1, d.qty || 1), match.returnableQty) : d.qty;
       return {
         ...d,
-        productSearch: value,
+        productSearch: match ? productLabel(match) : '',
         productId: match?.productId || 0,
         qty,
         unitPrice,
@@ -473,11 +580,9 @@ const PurchaseReturnManagement: React.FC = () => {
     }));
   };
 
-  const onSupplierSearch = (value: string) => {
-    setSupplierSearch(value);
-    const match = suppliers.find((s) => supplierLabel(s).toLowerCase() === value.toLowerCase());
-    const nextSupplierId = match?.id || 0;
-
+  const onSupplierSelect = (nextSupplierId: number) => {
+    const match = suppliers.find((s) => s.id === nextSupplierId);
+    setSupplierSearch(match ? supplierLabel(match) : '');
     if (nextSupplierId !== supplierId) {
       setSupplierId(nextSupplierId);
       setPurchaseId(0);
@@ -491,11 +596,9 @@ const PurchaseReturnManagement: React.FC = () => {
     setSupplierId(nextSupplierId);
   };
 
-  const onPurchaseSearch = (value: string) => {
-    setPurchaseSearch(value);
-    const match = filteredPurchases.find((p) => purchaseLabel(p).toLowerCase() === value.toLowerCase());
-    const nextPurchaseId = match?.id || 0;
-
+  const onPurchaseSelect = (nextPurchaseId: number) => {
+    const match = filteredPurchases.find((p) => p.id === nextPurchaseId);
+    setPurchaseSearch(match ? purchaseLabel(match) : '');
     if (nextPurchaseId !== purchaseId) {
       setPurchaseId(nextPurchaseId);
       setSelectedPurchaseReturns([]);
@@ -509,8 +612,29 @@ const PurchaseReturnManagement: React.FC = () => {
   };
 
   const openCreate = () => {
+    if (!canCreateReturn) {
+      Swal.fire('ခွင့်ပြုချက် မရှိပါ', 'Purchase Return ဖန်တီးရန် CREATE permission လိုအပ်သည်။', 'warning');
+      return;
+    }
     resetForm();
     setShowForm(true);
+  };
+
+  const openEdit = async (row: PurchaseReturnDTO) => {
+    if (!row.id || String(row.status || '').toUpperCase() !== 'DRAFT' || !canVoidReturn) return;
+    try {
+      const data = await purchaseReturnApiService.getById(row.id);
+      const purchase = purchases.find((p) => p.id === data.purchaseId);
+      setEditingId(data.id!); setPurchaseId(data.purchaseId); setPurchaseSearch(purchaseLabel(purchase));
+      setSupplierId(purchase?.supplierId || 0); setSupplierSearch(supplierLabelById(purchase?.supplierId));
+      setReturnDate(toLocalDateTime(data.returnDate)); setReason(data.reason || '');
+      setResolutionType(data.resolutionType||'REFUND'); setRmaNumber(data.rmaNumber||''); setClaimDate(toLocalDateTime(data.claimDate)); setExpectedResolutionDate(toLocalDateTime(data.expectedResolutionDate)); setSupplierContact(data.supplierContact||''); setClaimStatus(data.claimStatus||'OPEN'); setReplacementExpectedQty(Number(data.replacementExpectedQty||0)); setReplacementReceivedQty(Number(data.replacementReceivedQty||0));
+      setShippingCostAmount(Number(data.shippingCostAmount || 0)); setShippingPayerResponsibility(data.shippingPayerResponsibility || 'COMPANY');
+      setCompanyShippingPortion(Number(data.companyShippingPortion || 0)); setSupplierShippingPortion(Number(data.supplierShippingPortion || 0));
+      setShippingAllocationMethod(data.shippingAllocationMethod || 'VALUE'); setShippingPaymentMethodId(data.shippingPaymentMethodId || 0); setShippingTransactionReference(data.shippingTransactionReference || '');
+      setDetails((data.details || []).map((d) => ({ ...d, productSearch: d.productName || `#${d.productId}`, serialNumbers: d.serialNumbers || [] })));
+      setShowForm(true);
+    } catch (e: any) { Swal.fire('Error', e.message || 'Could not open draft', 'error'); }
   };
 
   const openView = async (id: number) => {
@@ -526,8 +650,22 @@ const PurchaseReturnManagement: React.FC = () => {
     }
   };
 
+  const uploadReturnAttachment = async (file?: File) => {
+    if (!file || !viewRow?.id) return;
+    if (file.size > 5 * 1024 * 1024) { Swal.fire('File too large', 'Maximum attachment size is 5 MB.', 'warning'); return; }
+    const reader = new FileReader();
+    reader.onload = async () => { try { setSaving(true); const updated = await purchaseReturnApiService.addAttachment(viewRow.id!, { attachmentType: file.type.startsWith('image/') ? 'DAMAGE_PHOTO' : 'DOCUMENT', fileName: file.name, contentType: file.type, dataUrl: String(reader.result || '') }); setViewRow(updated); } catch (e: any) { Swal.fire('Upload failed', e.message || 'Could not upload attachment', 'error'); } finally { setSaving(false); } };
+    reader.readAsDataURL(file);
+  };
+
+  const deleteReturnAttachment = async (attachmentId?: number) => { if (!viewRow?.id || !attachmentId) return; const ok=await Swal.fire({title:'Delete attachment?',icon:'warning',showCancelButton:true}); if(!ok.isConfirmed)return; try { setSaving(true); setViewRow(await purchaseReturnApiService.deleteAttachment(viewRow.id,attachmentId)); } catch(e:any){ Swal.fire('Delete failed',e.message||'Could not delete attachment','error'); } finally { setSaving(false); } };
+
   const onVoid = async (row: PurchaseReturnDTO) => {
-    if (!row.id || row.status === 'VOIDED') return;
+    if (!row.id || row.status === 'VOIDED' || saving) return;
+    if (!canVoidReturn) {
+      Swal.fire('ခွင့်ပြုချက် မရှိပါ', 'Purchase Return void လုပ်ရန် UPDATE permission လိုအပ်သည်။', 'warning');
+      return;
+    }
     const result = await Swal.fire({
       icon: 'warning',
       title: `${row.returnNo || `#${row.id}`} ကို ပယ်ဖျက်ရန် လုပ်မည်`,
@@ -541,6 +679,7 @@ const PurchaseReturnManagement: React.FC = () => {
       inputValidator: (value) => value && value.trim().length > 0 ? null : 'ပယ်ဖျက်ရန် reason လိုအပ်ပါသည်'
     });
     if (!result.isConfirmed) return;
+    setSaving(true);
     try {
       await purchaseReturnApiService.voidReturn(row.id, String(result.value || '').trim());
       await loadRows(currentPage, pageSize, debouncedSearch);
@@ -548,11 +687,117 @@ const PurchaseReturnManagement: React.FC = () => {
       Swal.fire({ icon: 'success', title: 'ဝယ်ယူပြန်ပို့ဘောင်ချာ ပယ်ဖျက်ပြီးပါပြီ', toast: true, position: 'top-end', showConfirmButton: false, timer: 1800 });
     } catch (e: any) {
       Swal.fire('Error', e.message || 'Failed to void purchase return', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runWorkflow = async (row: PurchaseReturnDTO) => {
+    if (!row.id || saving) return;
+    const status = String(row.status || 'DRAFT').toUpperCase();
+    setSaving(true);
+    try {
+      if (status === 'DRAFT' && canSubmitReturn) {
+        await purchaseReturnApiService.submit(row.id);
+      } else if (status === 'PENDING_APPROVAL' && canApproveReturn) {
+        const result = await Swal.fire({ title: 'Review purchase return', input: 'textarea', inputLabel: 'Note / rejection reason', showCancelButton: true, showDenyButton: true, confirmButtonText: 'Approve', denyButtonText: 'Send back' });
+        if (result.isDenied) { const reason = String(result.value || '').trim(); if (!reason) { Swal.fire('Reason required', 'Send-back reason is required.', 'warning'); return; } await purchaseReturnApiService.reject(row.id, reason); }
+        else if (!result.isConfirmed) return;
+        else await purchaseReturnApiService.approve(row.id, String(result.value || ''));
+      } else if (status === 'APPROVED' && canDispatchReturn) {
+        const result = await Swal.fire({
+          title: 'Dispatch approved return',
+          html: '<input id="pr-carrier" class="swal2-input" placeholder="Carrier"><input id="pr-tracking" class="swal2-input" placeholder="Tracking number">',
+          showCancelButton: true,
+          preConfirm: () => {
+            const carrier = (document.getElementById('pr-carrier') as HTMLInputElement)?.value.trim();
+            const trackingNo = (document.getElementById('pr-tracking') as HTMLInputElement)?.value.trim();
+            if (!carrier || !trackingNo) { Swal.showValidationMessage('Carrier and tracking number are required'); return false; }
+            return { carrier, trackingNo };
+          }
+        });
+        if (!result.isConfirmed || !result.value) return;
+        await purchaseReturnApiService.dispatch(row.id, result.value as { carrier: string; trackingNo: string });
+      } else if (status === 'DISPATCHED' && canReceiveReturn) {
+        const result = await Swal.fire({ title: 'Confirm supplier receipt?', input: 'text', inputLabel: 'Proof/reference (optional)', showCancelButton: true });
+        if (!result.isConfirmed) return;
+        await purchaseReturnApiService.supplierReceived(row.id, { deliveryProof: String(result.value || '') });
+      } else if (status === 'SUPPLIER_RECEIVED' && canSettleReturn) {
+        const result = await Swal.fire({
+          title: 'Reconcile supplier settlement',
+          html: `<select id="pr-settlement" class="swal2-select"><option>REFUND</option><option>CREDIT_NOTE</option><option>REPLACEMENT</option><option>OFFSET</option><option>SPLIT</option></select>
+            <input id="pr-note-no" class="swal2-input" placeholder="Credit note / reference">
+            <input id="pr-note-amount" type="number" step="0.01" class="swal2-input" placeholder="Supplier credit-note amount">
+            <input id="pr-refund-amount" type="number" step="0.01" class="swal2-input" placeholder="Refund amount">
+            <input id="pr-payment-method" type="number" class="swal2-input" value="${paymentMethods[0]?.id || ''}" placeholder="Refund payment method ID">
+            <input id="pr-variance-reason" class="swal2-input" placeholder="Variance reason (required if non-zero)">`,
+          showCancelButton: true,
+          preConfirm: () => ({
+            settlementType: (document.getElementById('pr-settlement') as HTMLSelectElement).value as PurchaseReturnDTO['settlementType'],
+            supplierCreditNoteNo: (document.getElementById('pr-note-no') as HTMLInputElement).value.trim(),
+            supplierCreditNoteAmount: Number((document.getElementById('pr-note-amount') as HTMLInputElement).value || 0),
+            refundAmount: Number((document.getElementById('pr-refund-amount') as HTMLInputElement).value || 0),
+            paymentMethodId: Number((document.getElementById('pr-payment-method') as HTMLInputElement).value || 0) || undefined,
+            creditVarianceReason: (document.getElementById('pr-variance-reason') as HTMLInputElement).value.trim()
+          })
+        });
+        if (!result.isConfirmed || !result.value) return;
+        await purchaseReturnApiService.settle(row.id, {
+          purchaseId: row.purchaseId, details: row.details,
+          expectedCreditAmount: Math.max(0, Number(row.totalReturnAmount || 0) - Number(row.supplierShippingPortion || 0)),
+          ...result.value
+        });
+      } else {
+        Swal.fire('No available action', 'Your permission or the current workflow status does not allow the next action.', 'info');
+        return;
+      }
+      await loadRows(currentPage, pageSize, debouncedSearch);
+      Swal.fire({ icon: 'success', title: 'Workflow updated', toast: true, position: 'top-end', timer: 1400, showConfirmButton: false });
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'Workflow update failed', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const manageReason = async () => {
+    const result = await Swal.fire({
+      title: 'Add return reason',
+      html: '<input id="pr-code" class="swal2-input" placeholder="Code"><input id="pr-name" class="swal2-input" placeholder="Name"><input id="pr-description" class="swal2-input" placeholder="Description">',
+      showCancelButton: true,
+      preConfirm: () => {
+        const code = (document.getElementById('pr-code') as HTMLInputElement).value.trim();
+        const name = (document.getElementById('pr-name') as HTMLInputElement).value.trim();
+        if (!code || !name) { Swal.showValidationMessage('Code and name are required'); return false; }
+        return { code, name, description: (document.getElementById('pr-description') as HTMLInputElement).value.trim(), active: true };
+      }
+    });
+    if (!result.isConfirmed || !result.value) return;
+    try {
+      await purchaseReturnApiService.createReason(result.value);
+      setReturnReasons(await purchaseReturnApiService.getReasons());
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'Could not create reason', 'error');
+    }
+  };
+
+  const toggleReason = async () => {
+    const inputOptions = Object.fromEntries(returnReasons.filter((r) => r.id).map((r) => [String(r.id), `${r.active ? 'Active' : 'Inactive'} · ${r.code} · ${r.name}`]));
+    const result = await Swal.fire({ title: 'Activate / deactivate reason', input: 'select', inputOptions, showCancelButton: true });
+    if (!result.isConfirmed) return;
+    const selected = returnReasons.find((r) => r.id === Number(result.value));
+    if (!selected?.id) return;
+    try {
+      await purchaseReturnApiService.updateReason(selected.id, { ...selected, active: !selected.active });
+      setReturnReasons(await purchaseReturnApiService.getReasons());
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'Could not update reason', 'error');
     }
   };
 
 
   const onSave = async () => {
+    if (saving || !canCreateReturn) return;
     if (!validForm) {
       Swal.fire('စစ်ဆေးရန်', 'Supplier/Purchase ရွေးပြီး item, serial number နှင့် အကြောင်းပြချက်ကို မှန်ကန်အောင်ဖြည့်ပါ။', 'warning');
       return;
@@ -567,18 +812,28 @@ const PurchaseReturnManagement: React.FC = () => {
         purchaseId,
         returnDate: returnDate || undefined,
         reason: reason.trim() || undefined,
+        resolutionType, rmaNumber:rmaNumber.trim()||undefined, claimDate:claimDate||undefined, expectedResolutionDate:expectedResolutionDate||undefined, supplierContact:supplierContact.trim()||undefined, claimStatus:claimStatus||undefined, replacementExpectedQty, replacementReceivedQty,
         totalReturnAmount: total,
         refundAmount: effectiveRefund,
         paymentMethodId: paymentRequired ? (normalizedRefundPayments[0]?.paymentMethodId || paymentMethodId) : undefined,
         payments: normalizedRefundPayments.length > 0 ? normalizedRefundPayments : undefined,
         transactionNo: transactionNo.trim() || undefined,
-        details: details.map((d) => ({
+        shippingCostAmount,
+        shippingPayerResponsibility,
+        companyShippingPortion,
+        supplierShippingPortion,
+        shippingAllocationMethod,
+        shippingPaymentMethodId: companyShippingPortion > 0 ? shippingPaymentMethodId : undefined,
+        shippingTransactionReference: shippingTransactionReference.trim() || undefined,
+        details: details.map((d, index) => ({
           returnId: editingId || undefined,
           productId: Number(d.productId),
           qty: Number(d.qty),
           unitPrice: Number(d.unitPrice),
           subtotal: Number((d.qty * d.unitPrice).toFixed(2)),
-          serialNumbers: d.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean)
+          allocatedShippingCost: shippingAllocations[index] || 0,
+          serialNumbers: d.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean),
+          reasonId: d.reasonId
         }))
       };
 
@@ -606,27 +861,20 @@ const PurchaseReturnManagement: React.FC = () => {
     }
   };
 
-  const filtered = useMemo(() => {
-    const from = dateFrom ? new Date(dateFrom) : null;
-    const to = dateTo ? new Date(dateTo) : null;
-    if (to) to.setHours(23, 59, 59, 999);
-    if (!from && !to) return rows;
-    return rows.filter((r) => {
-      if (!r.returnDate) return false;
-      const d = new Date(r.returnDate);
-      if (Number.isNaN(d.getTime())) return false;
-      if (from && d < from) return false;
-      if (to && d > to) return false;
-      return true;
-    });
-  }, [dateFrom, dateTo, rows]);
+  const filtered = useMemo(() => rows, [rows]);
   const visibleReturnRows = useMemo(() => filtered.filter((row): row is typeof row & { id: number } => typeof row.id === 'number'), [filtered]);
   const bulk = useBulkSelection<PurchaseReturnDTO & { id: number }>(visibleReturnRows);
-  const handleBulkAction = (action: { key: string }) => {
+  const handleBulkAction = async (action: { key: string }) => {
+    if (action.key === 'submit' || action.key === 'approve') {
+      const eligible=bulk.selectedRows.filter(r=>action.key==='submit'?String(r.status||'DRAFT').toUpperCase()==='DRAFT':String(r.status||'').toUpperCase()==='PENDING_APPROVAL');
+      if(!eligible.length){Swal.fire('No eligible records','Selected records do not match the required status.','info');return;}
+      const ok=await Swal.fire({title:`${action.key==='submit'?'Submit':'Approve'} ${eligible.length} return(s)?`,showCancelButton:true,icon:'question'}); if(!ok.isConfirmed)return;
+      try{setSaving(true);await Promise.all(eligible.map(r=>action.key==='submit'?purchaseReturnApiService.submit(r.id!):purchaseReturnApiService.approve(r.id!,'Bulk approved')));bulk.clear();await loadRows(currentPage,pageSize,debouncedSearch);Swal.fire('Completed',`${eligible.length} return(s) processed.`,'success');}catch(e:any){Swal.fire('Bulk action failed',e.message||'Some records could not be processed','error');}finally{setSaving(false);} return;
+    }
     if (action.key !== 'export') return;
     const csv = [
-      ['ID', 'Return No', 'Date', 'Supplier', 'Total', 'Refund'],
-      ...bulk.selectedRows.map((row) => [row.id, row.returnNo || '', row.returnDate || '', row.supplierName || '', row.totalReturnAmount || 0, row.refundAmount || 0])
+      ['ID','Return No','Date','Supplier','Purchase','Status','Product','Qty','Unit Price','Line Total','Serials','Reason','Shipping','Settlement','Refund','RMA','Claim Status'],
+      ...bulk.selectedRows.flatMap(row=>(row.details?.length?row.details:[{} as PurchaseReturnDetailDTO]).map(d=>[row.id,row.returnNo||'',row.returnDate||'',row.supplierName||'',row.purchaseCode||'',row.status||'',d.productName||d.productId||'',d.qty||'',d.unitPrice||'',d.subtotal||'',d.serialNumbers?.join('|')||'',d.reasonName||d.reasonCode||row.reason||'',d.allocatedShippingCost||0,row.settlementType||'',row.refundAmount||0,row.rmaNumber||'',row.claimStatus||'']))
     ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = `purchase-returns-selected-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -674,30 +922,43 @@ const PurchaseReturnManagement: React.FC = () => {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
                 <div className="flex min-w-0 flex-col gap-1.5 xl:col-span-3">
                   <label className="h-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supplier</label>
-                  <input
-                    list="pr-suppliers"
-                    value={supplierSearch}
-                    onChange={(e) => onSupplierSearch(e.target.value)}
-                    placeholder="Supplier ရွေးပါ..."
-                    className={`h-10 w-full rounded-lg border bg-slate-50 px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${supplierId > 0 ? 'border-slate-200' : 'border-rose-200'}`}
+                  <PortaledCombobox
+                    items={suppliers.map((supplier) => ({
+                      id: supplier.id!,
+                      label: supplier.name,
+                      sub: supplier.code,
+                      searchText: `${supplier.name} ${supplier.code || ''}`,
+                    }))}
+                    value={supplierId}
+                    placeholder={masterLoading ? 'Supplier များ ဖတ်နေသည်...' : 'Supplier ရှာ၍ ရွေးပါ...'}
+                    onChange={(id) => onSupplierSelect(id)}
+                    inputClassName={`h-10 w-full rounded-lg border bg-slate-50 px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${supplierId > 0 ? 'border-slate-200' : 'border-rose-200'}`}
                   />
-                  <datalist id="pr-suppliers">
-                    {suppliers.map((s) => <option key={s.id} value={supplierLabel(s)} />)}
-                  </datalist>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5 xl:col-span-3">
                   <label className="h-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">ဝယ်ယူမှုဘောင်ချာ</label>
-                  <input
-                    list="pr-purchases"
-                    value={purchaseSearch}
-                    onChange={(e) => onPurchaseSearch(e.target.value)}
-                    placeholder={supplierId > 0 ? 'ဝယ်ယူမှုဘောင်ချာ ရွေးပါ...' : 'Supplier ကိုအရင်ရွေးပါ'}
+                  <PortaledCombobox
+                    items={[...filteredPurchases]
+                      .sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime())
+                      .map((purchase) => {
+                        const payable = originalPayableNet(purchase);
+                        const returned = Number(purchase.returnAmount || 0);
+                        const returnable = Math.max(0, payable - returned);
+                        const fullyReturned = payable > 0 && returnable <= 0.005;
+                        return {
+                          id: purchase.id!,
+                          label: `${purchase.purchaseCode || `#${purchase.id}`}${purchase.supplierInvoiceNo ? ` · ${purchase.supplierInvoiceNo}` : ''}`,
+                          sub: `${purchase.purchaseDate ? new Date(purchase.purchaseDate).toLocaleDateString() : '-'} · Total ${money(purchase.totalAmount)} · ပြန်ပို့နိုင် ${money(returnable)} · Due ${money(purchase.dueAmount)}${fullyReturned ? ' · Fully Returned' : ''}`,
+                          searchText: `${purchaseLabel(purchase)} ${purchase.supplierInvoiceNo || ''} ${purchase.warehouseName || ''}`,
+                          disabled: fullyReturned,
+                        };
+                      })}
+                    value={purchaseId}
+                    onChange={(id) => onPurchaseSelect(id)}
                     disabled={supplierId <= 0}
-                    className={`h-10 w-full rounded-lg border bg-slate-50 px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed ${purchaseId > 0 ? 'border-slate-200' : 'border-rose-200'}`}
+                    placeholder={supplierId > 0 ? 'ဝယ်ယူမှုဘောင်ချာ ရှာ၍ ရွေးပါ...' : 'Supplier ကိုအရင်ရွေးပါ'}
+                    inputClassName={`h-10 w-full rounded-lg border bg-slate-50 px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed ${purchaseId > 0 ? 'border-slate-200' : 'border-rose-200'}`}
                   />
-                  <datalist id="pr-purchases">
-                    {filteredPurchases.map((p) => <option key={p.id} value={purchaseLabel(p)} />)}
-                  </datalist>
                 </div>
               </div>
 
@@ -707,18 +968,36 @@ const PurchaseReturnManagement: React.FC = () => {
                   <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Amount</p><p className="text-sm font-black text-slate-800">{money(selectedPurchase?.totalAmount || 0)}</p></div>
                     <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">မူလကျသင့်ငွေ</p><p className="text-sm font-black text-slate-800">{money(originalPurchaseNet)}</p></div>
                     <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ပြန်ပို့ပြီးငွေ</p><p className="text-sm font-black text-slate-800">{money(existingReturnAmount)}</p></div>
+                    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ပြန်ပို့နိုင်ငွေ</p><p className="text-sm font-black text-emerald-700">{money(Math.max(0, originalPurchaseNet - existingReturnAmount))}</p></div>
                     <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ပေးပြီးငွေ</p><p className="text-sm font-black text-slate-800">{money(selectedPurchase?.paidAmount || 0)}</p></div>
                     <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ကျန်ငွေဟောင်း</p><p className="text-sm font-black text-slate-800">{money(selectedPurchase?.dueAmount || 0)}</p></div>
                   </div>
+                  {selectedPurchase && (
+                    <p className="mt-2 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
+                      {selectedPurchase.purchaseDate ? new Date(selectedPurchase.purchaseDate).toLocaleDateString() : '-'}
+                      {' · '}{selectedPurchase.supplierInvoiceNo ? `Invoice ${selectedPurchase.supplierInvoiceNo}` : 'Invoice မရှိ'}
+                      {' · '}{selectedPurchase.warehouseName || 'Main Warehouse'}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="flex min-w-0 flex-col gap-1.5">
                 <label className="h-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">အကြောင်းပြချက်</label>
                 <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="ပြန်ပို့ရသည့်အကြောင်းပြချက် ရေးပါ၊ ဥပမာ ပျက်စီး၊ ပစ္စည်းမှား၊ Supplier လဲပေး..." className={`w-full resize-none rounded-lg border bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${reason.trim() ? 'border-slate-200' : 'border-rose-200'}`} />
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="text-xs text-slate-500">Resolution<select value={resolutionType} onChange={e=>setResolutionType(e.target.value as PurchaseReturnDTO['resolutionType'])} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2"><option>REFUND</option><option>REPLACEMENT</option><option>REPAIR</option><option>SUPPLIER_CREDIT</option><option>PRICE_ADJUSTMENT</option><option>WRONG_DELIVERY</option></select></label>
+                  <label className="text-xs text-slate-500">RMA / Claim No<input value={rmaNumber} onChange={e=>setRmaNumber(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3" /></label>
+                  <label className="text-xs text-slate-500">Supplier Contact<input value={supplierContact} onChange={e=>setSupplierContact(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3" /></label>
+                  <label className="text-xs text-slate-500">Claim Date<input type="datetime-local" value={claimDate} onChange={e=>setClaimDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2" /></label>
+                  <label className="text-xs text-slate-500">Expected Resolution<input type="datetime-local" value={expectedResolutionDate} onChange={e=>setExpectedResolutionDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2" /></label>
+                  <label className="text-xs text-slate-500">Claim Status<select value={claimStatus} onChange={e=>setClaimStatus(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2"><option>OPEN</option><option>IN_REVIEW</option><option>APPROVED</option><option>REJECTED</option><option>RESOLVED</option></select></label>
+                  {resolutionType==='REPLACEMENT'&&<><label className="text-xs text-slate-500">Replacement Expected Qty<input type="number" min="0" value={replacementExpectedQty} onChange={e=>setReplacementExpectedQty(Math.max(0,Number(e.target.value)||0))} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3" /></label><label className="text-xs text-slate-500">Replacement Received Qty<input type="number" min="0" max={replacementExpectedQty||undefined} value={replacementReceivedQty} onChange={e=>setReplacementReceivedQty(Math.max(0,Number(e.target.value)||0))} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3" /></label></>}
+                </div>
               </div>
             </div>
 
@@ -775,6 +1054,7 @@ const PurchaseReturnManagement: React.FC = () => {
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                     <tr>
                       <th className="px-4 py-3 border-b border-slate-100">ပစ္စည်း</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-44">Return reason</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-24">အရေအတွက်</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-32">တစ်ခုဈေး</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-36 text-right">ကျသင့်ငွေ</th>
@@ -789,24 +1069,41 @@ const PurchaseReturnManagement: React.FC = () => {
                         <React.Fragment key={i}>
                           <tr className="hover:bg-slate-50/60">
                             <td className="px-4 py-3">
-                              <input
-                                list={`pr-products-${i}`}
-                                value={d.productSearch}
-                                onChange={(e) => onProductSearch(i, e.target.value)}
+                              <PortaledCombobox
+                                items={productOptions.map((product) => ({
+                                  id: product.productId,
+                                  label: product.productName,
+                                  sub: `ပြန်ပို့နိုင် ${product.returnableQty} · ${money(product.unitPrice)}`,
+                                  searchText: productLabel(product),
+                                }))}
+                                value={d.productId}
+                                displayValue={d.productSearch}
+                                onChange={(id) => onProductSelect(i, id)}
                                 placeholder={purchaseId > 0 ? 'ပစ္စည်းရွေးပါ...' : 'ဝယ်ယူမှုကိုအရင်ရွေးပါ'}
                                 disabled={purchaseId <= 0 || productOptions.length === 0}
-                                className={`h-9 w-full rounded-md border border-transparent bg-slate-50 px-2 text-sm focus:border-indigo-200 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${d.productId > 0 ? 'text-slate-700' : 'text-rose-500'}`}
+                                inputClassName={`h-9 w-full rounded-md border border-transparent bg-slate-50 px-2 text-sm focus:border-indigo-200 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${d.productId > 0 ? 'text-slate-700' : 'text-rose-500'}`}
                               />
-                              <datalist id={`pr-products-${i}`}>
-                                {productOptions.map((p) => <option key={p.productId} value={productLabel(p)} />)}
-                              </datalist>
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              <PortaledCombobox
+                                items={returnReasons.filter((item) => item.active && item.id).map((item) => ({
+                                  id: item.id!,
+                                  label: item.name,
+                                  sub: item.code,
+                                  searchText: `${item.code} ${item.name} ${item.description || ''}`,
+                                }))}
+                                value={d.reasonId || 0}
+                                placeholder="Reason ရှာ၍ ရွေးပါ..."
+                                onChange={(id) => setDetails((prev) => prev.map((row, idx) => idx === i ? { ...row, reasonId: id || undefined } : row))}
+                                inputClassName={`h-9 w-full rounded-md border bg-slate-50 px-2 text-xs focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${d.reasonId ? 'border-slate-200' : 'border-rose-200'}`}
+                              />
                             </td>
                             <td className="px-4 py-3 align-top">
                               <input type="number" min="1" max={option?.returnableQty || undefined} value={d.qty || ''} onChange={(e) => onDetailChange(i, 'qty', e.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 focus:outline-none" />
                               {option && <p className="text-[10px] text-slate-400 mt-1">အများဆုံး {option.returnableQty}</p>}
                             </td>
                             <td className="px-4 py-3 align-top">
-                              <input type="number" min="0" step="0.01" value={d.unitPrice || ''} onChange={(e) => onDetailChange(i, 'unitPrice', e.target.value)} className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 focus:outline-none" />
+                              <input type="number" value={d.unitPrice || ''} readOnly aria-readonly="true" title="Purchase payable value မှ အလိုအလျောက်တွက်ထားသည်" className="h-9 w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-2 text-sm text-slate-600" />
                             </td>
                             <td className="px-4 py-3 text-right align-top font-bold text-slate-700">{money(d.subtotal)}</td>
                             <td className="px-4 py-3 text-center align-top">
@@ -815,7 +1112,7 @@ const PurchaseReturnManagement: React.FC = () => {
                           </tr>
                           {d.productId > 0 && d.qty > 0 && serialOptions.length > 0 && (
                             <tr className="bg-slate-50/60">
-                              <td colSpan={5} className="px-4 py-3">
+                              <td colSpan={6} className="px-4 py-3">
                                 <div className="space-y-2">
                                   <div className="flex items-center justify-between text-[10px] text-slate-500">
                                     <span className="font-bold uppercase tracking-wider">Serial နံပါတ်များ ({d.qty})</span>
@@ -848,6 +1145,50 @@ const PurchaseReturnManagement: React.FC = () => {
                 </table>
               </div>
             </div>
+
+            <section className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-slate-800">Return Shipping &amp; Cost Allocation</h3>
+                <p className="text-xs text-slate-500">Carrier cost responsibility and per-item allocation are locked after draft approval.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <label className="space-y-1 text-xs font-semibold text-slate-600">Shipping cost
+                  <input type="number" min="0" step="0.01" value={shippingCostAmount} onChange={(e) => onShippingCostChange(Number(e.target.value))} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3" />
+                </label>
+                <label className="space-y-1 text-xs font-semibold text-slate-600">Payer responsibility
+                  <select value={shippingPayerResponsibility} onChange={(e) => onShippingPayerChange(e.target.value as 'COMPANY' | 'SUPPLIER' | 'SHARED')} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3">
+                    <option value="COMPANY">Company</option><option value="SUPPLIER">Supplier</option><option value="SHARED">Shared</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs font-semibold text-slate-600">Allocation method
+                  <select value={shippingAllocationMethod} onChange={(e) => setShippingAllocationMethod(e.target.value as 'VALUE' | 'QUANTITY' | 'MANUAL')} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3">
+                    <option value="VALUE">By return value</option><option value="QUANTITY">By quantity</option><option value="MANUAL">Manual</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs font-semibold text-slate-600">Company portion
+                  <input type="number" min="0" step="0.01" value={companyShippingPortion} readOnly={shippingPayerResponsibility !== 'SHARED'} onChange={(e) => { const company = Math.max(0, Number(e.target.value)); setCompanyShippingPortion(company); setSupplierShippingPortion(Math.max(0, Math.round((shippingCostAmount - company) * 100) / 100)); }} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 read-only:bg-slate-100" />
+                </label>
+                <label className="space-y-1 text-xs font-semibold text-slate-600">Supplier portion
+                  <input type="number" min="0" step="0.01" value={supplierShippingPortion} readOnly className="h-10 w-full rounded-lg border border-slate-200 bg-slate-100 px-3" />
+                </label>
+                <label className="space-y-1 text-xs font-semibold text-slate-600">Company payment method
+                  <select value={shippingPaymentMethodId} disabled={companyShippingPortion <= 0} onChange={(e) => setShippingPaymentMethodId(Number(e.target.value))} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 disabled:bg-slate-100">
+                    <option value={0}>Select payment method</option>{paymentMethods.map((method) => <option key={method.id} value={method.id}>{method.methodName}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs font-semibold text-slate-600 md:col-span-3">Shipping transaction reference (optional)
+                  <input value={shippingTransactionReference} onChange={(e) => setShippingTransactionReference(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3" placeholder="Carrier invoice / payment reference" />
+                </label>
+              </div>
+              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[520px] text-xs">
+                  <thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Return item</th><th className="px-3 py-2 text-right">Basis</th><th className="px-3 py-2 text-right">Allocated shipping</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{details.map((detail, index) => <tr key={index}><td className="px-3 py-2">{productOptionById(detail.productId)?.productName || `Item ${index + 1}`}</td><td className="px-3 py-2 text-right">{shippingAllocationMethod === 'QUANTITY' ? detail.qty : money(detail.subtotal)}</td><td className="px-3 py-2 text-right">{shippingAllocationMethod === 'MANUAL' ? <input type="number" min="0" step="0.01" value={detail.allocatedShippingCost || 0} onChange={(e) => setDetails((prev) => prev.map((row, i) => i === index ? { ...row, allocatedShippingCost: Math.max(0, Number(e.target.value)) } : row))} className="h-8 w-28 rounded border border-slate-200 px-2 text-right" /> : <span className="font-bold">{money(shippingAllocations[index] || 0)}</span>}</td></tr>)}</tbody>
+                  <tfoot><tr className="bg-slate-50 font-bold"><td className="px-3 py-2" colSpan={2}>Allocation total</td><td className="px-3 py-2 text-right">{money(shippingAllocationTotal)}</td></tr></tfoot>
+                </table>
+              </div>
+              <p className={`mt-2 text-xs ${validShipping ? 'text-slate-500' : 'text-rose-600'}`}>{validShipping ? `Supplier settlement is reduced by ${money(supplierShippingPortion)}.` : 'Portions and detail allocations must equal shipping cost; company-paid shipping requires a payment method.'}</p>
+            </section>
           </div>
 
           {isRefundModalOpen && (
@@ -925,7 +1266,9 @@ const PurchaseReturnManagement: React.FC = () => {
       <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center">
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center 2xl:order-2">
           <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်ရန်</button>
-          <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> ဝယ်ယူပြန်ပို့ဘောင်ချာ အသစ်</button>
+          {canManageReasons && <button onClick={manageReason} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">Reason master</button>}
+          {canManageReasons && <button onClick={toggleReason} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">Toggle reason</button>}
+          {canCreateReturn && <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> ဝယ်ယူပြန်ပို့ဘောင်ချာ အသစ်</button>}
         </div>
       <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 2xl:order-1">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာစုစုပေါင်း</p><p className="text-2xl font-bold text-slate-800">{stats.count}</p></div><div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center"><List size={20} className="text-indigo-600" /></div></div>
@@ -960,7 +1303,7 @@ const PurchaseReturnManagement: React.FC = () => {
           {masterLoading && <span className="text-[11px] text-slate-400">အချက်အလက်များ ဖတ်နေသည်...</span>}
         </div>
         <div className="px-4 pt-3">
-          <BulkSelectionToolbar visibleCount={visibleReturnRows.length} selectedCount={bulk.selectedCount} allVisibleSelected={bulk.allVisibleSelected} someVisibleSelected={bulk.someVisibleSelected} onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()} onClear={bulk.clear} selectedRows={bulk.selectedRows} selectedTotal={bulk.selectedRows.reduce((sum, row) => sum + (Number(row.totalReturnAmount) || 0), 0)} totalLabel="Selected Total" actions={[{ key: 'export', label: 'Export selected', icon: <Download size={13} />, tone: 'indigo' }]} onAction={handleBulkAction} />
+          <BulkSelectionToolbar visibleCount={visibleReturnRows.length} selectedCount={bulk.selectedCount} allVisibleSelected={bulk.allVisibleSelected} someVisibleSelected={bulk.someVisibleSelected} onToggleVisible={() => bulk.allVisibleSelected ? bulk.clear() : bulk.selectVisible()} onClear={bulk.clear} selectedRows={bulk.selectedRows} selectedTotal={bulk.selectedRows.reduce((sum, row) => sum + (Number(row.totalReturnAmount) || 0), 0)} totalLabel="Selected Total" actions={[...(canSubmitReturn?[{ key: 'submit', label: 'Bulk submit', icon: <Save size={13} />, tone: 'indigo' as const }]:[]),...(canApproveReturn?[{ key: 'approve', label: 'Bulk approve', icon: <ReceiptText size={13} />, tone: 'emerald' as const }]:[]),{ key: 'export', label: 'Detailed CSV', icon: <Download size={13} />, tone: 'indigo' }]} onAction={handleBulkAction} />
         </div>
         <div className="overflow-auto max-h-[60vh] custom-scrollbar">
           {loading ? <div className="p-8 text-center text-slate-400">ဖတ်နေသည်...</div> : (
@@ -1005,13 +1348,15 @@ const PurchaseReturnManagement: React.FC = () => {
                     <td className={`px-4 py-3 text-right font-bold ${voided ? 'text-slate-400' : 'text-emerald-700'}`}>{money(r.refundAmount ?? 0)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex px-2 py-0.5 rounded-md border text-[10px] font-black ${voided ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                        {voided ? 'ပယ်ဖျက်ပြီး' : 'အတည်ပြုပြီး'}
+                        {voided ? 'ပယ်ဖျက်ပြီး' : (r.status || 'DRAFT').replaceAll('_', ' ')}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-500 max-w-[260px] truncate">{r.reason || '-'}</td>
                     <td className="px-4 py-3 text-right"><div className="inline-flex items-center gap-1">
                       <button onClick={() => r.id && openView(r.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50" title="ကြည့်ရန်"><Eye size={15} /></button>
-                      {!voided && <button onClick={() => onVoid(r)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50" title="ပယ်ဖျက်ရန်"><X size={15} /></button>}
+                      {!voided && String(r.status || '').toUpperCase() === 'DRAFT' && canVoidReturn && <button onClick={() => openEdit(r)} disabled={saving} className="rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100">Edit</button>}
+                      {!voided && r.status !== 'SETTLED' && <button onClick={() => runWorkflow(r)} disabled={saving} className="rounded-md bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40">Next</button>}
+                      {!voided && canVoidReturn && <button onClick={() => onVoid(r)} disabled={saving} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 disabled:opacity-40" title="ပယ်ဖျက်ရန်"><X size={15} /></button>}
                     </div></td>
                   </tr>
                 );}) : <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">လက်ရှိ filter နှင့်ကိုက်သော ဝယ်ယူပြန်ပို့မှတ်တမ်း မရှိပါ။</td></tr>}
@@ -1110,10 +1455,25 @@ const PurchaseReturnManagement: React.FC = () => {
                 <p className="text-slate-600"><span className="font-medium text-slate-500">ပြန်အမ်းငွေ:</span> {money(viewRow.refundAmount ?? viewRow.totalReturnAmount ?? 0)}</p>
               </div>
               {viewRow.reason && <p className="text-sm text-slate-600"><span className="font-medium text-slate-500">အကြောင်းပြချက်:</span> {viewRow.reason}</p>}
+              <div className="grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-2">
+                <p><b>Status:</b> {(viewRow.status || 'DRAFT').replaceAll('_', ' ')}</p>
+                <p><b>Approved:</b> {viewRow.approvedBy || '-'} {viewRow.approvedAt ? new Date(viewRow.approvedAt).toLocaleString() : ''}</p>
+                <p><b>Shipment:</b> {[viewRow.carrier, viewRow.trackingNo].filter(Boolean).join(' / ') || '-'}</p>
+                <p><b>Shipping cost:</b> {money(viewRow.shippingCostAmount || 0)} ({viewRow.shippingPayerResponsibility || 'COMPANY'})</p>
+                <p><b>Shipping portions:</b> Company {money(viewRow.companyShippingPortion || 0)} / Supplier {money(viewRow.supplierShippingPortion || 0)}</p>
+                <p><b>Shipping payment:</b> {viewRow.shippingPaymentMethodName || '-'} {viewRow.shippingPaymentTransaction?.transactionNo || viewRow.shippingTransactionReference || ''}</p>
+                <p><b>Settlement:</b> {viewRow.settlementType || '-'} {viewRow.supplierCreditNoteNo || ''}</p>
+                <p><b>Credit variance:</b> {money(viewRow.creditVariance || 0)} {viewRow.creditVarianceReason || ''}</p>
+              </div>
               <table className="w-full text-left border-collapse text-sm">
-                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">ပစ္စည်း</th><th className="px-3 py-2 border-b w-16">အရေအတွက်</th><th className="px-3 py-2 border-b text-right">တစ်ခုဈေး</th><th className="px-3 py-2 border-b text-right">ကျသင့်ငွေ</th><th className="px-3 py-2 border-b">Serial များ</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `ပစ္စည်း #${d.productId}`}</td><td className="px-3 py-2">{d.qty}</td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
+                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">ပစ္စည်း</th><th className="px-3 py-2 border-b w-16">အရေအတွက်</th><th className="px-3 py-2 border-b text-right">တစ်ခုဈေး</th><th className="px-3 py-2 border-b text-right">ကျသင့်ငွေ</th><th className="px-3 py-2 border-b text-right">Shipping</th><th className="px-3 py-2 border-b">Serial များ</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `ပစ္စည်း #${d.productId}`}<div className="text-[10px] text-slate-400">{d.reasonName || d.reasonCode || '-'}</div></td><td className="px-3 py-2">{d.qty}<div className="text-[10px] text-slate-400">Q:{d.quarantinedQty || 0} D:{d.dispatchedQty || 0}</div></td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-right">{money(d.allocatedShippingCost || 0)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
               </table>
+              <section className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Attachments</h4><label className="cursor-pointer rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700">Upload<input type="file" accept="image/*,.pdf,.doc,.docx" className="hidden" disabled={saving} onChange={(e)=>{void uploadReturnAttachment(e.target.files?.[0]); e.currentTarget.value='';}} /></label></div>
+                {!viewRow.attachments?.length ? <p className="text-xs text-slate-400">No attachments.</p> : <div className="space-y-2">{viewRow.attachments.map(a=><div key={a.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-2 text-xs"><div><a href={a.dataUrl} download={a.fileName} className="font-semibold text-indigo-700 hover:underline">{a.fileName}</a><p className="text-[10px] text-slate-400">{a.attachmentType} · {a.uploadedBy||'-'} · {a.uploadedAt?new Date(a.uploadedAt).toLocaleString():'-'}</p></div>{canVoidReturn&&<button onClick={()=>void deleteReturnAttachment(a.id)} className="text-rose-600">Delete</button>}</div>)}</div>}
+              </section>
+              <section className="rounded-xl border border-slate-200 p-3"><h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Activity Timeline</h4>{!viewRow.activities?.length?<p className="text-xs text-slate-400">No activity history.</p>:<div className="space-y-2 border-l-2 border-indigo-100 pl-3">{viewRow.activities.map(a=><div key={a.id} className="text-xs"><p className="font-bold text-slate-700">{a.eventType.replaceAll('_',' ')}</p><p className="text-slate-500">{a.fromStatus?`${a.fromStatus} → `:''}{a.toStatus||''}{a.note?` · ${a.note}`:''}</p><p className="text-[10px] text-slate-400">{a.actor||'-'} · {a.occurredAt?new Date(a.occurredAt).toLocaleString():'-'}</p></div>)}</div>}</section>
               <section className="pt-2">
                 <div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Refund Payment History</h4><span className="text-[11px] text-slate-400">{viewRow.payments?.length || 0} payment(s)</span></div>
                 {!viewRow.payments?.length ? <p className="py-3 text-xs text-slate-400">No refund payment history found.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Payment Method</th><th className="border-b px-3 py-2">Transaction No</th><th className="border-b px-3 py-2 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">{viewRow.payments.map((payment, index) => <tr key={payment.id || `${payment.transactionNo}-${index}`}><td className="px-3 py-2 text-slate-600">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleString() : '-'}</td><td className="px-3 py-2 text-slate-600">{payment.paymentMethodName || (payment.paymentMethodId ? `#${payment.paymentMethodId}` : '-')}</td><td className="px-3 py-2 text-slate-500">{payment.transactionNo || '-'}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">{money(payment.amount || 0)}</td></tr>)}</tbody></table></div>}

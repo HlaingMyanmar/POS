@@ -23,6 +23,7 @@ const emptySettings: CompanySettings = {
   purchaseReturnDigits: 5,
   bookingPrefix: 'BK',
   bookingDigits: 6,
+  poFinalApprovalThreshold: null,
 };
 
 const MAX_LOGO_BYTES = 500 * 1024;
@@ -164,6 +165,26 @@ const CompanySettingsPage: React.FC = () => {
                 <label className="block text-sm font-medium text-slate-600 mb-1">Footer Note</label>
                 <input value={settings.footerNote || ''} onChange={e => set('footerNote', e.target.value)} placeholder="Thank you for your business"
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-600 mb-1">
+                  PO Final Approval Threshold <span className="text-slate-400 font-normal">(PO Final Approval Threshold)</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={settings.poFinalApprovalThreshold ?? ''}
+                  onChange={e => {
+                    const raw = e.target.value.trim();
+                    set('poFinalApprovalThreshold', raw === '' ? null : Math.max(0, Number(raw) || 0));
+                  }}
+                  placeholder="Blank = no second approval"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  PO စုစုပေါင်း ဤပမာဏနှင့် အထက်ဖြစ်ပါက ဒုတိယအဆင့် အတည်ပြုချက် လိုအပ်သည်။ ဗလာထားပါက second approval မလို။
+                </p>
               </div>
             </div>
 

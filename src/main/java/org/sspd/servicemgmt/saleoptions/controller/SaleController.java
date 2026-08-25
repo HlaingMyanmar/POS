@@ -18,6 +18,7 @@ import org.sspd.servicemgmt.saleoptions.service.SaleService;
 public class SaleController {
 
     private final SaleService service;
+    private final org.sspd.servicemgmt.saleoptions.service.SaleInsightService insightService;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
     @GetMapping
@@ -32,10 +33,25 @@ public class SaleController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> stats(
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Sale stats", insightService.stats(dateFrom, dateTo)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<SaleDTO>> getById(@PathVariable Integer id) {
         SaleDTO sale = service.findById(id);
         return ResponseEntity.ok(new ApiResponse<>(true, "Sale found", sale));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.saleoptions.dto.SaleTimelineEventDTO>>> timeline(
+            @PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Sale timeline", insightService.timeline(id)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")

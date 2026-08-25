@@ -14,8 +14,12 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,6 +31,7 @@ import com.sspd.servicemgmt.api.PurchaseOrderDTO
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.viewmodel.PurchaseOrderListViewModel
+import com.sspd.servicemgmt.utils.PreferenceManager
 
 private val PurchaseColor = Color(0xFF0F766E)
 
@@ -35,6 +40,13 @@ private val PurchaseColor = Color(0xFF0F766E)
 fun PurchaseOrderListScreen(onBack: () -> Unit) {
     val vm: PurchaseOrderListViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val prefs = remember(context) { PreferenceManager(context) }
+    val canApprovePermission = prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_APPROVE")
+    val canFinalApprovePermission = prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE")
+    val canReceivePermission = prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_RECEIVE")
+    var rejectTarget by remember { mutableStateOf<PurchaseOrderDTO?>(null) }
+    var rejectReason by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -79,11 +91,51 @@ fun PurchaseOrderListScreen(onBack: () -> Unit) {
                 item { Text("အော်ဒါ မရှိသေးပါ", color = TextMuted, modifier = Modifier.padding(24.dp)) }
             }
             items(state.items, key = { it.id ?: it.hashCode() }) { po ->
-                PurchaseOrderCard(po, late = state.lateItems.any { it.id == po.id }, busy = state.busy) {
-                    vm.startReceive(po)
-                }
+                PurchaseOrderCard(
+                    po = po,
+                    late = state.lateItems.any { it.id == po.id },
+                    busy = state.busy,
+                    canApprovePermission = canApprovePermission,
+                    canFinalApprovePermission = canFinalApprovePermission,
+                    canReceivePermission = canReceivePermission,
+                    onApprove = { vm.approve(po) },
+                    onReject = {
+                        rejectReason = ""
+                        rejectTarget = po
+                    },
+                    onReceive = { vm.startReceive(po) }
+                )
             }
         }
+    }
+
+    rejectTarget?.let { po ->
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) rejectTarget = null },
+            title = { Text("Reject ${po.poCode ?: "#${po.id}"}") },
+            text = {
+                OutlinedTextField(
+                    value = rejectReason,
+                    onValueChange = { rejectReason = it },
+                    label = { Text("အကြောင်းပြချက် (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.reject(po, rejectReason)
+                        rejectTarget = null
+                    },
+                    enabled = !state.busy,
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) { Text("Reject") }
+            },
+            dismissButton = {
+                TextButton(onClick = { rejectTarget = null }, enabled = !state.busy) { Text("ပိတ်") }
+            }
+        )
     }
 
     val draft = state.receiveDraft
@@ -155,8 +207,21 @@ fun PurchaseOrderListScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun PurchaseOrderCard(po: PurchaseOrderDTO, late: Boolean, busy: Boolean, onReceive: () -> Unit) {
+private fun PurchaseOrderCard(
+    po: PurchaseOrderDTO,
+    late: Boolean,
+    busy: Boolean,
+    canApprovePermission: Boolean,
+    canFinalApprovePermission: Boolean,
+    canReceivePermission: Boolean,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    onReceive: () -> Unit
+) {
     val st = (po.status ?: "OPEN").uppercase()
+    val canApprove = (canApprovePermission && (st == "PENDING_APPROVAL" || st == "OPEN"))
+        || (canFinalApprovePermission && st == "PENDING_FINAL_APPROVAL")
+    val canReceive = canReceivePermission && (st == "APPROVED" || st == "PARTIAL")
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = if (late) Color(0xFFFFFBEB) else CardBg),
@@ -169,9 +234,34 @@ private fun PurchaseOrderCard(po: PurchaseOrderDTO, late: Boolean, busy: Boolean
             }
             Text(po.supplierName ?: "-", fontSize = 13.sp, color = TextMain)
             Text("ရောက်မည့်ရက် ${po.expectedDate ?: "-"}", fontSize = 11.sp, color = if (late) Color(0xFFD97706) else TextMuted)
-            if (st == "OPEN" || st == "PARTIAL") {
-                Button(onClick = onReceive, enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = PurchaseColor)) {
-                    Text("ကျန်ရှိသည်များ လက်ခံ")
+            if (canApprove || canReceive) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (canApprove) {
+                        Button(
+                            onClick = onApprove,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                        ) { Text("Approve", fontSize = 12.sp) }
+                        OutlinedButton(
+                            onClick = onReject,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+                            border = BorderStroke(1.dp, Danger.copy(0.4f))
+                        ) { Text("Reject", fontSize = 12.sp) }
+                    }
+                    if (canReceive) {
+                        Button(
+                            onClick = onReceive,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = PurchaseColor)
+                        ) { Text("Receive", fontSize = 12.sp) }
+                    }
                 }
             }
         }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { purchaseOrderApiService, type PurchaseOrderPage } from '../services/purchaseorderapiservice';
 import { supplierService } from '../services/supplierapiservice';
@@ -50,38 +51,85 @@ const POTableRow: React.FC<{
   money: (n: number) => string;
   onDelete: (idx: number) => void;
 }> = ({ row, idx, products, handleRowChange, money, onDelete }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const filteredProducts = products.filter((p) =>
     row.productSearch === '' || p.name.toLowerCase().includes(row.productSearch.toLowerCase()) ||
-    p.productCode.toLowerCase().includes(row.productSearch.toLowerCase())
+    (p.productCode || '').toLowerCase().includes(row.productSearch.toLowerCase())
   );
   const unitCostFor = (p: ProductDTO) => Number(p.costPrice ?? 0) || row.unitCost;
+  const productChoices = filteredProducts.slice(0, 80);
+
+  useLayoutEffect(() => {
+    if (!row.productOpen || !inputRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      if (!inputRef.current) return;
+      const rect = inputRef.current.getBoundingClientRect();
+      const maxH = 224;
+      const width = Math.min(Math.max(rect.width, 260), window.innerWidth - 16);
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const openUp = spaceBelow < 160 && rect.top > spaceBelow;
+      const height = Math.min(maxH, openUp ? Math.max(120, rect.top - 8) : Math.max(120, spaceBelow));
+      setMenuPos({
+        top: openUp ? Math.max(8, rect.top - height - 4) : rect.bottom + 4,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        width,
+      });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [row.productOpen, row.productSearch, idx]);
 
   return (
-    <tr key={idx}>
-      <td className="px-3 py-2">
+    <tr>
+      <td className="px-3 py-2 align-top">
         <div className="relative">
           <input
+            ref={inputRef}
             value={row.productSearch && row.productSearch.length > 0 ? row.productSearch : products.find((p) => p.id === row.productId)?.name || ''}
             onChange={(e) => handleRowChange(idx, { productSearch: e.target.value, productOpen: true })}
             onFocus={() => handleRowChange(idx, { productOpen: true })}
-            onBlur={() => setTimeout(() => handleRowChange(idx, { productOpen: false }), 120)}
-            placeholder="Search product..."
+            onBlur={() => setTimeout(() => handleRowChange(idx, { productOpen: false }), 150)}
+            placeholder="ပစ္စည်း ရှာရန်..."
             className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs focus:border-indigo-400 focus:outline-none"
           />
-          {row.productOpen && (
-            <div className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-              {filteredProducts.length > 0 ? filteredProducts.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onMouseDown={() => handleRowChange(idx, { productId: p.id, productSearch: p.name, productOpen: false, unitCost: unitCostFor(p) })}
-                  className={`w-full px-3 py-2 text-left hover:bg-indigo-50 ${row.productId === p.id ? 'bg-indigo-50' : ''}`}
-                >
-                  <p className="text-xs font-semibold text-slate-800">{p.name}</p>
-                  <p className="text-[10px] text-slate-400">{p.productCode} - Unit Cost: {money(unitCostFor(p))}</p>
-                </button>
-              )) : <p className="p-2 text-center text-xs text-slate-400">Product not found</p>}
-            </div>
+          {row.productOpen && menuPos && createPortal(
+            <div
+              style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width, zIndex: 9999 }}
+              className="max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white shadow-xl"
+            >
+              {productChoices.length > 0 ? (
+                <>
+                  {productChoices.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onMouseDown={() => handleRowChange(idx, { productId: p.id, productSearch: p.name, productOpen: false, unitCost: unitCostFor(p) })}
+                      className={`w-full px-3 py-2 text-left hover:bg-indigo-50 ${row.productId === p.id ? 'bg-indigo-50' : ''}`}
+                    >
+                      <p className="text-xs font-semibold text-slate-800">{p.name}</p>
+                      <p className="text-[10px] text-slate-400">{p.productCode} · ဈေး {money(unitCostFor(p))}</p>
+                    </button>
+                  ))}
+                  {filteredProducts.length > productChoices.length && (
+                    <p className="sticky bottom-0 border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[10px] text-slate-500">
+                      {filteredProducts.length} ခုထဲမှ {productChoices.length} ခု — ပိုရှာရန် စာရိုက်ပါ
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="p-2 text-center text-xs text-slate-400">ပစ္စည်း မတွေ့ပါ</p>
+              )}
+            </div>,
+            document.body
           )}
         </div>
       </td>
@@ -118,20 +166,24 @@ const dateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pa
 
 const statusBadge: Record<string, string> = {
   PENDING_APPROVAL: 'bg-violet-100 text-violet-700 border border-violet-200',
+  PENDING_FINAL_APPROVAL: 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200',
   APPROVED: 'bg-blue-100 text-blue-700 border border-blue-200',
   REJECTED: 'bg-rose-100 text-rose-700 border border-rose-200',
   OPEN: 'bg-sky-100 text-sky-700 border border-sky-200',
   PARTIAL: 'bg-amber-100 text-amber-700 border border-amber-200',
   RECEIVED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  CLOSED: 'bg-slate-200 text-slate-600 border border-slate-300',
   CANCELLED: 'bg-slate-200 text-slate-500 border border-slate-300 line-through'
 };
 const statusLabel: Record<string, string> = {
   PENDING_APPROVAL: 'Pending Approval',
+  PENDING_FINAL_APPROVAL: 'Pending Final Approval',
   APPROVED: 'Approved',
   REJECTED: 'Rejected',
   OPEN: 'အော်ဒါဖွင့်',
   PARTIAL: 'တစ်ဝက်ရရှိ',
   RECEIVED: 'ရရှိပြီး',
+  CLOSED: 'Closed',
   CANCELLED: 'ပယ်ဖျက်'
 };
 
@@ -140,11 +192,37 @@ const emptyRow = (): PODetailForm => ({ productId: 0, productSearch: '', product
 const PurchaseOrderManagement: React.FC = () => {
   const navigate = useNavigate();
   const sessionUser = (() => {
-    try { return JSON.parse(sessionStorage.getItem('sspd_user') || '{}') as { roles?: string[]; permissions?: string[] }; }
-    catch { return {} as { roles?: string[]; permissions?: string[] }; }
+    try { return JSON.parse(sessionStorage.getItem('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] }; }
+    catch { return {} as { staffId?: number; roles?: string[]; permissions?: string[] }; }
   })();
   const canApprove = (sessionUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role))
     || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_APPROVE');
+  const isAdmin = (sessionUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role));
+  const canFinalApprove = isAdmin
+    || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE');
+  const canCancelDraftPo = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_DELETE');
+  const canCancelApprovedPo = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED');
+  const canCreatePo = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_CREATE');
+  const canUpdatePo = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_UPDATE');
+  const canReceive = isAdmin || (sessionUser.permissions || []).includes('CAN_ACCESS_PURCHASE_ORDER_RECEIVE');
+  const canCancelPo = (status?: string) => {
+    const st = (status || '').toUpperCase();
+    if (st === 'APPROVED') return canCancelApprovedPo;
+    if (st === 'PENDING_APPROVAL' || st === 'PENDING_FINAL_APPROVAL' || st === 'OPEN') return canCancelDraftPo;
+    return false;
+  };
+  const canReceivePo = (status?: string) => {
+    const st = (status || '').toUpperCase();
+    return canReceive && (st === 'APPROVED' || st === 'PARTIAL');
+  };
+  const hasReceiveProgress = (po: PurchaseOrderDTO) =>
+    (po.details || []).some((d) => (d.receivedQty || 0) + (d.damagedQty || 0) + (d.rejectedQty || 0) > 0);
+  const canClosePo = (po: PurchaseOrderDTO) => {
+    const st = (po.status || '').toUpperCase();
+    if (st === 'PARTIAL') return true;
+    if (st === 'APPROVED' && hasReceiveProgress(po)) return true;
+    return false;
+  };
   const [orders, setOrders] = useState<PurchaseOrderDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -174,6 +252,7 @@ const PurchaseOrderManagement: React.FC = () => {
   const [remarkText, setRemarkText] = useState('');
   const [rows, setRows] = useState<PODetailForm[]>([emptyRow()]);
   const [saving, setSaving] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
 
   // receive state
   const [receiveOrder, setReceiveOrder] = useState<PurchaseOrderDTO | null>(null);
@@ -243,6 +322,10 @@ const PurchaseOrderManagement: React.FC = () => {
   const formValid = supplierId > 0 && staffId > 0 && rows.every((r) => r.productId > 0 && r.qty > 0 && r.unitCost >= 0);
 
   const handleOpenForm = () => {
+    if (!canCreatePo) {
+      Swal.fire({ icon: 'warning', title: 'ခွင့်ပြုချက် မရှိပါ', text: 'PO ဖန်တီးရန် CAN_ACCESS_PURCHASE_ORDER_CREATE လိုအပ်သည်။' });
+      return;
+    }
     setEditingId(null);
     setSupplierId(0);
     setSupplierSearch('');
@@ -266,6 +349,10 @@ const PurchaseOrderManagement: React.FC = () => {
   };
 
   const handleEdit = (po: PurchaseOrderDTO) => {
+    if (!canUpdatePo) {
+      Swal.fire({ icon: 'warning', title: 'ခွင့်ပြုချက် မရှိပါ', text: 'PO ပြင်ဆင်ရန် CAN_ACCESS_PURCHASE_ORDER_UPDATE လိုအပ်သည်။' });
+      return;
+    }
     if (!['PENDING_APPROVAL', 'OPEN'].includes((po.status || 'PENDING_APPROVAL').toUpperCase())) {
       Swal.fire({ icon: 'warning', title: 'Cannot edit', text: 'Only orders awaiting approval can be edited.' });
       return;
@@ -300,6 +387,10 @@ const PurchaseOrderManagement: React.FC = () => {
 
   const handleSave = async () => {
     if (!formValid || saving) return;
+    if ((editingId && !canUpdatePo) || (!editingId && !canCreatePo)) {
+      Swal.fire({ icon: 'warning', title: 'ခွင့်ပြုချက် မရှိပါ', text: editingId ? 'PO ပြင်ဆင်ခွင့် လိုအပ်သည်။' : 'PO ဖန်တီးခွင့် လိုအပ်သည်။' });
+      return;
+    }
     setSaving(true);
     try {
       const dto: PurchaseOrderDTO = {
@@ -331,60 +422,112 @@ const PurchaseOrderManagement: React.FC = () => {
   };
 
   const handleCancelPO = async (po: PurchaseOrderDTO) => {
-    const res = await Swal.fire({
-      icon: 'warning', title: 'အော်ဒါ ပယ်ဖျက်မည်လား?',
-      html: `<b>${po.poCode || `#${po.id}`}</b>`,
-      showCancelButton: true, confirmButtonText: 'ပယ်ဖျက်', cancelButtonText: 'မလုပ်တော့', confirmButtonColor: '#dc2626'
-    });
-    if (!res.isConfirmed) return;
+    if (actionBusy) return;
+    const st = (po.status || '').toUpperCase();
+    if (!canCancelPo(st)) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'ခွင့်ပြုချက် မရှိပါ',
+        text: st === 'APPROVED'
+          ? 'Approved PO ပယ်ဖျက်ရန် CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED လိုအပ်သည်။'
+          : 'PO ပယ်ဖျက်ရန် CAN_ACCESS_PURCHASE_ORDER_DELETE လိုအပ်သည်။'
+      });
+      return;
+    }
+    setActionBusy(true);
     try {
+      const res = await Swal.fire({
+        icon: 'warning', title: 'အော်ဒါ ပယ်ဖျက်မည်လား?',
+        html: `<b>${po.poCode || `#${po.id}`}</b>${st === 'APPROVED' ? '<br/><span style="font-size:12px;color:#64748b">Approved ပြီးသားဖြစ်သော်လည်း မလက်ခံရသေးပါက ပယ်ဖျက်နိုင်သည်။</span>' : ''}`,
+        showCancelButton: true, confirmButtonText: 'ပယ်ဖျက်', cancelButtonText: 'မလုပ်တော့', confirmButtonColor: '#dc2626'
+      });
+      if (!res.isConfirmed) return;
       await purchaseOrderApiService.cancel(po.id!);
       Swal.fire({ icon: 'success', title: 'ပယ်ဖျက်ပြီး', timer: 1400, showConfirmButton: false });
       fetchOrders(page, pageSize, debouncedSearch);
       if (viewOrder?.id === po.id) setViewOrder(null);
     } catch (e: any) {
       Swal.fire({ icon: 'error', title: 'Error', text: e.message || 'Failed to cancel order' });
+    } finally {
+      setActionBusy(false);
     }
   };
 
   const handleApprovePO = async (po: PurchaseOrderDTO) => {
-    if (!po.id) return;
-    const result = await Swal.fire({
-      icon: 'question', title: 'Approve Purchase Order?',
-      text: `${po.poCode || '#' + po.id} can be received after approval.`,
-      showCancelButton: true, confirmButtonText: 'Approve', confirmButtonColor: '#2563eb'
-    });
-    if (!result.isConfirmed) return;
+    if (!po.id || actionBusy) return;
+    setActionBusy(true);
     try {
+      const result = await Swal.fire({
+        icon: 'question', title: 'Approve Purchase Order?',
+        text: `${po.poCode || '#' + po.id} can be received after approval.`,
+        showCancelButton: true, confirmButtonText: 'Approve', confirmButtonColor: '#2563eb'
+      });
+      if (!result.isConfirmed) return;
       await purchaseOrderApiService.approve(po.id);
       setViewOrder(null);
       await fetchOrders(page, pageSize, debouncedSearch);
       Swal.fire({ icon: 'success', title: 'Approved', timer: 1200, showConfirmButton: false });
     } catch (e: any) {
       Swal.fire({ icon: 'error', title: 'Approval failed', text: e.message || 'Unable to approve PO' });
+    } finally {
+      setActionBusy(false);
     }
   };
 
   const handleRejectPO = async (po: PurchaseOrderDTO) => {
-    if (!po.id) return;
-    const result = await Swal.fire({
-      icon: 'warning', title: 'Reject Purchase Order',
-      input: 'textarea', inputLabel: 'Rejection reason', inputPlaceholder: 'Reason is required',
-      showCancelButton: true, confirmButtonText: 'Reject', confirmButtonColor: '#e11d48',
-      inputValidator: (value) => value?.trim() ? undefined : 'Rejection reason is required'
-    });
-    if (!result.isConfirmed) return;
+    if (!po.id || actionBusy) return;
+    setActionBusy(true);
     try {
+      const result = await Swal.fire({
+        icon: 'warning', title: 'Reject Purchase Order',
+        input: 'textarea', inputLabel: 'Rejection reason', inputPlaceholder: 'Reason is required',
+        showCancelButton: true, confirmButtonText: 'Reject', confirmButtonColor: '#e11d48',
+        inputValidator: (value) => value?.trim() ? undefined : 'Rejection reason is required'
+      });
+      if (!result.isConfirmed) return;
       await purchaseOrderApiService.reject(po.id, String(result.value).trim());
       setViewOrder(null);
       await fetchOrders(page, pageSize, debouncedSearch);
       Swal.fire({ icon: 'success', title: 'Rejected', timer: 1200, showConfirmButton: false });
     } catch (e: any) {
       Swal.fire({ icon: 'error', title: 'Rejection failed', text: e.message || 'Unable to reject PO' });
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleClosePO = async (po: PurchaseOrderDTO) => {
+    if (!po.id || !canClosePo(po) || actionBusy) return;
+    setActionBusy(true);
+    try {
+      const result = await Swal.fire({
+        icon: 'question',
+        title: 'Close Purchase Order?',
+        text: `${po.poCode || '#' + po.id} — remaining qty will not be received.`,
+        input: 'textarea',
+        inputLabel: 'Close reason (optional)',
+        inputPlaceholder: 'e.g. Supplier short-shipped',
+        showCancelButton: true,
+        confirmButtonText: 'Close PO',
+        confirmButtonColor: '#475569'
+      });
+      if (!result.isConfirmed) return;
+      await purchaseOrderApiService.close(po.id, String(result.value || '').trim() || undefined);
+      setViewOrder(null);
+      await fetchOrders(page, pageSize, debouncedSearch);
+      Swal.fire({ icon: 'success', title: 'Closed', timer: 1200, showConfirmButton: false });
+    } catch (e: any) {
+      Swal.fire({ icon: 'error', title: 'Close failed', text: e.message || 'Unable to close PO' });
+    } finally {
+      setActionBusy(false);
     }
   };
 
   const openReceive = async (po: PurchaseOrderDTO) => {
+    if (!canReceivePo(po.status)) {
+      Swal.fire({ icon: 'warning', title: 'လက်ခံမရပါ', text: 'Approved/Partial PO နှင့် RECEIVE permission လိုအပ်သည်။' });
+      return;
+    }
     try {
       const full = await purchaseOrderApiService.getById(po.id!);
       const lines = (full.details || []).map((d) => {
@@ -399,7 +542,7 @@ const PurchaseOrderManagement: React.FC = () => {
           rejectedQty: 0,
           unitCost: d.unitCost,
           invoiceUnitCost: d.unitCost,
-          hasSerial: prod ? prod.hasSerial !== false : true,
+          hasSerial: d.hasSerial ?? prod?.hasSerial ?? false,
           serialNumbers: Array(Math.max(0, d.qty - (d.receivedQty || 0))).fill(''),
           batchNumber: '',
           expiryDate: ''
@@ -428,7 +571,7 @@ const PurchaseOrderManagement: React.FC = () => {
   });
 
   const handleReceive = async () => {
-    if (!receiveOrder || receiving) return;
+    if (!receiveOrder || receiving || !canReceivePo(receiveOrder.status)) return;
     if (serialIncomplete) {
       Swal.fire({ icon: 'warning', title: 'Serial လိုအပ်သည်', text: 'Serial ပစ္စည်းတိုင်းအတွက် Qty အရေအတွက်အတိုင်း Serial ထည့်ပါ။' });
       return;
@@ -463,7 +606,8 @@ const PurchaseOrderManagement: React.FC = () => {
     setReceiving(true);
     try {
       const created = await purchaseOrderApiService.receive(receiveOrder.id!, {
-        staffId,
+        // Backend resolves the authenticated receiver; this value is only honored with staff-override permission.
+        staffId: sessionUser.staffId || 0,
         lines,
         dueDate: undefined,
         discountAmount: 0,
@@ -483,7 +627,7 @@ const PurchaseOrderManagement: React.FC = () => {
       setReceiveOrder(null);
       fetchOrders(page, pageSize, debouncedSearch);
     } catch (e: any) {
-      Swal.fire({ icon: 'error', title: 'Receive failed', text: e.message || 'Failed to receive goods' });
+      Swal.fire({ icon: 'error', title: 'လက်ခံမရပါ', text: e.message || 'ပစ္စည်းလက်ခံရာတွင် အမှားရှိပါသည်။' });
     } finally {
       setReceiving(false);
     }
@@ -501,9 +645,11 @@ const PurchaseOrderManagement: React.FC = () => {
           <button onClick={() => fetchOrders(page, pageSize, debouncedSearch)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်ရန်
           </button>
-          <button onClick={handleOpenForm} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">
-            <Plus size={16} /> အော်ဒါအသစ်
-          </button>
+          {canCreatePo && (
+            <button onClick={handleOpenForm} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">
+              <Plus size={16} /> အော်ဒါအသစ်
+            </button>
+          )}
         </div>
       </div>
 
@@ -570,7 +716,7 @@ const PurchaseOrderManagement: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
-                          {(st === 'APPROVED' || st === 'OPEN' || st === 'PARTIAL') && (
+                          {canReceivePo(st) && (
                             <button onClick={() => openReceive(po)} className="inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-600 px-2.5 text-xs font-bold text-white hover:bg-emerald-700" title="ပစ္စည်းလက်ခံမည်">
                               <PackageCheck size={14} /> Receive
                             </button>
@@ -584,10 +730,23 @@ const PurchaseOrderManagement: React.FC = () => {
                               <button onClick={() => handleRejectPO(po)} className="inline-flex h-8 items-center rounded-md border border-rose-200 px-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50">Reject</button>
                             </>
                           )}
-                          {(st === 'PENDING_APPROVAL' || st === 'OPEN') && (
+                          {canFinalApprove && st === 'PENDING_FINAL_APPROVAL' && (
                             <>
-                              <button onClick={() => handleEdit(po)} className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 px-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50">ပြင်</button>
-                              <button onClick={() => handleCancelPO(po)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 px-2.5 text-xs font-bold text-slate-500 hover:bg-slate-100"><Ban size={14} /></button>
+                              <button onClick={() => handleApprovePO(po)} className="inline-flex h-8 items-center rounded-md bg-fuchsia-600 px-2.5 text-xs font-bold text-white hover:bg-fuchsia-700">Final Approve</button>
+                              <button onClick={() => handleRejectPO(po)} className="inline-flex h-8 items-center rounded-md border border-rose-200 px-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50">Reject</button>
+                            </>
+                          )}
+                          {canClosePo(po) && canApprove && (
+                            <button onClick={() => handleClosePO(po)} className="inline-flex h-8 items-center rounded-md border border-slate-300 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100" title="Short-close remaining">Close</button>
+                          )}
+                          {(st === 'PENDING_APPROVAL' || st === 'PENDING_FINAL_APPROVAL' || st === 'OPEN' || st === 'APPROVED') && (
+                            <>
+                              {canUpdatePo && (st === 'PENDING_APPROVAL' || st === 'OPEN') && (
+                                <button onClick={() => handleEdit(po)} className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 px-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50">ပြင်</button>
+                              )}
+                              {canCancelPo(st) && (
+                                <button onClick={() => handleCancelPO(po)} className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 px-2.5 text-xs font-bold text-slate-500 hover:bg-slate-100" title={st === 'APPROVED' ? 'Approved PO ပယ်ဖျက်' : 'ပယ်ဖျက်'}><Ban size={14} /></button>
+                              )}
                             </>
                           )}
                         </div>
@@ -693,7 +852,7 @@ const PurchaseOrderManagement: React.FC = () => {
                 </label>
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="rounded-xl border border-slate-200">
                 <table className="w-full min-w-[680px] text-left text-sm">
                   <thead><tr className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
                     <th className="px-3 py-2.5">ပစ္စည်း</th>
@@ -702,7 +861,7 @@ const PurchaseOrderManagement: React.FC = () => {
                     <th className="px-3 py-2.5 w-32 text-right">စုစုပေါင်း</th>
                     <th className="w-12"></th>
                   </tr></thead>
-<tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100">
                     {rows.map((row, idx) => (
                       <POTableRow
                         key={idx}
@@ -803,13 +962,32 @@ const PurchaseOrderManagement: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 p-4">
-              {(viewOrder.status || 'OPEN').toUpperCase() === 'OPEN' && (
+              {['PENDING_APPROVAL', 'PENDING_FINAL_APPROVAL', 'OPEN', 'APPROVED', 'PARTIAL'].includes((viewOrder.status || 'OPEN').toUpperCase()) && (
                 <>
-                  <button onClick={() => { handleCancelPO(viewOrder); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100"><Ban size={13} /> ပယ်ဖျက်</button>
-                  <button onClick={() => { handleEdit(viewOrder); setViewOrder(null); }} className="rounded-lg border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50">ပြင်ဆင်</button>
+                  {canCancelPo(viewOrder.status) && (
+                    <button onClick={() => { handleCancelPO(viewOrder); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100"><Ban size={13} /> ပယ်ဖျက်</button>
+                  )}
+                  {['PENDING_APPROVAL', 'OPEN'].includes((viewOrder.status || '').toUpperCase()) && (
+                    <button onClick={() => { handleEdit(viewOrder); setViewOrder(null); }} className="rounded-lg border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50">ပြင်ဆင်</button>
+                  )}
+                  {canApprove && ['PENDING_APPROVAL', 'OPEN'].includes((viewOrder.status || '').toUpperCase()) && (
+                    <>
+                      <button onClick={() => handleApprovePO(viewOrder)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700">Approve</button>
+                      <button onClick={() => handleRejectPO(viewOrder)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50">Reject</button>
+                    </>
+                  )}
+                  {canFinalApprove && (viewOrder.status || '').toUpperCase() === 'PENDING_FINAL_APPROVAL' && (
+                    <>
+                      <button onClick={() => handleApprovePO(viewOrder)} className="rounded-lg bg-fuchsia-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-700">Final Approve</button>
+                      <button onClick={() => handleRejectPO(viewOrder)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50">Reject</button>
+                    </>
+                  )}
+                  {canClosePo(viewOrder) && canApprove && (
+                    <button onClick={() => handleClosePO(viewOrder)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100">Close</button>
+                  )}
                 </>
               )}
-              {(viewOrder.status || 'OPEN').toUpperCase() !== 'RECEIVED' && (viewOrder.status || '').toUpperCase() !== 'CANCELLED' && (
+              {canReceivePo(viewOrder.status) && (
                 <button onClick={() => { openReceive(viewOrder); setViewOrder(null); }} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"><PackageCheck size={13} /> Receive</button>
               )}
             </div>

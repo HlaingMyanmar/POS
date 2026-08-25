@@ -44,6 +44,10 @@ class PurchaseReturnDetailViewModel(
     }
 
     fun voidReturn(reason: String) {
+        if (!prefs.hasPermission("CAN_ACCESS_PURCHASE_RETURN_UPDATE")) {
+            _uiState.update { it.copy(error = "Purchase Return void လုပ်ရန် ခွင့်ပြုချက် မရှိပါ") }
+            return
+        }
         val trimmed = reason.trim()
         if (trimmed.isBlank()) {
             _uiState.update { it.copy(error = "Void အကြောင်းအရင်း ဖြည့်ပါ") }

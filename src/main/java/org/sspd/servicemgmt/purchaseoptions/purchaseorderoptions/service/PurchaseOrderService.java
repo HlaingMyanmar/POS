@@ -29,6 +29,7 @@ import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.repository.Good
 import org.sspd.servicemgmt.purchaseoptions.service.PurchaseService;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.supplieroptions.model.Supplier;
@@ -53,6 +54,7 @@ public class PurchaseOrderService {
     private final GoodsReceiptRepository goodsReceiptRepository;
     private final SupplierRepository supplierRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final PurchaseOrderMapper mapper;
     private final PurchaseService purchaseService;
@@ -125,7 +127,7 @@ public class PurchaseOrderService {
     @Transactional(readOnly = true)
     public List<PurchaseOrderDTO> findLate() {
         return poRepository.findLateOpen(
-                List.of(POStatus.OPEN, POStatus.PARTIAL), LocalDate.now())
+                List.of(POStatus.OPEN, POStatus.PARTIAL, POStatus.APPROVED), LocalDate.now())
                 .stream().map(mapper::toDto).toList();
     }
 
@@ -179,44 +181,125 @@ public class PurchaseOrderService {
         return mapper.toDto(saved);
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_DELETE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_DELETE') or hasAuthority('CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED')")
     @Transactional
     public void cancel(Integer id) {
         PurchaseOrder po = getEntity(id);
+        if (po.getStatus() == POStatus.CANCELLED)
+            throw new IllegalStateException("Purchase order is already cancelled.");
         if (po.getStatus() == POStatus.RECEIVED)
-            throw new RuntimeException("Fully received order cannot be cancelled.");
-        if (po.getDetails().stream().anyMatch(d -> d.getReceivedQty() != null && d.getReceivedQty() > 0))
-            throw new RuntimeException("Partially received order cannot be cancelled.");
+            throw new IllegalStateException("Fully received order cannot be cancelled.");
+        if (po.getStatus() == POStatus.REJECTED)
+            throw new IllegalStateException("Rejected order cannot be cancelled.");
+        if (po.getDetails().stream().anyMatch(d ->
+                (d.getReceivedQty() != null && d.getReceivedQty() > 0)
+                        || (d.getDamagedQty() != null && d.getDamagedQty() > 0)
+                        || (d.getRejectedQty() != null && d.getRejectedQty() > 0)))
+            throw new IllegalStateException("Partially received order cannot be cancelled. Use remaining receive/close flow instead.");
+        if (po.getStatus() == POStatus.APPROVED) {
+            if (!hasAuthority("CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED"))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Approved purchase order များကို ပယ်ဖျက်ရန် CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED ခွင့်ပြုချက် လိုအပ်သည်။");
+        } else if (po.getStatus() == POStatus.PENDING_APPROVAL
+                || po.getStatus() == POStatus.OPEN
+                || po.getStatus() == POStatus.PENDING_FINAL_APPROVAL) {
+            if (!hasAuthority("CAN_ACCESS_PURCHASE_ORDER_DELETE"))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Purchase order ပယ်ဖျက်ရန် CAN_ACCESS_PURCHASE_ORDER_DELETE ခွင့်ပြုချက် လိုအပ်သည်။");
+        } else {
+            throw new IllegalStateException("Only pending, open, or approved (not yet received) orders can be cancelled.");
+        }
         po.setStatus(POStatus.CANCELLED);
         poRepository.save(po);
         messagingTemplate.convertAndSend(PO_TOPIC, "PO_CANCELLED");
     }
 
+    /** Short-close remaining unreceived qty on PARTIAL (or APPROVED with nothing left to receive). */
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @Transactional
+    public PurchaseOrderDTO close(Integer id, String reason) {
+        PurchaseOrder po = getEntity(id);
+        if (po.getStatus() == POStatus.CLOSED || po.getStatus() == POStatus.RECEIVED || po.getStatus() == POStatus.CANCELLED)
+            throw new IllegalStateException("Purchase order cannot be closed in status " + po.getStatus());
+        if (po.getStatus() != POStatus.PARTIAL && po.getStatus() != POStatus.APPROVED && po.getStatus() != POStatus.OPEN)
+            throw new IllegalStateException("Only open/approved/partial orders can be short-closed.");
+        boolean anyReceived = po.getDetails().stream().anyMatch(d ->
+                (d.getReceivedQty() != null && d.getReceivedQty() > 0)
+                        || (d.getDamagedQty() != null && d.getDamagedQty() > 0)
+                        || (d.getRejectedQty() != null && d.getRejectedQty() > 0));
+        if (!anyReceived && po.getStatus() != POStatus.APPROVED)
+            throw new IllegalStateException("Nothing received yet — cancel the PO instead of closing.");
+        if (reason != null && !reason.isBlank()) {
+            String note = (po.getRemark() == null ? "" : po.getRemark() + "\n") + "Closed: " + reason.trim();
+            po.setRemark(note.length() > 500 ? note.substring(0, 500) : note);
+        }
+        po.setStatus(POStatus.CLOSED);
+        PurchaseOrder saved = poRepository.save(po);
+        messagingTemplate.convertAndSend(PO_TOPIC, "PO_CLOSED");
+        return mapper.toDto(saved);
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE') or hasAuthority('CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE')")
     @Transactional
     public PurchaseOrderDTO approve(Integer id) {
         PurchaseOrder po = getEntity(id);
-        if (po.getStatus() != POStatus.PENDING_APPROVAL && po.getStatus() != POStatus.OPEN)
+        if (po.getStatus() == POStatus.PENDING_FINAL_APPROVAL) {
+            if (!hasAuthority("CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE"))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Final approve အတွက် CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE ခွင့်ပြုချက် လိုအပ်သည်။");
+            String firstApprover = po.getApprovedBy();
+            if (firstApprover != null && firstApprover.equalsIgnoreCase(currentUsername()))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Same user cannot perform both first and final approval (segregation of duties).");
+            po.setStatus(POStatus.APPROVED);
+            po.setApprovedBy(currentUsername());
+            po.setApprovedAt(LocalDateTime.now());
+            po.setRejectedBy(null);
+            po.setRejectedAt(null);
+            po.setRejectionReason(null);
+        } else if (po.getStatus() == POStatus.PENDING_APPROVAL || po.getStatus() == POStatus.OPEN) {
+            if (!hasAuthority("CAN_ACCESS_PURCHASE_ORDER_APPROVE"))
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Approve အတွက် CAN_ACCESS_PURCHASE_ORDER_APPROVE ခွင့်ပြုချက် လိုအပ်သည်။");
+            BigDecimal threshold = companySettingsService.getSettings().getPoFinalApprovalThreshold();
+            BigDecimal total = po.getTotalAmount() == null ? BigDecimal.ZERO : po.getTotalAmount();
+            if (threshold != null && threshold.signum() > 0 && total.compareTo(threshold) >= 0) {
+                po.setStatus(POStatus.PENDING_FINAL_APPROVAL);
+                // Stamp first approver for segregation-of-duties on final approve
+                po.setApprovedBy(currentUsername());
+                String note = (po.getRemark() == null ? "" : po.getRemark() + "\n")
+                        + "First approved by " + currentUsername() + " — awaiting final approval";
+                po.setRemark(note.length() > 500 ? note.substring(0, 500) : note);
+            } else {
+                po.setStatus(POStatus.APPROVED);
+                po.setApprovedBy(currentUsername());
+                po.setApprovedAt(LocalDateTime.now());
+                po.setRejectedBy(null);
+                po.setRejectedAt(null);
+                po.setRejectionReason(null);
+            }
+        } else {
             throw new RuntimeException("Only pending purchase orders can be approved.");
-        po.setStatus(POStatus.APPROVED);
-        po.setApprovedBy(currentUsername());
-        po.setApprovedAt(LocalDateTime.now());
-        po.setRejectedBy(null);
-        po.setRejectedAt(null);
-        po.setRejectionReason(null);
+        }
         PurchaseOrder saved = poRepository.save(po);
         messagingTemplate.convertAndSend(PO_TOPIC, "PO_APPROVED");
         return mapper.toDto(saved);
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE') or hasAuthority('CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE')")
     @Transactional
     public PurchaseOrderDTO reject(Integer id, String reason) {
         if (reason == null || reason.isBlank())
             throw new RuntimeException("Rejection reason is required.");
         PurchaseOrder po = getEntity(id);
-        if (po.getStatus() != POStatus.PENDING_APPROVAL && po.getStatus() != POStatus.OPEN)
+        if (po.getStatus() != POStatus.PENDING_APPROVAL
+                && po.getStatus() != POStatus.OPEN
+                && po.getStatus() != POStatus.PENDING_FINAL_APPROVAL)
             throw new RuntimeException("Only pending purchase orders can be rejected.");
+        if (po.getStatus() == POStatus.PENDING_FINAL_APPROVAL
+                && !hasAuthority("CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE")
+                && !hasAuthority("CAN_ACCESS_PURCHASE_ORDER_APPROVE"))
+            throw new org.springframework.security.access.AccessDeniedException("Reject permission required.");
         po.setStatus(POStatus.REJECTED);
         po.setRejectedBy(currentUsername());
         po.setRejectedAt(LocalDateTime.now());
@@ -234,8 +317,9 @@ public class PurchaseOrderService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_RECEIVE')")
     @Transactional
     public PurchaseOrderReceiveResultDTO receive(Integer id, PurchaseOrderReceiveDTO receive) {
-        PurchaseOrder po = getEntity(id);
-        if (po.getStatus() != POStatus.APPROVED && po.getStatus() != POStatus.OPEN && po.getStatus() != POStatus.PARTIAL)
+        PurchaseOrder po = poRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new RuntimeException("Purchase Order not found: " + id));
+        if (po.getStatus() != POStatus.APPROVED && po.getStatus() != POStatus.PARTIAL)
             throw new RuntimeException("Purchase Order must be approved before goods can be received.");
 
         Map<Integer, PurchaseOrderReceiveDTO.ReceiveLine> lineByDetailId = receive.getLines() == null
@@ -263,7 +347,7 @@ public class PurchaseOrderService {
 
         PurchaseDTO purchaseDto = new PurchaseDTO();
         purchaseDto.setSupplierId(po.getSupplier().getId());
-        purchaseDto.setStaffId(receive.getStaffId() != null ? receive.getStaffId() : po.getStaff().getId());
+        purchaseDto.setStaffId(resolveReceiverStaff(receive.getStaffId()).getId());
         purchaseDto.setPurchaseDate(LocalDateTime.now());
         purchaseDto.setDueDate(receive.getDueDate());
         purchaseDto.setDiscountAmount(receive.getDiscountAmount());
@@ -397,6 +481,33 @@ public class PurchaseOrderService {
         var authentication = org.springframework.security.core.context.SecurityContextHolder
                 .getContext().getAuthentication();
         return authentication != null ? authentication.getName() : "SYSTEM";
+    }
+
+    private Staff resolveReceiverStaff(Integer requestedStaffId) {
+        if (hasAuthority("CAN_ACCESS_PURCHASE_STAFF_OVERRIDE")
+                && requestedStaffId != null && requestedStaffId > 0) {
+            Staff requested = staffRepository.findById(requestedStaffId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Receiver staff not found"));
+            if (!requested.isActive()) throw new IllegalStateException("Receiver staff is inactive.");
+            return requested;
+        }
+        String username = currentUsername();
+        var user = userRepository.findByUsernameOrEmail(username, username)
+                .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException(
+                        "Authenticated receiver user is not linked to a staff record."));
+        Staff receiver = user.getStaff();
+        if (receiver == null || !receiver.isActive())
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Authenticated receiver must be linked to an active staff record.");
+        return receiver;
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication == null || authentication.getAuthorities() == null) return false;
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> authority.equals(a.getAuthority()));
     }
 
     private String generatePoCode(Integer id) {

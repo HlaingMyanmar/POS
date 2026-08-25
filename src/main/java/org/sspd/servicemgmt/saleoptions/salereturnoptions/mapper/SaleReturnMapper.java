@@ -22,13 +22,16 @@ public interface SaleReturnMapper {
     @Mapping(source = "sale.customer.id", target = "customerId")
     @Mapping(source = "sale.customer.name", target = "customerName")
     @Mapping(source = "staff.id", target = "staffId")
-    @Mapping(target = "paymentMethodId", ignore = true)
+    @Mapping(target = "paymentMethodId", source = "paymentMethod.id")
     SaleReturnDTO toDto(SaleReturn entity);
 
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.name", target = "productName")
     @Mapping(source = "saleReturn.id", target = "returnId")
     @Mapping(target = "serialNumbers", source = "serialNumber", qualifiedByName = "serialStringToList")
+    @Mapping(source = "reason.id", target = "reasonId")
+    @Mapping(source = "reason.code", target = "reasonCode")
+    @Mapping(source = "reason.name", target = "reasonName")
     SaleReturnDetailDTO toDto(SaleReturnDetail detail);
 
     @Mapping(target = "sale", ignore = true)
@@ -37,6 +40,8 @@ public interface SaleReturnMapper {
     @Mapping(target = "details", ignore = true)
     @Mapping(target = "returnCode", ignore = true)
     @Mapping(target = "deleted", ignore = true)
+    @Mapping(target = "version", ignore = true)
+    @Mapping(target = "voidedBy", ignore = true)
     SaleReturn toEntity(SaleReturnDTO dto);
 
     @Named("serialStringToList")

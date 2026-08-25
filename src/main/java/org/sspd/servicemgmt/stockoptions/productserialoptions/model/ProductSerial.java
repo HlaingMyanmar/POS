@@ -24,7 +24,7 @@ public class ProductSerial {
     private String serialNumber;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 40)
     private SerialStatus status = SerialStatus.Available;
 
     @ManyToOne(fetch = FetchType.LAZY)

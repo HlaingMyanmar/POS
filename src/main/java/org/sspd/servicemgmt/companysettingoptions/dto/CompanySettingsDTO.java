@@ -24,4 +24,5 @@ public class CompanySettingsDTO {
     private Integer poDigits;
     private String purchaseReturnPrefix;
     private Integer purchaseReturnDigits;
+    private java.math.BigDecimal poFinalApprovalThreshold;
 }

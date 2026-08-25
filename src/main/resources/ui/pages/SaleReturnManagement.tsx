@@ -3,19 +3,20 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, CreditCard, Download, Eye, FileText, List, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, User, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
-import { saleReturnApiService } from '../services/salereturnapiservice';
+import { saleReturnApiService, saleReturnReasonApiService } from '../services/salereturnapiservice';
+import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
+import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, ProductStockHistoryMovementDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO, SaleReturnReasonDTO } from '../types';
 import { saleApiService } from '../services/saleapiservice';
 import { productService } from '../services/productapiservice';
 import { customerService } from '../services/customerapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, ProductStockHistoryMovementDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO } from '../types';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 
-type DetailForm = SaleReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
+type DetailForm = SaleReturnDetailDTO & { productSearch: string; serialNumbers: string[]; restock: boolean; reasonId?: number };
 
 type SaleProductOption = {
   productId: number;
@@ -42,7 +43,9 @@ const emptyDetail = (): DetailForm => ({
   unitPrice: 0,
   subtotal: 0,
   productSearch: '',
-  serialNumbers: ['']
+  serialNumbers: [''],
+  restock: true,
+  reasonId: undefined
 });
 
 const toLocalDateTime = (value?: string) => {
@@ -92,6 +95,9 @@ const SaleReturnManagement: React.FC = () => {
   const [sales, setSales] = useState<SaleDTO[]>([]);
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDTO[]>([]);
+  const [reasons, setReasons] = useState<SaleReturnReasonDTO[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
+  const [warehouseName, setWarehouseName] = useState('Main');
   const [selectedSale, setSelectedSale] = useState<SaleDTO | null>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -168,16 +174,21 @@ const SaleReturnManagement: React.FC = () => {
   const loadMaster = useCallback(async () => {
     setMasterLoading(true);
     try {
-      const [cus, sal, pro, pm] = await Promise.all([
+      const [cus, sal, pro, pm, rs, wh] = await Promise.all([
         customerService.getAll(),
         saleApiService.getAll(),
         productService.getAll(),
-        paymentMethodService.getAllActive()
+        paymentMethodService.getAllActive(),
+        saleReturnReasonApiService.getAll(true).catch(() => []),
+        warehouseApiService.list(true).catch(() => [])
       ]);
       setCustomers(cus);
       setSales(sal);
       setProducts(pro);
       setPaymentMethods(pm);
+      setReasons(rs || []);
+      setWarehouses(wh || []);
+      if (wh?.length) setWarehouseName(wh[0].name || 'Main');
     } catch (e) {
       console.error('Failed to load master data', e);
     } finally {
@@ -217,6 +228,7 @@ const SaleReturnManagement: React.FC = () => {
       .then((data) => {
         if (!active) return;
         setSelectedSale(data);
+        if (data.warehouseName) setWarehouseName(data.warehouseName);
         if (data.customerId) {
           setCustomerId(data.customerId);
           setCustomerSearch(customerLabelById(data.customerId));
@@ -445,7 +457,6 @@ const SaleReturnManagement: React.FC = () => {
       const productIds = [...new Set((data.details || []).map((detail) => detail.productId))];
       const histories = await Promise.allSettled(productIds.map((productId) => productService.getStockHistory(productId, { size: 100 })));
       setReturnStockMovements(histories.flatMap((result) => result.status === 'fulfilled' ? result.value.movements || [] : []).filter((movement) => movement.referenceId === id));
-                  <button onClick={() => { setViewRow(null); setReturnStockMovements([]); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"><X size={18} /></button>
     } catch (e: any) {
       Swal.fire('Error', e.message || 'Failed to load sale return', 'error');
     }
@@ -453,19 +464,23 @@ const SaleReturnManagement: React.FC = () => {
 
   const handleDelete = useCallback(async (id: number, label: string) => {
     const result = await Swal.fire({
-      title: `Void ${label}?`,
-      html: `This will <strong>permanently reverse</strong> all stock movements, journal entries, and sale amount adjustments. This cannot be undone.`,
+      title: `${label} ကို ပယ်ဖျက်မည်?`,
+      html: `Stock, journal နှင့် sale ပြင်ဆင်ချက်များကို <strong>ပြန်လည်ပြင်ဆင်မည်</strong>။ ပြန်မလုပ်နိုင်ပါ။`,
       icon: 'warning',
+      input: 'textarea',
+      inputLabel: 'ပယ်ဖျက်ရသည့်အကြောင်းရင်း',
+      inputPlaceholder: 'အကြောင်းရင်း လိုအပ်သည်',
       showCancelButton: true,
       confirmButtonColor: '#dc2626',
-      confirmButtonText: 'Yes, void it',
-      cancelButtonText: 'Cancel',
+      confirmButtonText: 'ပယ်ဖျက်မည်',
+      cancelButtonText: 'မလုပ်တော့',
+      inputValidator: (value) => value?.trim() ? undefined : 'အကြောင်းရင်း ဖြည့်ပါ'
     });
     if (!result.isConfirmed) return;
     try {
-      await saleReturnApiService.delete(id);
+      await saleReturnApiService.voidReturn(id, String(result.value).trim());
       await loadRows(currentPage, pageSize, debouncedSearch);
-      Swal.fire({ icon: 'success', title: 'Sale return voided', toast: true, showConfirmButton: false, timer: 1500, position: 'top-end' });
+      Swal.fire({ icon: 'success', title: 'Sale return ပယ်ဖျက်ပြီး', toast: true, showConfirmButton: false, timer: 1500, position: 'top-end' });
     } catch (e: any) {
       Swal.fire('Error', e.message || 'Failed to void sale return', 'error');
     }
@@ -498,6 +513,7 @@ const SaleReturnManagement: React.FC = () => {
         staffId: selectedSale?.staffId || undefined,
         returnDate: returnDate || undefined,
         reason: reason.trim() || undefined,
+        warehouseName: warehouseName || selectedSale?.warehouseName || undefined,
         totalReturnAmount: total,
         refundAmount: normalizedRefundPayments.length > 0 ? effectiveRefund : (refundAmount.trim() === '' ? undefined : Number(refundAmount)),
         paymentMethodId: paymentRequired ? (normalizedRefundPayments[0]?.paymentMethodId || paymentMethodId) : undefined,
@@ -509,7 +525,9 @@ const SaleReturnManagement: React.FC = () => {
           qty: Number(d.qty),
           unitPrice: Number(d.unitPrice),
           subtotal: Number((d.qty * d.unitPrice).toFixed(2)),
-          serialNumbers: isSerialProduct(d.productId) ? d.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean) : []
+          serialNumbers: isSerialProduct(d.productId) ? d.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean) : [],
+          reasonId: d.reasonId || reasons[0]?.id,
+          restock: d.restock !== false
         }))
       };
 
@@ -608,8 +626,10 @@ const SaleReturnManagement: React.FC = () => {
                   <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ပြန်လက်ခံနိုင်သော Item</label>
-                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">{saleLoading ? 'Sale အချက်အလက် ဖတ်နေသည်...' : saleId > 0 ? `${productOptions.length}  item ပြန်လက်ခံနိုင်သည်` : '-'}</div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ဂိုဒေါင်</label>
+                  <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm">
+                    {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
+                  </select>
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -630,6 +650,8 @@ const SaleReturnManagement: React.FC = () => {
                       <th className="px-4 py-3 border-b border-slate-100">ပစ္စည်း</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-24">အရေအတွက်</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-32">တစ်ခုဈေး</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-36">အကြောင်းရင်း</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-28">Restock</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-36 text-right">စုစုပေါင်း</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-12"></th>
                     </tr>
@@ -647,12 +669,21 @@ const SaleReturnManagement: React.FC = () => {
                             </td>
                             <td className="px-4 py-3"><input type="number" min="1" value={d.qty || ''} onChange={(e) => onDetailChange(i, 'qty', e.target.value)} className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none" /></td>
                             <td className="px-4 py-3"><input type="number" min="0" step="0.01" value={d.unitPrice || ''} onChange={(e) => onDetailChange(i, 'unitPrice', e.target.value)} className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none" /></td>
+                            <td className="px-4 py-3">
+                              <select value={d.reasonId || 0} onChange={(e) => setDetails((prev) => prev.map((row, idx) => idx === i ? { ...row, reasonId: Number(e.target.value) || undefined } : row))} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs">
+                                <option value={0}>Reason</option>
+                                {reasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              <label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={d.restock !== false} onChange={(e) => setDetails((prev) => prev.map((row, idx) => idx === i ? { ...row, restock: e.target.checked } : row))} /> Stock ပြန်တက်</label>
+                            </td>
                             <td className="px-4 py-3 text-right font-bold text-slate-700">{money(d.subtotal)}</td>
                             <td className="px-4 py-3 text-center"><button onClick={() => setDetails((prev) => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i))} className="p-1.5 text-slate-300 hover:text-rose-500 disabled:opacity-40" disabled={details.length <= 1}><Trash2 size={14} /></button></td>
                           </tr>
                           {d.productId > 0 && d.qty > 0 && (
                             <tr className="bg-slate-50/50">
-                              <td colSpan={5} className="px-4 py-3">
+                              <td colSpan={7} className="px-4 py-3">
                                 {serialRequired ? (
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between text-[10px] text-slate-500"><span className="font-bold uppercase tracking-wider">Serial နံပါတ်များ ({d.qty})</span><span>{serialOptions.length} ရနိုင်</span></div>
@@ -790,6 +821,7 @@ const SaleReturnManagement: React.FC = () => {
                   <th className="px-4 py-3 border-b border-slate-100">မူရင်း Sale</th>
                   <th className="px-4 py-3 border-b border-slate-100">ဖောက်သည်</th>
                   <th className="px-4 py-3 border-b border-slate-100">ရက်စွဲ</th>
+                  <th className="px-4 py-3 border-b border-slate-100">အခြေအနေ</th>
                   <th className="px-4 py-3 border-b border-slate-100 text-right">စုစုပေါင်း</th>
                   <th className="px-4 py-3 border-b border-slate-100 text-right">Refund</th>
                   <th className="px-4 py-3 border-b border-slate-100">ပြန်လက်ခံရသည့်အကြောင်းရင်း</th>
@@ -804,15 +836,18 @@ const SaleReturnManagement: React.FC = () => {
                     <td className="px-4 py-3 text-slate-600">{r.saleId > 0 ? <Link to={`${AppRoute.SALES}?saleId=${r.saleId}`} className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium">{saleLabelById(r.saleId)}</Link> : '-'}</td>
                     <td className="px-4 py-3 text-slate-600">{r.customerName || customerLabelById(sales.find((s) => s.id === r.saleId)?.customerId)}</td>
                     <td className="px-4 py-3 text-slate-600">{r.returnDate ? new Date(r.returnDate).toLocaleString() : '-'}</td>
+                    <td className="px-4 py-3">{(r.status || '').toUpperCase() === 'VOIDED' || r.voidedAt ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">VOIDED</span> : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">{r.status || 'COMPLETED'}</span>}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-700">{money(r.totalReturnAmount || 0)}</td>
                     <td className="px-4 py-3 text-right font-bold text-emerald-700">{money(r.refundAmount ?? r.totalReturnAmount ?? 0)}</td>
                     <td className="px-4 py-3 text-slate-500 max-w-[260px] truncate">{r.reason || '-'}</td>
                     <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
                       <button onClick={() => r.id && openView(r.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50" title="View"><Eye size={15} /></button>
-                      <button onClick={() => r.id && handleDelete(r.id, r.returnCode || `#${r.id}`)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50" title="Void & Delete"><Trash2 size={15} /></button>
+                      {r.id && (r.status || '').toUpperCase() !== 'VOIDED' && !r.voidedAt && (
+                        <button onClick={() => handleDelete(r.id as number, r.returnCode || `#${r.id}`)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50" title="Void"><Trash2 size={15} /></button>
+                      )}
                     </td>
                   </tr>
-                )) : <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">သတ်မှတ်ထားသော filter ဖြင့် Sale Return မတွေ့ပါ။</td></tr>}
+                )) : <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-400">သတ်မှတ်ထားသော filter ဖြင့် Sale Return မတွေ့ပါ။</td></tr>}
               </tbody>
             </table>
           )}
@@ -861,11 +896,14 @@ const SaleReturnManagement: React.FC = () => {
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Return Date:</span> {viewRow.returnDate ? new Date(viewRow.returnDate).toLocaleString() : '-'}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Return စုစုပေါင်း:</span> {money(viewRow.totalReturnAmount || 0)}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Refund:</span> {money(viewRow.refundAmount ?? viewRow.totalReturnAmount ?? 0)}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">ဂိုဒေါင်:</span> {viewRow.warehouseName || '-'}</p>
+                <p className="text-slate-600"><span className="font-medium text-slate-500">အခြေအနေ:</span> {viewRow.status || 'COMPLETED'}{viewRow.creditNoteNo ? ` · CN ${viewRow.creditNoteNo}` : ''}</p>
               </div>
+              {viewRow.voidReason && <p className="text-sm text-rose-600"><span className="font-medium">ပယ်ဖျက်:</span> {viewRow.voidReason}</p>}
               {viewRow.reason && <p className="text-sm text-slate-600"><span className="font-medium text-slate-500">Reason:</span> {viewRow.reason}</p>}
               <table className="w-full text-left border-collapse text-sm">
-                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">ပစ္စည်း</th><th className="px-3 py-2 border-b w-16">အရေအတွက်</th><th className="px-3 py-2 border-b text-right">တစ်ခုဈေး</th><th className="px-3 py-2 border-b text-right">စုစုပေါင်း</th><th className="px-3 py-2 border-b">Serials</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `Product #${d.productId}`}</td><td className="px-3 py-2">{d.qty}</td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
+                <thead><tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold"><th className="px-3 py-2 border-b">ပစ္စည်း</th><th className="px-3 py-2 border-b w-16">အရေအတွက်</th><th className="px-3 py-2 border-b text-right">တစ်ခုဈေး</th><th className="px-3 py-2 border-b text-right">စုစုပေါင်း</th><th className="px-3 py-2 border-b">အကြောင်းရင်း</th><th className="px-3 py-2 border-b">Restock</th><th className="px-3 py-2 border-b">Serials</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{(viewRow.details || []).map((d, i) => <tr key={i}><td className="px-3 py-2">{d.productName || `Product #${d.productId}`}</td><td className="px-3 py-2">{d.qty}</td><td className="px-3 py-2 text-right">{money(d.unitPrice)}</td><td className="px-3 py-2 text-right font-medium">{money(d.subtotal)}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.reasonName || '-'}</td><td className="px-3 py-2 text-[11px]">{d.restock === false ? 'Scrap' : 'Stock ပြန်တက်'}</td><td className="px-3 py-2 text-[11px] text-slate-500">{d.serialNumbers && d.serialNumbers.length > 0 ? d.serialNumbers.join(', ') : '-'}</td></tr>)}</tbody>
               </table>
               <section className="pt-2"><div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Refund Payment History</h4><span className="text-[11px] text-slate-400">{viewRow.payments?.length || 0} payment(s)</span></div>{!viewRow.payments?.length ? <p className="py-3 text-xs text-slate-400">No refund payment history found.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Payment Method</th><th className="border-b px-3 py-2">Transaction No</th><th className="border-b px-3 py-2 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">{viewRow.payments.map((payment, index) => <tr key={payment.id || `${payment.transactionNo}-${index}`}><td className="px-3 py-2 text-slate-600">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleString() : '-'}</td><td className="px-3 py-2 text-slate-600">{payment.paymentMethodName || (payment.paymentMethodId ? `#${payment.paymentMethodId}` : '-')}</td><td className="px-3 py-2 text-slate-500">{payment.transactionNo || '-'}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">{money(payment.amount || 0)}</td></tr>)}</tbody></table></div>}</section>
               <section className="pt-2"><div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Stock Movement</h4><span className="text-[11px] text-slate-400">{returnStockMovements.length} movement(s)</span></div>{!returnStockMovements.length ? <p className="py-3 text-xs text-slate-400">No stock movement found for this return.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[650px] text-left text-sm"><thead><tr className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500"><th className="border-b px-3 py-2">Date</th><th className="border-b px-3 py-2">Product</th><th className="border-b px-3 py-2">Type</th><th className="border-b px-3 py-2 text-right">In</th><th className="border-b px-3 py-2 text-right">Balance</th></tr></thead><tbody className="divide-y divide-slate-100">{returnStockMovements.map((movement, index) => <tr key={movement.id || `${movement.productId}-${index}`}><td className="px-3 py-2 text-slate-600">{movement.date ? new Date(movement.date).toLocaleString() : '-'}</td><td className="px-3 py-2"><p className="font-semibold text-slate-700">{movement.productName || '-'}</p><p className="text-[10px] text-slate-400">{movement.productCode || ''}</p></td><td className="px-3 py-2 text-slate-500">{movement.type}</td><td className="px-3 py-2 text-right font-bold text-emerald-700">+{movement.quantityIn.toLocaleString()}</td><td className="px-3 py-2 text-right font-bold text-slate-700">{movement.balance.toLocaleString()}</td></tr>)}</tbody></table></div>}</section>

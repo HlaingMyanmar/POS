@@ -66,20 +66,20 @@ public class PurchaseOrderController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Updated", service.update(id, dto)));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_DELETE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_DELETE') or hasAuthority('CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> cancel(@PathVariable Integer id) {
         service.cancel(id);
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Cancelled", null));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE') or hasAuthority('CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE')")
     @PostMapping("/{id}/approve")
     public ResponseEntity<ApiResponse<PurchaseOrderDTO>> approve(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order Approved", service.approve(id)));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE') or hasAuthority('CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE')")
     @PostMapping("/{id}/reject")
     public ResponseEntity<ApiResponse<PurchaseOrderDTO>> reject(@PathVariable Integer id,
                                                                 @RequestBody java.util.Map<String, String> body) {
@@ -95,5 +95,13 @@ public class PurchaseOrderController {
     public ResponseEntity<ApiResponse<PurchaseOrderReceiveResultDTO>> receive(@PathVariable Integer id,
                                                                               @RequestBody PurchaseOrderReceiveDTO dto) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Goods Received Successfully", service.receive(id, dto)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_ORDER_APPROVE')")
+    @PostMapping("/{id}/close")
+    public ResponseEntity<ApiResponse<PurchaseOrderDTO>> close(@PathVariable Integer id,
+                                                               @RequestBody(required = false) java.util.Map<String, String> body) {
+        String reason = body == null ? null : body.get("reason");
+        return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Order closed", service.close(id, reason)));
     }
 }

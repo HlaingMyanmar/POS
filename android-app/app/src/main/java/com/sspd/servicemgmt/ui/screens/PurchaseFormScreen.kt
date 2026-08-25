@@ -186,6 +186,15 @@ fun PurchaseFormScreen(
                         Text("Supplier default: ${state.selectedSupplier?.defaultCreditDays ?: 30} ရက်", fontSize = 10.sp, color = PurchaseColor)
                         DateField("ပေးရန်ရက်", state.dueDate, vm::setDueDate, optional = true)
                         OutlinedTextField(
+                            value         = state.warehouseName,
+                            onValueChange = vm::setWarehouseName,
+                            modifier      = Modifier.fillMaxWidth(),
+                            label         = { Text("Warehouse") },
+                            placeholder   = { Text("Main Warehouse") },
+                            singleLine    = true,
+                            shape         = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
                             value         = state.remark,
                             onValueChange = vm::setRemark,
                             modifier      = Modifier.fillMaxWidth(),
@@ -245,6 +254,8 @@ fun PurchaseFormScreen(
                         onQty                 = { vm.setLineQty(index, it) },
                         onCost                = { vm.setLineCost(index, it) },
                         onWarranty            = { vm.setLineWarranty(index, it) },
+                        onBatchNumber         = { vm.setLineBatchNumber(index, it) },
+                        onExpiryDate          = { vm.setLineExpiryDate(index, it) },
                         onSerialChange        = { sIdx, v -> vm.setLineSerial(index, sIdx, v) },
                         onConditionChange     = { sIdx, v -> vm.setLineCondition(index, sIdx, v) },
                         onWarrantyItem        = { sIdx, v -> vm.setLineWarrantyItem(index, sIdx, v) },
@@ -402,6 +413,8 @@ private fun PurchaseLineCard(
     onQty:                 (String) -> Unit,
     onCost:                (String) -> Unit,
     onWarranty:            (String) -> Unit,
+    onBatchNumber:         (String) -> Unit,
+    onExpiryDate:          (String) -> Unit,
     onSerialChange:        (Int, String) -> Unit,
     onConditionChange:     (Int, String) -> Unit,
     onWarrantyItem:        (Int, String) -> Unit,
@@ -484,6 +497,25 @@ private fun PurchaseLineCard(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine      = true,
                     shape           = RoundedCornerShape(10.dp)
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value         = line.batchNumber,
+                    onValueChange = onBatchNumber,
+                    modifier      = Modifier.weight(1f),
+                    label         = { Text("Batch") },
+                    singleLine    = true,
+                    shape         = RoundedCornerShape(10.dp)
+                )
+                OutlinedTextField(
+                    value         = line.expiryDate,
+                    onValueChange = onExpiryDate,
+                    modifier      = Modifier.weight(1f),
+                    label         = { Text("Expiry yyyy-MM-dd") },
+                    singleLine    = true,
+                    shape         = RoundedCornerShape(10.dp)
                 )
             }
 

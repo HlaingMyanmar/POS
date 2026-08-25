@@ -30,12 +30,14 @@ public interface CreditMapper {
     @Mapping(source = "paymentMethod.id", target = "paymentMethodId")
     @Mapping(source = "staff.id", target = "staffId")
     @Mapping(source = "staff.name", target = "staffName")
+    @Mapping(target = "allocations", ignore = true)
     CustomerPaymentDTO toDto(CustomerPayment entity);
 
     @Mapping(target = "customer", ignore = true)
     @Mapping(target = "sale", ignore = true)
     @Mapping(target = "paymentMethod", ignore = true)
     @Mapping(target = "staff", ignore = true)
+    @Mapping(target = "allocations", ignore = true)
     CustomerPayment toEntity(CustomerPaymentDTO dto);
 
     @Mapping(source = "customer.id", target = "customerId")

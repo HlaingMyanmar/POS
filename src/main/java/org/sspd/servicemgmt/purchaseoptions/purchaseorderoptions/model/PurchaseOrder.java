@@ -23,6 +23,9 @@ public class PurchaseOrder {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Version
+    private Long version;
+
     @Column(name = "po_code", unique = true, nullable = false)
     private String poCode;
 

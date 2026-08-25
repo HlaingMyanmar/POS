@@ -35,6 +35,7 @@ public class SaleDTO {
     private LocalDateTime voidedAt;
     private Integer quotationId;
     private String quotationCode;
+    private String warehouseName;
     private Boolean managerOverride;
     private Integer managerId;
     private String overrideNote;

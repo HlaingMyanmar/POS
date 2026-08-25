@@ -20,11 +20,16 @@ public interface PurchaseReturnMapper {
     @Mapping(source = "purchase.id", target = "purchaseId")
     @Mapping(target = "paymentMethodId", ignore = true)
     @Mapping(target = "transactionNo", ignore = true)
+    @Mapping(target = "shippingPaymentMethodName", ignore = true)
+    @Mapping(target = "shippingPaymentTransaction", ignore = true)
     PurchaseReturnDTO toDto(PurchaseReturn entity);
 
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.name", target = "productName")
     @Mapping(source = "purchaseReturn.id", target = "returnId")
+    @Mapping(source = "reason.id", target = "reasonId")
+    @Mapping(source = "reason.code", target = "reasonCode")
+    @Mapping(source = "reason.name", target = "reasonName")
     @Mapping(target = "serialNumbers", source = "serialNumber", qualifiedByName = "serialStringToList")
     PurchaseReturnDetailDTO toDto(PurchaseReturnDetail detail);
 

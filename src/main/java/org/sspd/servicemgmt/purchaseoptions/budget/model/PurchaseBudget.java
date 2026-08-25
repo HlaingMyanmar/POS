@@ -7,6 +7,7 @@ public class PurchaseBudget {
  @Column(nullable=false) private LocalDate dateFrom;
  @Column(nullable=false) private LocalDate dateTo;
  @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="category_id") private Category category;
+ @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="supplier_id") private org.sspd.servicemgmt.supplieroptions.model.Supplier supplier;
  @Column(nullable=false,precision=18,scale=2) private BigDecimal limitAmount;
  @Column(nullable=false,length=10) private String enforcement;
  @Builder.Default @Column(nullable=false) private Boolean active=true;

@@ -348,6 +348,7 @@ fun HomeScreen(
                     QuadItem("ကုန်ပမာဏ ပြင်ဆင်မှု",      Icons.Outlined.Inventory,             Color(0xFF0891B2),Screen.StockAdjustments.route),
                     QuadItem("ဝယ်ယူရေး",                 Icons.Outlined.ShoppingCart,          Color(0xFF0F766E),Screen.Purchases.route),
                     QuadItem("အဝယ်အော်ဒါ",                Icons.Outlined.Assignment,            Color(0xFF0F766E),Screen.PurchaseOrders.route),
+                    QuadItem("Supplier Payment",           Icons.Outlined.Payments,              Color(0xFF2563EB),Screen.SupplierPayments.route),
                     QuadItem("ဝယ်ပြန်ပို့",                 Icons.Outlined.AssignmentReturn,     Color(0xFF0F766E),Screen.PurchaseReturns.route),
                     QuadItem("ရောင်းပြန်လက်ခံ",             Icons.Outlined.AssignmentReturn,     Danger,          Screen.SaleReturns.route),
                     QuadItem("Serial Registry",           Icons.Outlined.QrCode2,               Color(0xFF7C3AED),Screen.SerialRegistry.route),
@@ -731,6 +732,7 @@ fun DrawerContent(
             DrawerMenuItem("Manufacturing",              Icons.Outlined.Build, Screen.WebModule.createRoute("Manufacturing", "manufacturing"), onNavigate)
             DrawerMenuItem("ဝယ်ယူရေး",                    Icons.Outlined.ShoppingCart,           Screen.Purchases.route,         onNavigate)
             DrawerMenuItem("အဝယ်အော်ဒါ",                   Icons.Outlined.Assignment,             Screen.PurchaseOrders.route,    onNavigate)
+            DrawerMenuItem("Supplier Payment",           Icons.Outlined.Payments,               Screen.SupplierPayments.route,  onNavigate)
             DrawerMenuItem("ကုန်ပမာဏ ပြင်ဆင်မှု",      Icons.Outlined.Inventory,              Screen.StockAdjustments.route,  onNavigate)
             DrawerMenuItem("ဝယ်ပြန်ပို့",                    Icons.Outlined.AssignmentReturn,       Screen.PurchaseReturns.route,   onNavigate)
             DrawerMenuItem("ရောင်းပြန်လက်ခံ",                Icons.Outlined.AssignmentReturn,       Screen.SaleReturns.route,       onNavigate)

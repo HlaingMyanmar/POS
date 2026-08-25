@@ -52,6 +52,10 @@ class PurchaseDetailViewModel(
     }
 
     fun confirmDraft() {
+        if (!prefs.hasPermission("CAN_ACCESS_PURCHASE_UPDATE")) {
+            _uiState.update { it.copy(error = "ဝယ်ယူမှုအတည်ပြုရန် ခွင့်ပြုချက် မရှိပါ") }
+            return
+        }
         val purchase = _uiState.value.purchase ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, error = null) }
@@ -66,6 +70,10 @@ class PurchaseDetailViewModel(
     }
 
     fun cancel(reason: String, refundPaymentMethodId: Int?) {
+        if (!prefs.hasPermission("CAN_ACCESS_PURCHASE_DELETE")) {
+            _uiState.update { it.copy(error = "ဝယ်ယူမှုပယ်ဖျက်ရန် ခွင့်ပြုချက် မရှိပါ") }
+            return
+        }
         val purchase = _uiState.value.purchase ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, error = null) }

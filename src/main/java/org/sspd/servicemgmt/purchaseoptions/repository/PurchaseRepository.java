@@ -134,12 +134,15 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
           AND p.staff.id     = :staffId
           AND p.totalAmount  = :totalAmount
           AND p.purchaseDate >= :since
+          AND (p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
+          AND (:excludeId IS NULL OR p.id <> :excludeId)
         """)
     long countRecentDuplicates(
         @Param("supplierId")  Integer supplierId,
         @Param("staffId")     Integer staffId,
         @Param("totalAmount") BigDecimal totalAmount,
-        @Param("since")       LocalDateTime since
+        @Param("since")       LocalDateTime since,
+        @Param("excludeId")   Integer excludeId
     );
 
     @Query("""

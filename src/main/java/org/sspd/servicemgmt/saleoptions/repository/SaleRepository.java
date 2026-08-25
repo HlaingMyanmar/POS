@@ -65,6 +65,15 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
 
     List<Sale> findByDueAmountGreaterThan(BigDecimal amount);
 
+    @Query("""
+        SELECT s FROM Sale s
+         WHERE s.customer.id = :customerId
+           AND s.dueAmount > 0
+           AND (s.voided = false OR s.voided IS NULL)
+         ORDER BY CASE WHEN s.dueDate IS NULL THEN 1 ELSE 0 END, s.dueDate, s.id
+        """)
+    List<Sale> findCustomerReceivablesFifo(@Param("customerId") Integer customerId);
+
     List<Sale> findByCreditStatusInAndDueAmountGreaterThan(java.util.Collection<org.sspd.servicemgmt.saleoptions.model.CreditStatus> statuses, BigDecimal amount);
 
     @Query("""

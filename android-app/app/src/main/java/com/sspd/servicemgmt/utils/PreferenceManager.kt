@@ -25,7 +25,10 @@ class PreferenceManager(context: Context) {
         get() = p.getString("permissions", "") ?: ""
         set(v) { p.edit().putString("permissions", v).apply() }
 
-    fun hasPermission(perm: String) = permissionsStr.contains(perm)
+    fun hasPermission(perm: String) = permissionsStr
+        .split(',')
+        .map { it.trim() }
+        .any { it == perm }
 
     fun clear() = p.edit().clear().apply()
 }

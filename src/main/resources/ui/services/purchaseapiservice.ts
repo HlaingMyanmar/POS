@@ -45,6 +45,22 @@ export interface PurchaseAnalytics {
   byCategory:PurchaseAnalyticsNamed[]; bySupplier:PurchaseAnalyticsNamed[]; byCurrency:PurchaseAnalyticsNamed[];
 }
 
+export interface PurchaseOcrPreviewLine {
+  productHint?: string;
+  qty?: number;
+  unitCost?: number;
+}
+
+export interface PurchaseOcrPreview {
+  supplierInvoiceNo?: string;
+  supplierHint?: string;
+  suggestedTotal?: number;
+  suggestedTax?: number;
+  rawText?: string;
+  note?: string;
+  lines?: PurchaseOcrPreviewLine[];
+}
+
 export const purchaseApiService = {
   getAll: async (): Promise<PurchaseDTO[]> => {
     const res = await api.get<any, ApiResponse<any>>('/v1/purchases?page=0&size=500');
@@ -122,6 +138,12 @@ export const purchaseApiService = {
   previewImport: async (file:File):Promise<PurchaseImportPreview> => {
     const form=new FormData(); form.append('file',file);
     const res=await api.post<any,ApiResponse<PurchaseImportPreview>>('/v1/purchases/import/preview',form);
+    return res.data;
+  },
+  ocrPreview: async (file: File): Promise<PurchaseOcrPreview> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.post<any, ApiResponse<PurchaseOcrPreview>>('/v1/purchases/ocr/preview', form);
     return res.data;
   },
   downloadImportTemplate: async ():Promise<void> => {

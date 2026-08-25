@@ -57,8 +57,17 @@ public class SaleReturnController {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_RETURN_DELETE')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
-        service.delete(id);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Sale Return Deleted Successfully", null));
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id,
+                                                    @RequestParam(required = false) String reason) {
+        service.voidReturn(id, reason == null || reason.isBlank() ? "Voided" : reason);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Sale Return Voided Successfully", null));
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_RETURN_DELETE','CAN_ACCESS_SALE_RETURN_UPDATE')")
+    @PostMapping("/{id}/void")
+    public ResponseEntity<ApiResponse<SaleReturnDTO>> voidReturn(
+            @PathVariable Integer id, @RequestBody(required = false) SaleReturnDTO dto) {
+        String reason = dto == null || dto.getVoidReason() == null ? "Voided" : dto.getVoidReason();
+        return ResponseEntity.ok(new ApiResponse<>(true, "Sale Return Voided Successfully", service.voidReturn(id, reason)));
     }
 }

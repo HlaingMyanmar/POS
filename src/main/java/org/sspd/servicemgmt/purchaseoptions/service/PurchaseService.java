@@ -91,7 +91,7 @@ public class PurchaseService {
 
     private static final String PURCHASE_TOPIC = "/topic/purchase";
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_CREATE')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_CREATE','CAN_ACCESS_PURCHASE_ORDER_RECEIVE')")
     @Transactional
     public PurchaseDTO save(PurchaseDTO dto) {
 
@@ -112,7 +112,7 @@ public class PurchaseService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             long recentCount = purchaseRepository.countRecentDuplicates(
                     dto.getSupplierId(), dto.getStaffId(), estimatedTotal,
-                    LocalDateTime.now().minusSeconds(15));
+                    LocalDateTime.now().minusSeconds(15), null);
             if (recentCount > 0) {
                 throw new RuntimeException("Duplicate purchase detected. ထပ်မနှိပ်ပါနှင့် — ခဏ စောင့်ပါ။");
             }
@@ -127,7 +127,9 @@ public class PurchaseService {
 
         validateTaxAndCharges(dto);
         java.util.List<String> budgetWarnings = java.util.List.of();
-        if (!draft) budgetWarnings = purchaseBudgetService.validate((dto.getPurchaseDate()!=null?dto.getPurchaseDate():LocalDateTime.now()).toLocalDate(), dto.getDetails());
+        if (!draft) budgetWarnings = purchaseBudgetService.validate(
+                (dto.getPurchaseDate()!=null?dto.getPurchaseDate():LocalDateTime.now()).toLocalDate(),
+                dto.getDetails(), dto.getSupplierId());
 
         BigDecimal calculatedTotal = BigDecimal.ZERO;
         List<PurchaseDetail> detailEntities = new ArrayList<>();
@@ -805,7 +807,7 @@ public class PurchaseService {
      * ✅ Reorder suggestions — active products at/below their reorder level,
      * with suggested qty = top-up back to the reorder level.
      */
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_REORDER')")
     @Transactional(readOnly = true)
     public List<org.sspd.servicemgmt.purchaseoptions.dto.ReorderSuggestionDTO> getReorderSuggestions() {
         return productRepository.findReorderNeeded().stream()
@@ -909,6 +911,10 @@ public class PurchaseService {
     public PurchaseDTO update(Integer id, PurchaseDTO dto) {
         Purchase purchase = purchaseRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        if (!purchase.isDraft()) {
+            throw new IllegalStateException(
+                    "Only draft purchases can be edited. Cancel and recreate a confirmed voucher.");
+        }
         periodGuard.assertOpen(purchase.getPurchaseDate(), "update purchase");
 
         Supplier oldSupplier = purchase.getSupplier();
@@ -934,8 +940,9 @@ public class PurchaseService {
         if (dto.getDetails() != null && !dto.getDetails().isEmpty())
             throw new RuntimeException("Detail update not supported. Use purchase return or cancel & recreate.");
 
-        if (dto.getPaidAmount() != null) {
-            purchase.setPaidAmount(dto.getPaidAmount());
+        if (dto.getPaidAmount() != null && dto.getPaidAmount().compareTo(safe(purchase.getPaidAmount())) != 0) {
+            throw new IllegalStateException(
+                    "paidAmount cannot be changed here. Use debt payment / supplier payment APIs.");
         }
 
         BigDecimal totalAmount = purchase.getNetAmount() != null ? purchase.getNetAmount() :
@@ -1016,7 +1023,7 @@ public class PurchaseService {
         BigDecimal estimatedTotal = purchase.getTotalAmount() != null ? purchase.getTotalAmount() : BigDecimal.ZERO;
         long recentCount = purchaseRepository.countRecentDuplicates(
                 supplier.getId(), staff.getId(), estimatedTotal,
-                LocalDateTime.now().minusSeconds(15));
+                LocalDateTime.now().minusSeconds(15), purchase.getId());
         if (recentCount > 0)
             throw new RuntimeException("Duplicate purchase detected. ထပ်မနှိပ်ပါနှင့် — ခဏ စောင့်ပါ။");
 
@@ -1041,8 +1048,10 @@ public class PurchaseService {
         validateSupplierInvoiceNumber(purchase.getSupplier().getId(), purchase.getSupplierInvoiceNo(), purchase.getId());
         validateStaffSelection(purchase.getStaff());
         validateTaxAndCharges(dto);
-        java.util.List<String> budgetWarnings = purchaseBudgetService.validate((purchase.getPurchaseDate()!=null?purchase.getPurchaseDate():LocalDateTime.now()).toLocalDate(),
-                overrides!=null&&overrides.getDetails()!=null&&!overrides.getDetails().isEmpty()?overrides.getDetails():dto.getDetails());
+        java.util.List<String> budgetWarnings = purchaseBudgetService.validate(
+                (purchase.getPurchaseDate()!=null?purchase.getPurchaseDate():LocalDateTime.now()).toLocalDate(),
+                overrides!=null&&overrides.getDetails()!=null&&!overrides.getDetails().isEmpty()?overrides.getDetails():dto.getDetails(),
+                purchase.getSupplier() != null ? purchase.getSupplier().getId() : null);
         LocalDate warrantyStart = (purchase.getPurchaseDate() != null ? purchase.getPurchaseDate() : LocalDateTime.now()).toLocalDate();
 
         Map<Integer, PurchaseDetailDTO> overrideByProduct = new HashMap<>();
@@ -1332,7 +1341,7 @@ public class PurchaseService {
     private void createCancelJournal(Purchase p, BigDecimal paidTotal, PaymentMethod refundMethod) {
         BigDecimal net = p.getNetAmount() != null ? p.getNetAmount()
                 : (p.getTotalAmount() != null ? p.getTotalAmount() : BigDecimal.ZERO);
-        if (net.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (net.compareTo(BigDecimal.ZERO) <= 0 && safe(p.getWithholdingTaxAmount()).signum() <= 0) return;
 
         JournalEntryDTO journalDTO = new JournalEntryDTO();
         journalDTO.setReferenceNo((p.getPurchaseCode() != null ? p.getPurchaseCode() : String.valueOf(p.getId())) + "-VOID");
@@ -1342,10 +1351,14 @@ public class PurchaseService {
 
         List<JournalDetailDTO> details = new ArrayList<>();
 
-        BigDecimal tax = safe(p.getTaxAmount()).min(net);
-        BigDecimal purchaseCost = net.subtract(tax);
+        // Mirror createPurchaseJournal in reverse: purchases/VAT/WHT/payable/cash
+        BigDecimal tax = safe(p.getTaxAmount()).min(safe(p.getNetAmount()));
+        BigDecimal withholding = safe(p.getWithholdingTaxAmount());
+        BigDecimal grossBeforeWithholding = safe(p.getNetAmount()).add(withholding);
+        BigDecimal purchaseCost = grossBeforeWithholding.subtract(tax);
+
         JournalDetailDTO crPurchases = new JournalDetailDTO();
-        crPurchases.setAccountId(accounts.purchases().getId());  // EXP-007
+        crPurchases.setAccountId(accounts.purchases().getId());
         crPurchases.setDebit(BigDecimal.ZERO);
         crPurchases.setCredit(purchaseCost);
         if (purchaseCost.signum() > 0) details.add(crPurchases);
@@ -1356,11 +1369,18 @@ public class PurchaseService {
             crInputVat.setCredit(tax);
             details.add(crInputVat);
         }
+        if (withholding.signum() > 0) {
+            JournalDetailDTO drWithholding = new JournalDetailDTO();
+            drWithholding.setAccountId(accounts.withholdingTaxPayable().getId());
+            drWithholding.setDebit(withholding);
+            drWithholding.setCredit(BigDecimal.ZERO);
+            details.add(drWithholding);
+        }
 
         BigDecimal originalDue = p.getDueAmount() != null ? p.getDueAmount() : BigDecimal.ZERO;
         if (originalDue.compareTo(BigDecimal.ZERO) > 0) {
             JournalDetailDTO drPayable = new JournalDetailDTO();
-            drPayable.setAccountId(accounts.payable().getId());  // LIA-002
+            drPayable.setAccountId(accounts.payable().getId());
             drPayable.setDebit(originalDue);
             drPayable.setCredit(BigDecimal.ZERO);
             details.add(drPayable);
@@ -1490,7 +1510,8 @@ public class PurchaseService {
     public org.sspd.servicemgmt.purchaseoptions.budget.dto.PurchaseBudgetCheckDTO checkBudget(PurchaseDTO dto) {
         return purchaseBudgetService.evaluate(
                 (dto.getPurchaseDate() != null ? dto.getPurchaseDate() : LocalDateTime.now()).toLocalDate(),
-                dto.getDetails());
+                dto.getDetails(),
+                dto.getSupplierId());
     }
 
     private PurchaseDTO withBudgetWarnings(PurchaseDTO dto, java.util.List<String> warnings) {

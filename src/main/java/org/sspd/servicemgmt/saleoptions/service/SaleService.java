@@ -159,6 +159,8 @@ public class SaleService {
         sale.setStaff(staff);
         sale.setSaleDate(resolveSaleDateWithPermission(dto.getSaleDate()));
         sale.setRemark(dto.getRemark());
+        sale.setWarehouseName(dto.getWarehouseName() == null || dto.getWarehouseName().isBlank()
+                ? null : dto.getWarehouseName().trim());
         sale.setFoc(Boolean.TRUE.equals(dto.getFoc()));
         sale.setSaleCode("PENDING"); // temporary to satisfy not-null, will overwrite after save
 
@@ -537,8 +539,9 @@ public class SaleService {
                     throw new RuntimeException("Quantity must be greater than zero");
                 }
                 int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
-                if (currentQty < d.getQty()) {
-                    throw new RuntimeException("Insufficient stock for: " + product.getName() + ". Available: " + currentQty);
+                int availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty());
+                if (availableQty < d.getQty()) {
+                    throw new RuntimeException("Insufficient stock for: " + product.getName() + ". Available: " + availableQty);
                 }
                 product.setStockQty(currentQty - d.getQty());
                 productRepository.save(product);

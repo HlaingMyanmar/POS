@@ -85,6 +85,7 @@ public enum PermissionName {
     CAN_ACCESS_JOURNAL_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_JOURNAL_READ("ဝယ်ယူသူ (Customer) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_JOURNAL_UPDATE("ရှိပြီးသား ဝယ်ယူသူအချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_ACCOUNTING_PERIOD_LOCK("Accounting period ပိတ်/ပြန်ဖွင့်ခွင့်"),
 
     CAN_ACCESS_PAYMENT_TRANSACTION_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PAYMENT_TRANSACTION_READ("ဝယ်ယူသူ (Customer) စာရင်းများကို ကြည့်ရှုခွင့်ပြုသည်"),
@@ -129,6 +130,7 @@ public enum PermissionName {
     CAN_ACCESS_PURCHASE_ORDER_UPDATE("Purchase Order များကို ပြင်ဆင်ခွင့်"),
     CAN_ACCESS_PURCHASE_ORDER_DELETE("Purchase Order များကို ဖျက်သိမ်းခွင့်"),
     CAN_ACCESS_PURCHASE_ORDER_RECEIVE("Purchase Order ပစ္စည်းလက်ခံခွင့် (Goods Receipt)"),
+    CAN_ACCESS_PURCHASE_ORDER_APPROVE("Purchase Order အတည်ပြု/ပယ်ချခွင့်"),
 
     CAN_ACCESS_PURCHASE_RETURN_CREATE("Purchase Return အသစ် ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_RETURN_READ("Purchase Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
@@ -217,6 +219,8 @@ public enum PermissionName {
     CAN_ACCESS_REPORT_READ("အစီရင်ခံစာများကို ကြည့်ရှုခွင့်ပြုသည်"),
 
     CAN_ACCESS_AUDIT_LOG_READ("Audit log မှတ်တမ်းများ ကြည့်ရှုခွင့်"),
+
+    CAN_ACCESS_PURCHASE_BUDGET("Purchase budget create/update/activate permission"),
 
     // Shelf Location Management
     CAN_ACCESS_SHELF_LOCATION_READ("Shelf Location စာရင်းများကို ကြည့်ရှုခွင့်"),

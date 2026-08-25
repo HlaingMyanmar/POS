@@ -20,6 +20,7 @@ public class PurchaseDetailDTO {
     private Integer qty;
     private BigDecimal unitCost;
     private BigDecimal subtotal;
+    private BigDecimal allocatedLandedCost;
     private String batchNumber;
     private LocalDate expiryDate;
     private Integer warrantyMonths;

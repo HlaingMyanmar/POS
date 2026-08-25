@@ -60,6 +60,7 @@ public class Purchase {
     private BigDecimal dueAmount = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", length = 20)
     private PaymentStatus paymentStatus = PaymentStatus.Pending;
 
     // DRAFT / CONFIRMED / CANCELLED — legacy rows (NULL) are treated as CONFIRMED
@@ -70,9 +71,33 @@ public class Purchase {
     @Column(name = "tax_amount")
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    @Column(name = "tax_mode", length = 20)
+    private String taxMode = "EXCLUSIVE";
+
+    @Column(name = "tax_rate")
+    private BigDecimal taxRate = BigDecimal.ZERO;
+
+    @Column(name = "withholding_tax_amount")
+    private BigDecimal withholdingTaxAmount = BigDecimal.ZERO;
+
     // Landing cost — freight/customs/other charges added to purchase cost
     @Column(name = "other_charges")
     private BigDecimal otherCharges = BigDecimal.ZERO;
+
+    @Column(name = "landed_cost_allocation_method", length = 20)
+    private String landedCostAllocationMethod = "VALUE";
+
+    @Column(name = "warehouse_name", length = 120)
+    private String warehouseName;
+
+    @Column(name = "currency_code", length = 3)
+    private String currencyCode = "MMK";
+
+    @Column(name = "exchange_rate", precision = 18, scale = 6)
+    private BigDecimal exchangeRate = BigDecimal.ONE;
+
+    @Column(name = "foreign_net_amount", precision = 18, scale = 2)
+    private BigDecimal foreignNetAmount;
 
     // Supplier paper invoice attachment (base64)
     @Column(name = "attachment_name", length = 255)
@@ -85,8 +110,27 @@ public class Purchase {
     @Column(name = "po_id")
     private Integer poId;
 
+    @Column(name = "supplier_invoice_no", length = 80)
+    private String supplierInvoiceNo;
+
     @Column(columnDefinition = "TEXT")
     private String remark;
+
+    @Column(name = "cancel_reason", columnDefinition = "TEXT")
+    private String cancelReason;
+    @Column(name = "cancelled_by", length = 100)
+    private String cancelledBy;
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "credit_limit_override")
+    private Boolean creditLimitOverride = false;
+    @Column(name = "credit_override_reason", columnDefinition = "TEXT")
+    private String creditOverrideReason;
+    @Column(name = "credit_override_by", length = 100)
+    private String creditOverrideBy;
+    @Column(name = "credit_override_at")
+    private LocalDateTime creditOverrideAt;
 
     public boolean isDraft() {
         return status == PurchaseStatus.DRAFT;

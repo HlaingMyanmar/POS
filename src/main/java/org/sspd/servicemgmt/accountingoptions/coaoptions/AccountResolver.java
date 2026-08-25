@@ -23,12 +23,15 @@ public class AccountResolver {
     public ChartOfAccount inventory()       { return get(AccountCode.INVENTORY); }
     public ChartOfAccount kpay()            { return get(AccountCode.KPAY); }
     public ChartOfAccount wavePay()         { return get(AccountCode.WAVE_PAY); }
+    public ChartOfAccount inputTaxReceivable() { return get(AccountCode.INPUT_TAX_RECEIVABLE); }
+    public ChartOfAccount supplierAdvance() { return get(AccountCode.SUPPLIER_ADVANCE); }
 
     // ── Liabilities ─────────────────────────────────
     public ChartOfAccount payable()         { return get(AccountCode.PAYABLE); }
     public ChartOfAccount salaryPayable()   { return get(AccountCode.SALARY_PAYABLE); }
     public ChartOfAccount custAdvance()     { return get(AccountCode.CUSTOMER_ADVANCE); }
     public ChartOfAccount taxPayable()      { return get(AccountCode.TAX_PAYABLE); }
+    public ChartOfAccount withholdingTaxPayable() { return get(AccountCode.WITHHOLDING_TAX_PAYABLE); }
 
     // ── Income ──────────────────────────────────────
     public ChartOfAccount sales()           { return get(AccountCode.SALES); }

@@ -176,7 +176,7 @@ public class ProductStockHistoryService {
         List<HistoryItem> items = new ArrayList<>();
 
         for (Purchase purchase : purchaseRepository.findAll()) {
-            if (purchase.getDetails() == null) {
+            if (!purchase.isEffectivelyConfirmed() || purchase.getDetails() == null) {
                 continue;
             }
             purchase.getDetails().stream()

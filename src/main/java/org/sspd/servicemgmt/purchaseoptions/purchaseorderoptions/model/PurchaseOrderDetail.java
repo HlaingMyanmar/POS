@@ -30,6 +30,14 @@ public class PurchaseOrderDetail {
     @Column(name = "received_qty")
     private Integer receivedQty = 0;
 
+    @Builder.Default
+    @Column(name = "damaged_qty")
+    private Integer damagedQty = 0;
+
+    @Builder.Default
+    @Column(name = "rejected_qty")
+    private Integer rejectedQty = 0;
+
     private BigDecimal unitCost;
     private BigDecimal subtotal;
 }

@@ -64,6 +64,8 @@ public class PurchaseReturnService {
     private final PurchaseReturnMapper mapper;
     private final SimpMessagingTemplate messagingTemplate;
     private final ProductSerialRepository productSerialRepository;
+    private final org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService companySettingsService;
+    private final org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard periodGuard;
 
     private static final String PURCHASE_RETURN_TOPIC = "/topic/purchase-return";
     private static final String STATUS_CONFIRMED = "CONFIRMED";
@@ -72,6 +74,7 @@ public class PurchaseReturnService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_CREATE')")
     @Transactional
     public PurchaseReturnDTO save(PurchaseReturnDTO dto) {
+        periodGuard.assertOpen(dto.getReturnDate(), "create purchase return");
         if (dto.getDetails() == null || dto.getDetails().isEmpty()) {
             throw new RuntimeException("Purchase return details are required");
         }
@@ -82,6 +85,12 @@ public class PurchaseReturnService {
 
         Purchase purchase = purchaseRepository.findById(dto.getPurchaseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+        if (!purchase.isEffectivelyConfirmed()) {
+            if (purchase.isCancelled()) {
+                throw new RuntimeException("Cannot create a purchase return for a cancelled voucher. Cancellation already reversed stock and journals.");
+            }
+            throw new RuntimeException("Cannot create a purchase return for a draft voucher. Confirm the purchase first.");
+        }
         Supplier supplier = purchase.getSupplier();
 
         BigDecimal oldDue = purchase.getDueAmount() != null ? purchase.getDueAmount() : BigDecimal.ZERO;
@@ -280,6 +289,7 @@ public class PurchaseReturnService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
     @Transactional
     public PurchaseReturnDTO voidReturn(Integer id, PurchaseReturnDTO dto) {
+        periodGuard.assertOpen(LocalDateTime.now(), "void purchase return");
         PurchaseReturn existing = purchaseReturnRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found with id: " + id));
         if (STATUS_VOIDED.equalsIgnoreCase(existing.getStatus())) {
@@ -394,7 +404,8 @@ public class PurchaseReturnService {
         BigDecimal supplierCredit = purchaseRepository.sumSupplierCreditAmountBySupplierId(supplier.getId());
         if (supplierCredit == null) supplierCredit = BigDecimal.ZERO;
         BigDecimal opening = supplier.getOpeningBalance() != null ? supplier.getOpeningBalance() : BigDecimal.ZERO;
-        supplier.setCurrentBalance(opening.add(totalDue).subtract(supplierCredit));
+        supplier.setCurrentBalance(opening.add(totalDue).subtract(supplierCredit)
+                .subtract(safe(supplier.getAdvanceBalance())));
         supplierRepository.save(supplier);
     }
 
@@ -539,7 +550,11 @@ public class PurchaseReturnService {
 
     private String generateReturnNo() {
         Integer lastId = purchaseReturnRepository.findTopByOrderByIdDesc().map(PurchaseReturn::getId).orElse(0);
-        return String.format("PRN-%05d", lastId + 1);
+        var cfg = companySettingsService.getSettings();
+        String prefix = cfg.getPurchaseReturnPrefix() != null && !cfg.getPurchaseReturnPrefix().isBlank()
+                ? cfg.getPurchaseReturnPrefix().trim() : "PRN";
+        int digits = cfg.getPurchaseReturnDigits() != null ? cfg.getPurchaseReturnDigits() : 5;
+        return String.format("%s-%0" + digits + "d", prefix, lastId + 1);
     }
 
     private String generateTransactionNo() {

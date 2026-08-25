@@ -43,4 +43,7 @@ public class Supplier {
 
     @Column(name = "credit_limit", precision = 15, scale = 2)
     private BigDecimal creditLimit = BigDecimal.ZERO;
+
+    @Column(name = "advance_balance", precision = 15, scale = 2)
+    private BigDecimal advanceBalance = BigDecimal.ZERO;
 }

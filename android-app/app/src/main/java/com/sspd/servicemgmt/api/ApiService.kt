@@ -262,7 +262,7 @@ interface ApiService {
     @POST("purchases/{id}/confirm")
     suspend fun confirmPurchase(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseDTO = PurchaseDTO()): Response<ApiResponse<PurchaseDTO>>
     @DELETE("purchases/{id}")
-    suspend fun cancelPurchase(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<Void>>
+    suspend fun cancelPurchase(@Header("Authorization") auth: String, @Path("id") id: Int, @Query("reason") reason: String, @Query("refundPaymentMethodId") refundPaymentMethodId: Int? = null): Response<ApiResponse<PurchaseDTO>>
     @GET("purchases/overdue")
     suspend fun getOverduePurchases(@Header("Authorization") auth: String): Response<ApiResponse<List<PurchaseDTO>>>
     @GET("purchases/reorder-suggestions")
@@ -270,6 +270,8 @@ interface ApiService {
 
     @GET("purchase-orders")
     suspend fun getPurchaseOrders(@Header("Authorization") auth: String, @Query("page") page: Int = 0, @Query("size") size: Int = 50, @Query("search") search: String = ""): Response<ApiResponse<PagedResponse<PurchaseOrderDTO>>>
+    @GET("purchase-orders/overdue")
+    suspend fun getLatePurchaseOrders(@Header("Authorization") auth: String): Response<ApiResponse<List<PurchaseOrderDTO>>>
     @GET("purchase-orders/{id}")
     suspend fun getPurchaseOrderById(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<PurchaseOrderDTO>>
     @POST("purchase-orders")

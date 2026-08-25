@@ -20,4 +20,8 @@ public class CompanySettingsDTO {
     private Integer purchaseDigits;
     private String bookingPrefix;
     private Integer bookingDigits;
+    private String poPrefix;
+    private Integer poDigits;
+    private String purchaseReturnPrefix;
+    private Integer purchaseReturnDigits;
 }

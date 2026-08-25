@@ -173,6 +173,7 @@ public class PaginationService {
                 .subtotal(base.getSubtotal())
                 .discount(base.getDiscount())
                 .tax(base.getTax())
+                .otherCharges(base.getOtherCharges())
                 .netAmount(base.getNetAmount())
                 .commission(base.getCommission())
                 .paid(base.getPaid())

@@ -15,6 +15,10 @@ export type CompanySettings = {
   saleDigits?: number;
   purchasePrefix?: string;
   purchaseDigits?: number;
+  poPrefix?: string;
+  poDigits?: number;
+  purchaseReturnPrefix?: string;
+  purchaseReturnDigits?: number;
   bookingPrefix?: string;
   bookingDigits?: number;
 };
@@ -32,6 +36,10 @@ const DEFAULT_SETTINGS: CompanySettings = {
   saleDigits: 5,
   purchasePrefix: 'PUR',
   purchaseDigits: 5,
+  poPrefix: 'PO',
+  poDigits: 5,
+  purchaseReturnPrefix: 'PRN',
+  purchaseReturnDigits: 5,
   bookingPrefix: 'BK',
   bookingDigits: 6,
 };

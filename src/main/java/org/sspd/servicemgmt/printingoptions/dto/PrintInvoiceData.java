@@ -47,6 +47,7 @@ public class PrintInvoiceData {
     private String subtotal;
     private String discount;
     private String tax;
+    private String otherCharges;
     private String netAmount;
     private String commission;
     private String paid;

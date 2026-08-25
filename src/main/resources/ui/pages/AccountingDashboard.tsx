@@ -12,10 +12,12 @@ import {
 import {
   Wallet, Banknote, Building2, RefreshCw,
   TrendingUp, TrendingDown, ArrowDownLeft, ArrowUpRight,
-  ArrowLeftRight, Save, ChevronRight, ExternalLink, Landmark, PieChart
+  ArrowLeftRight, Save, ChevronRight, ExternalLink, Landmark, PieChart, LockKeyhole, Unlock
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { accountingPeriodLockApiService, AccountingPeriodLock } from '../services/accountingperiodlockapiservice';
+import { getFromSession } from '../utils/storageHelper';
 
 const money = (v: number | undefined) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
@@ -61,6 +63,15 @@ const AccountingDashboard: React.FC = () => {
   const [plLoading, setPlLoading]         = useState(false);
   const [plFrom, setPlFrom]               = useState(firstOfMonth());
   const [plTo, setPlTo]                   = useState(today());
+  const [periodLocks, setPeriodLocks] = useState<AccountingPeriodLock[]>([]);
+  const [periodLockSaving, setPeriodLockSaving] = useState(false);
+  const [periodLockForm, setPeriodLockForm] = useState({dateFrom:firstOfMonth(),dateTo:today(),reason:''});
+  const sessionUser = useMemo(() => {
+    try { return JSON.parse(getFromSession('sspd_user') || '{}') as {roles?:string[];permissions?:string[]}; }
+    catch { return {} as {roles?:string[];permissions?:string[]}; }
+  }, []);
+  const canManagePeriodLocks = (sessionUser.roles || []).some(r => ['ADMIN','SUPER_ADMIN'].includes(r.toUpperCase()))
+    || (sessionUser.permissions || []).includes('CAN_ACCESS_ACCOUNTING_PERIOD_LOCK');
 
   const [transferSaving, setTransferSaving] = useState(false);
   const [transferForm, setTransferForm]     = useState({
@@ -93,7 +104,33 @@ const AccountingDashboard: React.FC = () => {
     catch { } finally { setPlLoading(false); }
   };
 
-  useEffect(() => { fetchData(); fetchPL(); }, []);
+  const fetchPeriodLocks = async () => {
+    try { setPeriodLocks(await accountingPeriodLockApiService.list()); } catch { setPeriodLocks([]); }
+  };
+
+  const createPeriodLock = async () => {
+    if (!periodLockForm.dateFrom || !periodLockForm.dateTo || !periodLockForm.reason.trim()) {
+      Swal.fire('Required','Start date, end date and lock reason are required.','warning'); return;
+    }
+    setPeriodLockSaving(true);
+    try {
+      await accountingPeriodLockApiService.lock({...periodLockForm,reason:periodLockForm.reason.trim()});
+      setPeriodLockForm(v=>({...v,reason:''}));
+      await fetchPeriodLocks();
+      Swal.fire({icon:'success',title:'Accounting period locked',timer:1500,showConfirmButton:false});
+    } catch(e:any) { Swal.fire('Lock failed',e.message || 'Unable to lock period','error'); }
+    finally { setPeriodLockSaving(false); }
+  };
+
+  const unlockPeriod = async (item:AccountingPeriodLock) => {
+    if(!item.id) return;
+    const ok=await Swal.fire({icon:'warning',title:'Unlock accounting period?',text:`${item.dateFrom} to ${item.dateTo}`,showCancelButton:true,confirmButtonText:'Unlock'});
+    if(!ok.isConfirmed)return;
+    try { await accountingPeriodLockApiService.unlock(item.id); await fetchPeriodLocks(); }
+    catch(e:any){Swal.fire('Unlock failed',e.message || 'Unable to unlock period','error');}
+  };
+
+  useEffect(() => { fetchData(); fetchPL(); fetchPeriodLocks(); }, []);
   useRefreshOnTabActivate(fetchData);
   useDataEvents(['Sale', 'Purchase', 'Expense', 'Income', 'Payment', 'Journal'], () => {
     fetchData(); fetchPL();
@@ -190,6 +227,25 @@ const AccountingDashboard: React.FC = () => {
       </div>
 
       {/* ── KPI Row ─────────────────────────────────────────────────────── */}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><LockKeyhole size={16}/> Accounting Period Lock</h3><p className="mt-0.5 text-[11px] text-slate-500">Prevents purchase, return, payment and journal changes inside a closed period.</p></div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{periodLocks.filter(v=>v.active).length} active</span>
+        </div>
+        {canManagePeriodLocks && <div className="mb-3 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[150px_150px_1fr_auto]">
+          <input type="date" value={periodLockForm.dateFrom} onChange={e=>setPeriodLockForm(v=>({...v,dateFrom:e.target.value}))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"/>
+          <input type="date" value={periodLockForm.dateTo} onChange={e=>setPeriodLockForm(v=>({...v,dateTo:e.target.value}))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"/>
+          <input value={periodLockForm.reason} onChange={e=>setPeriodLockForm(v=>({...v,reason:e.target.value}))} placeholder="Closing reason / period name" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"/>
+          <button disabled={periodLockSaving} onClick={()=>void createPeriodLock()} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Lock period</button>
+        </div>}
+        <div className="max-h-44 overflow-auto rounded-lg border border-slate-100">
+          {periodLocks.length===0?<p className="p-4 text-center text-xs text-slate-400">No accounting periods have been locked.</p>:periodLocks.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
+            <div><p className="text-xs font-bold text-slate-700">{item.dateFrom} - {item.dateTo}</p><p className="text-[10px] text-slate-500">{item.reason} / {item.active?`Locked by ${item.lockedBy||'-'}`:`Unlocked by ${item.unlockedBy||'-'}`}</p></div>
+            {item.active&&canManagePeriodLocks?<button onClick={()=>void unlockPeriod(item)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-50"><Unlock size={12}/>Unlock</button>:<span className={`rounded px-2 py-1 text-[10px] font-bold ${item.active?'bg-rose-50 text-rose-700':'bg-slate-100 text-slate-500'}`}>{item.active?'LOCKED':'OPEN'}</span>}
+          </div>)}
+        </div>
+      </section>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Cash & Bank */}
         <div className="bg-white rounded-xl border border-emerald-200 border-l-4 border-l-emerald-500 shadow-sm p-4">

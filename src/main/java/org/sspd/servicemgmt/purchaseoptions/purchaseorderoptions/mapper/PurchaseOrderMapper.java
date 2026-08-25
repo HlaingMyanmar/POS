@@ -18,6 +18,7 @@ public interface PurchaseOrderMapper {
 
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.name", target = "productName")
+    @Mapping(source = "product.hasSerial", target = "hasSerial")
     PurchaseOrderDetailDTO toDto(PurchaseOrderDetail detail);
 
     @Mapping(target = "supplier", ignore = true)

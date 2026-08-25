@@ -25,4 +25,5 @@ public class SupplierDTO {
     private BigDecimal currentBalance;
     private Integer defaultCreditDays;
     private BigDecimal creditLimit;
+    private BigDecimal advanceBalance;
 }

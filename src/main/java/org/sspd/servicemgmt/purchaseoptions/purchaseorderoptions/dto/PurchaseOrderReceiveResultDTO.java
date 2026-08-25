@@ -9,4 +9,5 @@ import org.sspd.servicemgmt.purchaseoptions.dto.PurchaseDTO;
 public class PurchaseOrderReceiveResultDTO {
     private PurchaseOrderDTO order;
     private PurchaseDTO purchase;
+    private GoodsReceiptDTO goodsReceipt;
 }

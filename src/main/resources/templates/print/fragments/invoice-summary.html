@@ -63,9 +63,13 @@
         <span class="inv-summary-row__label">Discount</span>
         <span class="inv-summary-row__value" th:text="${inv.discount}">0</span>
       </div>
-      <div class="inv-summary-row" th:if="${not #strings.isEmpty(inv.tax) and inv.tax != '0.00'}">
+      <div class="inv-summary-row" th:if="${not #strings.isEmpty(inv.tax) and inv.tax != '0.00' and inv.tax != '0'}">
         <span class="inv-summary-row__label">Tax / VAT</span>
         <span class="inv-summary-row__value" th:text="${inv.tax}">0</span>
+      </div>
+      <div class="inv-summary-row" th:if="${not #strings.isEmpty(inv.otherCharges) and inv.otherCharges != '0.00' and inv.otherCharges != '0'}">
+        <span class="inv-summary-row__label">Other Charges</span>
+        <span class="inv-summary-row__value" th:text="${inv.otherCharges}">0</span>
       </div>
       <div class="inv-summary-row inv-summary-row--sub">
         <span class="inv-summary-row__label">Net Amount</span>

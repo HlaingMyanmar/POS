@@ -74,6 +74,12 @@ export const InvoiceSummary: React.FC<InvoiceSummaryProps> = ({
               <span className="inv-summary-row__value">{data.tax}</span>
             </div>
           )}
+          {data.otherCharges && data.otherCharges !== '0.00' && data.otherCharges !== '0' && (
+            <div className="inv-summary-row">
+              <span className="inv-summary-row__label">Other Charges</span>
+              <span className="inv-summary-row__value">{data.otherCharges}</span>
+            </div>
+          )}
           <div className="inv-summary-row inv-summary-row--sub">
             <span className="inv-summary-row__label">Net Amount</span>
             <span className="inv-summary-row__value">{data.netAmount}</span>

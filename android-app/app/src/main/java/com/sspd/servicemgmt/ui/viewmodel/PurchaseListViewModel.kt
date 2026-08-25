@@ -115,7 +115,7 @@ class PurchaseListViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    enum class StatusFilter { ALL, PAID, PARTIAL, DUE }
+    enum class StatusFilter { ALL, PAID, PARTIAL, DUE, OVERDUE }
     enum class DateShortcut { TODAY, WEEK, MONTH, ALL, CUSTOM }
 
     data class UiState(

@@ -43,6 +43,10 @@ public class CompanySettingsService {
         if (dto.getPurchaseDigits() != null && dto.getPurchaseDigits() >= 1 && dto.getPurchaseDigits() <= 10) s.setPurchaseDigits(dto.getPurchaseDigits());
         if (dto.getBookingPrefix() != null) s.setBookingPrefix(dto.getBookingPrefix().isBlank() ? "BK" : dto.getBookingPrefix().trim());
         if (dto.getBookingDigits() != null && dto.getBookingDigits() >= 1 && dto.getBookingDigits() <= 10) s.setBookingDigits(dto.getBookingDigits());
+        if (dto.getPoPrefix() != null) s.setPoPrefix(dto.getPoPrefix().isBlank() ? "PO" : dto.getPoPrefix().trim());
+        if (dto.getPoDigits() != null && dto.getPoDigits() >= 1 && dto.getPoDigits() <= 10) s.setPoDigits(dto.getPoDigits());
+        if (dto.getPurchaseReturnPrefix() != null) s.setPurchaseReturnPrefix(dto.getPurchaseReturnPrefix().isBlank() ? "PRN" : dto.getPurchaseReturnPrefix().trim());
+        if (dto.getPurchaseReturnDigits() != null && dto.getPurchaseReturnDigits() >= 1 && dto.getPurchaseReturnDigits() <= 10) s.setPurchaseReturnDigits(dto.getPurchaseReturnDigits());
         return toDto(repository.save(s));
     }
 
@@ -78,6 +82,10 @@ public class CompanySettingsService {
         dto.setPurchaseDigits(s.getPurchaseDigits() != null ? s.getPurchaseDigits() : 5);
         dto.setBookingPrefix(s.getBookingPrefix() != null ? s.getBookingPrefix() : "BK");
         dto.setBookingDigits(s.getBookingDigits() != null ? s.getBookingDigits() : 6);
+        dto.setPoPrefix(s.getPoPrefix() != null ? s.getPoPrefix() : "PO");
+        dto.setPoDigits(s.getPoDigits() != null ? s.getPoDigits() : 5);
+        dto.setPurchaseReturnPrefix(s.getPurchaseReturnPrefix() != null ? s.getPurchaseReturnPrefix() : "PRN");
+        dto.setPurchaseReturnDigits(s.getPurchaseReturnDigits() != null ? s.getPurchaseReturnDigits() : 5);
         return dto;
     }
 }

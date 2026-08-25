@@ -55,6 +55,8 @@ export const buildPurchaseVoucherHtml = ({
         <td>
           <div>${name}</div>
           ${d.serialNumbers?.length ? `<div class="item-sn">SN: ${escapeHtml(serials)}</div>` : ''}
+          ${d.batchNumber ? `<div class="item-sn">Batch: ${escapeHtml(d.batchNumber)}</div>` : ''}
+          ${d.expiryDate ? `<div class="item-sn">Exp: ${escapeHtml(d.expiryDate)}</div>` : ''}
           ${(() => {
             const terms = String(d.warrantyTerms || '').trim();
             if (terms) return `<div class="item-sn">Warranty: ${escapeHtml(terms)}</div>`;
@@ -71,9 +73,31 @@ export const buildPurchaseVoucherHtml = ({
     `;
   }).join('');
 
-  const total = Number(purchase.totalAmount) || 0;
-  const paid = Number(purchase.paidAmount) || 0;
-  const due = Number(purchase.dueAmount) || (total - paid);
+  const num = (v?: number | null) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const subtotal = num(purchase.totalAmount);
+  const discount = num(purchase.discountAmount);
+  const tax = num(purchase.taxAmount);
+  const otherCharges = num(purchase.otherCharges);
+  const net = purchase.netAmount != null
+    ? num(purchase.netAmount)
+    : Math.max(0, subtotal - discount + tax + otherCharges);
+  const paid = num(purchase.paidAmount);
+  const due = purchase.dueAmount != null
+    ? Math.max(0, num(purchase.dueAmount))
+    : Math.max(0, net - paid);
+
+  const summaryRows = [
+    `<div class="s-row"><span>Subtotal</span><span class="s-val">${money(subtotal)}</span></div>`,
+    discount > 0 ? `<div class="s-row"><span>Discount</span><span class="s-val">- ${money(discount)}</span></div>` : '',
+    tax > 0 ? `<div class="s-row"><span>Tax / VAT</span><span class="s-val">${money(tax)}</span></div>` : '',
+    otherCharges > 0 ? `<div class="s-row"><span>Other Charges</span><span class="s-val">${money(otherCharges)}</span></div>` : '',
+    `<div class="s-row sub-highlight"><span>Net Amount</span><span class="s-val">${money(net)}</span></div>`,
+    `<div class="s-row"><span>Paid</span><span class="s-val">${money(paid)}</span></div>`,
+    `<div class="s-row highlight"><span>Balance Due</span><span class="s-val">${money(due)}</span></div>`,
+  ].filter(Boolean).join('');
 
   const signaturesHtml = cfg.showSignatures ? `
     <div class="signatures">
@@ -179,6 +203,8 @@ export const buildPurchaseVoucherHtml = ({
           <span class="bl">Supplier</span>
           <span class="bv">${escapeHtml(purchase.supplierName || '-')}</span>
         </div>
+        ${purchase.poCode ? `<div class="block-row"><span class="bl">PO</span><span class="bv">${escapeHtml(purchase.poCode)}</span></div>` : ''}
+        ${purchase.supplierInvoiceNo ? `<div class="block-row"><span class="bl">Supplier Inv</span><span class="bv">${escapeHtml(purchase.supplierInvoiceNo)}</span></div>` : ''}
         <div class="block-row">
           <span class="bl">Payment</span>
           <span class="bv">
@@ -218,9 +244,7 @@ export const buildPurchaseVoucherHtml = ({
 
     <div class="bottom-area">
       <div class="summary-box">
-        <div class="s-row"><span>Total</span><span class="s-val">${money(total)}</span></div>
-        <div class="s-row sub-highlight"><span>Paid</span><span class="s-val">${money(paid)}</span></div>
-        <div class="s-row highlight"><span>Balance Due</span><span class="s-val">${money(due)}</span></div>
+        ${summaryRows}
       </div>
     </div>
 

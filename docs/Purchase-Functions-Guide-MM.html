@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8" />
+  <title>Purchase Functions — အသုံးပြုပုံလမ်းညွှန်</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 16mm 16mm 18mm 16mm;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Myanmar Text", "Noto Sans Myanmar", "Pyidaungsu", Padauk, sans-serif;
+      color: #1a2332;
+      font-size: 12.5px;
+      line-height: 1.7;
+      margin: 0;
+    }
+    .cover {
+      border: 2px solid #0f766e;
+      border-radius: 10px;
+      padding: 28px 24px 22px;
+      margin-bottom: 22px;
+      background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 70%);
+    }
+    .cover .kicker {
+      color: #0f766e;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      font-family: Segoe UI, sans-serif;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 8px 0 6px;
+      color: #134e4a;
+    }
+    .meta {
+      color: #475569;
+      font-size: 11.5px;
+    }
+    h2 {
+      font-size: 15px;
+      color: #0f766e;
+      border-bottom: 1.5px solid #99f6e4;
+      padding-bottom: 4px;
+      margin: 22px 0 10px;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 13px;
+      color: #115e59;
+      margin: 14px 0 6px;
+      page-break-after: avoid;
+    }
+    p { margin: 0 0 8px; }
+    ol, ul { margin: 4px 0 10px; padding-left: 22px; }
+    li { margin: 3px 0; }
+    .box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #0f766e;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 10px 0 14px;
+      page-break-inside: avoid;
+    }
+    .warn {
+      background: #fffbeb;
+      border-left-color: #d97706;
+    }
+    .danger {
+      background: #fef2f2;
+      border-left-color: #dc2626;
+    }
+    .ok {
+      background: #f0fdf4;
+      border-left-color: #16a34a;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      font-size: 11.5px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #0f766e;
+      color: #fff;
+      font-weight: 600;
+    }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .footer {
+      margin-top: 28px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 10.5px;
+      color: #64748b;
+    }
+    .toc li { margin: 2px 0; }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #ecfeff;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <div class="kicker">SSPD Service Management / POS</div>
+    <h1>Purchase Functions — အသုံးပြုပုံလမ်းညွှန်</h1>
+    <p class="meta">
+      ဝယ်ယူမှု (Purchase Voucher, Purchase Order, Payment, Budget, Excel Import, FEFO)<br />
+      ရက်စွဲ — ၂၅ ဩဂုတ် ၂၀၂၆ &nbsp;|&nbsp; ပစ်မှတ်အသုံးပြုသူ — စတော့ / ဝယ်ယူရေး / ငွေစာရင်း ဝန်ထမ်း
+    </p>
+  </div>
+
+  <h2>၁။ ဘယ်နေရာက စမလဲ</h2>
+  <p>ဘယ်ဘက်မီနူး → <strong>Purchases</strong> ကို နှိပ်ပါ။ ဖွင့်ရင် စာမျက်နှာ နှစ်ပိုင်း ဖြစ်သည်။</p>
+  <ul>
+    <li><strong>ဘယ် (~၈၀%)</strong> — voucher ဇယား (ကုဒ်၊ ရက်စွဲ၊ ပေးသွင်းသူ၊ ပမာဏ၊ ငွေပေးချေမှု အခြေအနေ)</li>
+    <li><strong>ညာ (~၂၀%)</strong> — ခလုတ်များ၊ စုစုပေါင်း ကိန်းဂဏန်း၊ ဂရပ်၊ ရှာဖွေ / စစ်ထုတ်</li>
+  </ul>
+  <p>ဖုန်း / မျက်နှာပြင် ကျဉ်းရင် ဇယား အပေါ်၊ ခလုတ်များ အောက် ဖြစ်သည်။</p>
+
+  <h2>၂။ ဝယ်ယူမှုအသစ် (New Purchase)</h2>
+  <ol>
+    <li>ညာဘက် <strong>New Purchase</strong> ကို နှိပ်ပါ။</li>
+    <li><strong>ပေးသွင်းသူ (Supplier)</strong> ရွေးပါ။</li>
+    <li><strong>Warehouse</strong> ထည့်ပါ (ရှိရင်)။</li>
+    <li>လိုအပ်ရင် <strong>Supplier Invoice #</strong> ထည့်ပါ။ တူညီတဲ့ နံပါတ် ရှိပြီးသားဆိုရင် စနစ်က သတိပေးသည်။</li>
+    <li>ငွေကြေး <strong>Currency</strong> ရွေးပါ။ နိုင်ငံခြားငွေဆိုရင် နှုန်း (rate) ထည့်ပါ။</li>
+    <li>အခွန်ပုံစံ ရွေးပါ — Exclusive (ဈေးပေါ် အခွန်ထပ်) သို့ Inclusive (ဈေးထဲ အခွန်ပါပြီး)။</li>
+    <li>WHT လိုအပ်ရင် ရာခိုင်နှုန်း ထည့်ပါ။</li>
+    <li>ကုန်စည် ပို့ဆောင်ခ / အကောက်ခွန် စသည့် <strong>Landed Cost</strong> ရှိရင် ထည့်ပြီး ခွဲဝေပုံ ရွေးပါ (တန်ဖိုးအချိုး / အရေအတွက်အချိုး / ကိုယ်တိုင်)။</li>
+    <li>ကုန်ပစ္စည်းများ ထည့်ပါ — ကုန်၊ အရေအတွက်၊ ယူနစ်ဈေး၊ လိုအပ်ရင် သက်တမ်းကုန်ရက် / လော့နံပါတ်။</li>
+    <li>ငွေပေးချေမည်ဆိုရင် ငွေပေးနည်း ရွေးပါ။ ယခုမပေးရင် ကြွေးကျန် ဖြစ်သည်။</li>
+  </ol>
+  <div class="box">
+    <strong>Save vs Confirm</strong><br />
+    <strong>Save Draft</strong> — မူကြမ်းသာ။ စတော့ မတက်သေး။ ပြင်နိုင်သည်။<br />
+    <strong>Confirm</strong> — အတည်ပြု။ စတော့ တက်သည်။ Journal ကျသည်။ ပြီးရင် တိုက်ရိုက် မပြင်ရ။
+  </div>
+
+  <h2>၃။ Excel မှ တင်သွင်းခြင်း</h2>
+  <ol>
+    <li>ညာဘက် <strong>Template</strong> ကို နှိပ်ပြီး နမူနာ ဖိုင် ဆွဲယူပါ။</li>
+    <li>Excel ထဲမှာ ပေးသွင်းသူ၊ ကုန်ကုဒ်၊ အရေအတွက်၊ ဈေး ဖြည့်ပါ။</li>
+    <li><strong>Excel Import</strong> နှိပ်ပြီး ဖိုင် ရွေးပါ။ <strong>အများဆုံး ၅ MB</strong>။</li>
+    <li>ကြိုကြည့် ဇယား ပေါ်လာသည်။ အမှားရှိတဲ့ အတန်းကို ပြင်ပြီး ပြန်တင်ပါ။</li>
+    <li>အိုကေမှသာ ဖောင်ထဲ ဝင်သည်။ ထိုအချိန်မှာ စတော့ မတက်သေး။</li>
+    <li>ဖောင် စစ်ပြီး <strong>Confirm</strong> မှသာ စတော့ တက်သည်။</li>
+  </ol>
+  <div class="box warn">Excel ဖိုင် တင်တာနဲ့ ချက်ချင်း မဝယ်သေးပါ။ Confirm လုပ်မှသာ ဝယ်ယူမှု ပြီးသည်။</div>
+
+  <h2>၄။ အခွန်၊ WHT၊ ပို့ဆောင်ခ၊ ငွေကြေး</h2>
+  <table>
+    <thead>
+      <tr><th>အကြောင်းအရာ</th><th>လုပ်ရမည်</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Tax Exclusive</td><td>ယူနစ်ဈေးပေါ် VAT/အခွန် ထပ်တွက်သည်။</td></tr>
+      <tr><td>Tax Inclusive</td><td>ယူနစ်ဈေးထဲ အခွန်ပါပြီး။ စနစ်က ခွဲထုတ်သည်။</td></tr>
+      <tr><td>WHT</td><td>ရာခိုင်နှုန်း ထည့်ရင် ပေးရန်ငွေမှ နုတ်သည်။</td></tr>
+      <tr><td>Landed Cost</td><td>ပို့ဆောင်ခ စသည် ဖြန့်ဝေပြီး ကုန်ကျစရိတ်ထဲ ထည့်သည်။</td></tr>
+      <tr><td>နိုင်ငံခြားငွေ</td><td>ငွေကြေး + နှုန်း ထည့်ပါ။ နောက်မှ နှုန်း မပြောင်းပါ။</td></tr>
+    </tbody>
+  </table>
+
+  <h2>၅။ ဘတ်ဂျက် (Budget)</h2>
+  <ol>
+    <li>ညာဘက် <strong>Budgets</strong> နှိပ်ပါ။</li>
+    <li>ပေးသွင်းသူ / အမျိုးအစား / ကာလ / ကန့်သတ်ပမာဏ ထည့်ပါ။</li>
+    <li>ကျော်သွားရင် လုပ်ဆောင်ချက် ရွေးပါ — <strong>WARN</strong> (သတိပေး၊ ဆက်သိမ်းနိုင်) သို့ <strong>BLOCK</strong> (မသိမ်းရ)။</li>
+  </ol>
+  <div class="box danger">BLOCK ကျော်ရင် Confirm မရပါ။ ဘတ်ဂျက် တိုးပါ၊ သို့မဟုတ် ကြီးကြပ်သူကို ပြောပါ။</div>
+
+  <h2>၆။ ပေးသွင်းသူအား ငွေပေးခြင်း</h2>
+  <p>ညာဘက် <strong>Payment</strong> နှိပ်ပါ။</p>
+  <h3>၆.၁ ကြွေးကျန် ရှင်းခြင်း</h3>
+  <ol>
+    <li>ပေးသွင်းသူ ရွေးပါ။</li>
+    <li>ပမာဏ + ငွေပေးနည်း + ရက်စွဲ ထည့်ပါ။</li>
+    <li><strong>FIFO</strong> — အဟောင်းဆုံး ကြွေးက စရှင်းသည်။ <strong>Manual</strong> — voucher တစ်ခုချင်း ခွဲထည့်သည်။</li>
+    <li>Save လုပ်ပါ။ ငွေထွက် journal ကျသည်။</li>
+  </ol>
+  <h3>၆.၂ ကြိုပေးငွေ (Advance)</h3>
+  <p>ကြွေးမရှိသေးဘဲ ကြိုပေးရင် Advance ဖြစ်သည်။ နောက် voucher မှာ <strong>Apply Credit</strong> နှိပ်ပြီး SCA ကုဒ်နဲ့ ချိတ်ပါ။</p>
+  <div class="box ok">ငွေပေးပြီး voucher ကို တိုက်ရိုက် ဖျက်လို့ မရပါ။ ငွေပေးမှတ်တမ်း ရှိနေလို့ ဖြစ်သည်။</div>
+
+  <h2>၇။ Voucher ကူးယူခြင်း (Copy)</h2>
+  <p>ဇယားထဲ voucher ကို ဖွင့် → <strong>Copy Voucher</strong>။ ပေးသွင်းသူ / ကုန်စာရင်း ကူးသည်။ ရက်စွဲ / ငွေပေးအခြေအနေ အသစ် ဖြစ်သည်။ စစ်ပြီးမှ Confirm ပါ။</p>
+
+  <h2>၈။ FEFO / သက်တမ်းကုန်</h2>
+  <ul>
+    <li>ဝယ်တဲ့အခါ <strong>Expiry Date</strong> ထည့်ပါ။</li>
+    <li>ရောင်းတဲ့အခါ သက်တမ်းနီးတာ အရင် ထွက်သည် (FEFO)။</li>
+    <li>ညာဘက် <strong>Expiry</strong> နှိပ်ပြီး သက်တမ်းနီး / ကုန်ပြီး ကုန်များကို ကြည့်ပါ။</li>
+  </ul>
+
+  <h2>၉။ Warehouse နှင့် Analytics</h2>
+  <ul>
+    <li><strong>Warehouse</strong> — ဂိုဒေါင်အလိုက် လက်ကျန် (warehouse name အလိုက်)။</li>
+    <li><strong>Analytics</strong> — ပေးသွင်းသူ / အမျိုးအစား / ငွေကြေး အလိုက် ဝယ်ယူမှု။</li>
+    <li>Voucher ဖွင့်ရင် <strong>Activity Timeline</strong> — ဝယ်၊ ငွေပေး၊ ကြိုငွေချိတ်၊ ပြန်ပို့၊ GRN စသည့် အဆင့်များ။</li>
+  </ul>
+
+  <h2>၁၀။ Purchase Order (PO) နှင့် ကုန်လက်ခံ (GRN)</h2>
+  <ol>
+    <li>မီနူး → <strong>Purchase Orders</strong>။</li>
+    <li>PO အသစ် → ပေးသွင်းသူ + ကုန်စာရင်း → Submit / Approve။</li>
+    <li>ကုန်ရောက်ရင် <strong>Receive</strong>။</li>
+    <li>အရေအတွက် မှန်ရင် MATCHED၊ မမှန်ရင် VARIANCE။ ပျက်စီး / ငြင်းပယ် အရေအတွက် မှတ်ပါ။</li>
+    <li>Receive ပြီးရင် Purchase Voucher ဖြစ်လာပြီး စတော့ တက်သည်။</li>
+    <li>PO ဖွင့်ကြည့်ရင် အောက်မှာ GRN မှတ်တမ်း ရှိသည်။</li>
+  </ol>
+
+  <h2>၁၁။ စာရင်းပိတ်ကာလ (Period Lock)</h2>
+  <p><strong>Accounting Dashboard</strong> မှ ကာလ ပိတ်နိုင်သည်။ ပိတ်ထားသော လအတွင်း ဝယ်ယူမှု အသစ် / ငွေပေး အသစ် မလုပ်ရ။ မှားသွားရင် ကြီးကြပ်သူက ကာလ ပြန်ဖွင့်မှ ပြင်နိုင်သည်။</p>
+
+  <h2>၁၂။ နေ့စဉ် လုပ်ငန်းစဉ် (အတို)</h2>
+  <ol>
+    <li>ကုန်ရောက် → New Purchase (သို့) PO Receive။</li>
+    <li>Invoice # / အခွန် / ပို့ဆောင်ခ စစ်ပါ။</li>
+    <li>Draft သိမ်း → စစ် → Confirm။</li>
+    <li>ငွေပေးချိန်ရင် Payment မှ ရှင်းပါ။</li>
+    <li>သက်တမ်းနီးကုန် Expiry ကြည့်ပါ။</li>
+    <li>လကုန်ရင် Analytics / ငွေစာရင်း စစ်ပြီး Period Lock။</li>
+  </ol>
+
+  <h2>၁၃။ အမှားများနှင့် ဖြေရှင်းနည်း</h2>
+  <table>
+    <thead>
+      <tr><th>ပြဿနာ</th><th>အကြောင်းရင်း / လုပ်ရန်</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Confirm မရ / Budget exceeded</td><td>BLOCK ကျော်နေသည်။ ဘတ်ဂျက် တိုးပါ။</td></tr>
+      <tr><td>Period is locked</td><td>ထိုလ ပိတ်ထားသည်။ ရက်စွဲ ပြောင်း သို့ ပြန်ဖွင့်ခိုင်းပါ။</td></tr>
+      <tr><td>Duplicate supplier invoice</td><td>Invoice နံပါတ် တူနေသည်။ နံပါတ် ပြောင်းပါ။</td></tr>
+      <tr><td>Excel တင်လို့ စတော့မတက်</td><td>Preview သာ ဖြစ်သည်။ Confirm လုပ်ပါ။</td></tr>
+      <tr><td>Excel ဖိုင်ကြီးလွန်း</td><td>၅ MB ထက် မကျော်ပါနှင့်။</td></tr>
+      <tr><td>ငွေပေးပြီး ဖျက်မရ</td><td>ပုံမှန်ဖြစ်သည်။ ငွေပေးမှတ်တမ်း ရှိသည်။</td></tr>
+      <tr><td>ကြိုငွေ မချိတ်ရသေး</td><td>Apply Credit နှိပ်ပြီး SCA ကုဒ် သုံးပါ။</td></tr>
+    </tbody>
+  </table>
+
+  <h2>၁၄။ ခလုတ်အမည် အညွှန်း</h2>
+  <table>
+    <thead>
+      <tr><th>ခလုတ်</th><th>အဓိပ္ပာယ်</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>New Purchase</td><td>ဝယ်ယူမှုအသစ်</td></tr>
+      <tr><td>Template</td><td>Excel နမူနာဖိုင်</td></tr>
+      <tr><td>Excel Import</td><td>Excel မှ ကြိုကြည့်ပြီး ဖောင်ဖြည့်</td></tr>
+      <tr><td>Reorder</td><td>ပြန်ဝယ်ရန် ကုန်စာရင်း</td></tr>
+      <tr><td>Payment</td><td>ပေးသွင်းသူ ငွေပေး / ကြိုငွေ</td></tr>
+      <tr><td>Budgets</td><td>ဝယ်ယူမှု ကန့်သတ်ငွေ</td></tr>
+      <tr><td>Warehouse</td><td>ဂိုဒေါင် လက်ကျန်</td></tr>
+      <tr><td>Analytics</td><td>ဝယ်ယူမှု စာရင်းချုပ်</td></tr>
+      <tr><td>Expiry</td><td>သက်တမ်းနီးကုန်</td></tr>
+      <tr><td>Save Draft</td><td>မူကြမ်းသိမ်း</td></tr>
+      <tr><td>Confirm</td><td>အတည်ပြု + စတော့တက်</td></tr>
+      <tr><td>Copy Voucher</td><td>အဟောင်းကူးပြီး အသစ်လုပ်</td></tr>
+      <tr><td>Receive (PO)</td><td>ကုန်လက်ခံ + GRN</td></tr>
+      <tr><td>Apply Credit</td><td>ကြိုငွေကို ကြွေးနှင့် ချိတ်</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box">
+    <strong>မပါသေးသော အရာများ</strong><br />
+    ဓာတ်ပုံ / PDF invoice မှ အလိုအလျောက် ဖတ်ခြင်း (OCR) နှင့် Android app တွင် ဤလုပ်ဆောင်ချက် အားလုံး မပါသေးပါ။
+  </div>
+
+  <div class="footer">
+    SSPD Service Management — Purchase Functions Guide (မြန်မာ) · အတွင်းသုံး လမ်းညွှန် · ၂၀၂၆
+  </div>
+</body>
+</html>

@@ -41,6 +41,8 @@ public class CoaSeeder implements CommandLineRunner {
         seed(AccountCode.KPAY,           "KPay",                          AccountType.Asset, assetParent);
         seed(AccountCode.WAVE_PAY,       "Wave Pay",                      AccountType.Asset, assetParent);
         seed(AccountCode.FIXED_ASSETS,   "Fixed Assets & Equipment",      AccountType.Asset, assetParent);
+        seed(AccountCode.INPUT_TAX_RECEIVABLE, "Input Tax Receivable",    AccountType.Asset, assetParent);
+        seed(AccountCode.SUPPLIER_ADVANCE, "Supplier Advances", AccountType.Asset, assetParent);
 
         // ── Liabilities (parent = CURRENT_LIABILITIES) ──────────────────────
         ChartOfAccount liabParent = repo.findByCode(AccountCode.CURRENT_LIABILITIES).orElse(null);
@@ -48,6 +50,7 @@ public class CoaSeeder implements CommandLineRunner {
         seed(AccountCode.SALARY_PAYABLE,    "Salary Payable",     AccountType.Liability, liabParent);
         seed(AccountCode.CUSTOMER_ADVANCE,  "Customer Advance",   AccountType.Liability, liabParent);
         seed(AccountCode.TAX_PAYABLE,       "Tax Payable",        AccountType.Liability, liabParent);
+        seed(AccountCode.WITHHOLDING_TAX_PAYABLE, "Withholding Tax Payable", AccountType.Liability, liabParent);
 
         // ── Income (parent = OPERATING_INCOME) ──────────────────────────────
         ChartOfAccount incomeParent = repo.findByCode(AccountCode.OPERATING_INCOME).orElse(null);

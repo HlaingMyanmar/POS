@@ -72,6 +72,7 @@ export interface InvoiceData {
   subtotal: string;
   discount: string;
   tax?: string;
+  otherCharges?: string;
   netAmount: string;
   paid: string;
   balanceDue: string;

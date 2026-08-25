@@ -99,6 +99,7 @@ export interface ProductDTO {
   productType: ProductType;
   sellingPrice: number;
   costPrice?: number;
+  lastPurchaseCost?: number;
   warrantyMonths?: number;
   warrantyTerms?: string;
   remark?: string;
@@ -227,6 +228,7 @@ export interface SupplierDTO {
   currentBalance: number;
   defaultCreditDays?: number;
   creditLimit?: number;
+  advanceBalance?: number;
 }
 
 export interface CustomerGroupDTO {
@@ -366,6 +368,7 @@ export interface SaleDetailDTO {
   /** Stored separately; actual sales totals continue to use subtotal/netAmount. */
   customerMargin?: number;
   subtotal: number;
+  allocatedLandedCost?: number;
   discountAmount?: number;
   foc?: boolean;
   warrantyMonths?: number;
@@ -526,6 +529,10 @@ export interface PaymentTransactionDTO {
   paymentDate?: string;
   referenceCode?: string;
   entityName?: string;
+  reversed?: boolean;
+  reversedAt?: string;
+  reversedBy?: string;
+  reversalReason?: string;
 }
 
 export interface AccountTransferDTO {
@@ -561,6 +568,7 @@ export interface PurchaseDetailDTO {
   qty: number;
   unitCost: number;
   subtotal: number;
+  allocatedLandedCost?: number;
   batchNumber?: string;
   expiryDate?: string;
   warrantyMonths?: number;
@@ -598,10 +606,34 @@ export interface PurchaseDTO {
   // DRAFT / CONFIRMED / CANCELLED (undefined = CONFIRMED legacy)
   status?: string;
   taxAmount?: number;
+  taxMode?: 'EXCLUSIVE' | 'INCLUSIVE';
+  taxRate?: number;
+  withholdingTaxAmount?: number;
   otherCharges?: number;
+  landedCostAllocationMethod?: 'VALUE' | 'QUANTITY' | 'MANUAL';
+  warehouseName?: string;
+  currencyCode?: string;
+  exchangeRate?: number;
+  foreignNetAmount?: number;
   attachmentName?: string;
   attachmentData?: string;
   poId?: number;
+  poCode?: string;
+  supplierInvoiceNo?: string;
+  cancelReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  creditLimitOverride?: boolean;
+  creditOverrideReason?: string;
+  creditOverrideBy?: string;
+  creditOverrideAt?: string;
+  budgetWarnings?: string[];
+}
+
+export interface PurchaseBudgetCheck {
+  warnings?: string[];
+  blocks?: string[];
+  blocked?: boolean;
 }
 
 export interface ReorderSuggestionDTO {
@@ -619,8 +651,11 @@ export interface PurchaseOrderDetailDTO {
   id?: number;
   productId: number;
   productName?: string;
+  hasSerial?: boolean;
   qty: number;
   receivedQty?: number;
+  damagedQty?: number;
+  rejectedQty?: number;
   unitCost: number;
   subtotal: number;
   itemWarranties?: number[];
@@ -639,7 +674,12 @@ export interface PurchaseOrderDTO {
   staffName?: string;
   orderDate?: string;
   expectedDate?: string;
-  status?: string; // OPEN / PARTIAL / RECEIVED / CANCELLED
+  status?: string; // PENDING_APPROVAL / APPROVED / PARTIAL / RECEIVED / REJECTED / CANCELLED
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
   totalAmount: number;
   remark?: string;
   details: PurchaseOrderDetailDTO[];
@@ -648,11 +688,16 @@ export interface PurchaseOrderDTO {
 export interface PurchaseOrderReceiveLine {
   detailId: number;
   qty: number;
+  damagedQty?: number;
+  rejectedQty?: number;
+  invoiceUnitCost?: number;
   warrantyMonths?: number;
   itemWarranties?: number[];
   serialNumbers?: string[];
   serialConditions?: string[];
   serialPhotos?: string[];
+  batchNumber?: string;
+  expiryDate?: string;
 }
 
 export interface PurchaseOrderReceivePayload {
@@ -663,9 +708,29 @@ export interface PurchaseOrderReceivePayload {
   taxAmount?: number;
   otherCharges?: number;
   remark?: string;
+  supplierInvoiceNo?: string;
+  varianceReason?: string;
   paymentMethodId?: number;
   transactionNo?: string;
   payments?: PaymentTransactionDTO[];
+}
+
+export interface GoodsReceiptDTO {
+  id: number;
+  grnCode: string;
+  purchaseOrderId: number;
+  poCode: string;
+  purchaseId?: number;
+  supplierInvoiceNo?: string;
+  receivedAt: string;
+  receivedBy?: string;
+  matchStatus: 'MATCHED' | 'VARIANCE';
+  varianceReason?: string;
+  lines: Array<{
+    productId: number; productName: string; orderedQty: number;
+    acceptedQty: number; damagedQty: number; rejectedQty: number;
+    poUnitCost: number; invoiceUnitCost: number; priceVariance: number;
+  }>;
 }
 
 export interface PurchaseReturnDetailDTO {

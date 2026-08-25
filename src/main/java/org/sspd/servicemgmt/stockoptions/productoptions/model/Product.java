@@ -40,6 +40,9 @@ public class Product {
     @Column(name = "cost_price", precision = 15, scale = 2)
     private BigDecimal costPrice = BigDecimal.ZERO;
 
+    @Column(name = "last_purchase_cost", precision = 15, scale = 2)
+    private BigDecimal lastPurchaseCost;
+
     @Column(columnDefinition = "TEXT")
     private String remark;
 

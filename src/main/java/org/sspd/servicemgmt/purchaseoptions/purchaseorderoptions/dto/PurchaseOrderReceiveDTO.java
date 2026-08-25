@@ -22,6 +22,8 @@ public class PurchaseOrderReceiveDTO {
     private BigDecimal taxAmount;
     private BigDecimal otherCharges;
     private String remark;
+    private String supplierInvoiceNo;
+    private String varianceReason;
     private Integer paymentMethodId;
     private String transactionNo;
     private List<PaymentTransactionDTO> payments;
@@ -30,10 +32,15 @@ public class PurchaseOrderReceiveDTO {
     public static class ReceiveLine {
         private Integer detailId;
         private Integer qty;
+        private Integer damagedQty;
+        private Integer rejectedQty;
+        private BigDecimal invoiceUnitCost;
         private Integer warrantyMonths;
         private List<Integer> itemWarranties;
         private List<String> serialNumbers;
         private List<String> serialConditions;
         private List<String> serialPhotos;
+        private String batchNumber;
+        private java.time.LocalDate expiryDate;
     }
 }

@@ -17,6 +17,10 @@ const emptySettings: CompanySettings = {
   saleDigits: 5,
   purchasePrefix: 'PUR',
   purchaseDigits: 5,
+  poPrefix: 'PO',
+  poDigits: 5,
+  purchaseReturnPrefix: 'PRN',
+  purchaseReturnDigits: 5,
   bookingPrefix: 'BK',
   bookingDigits: 6,
 };
@@ -287,12 +291,28 @@ const CompanySettingsPage: React.FC = () => {
               onDigits={v => set('saleDigits', v)}
             />
             <SerialRow
-              label="Purchase Order"
-              icon="📦"
+              label="Purchase"
+              icon="🛒"
               prefix={settings.purchasePrefix ?? 'PUR'}
               digits={settings.purchaseDigits ?? 5}
               onPrefix={v => set('purchasePrefix', v)}
               onDigits={v => set('purchaseDigits', v)}
+            />
+            <SerialRow
+              label="Purchase Order"
+              icon="📦"
+              prefix={settings.poPrefix ?? 'PO'}
+              digits={settings.poDigits ?? 5}
+              onPrefix={v => set('poPrefix', v)}
+              onDigits={v => set('poDigits', v)}
+            />
+            <SerialRow
+              label="Purchase Return"
+              icon="↩️"
+              prefix={settings.purchaseReturnPrefix ?? 'PRN'}
+              digits={settings.purchaseReturnDigits ?? 5}
+              onPrefix={v => set('purchaseReturnPrefix', v)}
+              onDigits={v => set('purchaseReturnDigits', v)}
             />
             <SerialRow
               label="Booking / Service Job"

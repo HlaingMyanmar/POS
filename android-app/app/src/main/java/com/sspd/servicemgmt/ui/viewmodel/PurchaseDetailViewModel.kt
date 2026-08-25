@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.sspd.servicemgmt.api.ApiClient
+import com.sspd.servicemgmt.api.PaymentMethodDTO
 import com.sspd.servicemgmt.api.PurchaseDTO
 import com.sspd.servicemgmt.utils.PreferenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,7 @@ class PurchaseDetailViewModel(
 
     init {
         load()
+        loadPaymentMethods()
         onDataEvent("Purchase", "Stock", "Product") { load() }
     }
 
@@ -39,6 +41,7 @@ class PurchaseDetailViewModel(
                     it.copy(
                         purchase = res.body()?.data,
                         loading = false,
+                        busy = false,
                         error = if (res.isSuccessful) null else "ဝယ်ယူမှုကို မတွေ့ပါ (${res.code()})"
                     )
                 }
@@ -48,11 +51,51 @@ class PurchaseDetailViewModel(
         }
     }
 
+    fun confirmDraft() {
+        val purchase = _uiState.value.purchase ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, error = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.confirmPurchase(token, purchase.id ?: purchaseId)
+                if (res.isSuccessful) load() else _uiState.update { it.copy(busy = false, error = res.body()?.message ?: "အတည်ပြုမရပါ") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(busy = false, error = e.message) }
+            }
+        }
+    }
+
+    fun cancel(reason: String, refundPaymentMethodId: Int?) {
+        val purchase = _uiState.value.purchase ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, error = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.cancelPurchase(token, purchase.id ?: purchaseId, reason, refundPaymentMethodId)
+                if (res.isSuccessful) load() else _uiState.update { it.copy(busy = false, error = res.body()?.message ?: "ပယ်ဖျက်မရပါ") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(busy = false, error = e.message) }
+            }
+        }
+    }
+
+    fun loadPaymentMethods() {
+        viewModelScope.launch {
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val methods = ApiClient.service.getActivePaymentMethods(token).body()?.data ?: emptyList()
+                _uiState.update { it.copy(paymentMethods = methods) }
+            } catch (_: Exception) {}
+        }
+    }
+
     fun clearError() = _uiState.update { it.copy(error = null) }
 
     data class UiState(
         val purchase: PurchaseDTO? = null,
+        val paymentMethods: List<PaymentMethodDTO> = emptyList(),
         val loading: Boolean = true,
+        val busy: Boolean = false,
         val error: String? = null
     )
 }

@@ -65,6 +65,16 @@ public class CashDrawerService {
         updateAutomaticTotal(amount, false);
     }
 
+    @Transactional
+    public void recordPurchaseCashOut(BigDecimal amount, String reason) {
+        recordAutomaticMovement(amount, reason, "OUT");
+    }
+
+    @Transactional
+    public void recordPurchaseCashIn(BigDecimal amount, String reason) {
+        recordAutomaticMovement(amount, reason, "IN");
+    }
+
     @Transactional(readOnly = true)
     public List<CashDrawerSession> findAll() {
         return sessionRepository.findAll(Sort.by(Sort.Direction.DESC, "openedAt"));
@@ -101,6 +111,19 @@ public class CashDrawerService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cash drawer session not found"));
         if (!"OPEN".equals(session.getStatus())) throw new IllegalStateException("Cash drawer session is closed");
         return session;
+    }
+
+    private void recordAutomaticMovement(BigDecimal value, String reason, String type) {
+        if (value == null || value.signum() <= 0) return;
+        String movementReason = reason == null || reason.isBlank() ? "Purchase cash movement" : reason.trim();
+        String movementActor = actor();
+        sessionRepository.findFirstByOpenedByAndStatusOrderByOpenedAtDesc(movementActor, "OPEN").ifPresent(session -> {
+            if ("IN".equals(type)) session.setCashIn(session.getCashIn().add(value));
+            else session.setCashOut(session.getCashOut().add(value));
+            movementRepository.save(CashDrawerMovement.builder().session(session).type(type).amount(value)
+                    .actor(movementActor).createdAt(LocalDateTime.now()).reason(movementReason).build());
+            sessionRepository.save(session);
+        });
     }
 
     private BigDecimal nonNegative(BigDecimal value, String label) {

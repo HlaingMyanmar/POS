@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { ArrowLeft, CreditCard, Download, Eye, List, Plus, ReceiptText, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Download, Eye, List, Plus, Printer, ReceiptText, RefreshCw, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { purchaseReturnApiService, PurchaseReturnPage } from '../services/purchasereturnapiservice';
@@ -13,6 +13,8 @@ import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { getCachedCompanySettings } from '../utils/companySettings';
+import { buildPurchaseReturnVoucherHtml } from './purchaseReturnVoucherTemplate';
 
 type DetailForm = PurchaseReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
 
@@ -28,6 +30,11 @@ type PurchaseProductOption = {
 
 const sanitizeSerial = (serial: string) => serial.trim().toUpperCase();
 const normalizeSerial = (serial: string) => sanitizeSerial(serial).toLowerCase();
+const purchaseVoucherStatus = (p?: PurchaseDTO) => (p?.status || '').trim().toUpperCase();
+const isReturnablePurchase = (p?: PurchaseDTO) => {
+  const status = purchaseVoucherStatus(p);
+  return status !== 'CANCELLED' && status !== 'DRAFT';
+};
 
 const ensureSerialCount = (serials: string[] | undefined, qty: number): string[] => {
   const safeQty = Math.max(0, qty || 0);
@@ -195,6 +202,16 @@ const PurchaseReturnManagement: React.FC = () => {
     if (!rawPurchaseId || masterLoading || purchases.length === 0 || purchaseId === rawPurchaseId) return;
     const purchase = purchases.find((p) => p.id === rawPurchaseId);
     if (!purchase) return;
+    if (!isReturnablePurchase(purchase)) {
+      Swal.fire({
+        icon: 'info',
+        title: purchaseVoucherStatus(purchase) === 'CANCELLED' ? 'ပယ်ဖျက်ပြီး ဘောင်ချာ' : 'မူကြမ်း ဘောင်ချာ',
+        text: purchaseVoucherStatus(purchase) === 'CANCELLED'
+          ? 'ပယ်ဖျက်ပြီး ဝယ်ယူမှုဘောင်ချာကို ဝယ်ပြန်ပို့ မလုပ်နိုင်ပါ။ Stock နှင့် Journal ကို ပယ်ဖျက်စဉ်က ပြန်ပြင်ပြီးဖြစ်သည်။'
+          : 'မူကြမ်းကို အရင်အတည်ပြုပြီးမှသာ ဝယ်ပြန်ပို့ လုပ်နိုင်သည်။'
+      });
+      return;
+    }
     setSupplierId(purchase.supplierId);
     setSupplierSearch(supplierLabelById(purchase.supplierId));
     setPurchaseId(rawPurchaseId);
@@ -243,7 +260,7 @@ const PurchaseReturnManagement: React.FC = () => {
 
   const filteredPurchases = useMemo(() => {
     if (supplierId <= 0) return [];
-    return purchases.filter((p) => p.supplierId === supplierId);
+    return purchases.filter((p) => p.supplierId === supplierId && isReturnablePurchase(p));
   }, [purchases, supplierId]);
 
   const productOptions = useMemo<PurchaseProductOption[]>(() => {
@@ -538,6 +555,10 @@ const PurchaseReturnManagement: React.FC = () => {
   const onSave = async () => {
     if (!validForm) {
       Swal.fire('စစ်ဆေးရန်', 'Supplier/Purchase ရွေးပြီး item, serial number နှင့် အကြောင်းပြချက်ကို မှန်ကန်အောင်ဖြည့်ပါ။', 'warning');
+      return;
+    }
+    if (!isReturnablePurchase(selectedPurchase || undefined)) {
+      Swal.fire('မလုပ်နိုင်ပါ', 'ပယ်ဖျက်ပြီး သို့မဟုတ် မူကြမ်း ဘောင်ချာကို ဝယ်ပြန်ပို့ မလုပ်နိုင်ပါ။', 'warning');
       return;
     }
     setSaving(true);
@@ -1051,7 +1072,21 @@ const PurchaseReturnManagement: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-800">ဝယ်ယူပြန်ပို့မှု: {viewRow.returnNo || `#${viewRow.id}`}</h3>
-              <button onClick={() => { setViewRow(null); setReturnStockMovements([]); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"><X size={18} /></button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const { html, popupSize } = buildPurchaseReturnVoucherHtml({ row: viewRow, settings: getCachedCompanySettings() });
+                    const w = window.open('', '_blank', popupSize);
+                    if (!w) return;
+                    w.document.write(html);
+                    w.document.close();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+                >
+                  <Printer size={14} /> Print
+                </button>
+                <button onClick={() => { setViewRow(null); setReturnStockMovements([]); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"><X size={18} /></button>
+              </div>
             </div>
             <div className="p-4 overflow-y-auto space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">

@@ -11,6 +11,9 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +35,13 @@ private val PurchaseBg = Color(0xFFECFDF5)
 fun PurchaseDetailScreen(onBack: () -> Unit) {
     val vm: PurchaseDetailViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    var showCancel by remember { mutableStateOf(false) }
+    var cancelReason by remember { mutableStateOf("") }
+    var refundMethodId by remember { mutableStateOf(0) }
+
+    val purchase = state.purchase
+    val status = (purchase?.status ?: "").uppercase()
+    val paid = purchase?.paidAmount ?: 0.0
 
     Scaffold(
         topBar = {
@@ -43,6 +53,16 @@ fun PurchaseDetailScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    if (status == "DRAFT") {
+                        IconButton(onClick = { vm.confirmDraft() }, enabled = !state.busy) {
+                            Icon(Icons.Outlined.CheckCircle, "အတည်ပြု", tint = Color.White)
+                        }
+                    }
+                    if (status != "CANCELLED") {
+                        IconButton(onClick = { showCancel = true }, enabled = !state.busy) {
+                            Icon(Icons.Outlined.Cancel, "ပယ်ဖျက်", tint = Color.White)
+                        }
+                    }
                     IconButton(onClick = { vm.load() }) {
                         Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်ရန်", tint = Color.White)
                     }
@@ -97,6 +117,8 @@ fun PurchaseDetailScreen(onBack: () -> Unit) {
                         InfoRow("ငွေချေမှု", purchase.paymentStatus ?: "-")
                         InfoRow("ပေးရန်ရက်", purchase.dueDate ?: "-")
                         InfoRow("ငွေချေကာလ", purchase.paymentTermDays?.let { "$it ရက်" } ?: "-")
+                        if (!purchase.poCode.isNullOrBlank()) InfoRow("PO", purchase.poCode)
+                        if (!purchase.supplierInvoiceNo.isNullOrBlank()) InfoRow("Supplier Inv", purchase.supplierInvoiceNo)
                         if (!purchase.remark.isNullOrBlank()) InfoRow("မှတ်ချက်", purchase.remark)
                     }
                 }
@@ -133,6 +155,45 @@ fun PurchaseDetailScreen(onBack: () -> Unit) {
 
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    if (showCancel) {
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) showCancel = false },
+            title = { Text("ဘောင်ချာ ပယ်ဖျက်မည်") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = cancelReason,
+                        onValueChange = { cancelReason = it },
+                        label = { Text("အကြောင်းရင်း *") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (paid > 0) {
+                        Text("ငွေပြန်ဝင်မည့် Payment Method *", fontSize = 12.sp, color = TextMuted)
+                        state.paymentMethods.forEach { method ->
+                            FilterChip(
+                                selected = refundMethodId == method.id,
+                                onClick = { refundMethodId = method.id },
+                                label = { Text(method.methodName) }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !state.busy && cancelReason.isNotBlank() && (paid <= 0 || refundMethodId > 0),
+                    onClick = {
+                        vm.cancel(cancelReason.trim(), if (paid > 0) refundMethodId else null)
+                        showCancel = false
+                    }
+                ) { Text("ပယ်ဖျက်မည်") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancel = false }, enabled = !state.busy) { Text("မလုပ်တော့") }
+            }
+        )
     }
 }
 

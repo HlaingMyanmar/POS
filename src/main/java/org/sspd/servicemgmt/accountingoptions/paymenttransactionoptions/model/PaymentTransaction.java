@@ -33,4 +33,10 @@ public class PaymentTransaction {
     private BigDecimal amount;
     private LocalDateTime paymentDate = LocalDateTime.now();
     private String transactionNo;
+    @Column(nullable = false)
+    private Boolean reversed = false;
+    private LocalDateTime reversedAt;
+    private String reversedBy;
+    @Column(columnDefinition = "TEXT")
+    private String reversalReason;
 }

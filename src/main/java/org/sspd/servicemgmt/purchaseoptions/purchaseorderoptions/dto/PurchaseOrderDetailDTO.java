@@ -10,8 +10,11 @@ public class PurchaseOrderDetailDTO {
     private Integer id;
     private Integer productId;
     private String productName;
+    private Boolean hasSerial;
     private Integer qty;
     private Integer receivedQty;
+    private Integer damagedQty;
+    private Integer rejectedQty;
     private BigDecimal unitCost;
     private BigDecimal subtotal;
 

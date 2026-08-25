@@ -2,15 +2,15 @@
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
-import { purchaseApiService, PurchasePage, PurchaseStats } from '../services/purchaseapiservice';
+import { purchaseApiService, PurchasePage, PurchaseStats, PurchaseTrendPoint, TopSupplierPoint, PurchaseImportPreview, PurchaseTimelineEvent, PurchaseAnalytics } from '../services/purchaseapiservice';
 import { purchaseReturnApiService } from '../services/purchasereturnapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { accountingApiService } from '../services/accountingapiservice';
 import { supplierService } from '../services/supplierapiservice';
 import { staffService } from '../services/staffapiservice';
 import { productService } from '../services/productapiservice';
-import { AppRoute, PurchaseDTO, PurchaseDetailDTO, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO, ProductStockHistoryDTO, ProductStockHistoryMovementDTO, ReorderSuggestionDTO } from '../types';
-import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp, Download, Loader2, ClipboardList, Ban, ScanLine, FileSpreadsheet, Upload } from 'lucide-react';
+import { AppRoute, PurchaseDTO, PurchaseDetailDTO, PurchaseBudgetCheck, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO, ProductStockHistoryMovementDTO, ReorderSuggestionDTO } from '../types';
+import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp, Download, Loader2, ClipboardList, Ban, ScanLine, FileSpreadsheet, Upload, AlertTriangle, Copy, FileDown, Warehouse, BarChart3, History } from 'lucide-react';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
@@ -19,8 +19,105 @@ import { getFromSession } from '../utils/storageHelper';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import Swal from 'sweetalert2';
+import { supplierPaymentApiService, SupplierPayable, SupplierPayment } from '../services/supplierpaymentapiservice';
+import { purchaseBudgetApiService, PurchaseBudgetDTO } from '../services/purchasebudgetapiservice';
+import { stockLotApiService, StockLotDTO, WarehouseBalanceDTO } from '../services/stocklotapiservice';
+import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type PurchaseDetailForm = PurchaseDetailDTO & { productSearch?: string; assignSerials?: boolean };
+
+/** Compact searchable dropdown used by Supplier Payment Allocation modal. */
+const PaymentSearchSelect: React.FC<{
+  items: { id: number; label: string; sub?: string; searchText?: string }[];
+  value: number;
+  placeholder?: string;
+  onChange: (id: number) => void;
+}> = ({ items, value, placeholder = 'ရှာပါ...', onChange }) => {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = items.find((i) => i.id === value);
+
+  useEffect(() => {
+    if (!open) setSearch(selected ? selected.label : '');
+  }, [value, selected?.label, open]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const q = search.trim().toLowerCase();
+  const filtered = items.filter((i) => {
+    if (!q) return true;
+    const hay = `${i.label} ${i.sub || ''} ${i.searchText || ''}`.toLowerCase();
+    return hay.includes(q);
+  }).slice(0, 50);
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          value={open ? search : (selected?.label || '')}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setOpen(true);
+            if (!e.target.value.trim()) onChange(0);
+          }}
+          onFocus={() => {
+            setSearch('');
+            setOpen(true);
+          }}
+          placeholder={selected ? selected.label : placeholder}
+          className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-8 text-sm focus:border-blue-400 focus:bg-white focus:outline-none"
+        />
+        {(value > 0 || search) && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setSearch('');
+              onChange(0);
+              setOpen(true);
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+            aria-label="Clear"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+          {filtered.length > 0 ? filtered.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(item.id);
+                setSearch(item.label);
+                setOpen(false);
+              }}
+              className={`w-full px-3 py-2.5 text-left hover:bg-blue-50 ${value === item.id ? 'bg-blue-50' : ''}`}
+            >
+              <p className="text-sm font-semibold text-slate-800">{item.label}</p>
+              {item.sub ? <p className="text-[11px] text-slate-400">{item.sub}</p> : null}
+            </button>
+          )) : (
+            <p className="px-3 py-2.5 text-xs text-slate-400">ရှာမတွေ့ပါ</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const resizeSerials = (serials: string[] = [], qty: number) => {
   const safeQty = Math.max(0, qty || 0);
   const next = [...serials];
@@ -45,6 +142,12 @@ const normalizePayments = (payments: PaymentTransactionDTO[]) =>
     .filter((p) => p.paymentMethodId > 0 && p.amount > 0);
 const paymentTotal = (payments: PaymentTransactionDTO[]) => normalizePayments(payments).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 const money = (v: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+const suggestedCost = (p?: ProductDTO | null) => Number(p?.lastPurchaseCost ?? p?.costPrice ?? 0) || 0;
+const emptyLine = (): PurchaseDetailForm => ({
+  productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0,
+  itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''],
+  productSearch: '', assignSerials: false, batchNumber: '', expiryDate: ''
+});
 
 const dateInput = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -58,6 +161,10 @@ const addDaysInput = (date: string, days: number) => {
   const base = date ? parseDateInput(date) : new Date();
   base.setDate(base.getDate() + Math.max(0, Number(days) || 0));
   return dateInput(base);
+};
+const endOfMonthInput = (date: string) => {
+  const base = date ? parseDateInput(date) : new Date();
+  return dateInput(new Date(base.getFullYear(), base.getMonth() + 1, 0));
 };
 
 const getTodayRange = () => {
@@ -78,6 +185,21 @@ const getThisMonthRange = () => {
   return { from: dateInput(new Date(today.getFullYear(), today.getMonth(), 1)), to: dateInput(today) };
 };
 
+const getThisYearRange = () => {
+  const today = new Date();
+  return { from: dateInput(new Date(today.getFullYear(), 0, 1)), to: dateInput(today) };
+};
+
+interface DraftSerialLine {
+  productId: number;
+  productName: string;
+  productCode: string;
+  qty: number;
+  unitCost: number;
+  warrantyMonths?: number;
+  serials: string[];
+}
+
 const PurchaseManagement: React.FC = () => {
   const currentUser = useMemo(() => {
     try {
@@ -88,6 +210,8 @@ const PurchaseManagement: React.FC = () => {
   }, []);
   const canOverrideStaff = (currentUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role))
     || (currentUser.permissions || []).includes('CAN_ACCESS_PURCHASE_STAFF_OVERRIDE');
+  const canApproveCreditOverride = (currentUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role))
+    || (currentUser.permissions || []).includes('CAN_ACCESS_CREDIT_OVERRIDE_APPROVE');
   const location = useLocation();
   const navigate = useNavigate();
   const [showNewVoucherForm, setShowNewVoucherForm] = useState(false);
@@ -102,9 +226,6 @@ const PurchaseManagement: React.FC = () => {
   const [relatedReturnsLoading, setRelatedReturnsLoading] = useState(false);
   const [purchaseHistoryPayments, setPurchaseHistoryPayments] = useState<PaymentTransactionDTO[]>([]);
   const [purchaseStockMovements, setPurchaseStockMovements] = useState<ProductStockHistoryMovementDTO[]>([]);
-  const [productHistory, setProductHistory] = useState<ProductStockHistoryDTO | null>(null);
-  const [productHistoryProduct, setProductHistoryProduct] = useState<ProductDTO | null>(null);
-  const [productHistoryLoading, setProductHistoryLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierDTO[]>([]);
   const [staffs, setStaffs] = useState<StaffDTO[]>([]);
   const [products, setProducts] = useState<ProductDTO[]>([]);
@@ -119,28 +240,50 @@ const PurchaseManagement: React.FC = () => {
   const [purchaseDate, setPurchaseDate] = useState(dateInput(new Date()));
   const [paymentTermDays, setPaymentTermDays] = useState(30);
   const [dueDate, setDueDate] = useState(addDaysInput(dateInput(new Date()), 30));
+  const [creditLimitOverride, setCreditLimitOverride] = useState(false);
+  const [creditOverrideReason, setCreditOverrideReason] = useState('');
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [purchasePayments, setPurchasePayments] = useState<PaymentTransactionDTO[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [taxAmount, setTaxAmount] = useState<number>(0);
+  const [taxMode, setTaxMode] = useState<'EXCLUSIVE' | 'INCLUSIVE'>('EXCLUSIVE');
+  const [taxRate, setTaxRate] = useState<number>(0);
+  const [withholdingTaxAmount, setWithholdingTaxAmount] = useState<number>(0);
   const [otherCharges, setOtherCharges] = useState<number>(0);
+  const [landedCostAllocationMethod, setLandedCostAllocationMethod] = useState<'VALUE' | 'QUANTITY' | 'MANUAL'>('VALUE');
+  const [warehouseName, setWarehouseName] = useState('');
+  const [currencyCode, setCurrencyCode] = useState('MMK');
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [attachmentName, setAttachmentName] = useState('');
   const [attachmentData, setAttachmentData] = useState('');
   const [isBarcodeOpen, setIsBarcodeOpen] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const purchaseImportRef=useRef<HTMLInputElement>(null);
+  const [purchaseImporting,setPurchaseImporting]=useState(false);
+  const [importPreview,setImportPreview]=useState<PurchaseImportPreview|null>(null);
+  const [warehousePanelOpen,setWarehousePanelOpen]=useState(false);
+  const [warehouseBalances,setWarehouseBalances]=useState<WarehouseBalanceDTO[]>([]);
+  const [analyticsPanelOpen,setAnalyticsPanelOpen]=useState(false);
+  const [purchaseAnalytics,setPurchaseAnalytics]=useState<PurchaseAnalytics|null>(null);
+  const [purchaseTimeline,setPurchaseTimeline]=useState<PurchaseTimelineEvent[]>([]);
   const [showReorderModal, setShowReorderModal] = useState(false);
   const [reorderSuggestions, setReorderSuggestions] = useState<ReorderSuggestionDTO[]>([]);
   const [reorderSearch, setReorderSearch] = useState('');
   const [reorderLoading, setReorderLoading] = useState(false);
   const [selectedReorder, setSelectedReorder] = useState<Set<number>>(new Set());
+  const [showSerialModal, setShowSerialModal] = useState(false);
+  const [serialTarget, setSerialTarget] = useState<{ id: number; purchaseCode: string } | null>(null);
+  const [serialDraftLines, setSerialDraftLines] = useState<DraftSerialLine[]>([]);
+  const [serialCameraLine, setSerialCameraLine] = useState<number | null>(null);
+  const [serialEntry, setSerialEntry] = useState<Record<number, string>>({});
   const [rowActionBusy, setRowActionBusy] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [remark, setRemark] = useState('');
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<number>(0);
   const [transactionNo, setTransactionNo] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [purchaseProductSearch, setPurchaseProductSearch] = useState('');
   const [voucherLookup, setVoucherLookup] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,7 +294,39 @@ const PurchaseManagement: React.FC = () => {
   const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'WEEK' | 'MONTH' | 'ALL' | 'CUSTOM'>('TODAY');
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [serverStats, setServerStats] = useState<PurchaseStats>({ count: 0, totalAmount: 0, paidAmount: 0, dueAmount: 0 });
+  const [supplierPaymentOpen, setSupplierPaymentOpen] = useState(false);
+  const [supplierPaymentSupplierId, setSupplierPaymentSupplierId] = useState(0);
+  const [supplierPaymentMethodId, setSupplierPaymentMethodId] = useState(0);
+  const [supplierPaymentAmount, setSupplierPaymentAmount] = useState(0);
+  const [supplierPaymentTxn, setSupplierPaymentTxn] = useState('');
+  const [supplierPaymentRemark, setSupplierPaymentRemark] = useState('');
+  const [supplierPaymentManual, setSupplierPaymentManual] = useState(false);
+  const [supplierPayableSearch, setSupplierPayableSearch] = useState('');
+  const [supplierPayables, setSupplierPayables] = useState<SupplierPayable[]>([]);
+  const [supplierAllocations, setSupplierAllocations] = useState<Record<number, number>>({});
+  const [supplierPaymentSaving, setSupplierPaymentSaving] = useState(false);
+  const [supplierPaymentHistory, setSupplierPaymentHistory] = useState<SupplierPayment[]>([]);
+  const [supplierPaymentHistoryLoading, setSupplierPaymentHistoryLoading] = useState(false);
+  const [supplierCreditSummary, setSupplierCreditSummary] = useState({ advanceBalance: 0, returnCreditBalance: 0, availableCredit: 0 });
+  const [supplierCreditTargetId, setSupplierCreditTargetId] = useState(0);
+  const [supplierCreditAmount, setSupplierCreditAmount] = useState(0);
+  const [supplierCreditReason, setSupplierCreditReason] = useState('');
+  const [purchaseTrend, setPurchaseTrend] = useState<PurchaseTrendPoint[]>([]);
+  const [topSuppliers, setTopSuppliers] = useState<TopSupplierPoint[]>([]);
+  const [chartView, setChartView] = useState<'trend' | 'suppliers'>('trend');
+  const [chartPeriod, setChartPeriod] = useState<'month' | 'year' | 'all'>('month');
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [purchaseBudgets,setPurchaseBudgets]=useState<PurchaseBudgetDTO[]>([]);
+  const [budgetPanelOpen,setBudgetPanelOpen]=useState(false);
+  const [budgetSaving,setBudgetSaving]=useState(false);
+  const [budgetForm,setBudgetForm]=useState<PurchaseBudgetDTO>({name:'Monthly Purchase Budget',dateFrom:getThisMonthRange().from,dateTo:getThisMonthRange().to,limitAmount:0,enforcement:'BLOCK',active:true});
+  const [expiringLots,setExpiringLots]=useState<StockLotDTO[]>([]);
+  const [expiryPanelOpen,setExpiryPanelOpen]=useState(false);
+  const [expiryDays,setExpiryDays]=useState(90);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<PurchaseDTO | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelRefundMethodId, setCancelRefundMethodId] = useState(0);
   const [isQuickSupplierModalOpen, setIsQuickSupplierModalOpen] = useState(false);
   const [quickSupplierSaving, setQuickSupplierSaving] = useState(false);
   const [quickSupplierForm, setQuickSupplierForm] = useState({ name: '', phone: '', address: '' });
@@ -172,9 +347,9 @@ const PurchaseManagement: React.FC = () => {
     payments: [] as PaymentTransactionDTO[]
   });
   
-  const [details, setDetails] = useState<PurchaseDetailForm[]>([
-    { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }
-  ]);
+  const [details, setDetails] = useState<PurchaseDetailForm[]>([emptyLine()]);
+  const [listTab, setListTab] = useState<'all' | 'overdue'>('all');
+  const [overduePurchases, setOverduePurchases] = useState<PurchaseDTO[]>([]);
 
   const fetchPurchases = useCallback(async (page: number, size: number, search: string, from: string, to: string) => {
     setPurchasesLoading(true);
@@ -199,6 +374,36 @@ const PurchaseManagement: React.FC = () => {
     }
   }, []);
 
+  const fetchTrend = useCallback(async (from: string, to: string) => {
+    setTrendLoading(true);
+    try {
+      const [trend, suppliers] = await Promise.all([
+        purchaseApiService.getTrend(from, to),
+        purchaseApiService.getTopSuppliers(from, to),
+      ]);
+      setPurchaseTrend(trend);
+      setTopSuppliers(suppliers);
+    } catch (e) {
+      console.error('Failed to load purchase trend', e);
+      setPurchaseTrend([]);
+      setTopSuppliers([]);
+    } finally {
+      setTrendLoading(false);
+    }
+  }, []);
+
+  const fetchOverdue = useCallback(async () => {
+    try {
+      setOverduePurchases(await purchaseApiService.getOverdue());
+    } catch (e) {
+      console.error('Failed to load overdue payables', e);
+      setOverduePurchases([]);
+    }
+  }, []);
+
+  const fetchBudgets=useCallback(async()=>{try{setPurchaseBudgets(await purchaseBudgetApiService.list())}catch{setPurchaseBudgets([])}},[]);
+  const fetchExpiringLots=useCallback(async(days:number)=>{try{setExpiringLots(await stockLotApiService.expiring(days))}catch{setExpiringLots([])}},[]);
+
   const fetchMasterData = useCallback(async () => {
     try {
       const [supRes, staffRes, prodRes, payRes] = await Promise.all([
@@ -219,7 +424,7 @@ const PurchaseManagement: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { fetchMasterData(); }, [fetchMasterData]);
+  useEffect(() => { fetchMasterData(); fetchBudgets(); fetchExpiringLots(expiryDays); }, [fetchMasterData, fetchBudgets, fetchExpiringLots, expiryDays]);
   useRefreshOnTabActivate(fetchMasterData);
 
   useEffect(() => {
@@ -232,12 +437,32 @@ const PurchaseManagement: React.FC = () => {
   }, [searchTerm]);
 
   useEffect(() => {
+    if (chartPeriod === 'month') {
+      const range = getThisMonthRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    } else if (chartPeriod === 'year') {
+      const range = getThisYearRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    } else {
+      setDateFrom('');
+      setDateTo('');
+    }
+  }, [chartPeriod]);
+
+  useEffect(() => {
     fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
     fetchStats(dateFrom, dateTo);
-  }, [fetchPurchases, fetchStats, purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo]);
+    fetchTrend(dateFrom, dateTo);
+    fetchOverdue();
+    fetchBudgets();
+  }, [fetchPurchases, fetchStats, fetchTrend, fetchOverdue, fetchBudgets, purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo]);
   useDataEvents(['Purchase'], () => {
     fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
     fetchStats(dateFrom, dateTo);
+    fetchTrend(dateFrom, dateTo);
+    fetchOverdue();
   });
 
   const generateSerialNumbers = (qty: number, existingAll: string[] = []): string[] => {
@@ -254,7 +479,7 @@ const PurchaseManagement: React.FC = () => {
   };
 
   const handleAddRow = () => {
-    setDetails([...details, { productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }]);
+    setDetails([...details, emptyLine()]);
   };
 
   const handleRemoveRow = (index: number) => {
@@ -344,7 +569,7 @@ const PurchaseManagement: React.FC = () => {
     const serialNumbers = matched
       ? (matched.hasSerial !== false ? resizeSerials(newDetails[index].serialNumbers || [], newDetails[index].qty) : [])
       : [''];
-    const unitCost = matched ? (Number(matched.costPrice ?? 0) || newDetails[index].unitCost) : newDetails[index].unitCost;
+    const unitCost = matched ? (suggestedCost(matched) || newDetails[index].unitCost) : newDetails[index].unitCost;
     newDetails[index] = {
       ...newDetails[index],
       productSearch: value,
@@ -357,24 +582,6 @@ const PurchaseManagement: React.FC = () => {
       assignSerials: false,
     };
     setDetails(newDetails);
-  };
-
-  const openProductHistory = async (product: ProductDTO) => {
-    setProductHistoryProduct(product);
-    setProductHistory(null);
-    setProductHistoryLoading(true);
-    try {
-      setProductHistory(await productService.getStockHistory(product.id, { size: 25 }));
-    } catch {
-      Swal.fire('Error', 'Failed to load product stock history', 'error');
-    } finally {
-      setProductHistoryLoading(false);
-    }
-  };
-
-  const closeProductHistory = () => {
-    setProductHistory(null);
-    setProductHistoryProduct(null);
   };
 
   const handleSerialChange = (detailIndex: number, serialIndex: number, value: string) => {
@@ -418,11 +625,25 @@ const PurchaseManagement: React.FC = () => {
   const totalAmount = details.reduce((sum, d) => sum + d.subtotal, 0);
   const safeDiscountAmount = Math.min(Math.max(0, discountAmount || 0), totalAmount);
   const safeTaxAmount = Math.max(0, taxAmount || 0);
+  const safeWithholdingTaxAmount = Math.max(0, withholdingTaxAmount || 0);
   const safeOtherCharges = Math.max(0, otherCharges || 0);
-  const netAmount = Math.max(0, totalAmount - safeDiscountAmount + safeTaxAmount + safeOtherCharges);
+  const grossPayable = totalAmount - safeDiscountAmount + safeOtherCharges + (taxMode === 'EXCLUSIVE' ? safeTaxAmount : 0);
+  const netAmount = Math.max(0, grossPayable - safeWithholdingTaxAmount);
+  const safeExchangeRate = currencyCode === 'MMK' ? 1 : Math.max(0, Number(exchangeRate) || 0);
+  const foreignNetAmount = safeExchangeRate > 0 ? netAmount / safeExchangeRate : 0;
+  const manualLandedTotal = details.reduce((sum, d) => sum + (Number(d.allocatedLandedCost) || 0), 0);
+  const landedAllocationValid = landedCostAllocationMethod !== 'MANUAL' || Math.abs(manualLandedTotal - safeOtherCharges) < 0.01;
   const normalizedPurchasePayments = normalizePayments(purchasePayments);
   const effectivePaidAmount = normalizedPurchasePayments.length > 0 ? paymentTotal(purchasePayments) : paidAmount;
   const dueAmount = Math.max(0, netAmount - effectivePaidAmount);
+  const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
+  const supplierCurrentBalance = Math.max(0, Number(selectedSupplier?.currentBalance) || 0);
+  const supplierCreditLimit = Math.max(0, Number(selectedSupplier?.creditLimit) || 0);
+  const projectedSupplierBalance = supplierCurrentBalance + dueAmount;
+  const creditUsagePercent = supplierCreditLimit > 0 ? Math.min(100, (projectedSupplierBalance / supplierCreditLimit) * 100) : 0;
+  const supplierLimitExceeded = dueAmount > 0 && supplierCreditLimit > 0 && projectedSupplierBalance > supplierCreditLimit;
+  const supplierLimitNear = dueAmount > 0 && supplierCreditLimit > 0 && !supplierLimitExceeded && projectedSupplierBalance >= supplierCreditLimit * 0.8;
+  const creditOverrideValid = !supplierLimitExceeded || (canApproveCreditOverride && creditLimitOverride && !!creditOverrideReason.trim());
   const isValid = selectedSupplierId > 0
     && selectedStaffId > 0
     && details.every((d) => {
@@ -435,13 +656,17 @@ const PurchaseManagement: React.FC = () => {
       return true;
     })
     && safeDiscountAmount <= totalAmount
+    && safeWithholdingTaxAmount <= grossPayable
+    && landedAllocationValid
+    && currencyCode.length === 3
+    && safeExchangeRate > 0
     && effectivePaidAmount <= netAmount
     && !hasDuplicateSerials
     && !!purchaseDate
     && (dueAmount <= 0 || !!dueDate)
+    && creditOverrideValid
     && (effectivePaidAmount <= 0 || selectedPaymentMethodId > 0 || normalizedPurchasePayments.length > 0);
 
-  const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedStaff = staffs.find((s) => s.id === selectedStaffId);
   const filledItemCount = details.filter((d) => d.productId > 0).length;
   const voucherHint = !selectedSupplierId
@@ -473,15 +698,26 @@ const PurchaseManagement: React.FC = () => {
     purchaseDate: `${purchaseDate}T00:00:00`,
     dueDate: !status && dueAmount > 0 ? dueDate : undefined,
     paymentTermDays: !status && dueAmount > 0 && paymentTermDays >= 0 ? paymentTermDays : undefined,
+    creditLimitOverride: !status && supplierLimitExceeded ? creditLimitOverride : false,
+    creditOverrideReason: !status && supplierLimitExceeded && creditLimitOverride ? creditOverrideReason.trim() : undefined,
     totalAmount,
     discountAmount: safeDiscountAmount,
     taxAmount: safeTaxAmount,
+    taxMode,
+    taxRate,
+    withholdingTaxAmount: safeWithholdingTaxAmount,
     otherCharges: safeOtherCharges,
+    landedCostAllocationMethod,
+    warehouseName: warehouseName.trim() || undefined,
+    currencyCode: currencyCode.trim().toUpperCase() || 'MMK',
+    exchangeRate: safeExchangeRate,
+    foreignNetAmount,
     netAmount,
     paidAmount: status ? 0 : effectivePaidAmount,
     dueAmount: status ? netAmount : dueAmount,
     status,
     remark,
+    supplierInvoiceNo: supplierInvoiceNo.trim() || undefined,
     attachmentName: attachmentName.trim() || undefined,
     attachmentData: attachmentData || undefined,
     paymentMethodId: !status && effectivePaidAmount > 0 ? (normalizedPurchasePayments[0]?.paymentMethodId || selectedPaymentMethodId) : undefined,
@@ -492,6 +728,7 @@ const PurchaseManagement: React.FC = () => {
       qty: d.qty,
       unitCost: d.unitCost,
       subtotal: d.subtotal,
+      allocatedLandedCost: landedCostAllocationMethod === 'MANUAL' ? (Number(d.allocatedLandedCost) || 0) : undefined,
       warrantyMonths: d.warrantyMonths ?? 0,
       itemWarranties: (d.itemWarranties && d.itemWarranties.length > 0
         ? d.itemWarranties
@@ -505,7 +742,9 @@ const PurchaseManagement: React.FC = () => {
         : [],
       serialPhotos: (isSerialRequired(d.productId) || d.assignSerials)
         ? resizeStrings(d.serialPhotos || [], d.qty)
-        : []
+        : [],
+      batchNumber: d.batchNumber?.trim() || undefined,
+      expiryDate: d.expiryDate || undefined
     }))
   });
 
@@ -517,37 +756,84 @@ const PurchaseManagement: React.FC = () => {
     setPurchaseDate(dateInput(new Date()));
     setPaymentTermDays(30);
     setDueDate(addDaysInput(dateInput(new Date()), 30));
+    setCreditLimitOverride(false);
+    setCreditOverrideReason('');
     setPaidAmount(0);
     setPurchasePayments([]);
     setDiscountAmount(0);
     setTaxAmount(0);
+    setTaxMode('EXCLUSIVE');
+    setTaxRate(0);
+    setWithholdingTaxAmount(0);
     setOtherCharges(0);
+    setLandedCostAllocationMethod('VALUE');
+    setWarehouseName('');
+    setCurrencyCode('MMK');
+    setExchangeRate(1);
     setAttachmentName('');
     setAttachmentData('');
     setRemark('');
+    setSupplierInvoiceNo('');
     setSelectedPaymentMethodId(0);
     setTransactionNo('');
-    setDetails([{ productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0, itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''], productSearch: '', assignSerials: false }]);
+    setDetails([emptyLine()]);
   };
 
   const refreshLists = () => {
     fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo);
     fetchStats(dateFrom, dateTo);
+    fetchTrend(dateFrom, dateTo);
+    fetchOverdue();
+  };
+
+  const confirmBudgetWarnings = async (payload: PurchaseDTO) => {
+    try {
+      const result: PurchaseBudgetCheck = await purchaseApiService.checkBudget(payload);
+      const blocks = result.blocks ?? [];
+      const warnings = result.warnings ?? [];
+      if (result.blocked || blocks.length) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'ဘတ်ဂျက် ကျော်နေပါသည်',
+          text: blocks.join('\n') || 'Purchase exceeds a blocking budget.'
+        });
+        return false;
+      }
+      if (!warnings.length) return true;
+      const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'Budget warning',
+        text: warnings.join('\n'),
+        showCancelButton: true,
+        confirmButtonText: 'Continue anyway',
+        cancelButtonText: 'Cancel'
+      });
+      return confirm.isConfirmed;
+    } catch (error: any) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'ဘတ်ဂျက် စစ်ဆေးမရပါ',
+        text: error.message || 'Could not check budget.'
+      });
+      return false;
+    }
   };
 
   const handleSave = async () => {
     if (!isValid || saving) return;
+    const payload = buildPayload();
+    if (!(await confirmBudgetWarnings(payload))) return;
     setSaving(true);
 
     try {
-      const res = await purchaseApiService.create(buildPayload());
+      const res = await purchaseApiService.create(payload);
       if (res) {
         Swal.fire({
-          icon: 'success',
+          icon: res.budgetWarnings?.length ? 'warning' : 'success',
           title: 'Success',
-          text: 'Purchase recorded successfully',
-          timer: 2000,
-          showConfirmButton: false
+          text: res.budgetWarnings?.length ? res.budgetWarnings.join('\n') : 'Purchase recorded successfully',
+          timer: res.budgetWarnings?.length ? 4000 : 2000,
+          showConfirmButton: !!res.budgetWarnings?.length
         });
         refreshLists();
         setShowNewVoucherForm(false);
@@ -630,7 +916,7 @@ const PurchaseManagement: React.FC = () => {
       const blankIdx = prev.findIndex((d) => !d.productId);
       const newRow: PurchaseDetailForm = {
         productId: product.id,
-        qty: 1, unitCost: Number(product.costPrice ?? 0) || 0,
+        qty: 1, unitCost: suggestedCost(product),
         subtotal: 0, warrantyMonths: 0,
         itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''],
         productSearch: getProductLabel(product), assignSerials: false
@@ -714,7 +1000,7 @@ const PurchaseManagement: React.FC = () => {
       const row: PurchaseDetailForm = {
         productId: r.productId,
         qty: r.suggestedQty,
-        unitCost: Number(r.lastCost ?? 0),
+        unitCost: Number(r.lastCost ?? 0) || suggestedCost(products.find((p) => p.id === r.productId)),
         subtotal: r.suggestedQty * Number(r.lastCost ?? 0),
         warrantyMonths: 0,
         itemWarranties: Array.from({ length: r.suggestedQty }, () => 0),
@@ -730,51 +1016,200 @@ const PurchaseManagement: React.FC = () => {
     Swal.fire({ icon: 'success', title: 'Import ပြီးပါပြီ', text: `${rows.length} မျိုး ဝယ်ယူမှုဖောင်ထဲသို့ ထည့်ပြီး။`, toast: true, position: 'top-end', showConfirmButton: false, timer: 1800 });
   };
 
-  const handleConfirmDraft = async (p: PurchaseDTO) => {
-    if (rowActionBusy) return;
-    const result = await Swal.fire({
-      icon: 'question',
-      title: 'မူကြမ်း အတည်ပြုမည်လား?',
-      html: `<b>${p.purchaseCode || `#${p.id}`}</b> — Stock၊ Serial၊ Journal များ ဖန်တီးမည်ဖြစ်သည်။<br/><span style="font-size:12px;color:#94a3b8">Serial ပစ္စည်းပါရှိလျှင် ဤမူကြမ်းကို ပယ်ဖျက်ပြီး အသစ်ပြန်ဖွင့်၍ Serial များနှင့်အတူ သိမ်းပါ။</span>`,
-      showCancelButton: true,
-      confirmButtonText: 'အတည်ပြု',
-      cancelButtonText: 'မလုပ်တော့'
-    });
-    if (!result.isConfirmed) return;
+  const doConfirmDraft = async (id: number, details?: Array<{ productId: number; qty: number; unitCost: number; warrantyMonths?: number; serialNumbers: string[]; serialConditions: string[]; serialPhotos: string[] }>) => {
     setRowActionBusy(true);
     try {
-      await purchaseApiService.confirmDraft(p.id!);
-      Swal.fire({ icon: 'success', title: 'အတည်ပြုပြီး', text: 'Purchase confirmed successfully', timer: 1800, showConfirmButton: false });
+      const full = await purchaseApiService.getById(id);
+      const payload = (details ? { ...full, details } : full) as PurchaseDTO;
+      if (!(await confirmBudgetWarnings(payload))) return;
+      const confirmed = await purchaseApiService.confirmDraft(id, details ? ({ details } as Partial<PurchaseDTO>) : undefined);
+      Swal.fire({ icon: confirmed.budgetWarnings?.length ? 'warning' : 'success', title: 'အတည်ပြုပြီး', text: confirmed.budgetWarnings?.length ? confirmed.budgetWarnings.join('\n') : 'Stock၊ Serial၊ Journal များ ဖန်တီးပြီးပါပြီ', timer: confirmed.budgetWarnings?.length ? 4000 : 1800, showConfirmButton: !!confirmed.budgetWarnings?.length });
       refreshLists();
-      if (viewPurchase?.id === p.id) closeView();
+      setShowSerialModal(false);
+      setSerialTarget(null);
+      if (viewPurchase?.id === id) closeView();
     } catch (error: any) {
-      Swal.fire({ icon: 'error', title: 'Error', text: error.message || 'Failed to confirm draft' });
+      Swal.fire({ icon: 'error', title: 'အတည်ပြုမရပါ', text: error.message || 'Failed to confirm draft' });
     } finally {
       setRowActionBusy(false);
     }
   };
 
+  const handleConfirmDraft = async (p: PurchaseDTO) => {
+    if (rowActionBusy) return;
+    setRowActionBusy(true);
+    let full: PurchaseDTO;
+    try {
+      full = await purchaseApiService.getById(p.id!);
+    } catch (error: any) {
+      setRowActionBusy(false);
+      Swal.fire({ icon: 'error', title: 'Error', text: error.message || 'Failed to load draft' });
+      return;
+    }
+    setRowActionBusy(false);
+
+    const code = full.purchaseCode || `#${p.id}`;
+    const draftLines: DraftSerialLine[] = (full.details || [])
+      .filter((d) => products.find((pr) => pr.id === d.productId)?.hasSerial)
+      .map((d) => {
+        const prod = products.find((pr) => pr.id === d.productId)!;
+        return {
+          productId: d.productId,
+          productName: d.productName || prod.name || `Product #${d.productId}`,
+          productCode: prod.productCode || '',
+          qty: Number(d.qty) || 0,
+          unitCost: Number(d.unitCost) || 0,
+          warrantyMonths: d.warrantyMonths ?? prod.warrantyMonths ?? 0,
+          serials: Array.from({ length: Number(d.qty) || 0 }, () => '')
+        };
+      });
+
+    if (draftLines.length > 0) {
+      setSerialTarget({ id: p.id!, purchaseCode: code });
+      setSerialDraftLines(draftLines);
+      setSerialEntry({});
+      setShowSerialModal(true);
+      return;
+    }
+
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'မူကြမ်း အတည်ပြုမည်လား?',
+      html: `<b>${code}</b> ကို အတည်ပြုပြီး Stock နှင့် Journal မှတ်တမ်းများ ဖန်တီးပါမည်။<br/><span style="font-size:12px;color:#94a3b8">Serial ပစ္စည်းများအတွက် နောက်တစ်ဆင့်တွင် Serial Number များ ထည့်နိုင်ပါသည်။</span>`,
+      showCancelButton: true,
+      confirmButtonText: 'အတည်ပြု',
+      cancelButtonText: 'မလုပ်တော့'
+    });
+    if (!result.isConfirmed) return;
+    await doConfirmDraft(p.id!);
+  };
+
+  const serialLineIssue = (line: DraftSerialLine): string | null => {
+    const filled = line.serials.map((s) => s.trim());
+    if (filled.some((s) => !s)) return `${line.qty} ခုလုံး ထည့်ရန် လိုအပ်သေးသည်`;
+    if (new Set(filled).size !== filled.length) return 'ဤပစ္စည်းထဲ Duplicate serial ပါနေသည်';
+    return null;
+  };
+
+  const globalDupSerial = (): string | null => {
+    const seen = new Set<string>();
+    for (const line of serialDraftLines) {
+      for (const s of line.serials) {
+        const t = s.trim();
+        if (!t) continue;
+        if (seen.has(t)) return t;
+        seen.add(t);
+      }
+    }
+    return null;
+  };
+
+  const serialModalReady = serialDraftLines.length > 0
+    && serialDraftLines.every((l) => serialLineIssue(l) === null)
+    && globalDupSerial() === null;
+
+  const appendSerialToLine = (lineIdx: number, raw: string) => {
+    const code = raw.trim();
+    if (!code) return;
+    const line = serialDraftLines[lineIdx];
+    if (!line) return;
+    if (line.serials.includes(code)) {
+      Swal.fire({ icon: 'warning', title: 'Duplicate', text: `'${code}' က ဤပစ္စည်းထဲ ရှိပြီးသားဖြစ်သည်`, timer: 1400, showConfirmButton: false });
+      return;
+    }
+    if (serialDraftLines.some((l, li) => li !== lineIdx && l.serials.some((s) => s.trim() === code))) {
+      Swal.fire({ icon: 'warning', title: 'Duplicate', text: `'${code}' က အခြားပစ္စည်းတွင် ထည့်ထားပြီးဖြစ်သည်`, timer: 1600, showConfirmButton: false });
+      return;
+    }
+    const emptyIdx = line.serials.findIndex((s) => !s.trim());
+    if (emptyIdx === -1) {
+      Swal.fire({ icon: 'info', title: 'ပြည့်ပြီး', text: `'${code}' — ${line.productName} အတွက် ${line.qty} ခု ပြည့်နေပြီး`, timer: 1500, showConfirmButton: false });
+      return;
+    }
+    setSerialDraftLines((prev) => prev.map((l, li) => li === lineIdx ? { ...l, serials: l.serials.map((s, si) => si === emptyIdx ? code : s) } : l));
+  };
+
+  const removeSerialFromLine = (lineIdx: number, slotIdx: number) => {
+    setSerialDraftLines((prev) => prev.map((l, li) => li === lineIdx ? { ...l, serials: l.serials.map((s, si) => si === slotIdx ? '' : s) } : l));
+  };
+
+  const submitEntry = (lineIdx: number) => {
+    appendSerialToLine(lineIdx, serialEntry[lineIdx] ?? '');
+    setSerialEntry((prev) => ({ ...prev, [lineIdx]: '' }));
+  };
+
+  const handleSerialScanDetected = (code: string) => {
+    if (serialCameraLine == null) return;
+    appendSerialToLine(serialCameraLine, code);
+  };
+
   const handleCancelPurchase = async (p: PurchaseDTO) => {
     if (rowActionBusy) return;
     const isDraft = (p.status || '').toUpperCase() === 'DRAFT';
-    const result = await Swal.fire({
-      icon: 'warning',
-      title: isDraft ? 'မူကြမ်း ပယ်ဖျက်မည်လား?' : 'ဘောင်ချာ ပယ်ဖျက်မည်လား?',
-      html: isDraft
-        ? `<b>${p.purchaseCode || `#${p.id}`}</b> ကို အပြီးအပိုင် ဖျက်မည်။`
-        : `<b>${p.purchaseCode || `#${p.id}`}</b> — Stock ပြန်နုတ်၊ Journal ပြန်ပြင်မည်။<br/><span style="font-size:12px;color:#ef4444">Return ရှိပြီးသော voucher များကို ပယ်ဖျက်မရပါ။</span>`,
-      showCancelButton: true,
-      confirmButtonText: 'ပယ်ဖျက်',
-      cancelButtonText: 'မလုပ်တော့',
-      confirmButtonColor: '#dc2626'
-    });
-    if (!result.isConfirmed) return;
+    if (isDraft) {
+      const result = await Swal.fire({
+        icon: 'warning',
+        title: 'မူကြမ်း ပယ်ဖျက်မည်လား?',
+        html: `<b>${p.purchaseCode || `#${p.id}`}</b> ကို ပယ်ဖျက်ထားကြောင်း မှတ်တမ်းတင်မည်။`,
+        showCancelButton: true,
+        confirmButtonText: 'ပယ်ဖျက်',
+        cancelButtonText: 'မလုပ်တော့',
+        confirmButtonColor: '#dc2626',
+        input: 'textarea',
+        inputLabel: 'ပယ်ဖျက်ရသည့်အကြောင်းရင်း',
+        inputPlaceholder: 'အကြောင်းရင်းကို မဖြစ်မနေ ရေးပါ',
+        inputAttributes: { maxlength: '1000' },
+        inputValidator: (value) => !value?.trim() ? 'ပယ်ဖျက်ရသည့်အကြောင်းရင်း ထည့်ပါ' : undefined
+      });
+      if (!result.isConfirmed) return;
+      setRowActionBusy(true);
+      try {
+        await purchaseApiService.cancel(p.id!, String(result.value).trim());
+        Swal.fire({ icon: 'success', title: 'မူကြမ်း ဖျက်ပြီး', timer: 1500, showConfirmButton: false });
+        refreshLists();
+        if (viewPurchase?.id === p.id) closeView();
+      } catch (error: any) {
+        Swal.fire({ icon: 'error', title: 'Cannot cancel', text: error.message || 'Failed to cancel purchase' });
+      } finally {
+        setRowActionBusy(false);
+      }
+      return;
+    }
+
+    setCancelTarget(p);
+    setCancelReason('');
+    setCancelRefundMethodId(0);
+  };
+
+  const closeCancelModal = () => {
+    if (rowActionBusy) return;
+    setCancelTarget(null);
+    setCancelReason('');
+    setCancelRefundMethodId(0);
+  };
+
+  const submitCancelPurchase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancelTarget?.id || rowActionBusy) return;
+    const reason = cancelReason.trim();
+    if (!reason) {
+      Swal.fire('စစ်ဆေးရန်', 'ပယ်ဖျက်ရသည့်အကြောင်းရင်း ထည့်ပါ', 'warning');
+      return;
+    }
+    const paid = Number(cancelTarget.paidAmount) || 0;
+    if (paid > 0 && cancelRefundMethodId <= 0) {
+      Swal.fire('စစ်ဆေးရန်', 'ငွေပြန်ဝင်မည့် payment method ရွေးပါ', 'warning');
+      return;
+    }
     setRowActionBusy(true);
     try {
-      await purchaseApiService.cancel(p.id!);
-      Swal.fire({ icon: 'success', title: isDraft ? 'မူကြမ်း ဖျက်ပြီး' : 'ပယ်ဖျက်ပြီး', timer: 1500, showConfirmButton: false });
+      await purchaseApiService.cancel(cancelTarget.id, reason, paid > 0 ? cancelRefundMethodId : undefined);
+      setCancelTarget(null);
+      setCancelReason('');
+      setCancelRefundMethodId(0);
+      Swal.fire({ icon: 'success', title: 'ပယ်ဖျက်ပြီး', timer: 1500, showConfirmButton: false });
       refreshLists();
-      if (viewPurchase?.id === p.id) closeView();
+      if (viewPurchase?.id === cancelTarget.id) closeView();
     } catch (error: any) {
       Swal.fire({ icon: 'error', title: 'Cannot cancel', text: error.message || 'Failed to cancel purchase' });
     } finally {
@@ -794,6 +1229,104 @@ const PurchaseManagement: React.FC = () => {
     }
   };
 
+  const applyImportPreview=()=>{
+    if(!importPreview)return;
+    const valid=importPreview.rows.filter(r=>r.valid&&r.productId&&r.qty&&r.unitCost);
+    if(valid.length===0){Swal.fire({icon:'error',title:'No valid rows',text:'Check the spreadsheet columns.'});return}
+    setDetails(valid.map(r=>({productId:r.productId!,qty:r.qty!,unitCost:Number(r.unitCost),subtotal:Number(r.subtotal)||r.qty!*Number(r.unitCost),warrantyMonths:0,itemWarranties:Array.from({length:r.qty!},()=>0),serialNumbers:Array.from({length:r.qty!},()=>''),serialConditions:Array.from({length:r.qty!},()=>''),serialPhotos:Array.from({length:r.qty!},()=>''),productSearch:`${r.productName||r.productCode} (${r.productCode})`,assignSerials:false,batchNumber:r.batchNumber||'',expiryDate:r.expiryDate||''})));
+    setImportPreview(null);
+    Swal.fire({icon:'success',title:`${valid.length} rows imported`,text:valid.some(r=>r.serialRequired)?'Serial products require serial numbers before confirmation.':'Review and save the voucher.',timer:2200,showConfirmButton:false});
+  };
+  const handlePurchaseImport=async(file:File|null)=>{
+    if(!file)return;
+    if(file.size>5*1024*1024){Swal.fire({icon:'warning',title:'File ကြီးလွန်းသည်',text:'Excel import အတွက် 5MB အောက် ဖိုင်သာ ရွေးပါ။'});return}
+    setPurchaseImporting(true);
+    try{
+      setImportPreview(await purchaseApiService.previewImport(file));
+    }catch(e:any){Swal.fire('Import failed',e.message||'Unable to read spreadsheet','error')}finally{setPurchaseImporting(false);if(purchaseImportRef.current)purchaseImportRef.current.value=''}
+  };
+
+  const loadSupplierPayables = async (supplierId: number) => {
+    setSupplierPaymentSupplierId(supplierId);
+    setSupplierAllocations({});
+    setSupplierPayableSearch('');
+    setSupplierCreditTargetId(0); setSupplierCreditAmount(0);
+    if (supplierId > 0) {
+      setSupplierPaymentHistoryLoading(true);
+      try {
+        const [payables, credit, history] = await Promise.all([
+          supplierPaymentApiService.payables(supplierId),
+          supplierPaymentApiService.creditSummary(supplierId),
+          supplierPaymentApiService.history(supplierId)
+        ]);
+        setSupplierPayables(payables);
+        setSupplierCreditSummary(credit);
+        setSupplierPaymentHistory(history);
+      } finally {
+        setSupplierPaymentHistoryLoading(false);
+      }
+    } else {
+      setSupplierPayables([]);
+      setSupplierCreditSummary({ advanceBalance: 0, returnCreditBalance: 0, availableCredit: 0 });
+      setSupplierPaymentHistory([]);
+    }
+  };
+
+  const saveSupplierPayment = async () => {
+    if (supplierPaymentSaving || supplierPaymentSupplierId <= 0 || supplierPaymentMethodId <= 0 || supplierPaymentAmount <= 0) return;
+    const manualAllocations = Object.entries(supplierAllocations)
+      .map(([purchaseId, amount]) => ({ purchaseId: Number(purchaseId), amount: Number(amount) || 0 }))
+      .filter((item) => item.amount > 0);
+    if (supplierPaymentManual && manualAllocations.reduce((sum, item) => sum + item.amount, 0) > supplierPaymentAmount) {
+      Swal.fire({ icon: 'warning', title: 'Allocation exceeds payment' }); return;
+    }
+    setSupplierPaymentSaving(true);
+    try {
+      const result = await supplierPaymentApiService.create({
+        supplierId: supplierPaymentSupplierId,
+        staffId: Number(currentUser.staffId) || selectedStaffId,
+        paymentMethodId: supplierPaymentMethodId,
+        amount: supplierPaymentAmount,
+        transactionNo: supplierPaymentTxn.trim() || undefined,
+        remark: supplierPaymentRemark.trim() || undefined,
+        allocations: supplierPaymentManual ? manualAllocations : undefined
+      });
+      const allocationLines = (result.allocations || [])
+        .map((a) => `${a.purchaseCode}: ${money(a.amount)}`)
+        .join('<br/>');
+      Swal.fire({
+        icon: 'success',
+        title: 'Supplier payment saved',
+        html: `<b>${result.paymentNo}</b><br/>Allocated: ${money(result.allocatedAmount)}<br/>Advance: ${money(result.advanceAmount)}${allocationLines ? `<br/><br/><b>Voucher allocations</b><br/>${allocationLines}` : ''}`
+      });
+      setSupplierPaymentAmount(0); setSupplierPaymentTxn(''); setSupplierPaymentRemark('');
+      setSupplierAllocations({});
+      await loadSupplierPayables(supplierPaymentSupplierId);
+      refreshLists(); await fetchMasterData();
+    } catch (e: any) {
+      Swal.fire({ icon: 'error', title: 'Supplier payment failed', text: e.message || 'Unable to save payment' });
+    } finally { setSupplierPaymentSaving(false); }
+  };
+
+  const applySupplierCredit = async () => {
+    if (supplierPaymentSaving || supplierPaymentSupplierId <= 0 || supplierCreditTargetId <= 0 || supplierCreditAmount <= 0) return;
+    setSupplierPaymentSaving(true);
+    try {
+      const result = await supplierPaymentApiService.applyCredit({
+        supplierId: supplierPaymentSupplierId, purchaseId: supplierCreditTargetId,
+        staffId: Number(currentUser.staffId) || selectedStaffId, amount: supplierCreditAmount,
+        reason: supplierCreditReason.trim() || undefined
+      });
+      Swal.fire({ icon: 'success', title: 'Supplier credit applied',
+        html: `<b>${result.applicationNo}</b><br/>Applied: ${money(result.amount)}<br/>Remaining due: ${money(result.remainingDue)}` });
+      await loadSupplierPayables(supplierPaymentSupplierId);
+      refreshLists(); await fetchMasterData();
+      setSupplierCreditReason('');
+    } catch (e: any) {
+      Swal.fire({ icon: 'error', title: 'Credit application failed', text: e.message || 'Unable to apply credit' });
+    } finally { setSupplierPaymentSaving(false); }
+  };
+
   const openView = useCallback(async (id: number) => {
     setRelatedReturnsLoading(true);
     setRelatedReturns([]);
@@ -802,15 +1335,17 @@ const PurchaseManagement: React.FC = () => {
     try {
       const purchase = await purchaseApiService.getById(id);
       const productIds = [...new Set((purchase.details || []).map((detail) => detail.productId))];
-      const [purchaseReturns, payments, stockHistories] = await Promise.all([
+      const [purchaseReturns, payments, stockHistories, timeline] = await Promise.all([
         purchaseReturnApiService.getByPurchaseId(id),
         accountingApiService.getTransactionsByRef(id, 'Purchase'),
-        Promise.all(productIds.map((productId) => productService.getStockHistory(productId, { size: 100 })))
+        Promise.all(productIds.map((productId) => productService.getStockHistory(productId, { size: 100 }))),
+        purchaseApiService.getTimeline(id).catch(() => [])
       ]);
       setViewPurchase(purchase);
       setRelatedReturns(purchaseReturns || []);
       setPurchaseHistoryPayments(payments || purchase.payments || []);
       setPurchaseStockMovements(stockHistories.flatMap((history) => history.movements || []).filter((movement) => movement.referenceId === id));
+      setPurchaseTimeline(timeline);
     } catch (e) {
       Swal.fire('Error', 'Failed to load purchase', 'error');
     } finally {
@@ -818,11 +1353,56 @@ const PurchaseManagement: React.FC = () => {
     }
   }, []);
 
+  const copyPurchaseToNewVoucher = async (id: number) => {
+    try {
+      const source = await purchaseApiService.getById(id);
+      resetFormFields();
+      setSelectedSupplierId(source.supplierId);
+      setSelectedStaffId(source.staffId);
+      setPurchaseDate(dateInput(new Date()));
+      setPaymentTermDays(Math.max(0, Number(source.paymentTermDays) || 30));
+      setDueDate(addDaysInput(dateInput(new Date()), Math.max(0, Number(source.paymentTermDays) || 30)));
+      setDiscountAmount(Number(source.discountAmount) || 0);
+      setTaxAmount(Number(source.taxAmount) || 0);
+      setTaxMode(source.taxMode || 'EXCLUSIVE');
+      setTaxRate(Number(source.taxRate) || 0);
+      setWithholdingTaxAmount(Number(source.withholdingTaxAmount) || 0);
+      setOtherCharges(Number(source.otherCharges) || 0);
+      setLandedCostAllocationMethod(source.landedCostAllocationMethod || 'VALUE');
+      setWarehouseName(source.warehouseName || '');
+      setCurrencyCode(source.currencyCode || 'MMK');
+      setExchangeRate(Number(source.exchangeRate) || 1);
+      setRemark(source.remark ? `Copied from ${source.purchaseCode || source.id}: ${source.remark}` : `Copied from ${source.purchaseCode || source.id}`);
+      setDetails((source.details || []).map((d) => ({
+        productId: d.productId,
+        qty: d.qty,
+        unitCost: Number(d.unitCost) || 0,
+        subtotal: d.qty * (Number(d.unitCost) || 0),
+        allocatedLandedCost: Number(d.allocatedLandedCost) || 0,
+        warrantyMonths: Number(d.warrantyMonths) || 0,
+        itemWarranties: d.itemWarranties?.length ? [...d.itemWarranties] : Array.from({length:d.qty},()=>Number(d.warrantyMonths)||0),
+        serialNumbers: Array.from({length:d.qty},()=> ''),
+        serialConditions: Array.from({length:d.qty},()=> ''),
+        serialPhotos: Array.from({length:d.qty},()=> ''),
+        productSearch: d.productName || '',
+        assignSerials: false,
+        batchNumber: d.batchNumber || '',
+        expiryDate: d.expiryDate || ''
+      })));
+      setShowNewVoucherForm(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      Swal.fire({icon:'success',title:'Voucher copied',text:'Invoice number, attachment, payment and serials were cleared for safety.',timer:2200,showConfirmButton:false});
+    } catch (e:any) {
+      Swal.fire({icon:'error',title:'Copy failed',text:e.message || 'Unable to load purchase'});
+    }
+  };
+
   const closeView = () => {
     setViewPurchase(null);
     setRelatedReturns([]);
     setPurchaseHistoryPayments([]);
     setPurchaseStockMovements([]);
+    setPurchaseTimeline([]);
     setRelatedReturnsLoading(false);
   };
 
@@ -960,6 +1540,8 @@ const PurchaseManagement: React.FC = () => {
     const lines: string[] = [
       `=== Purchase Voucher ===`,
       `Voucher : ${purchase.purchaseCode || `#${purchase.id}`}`,
+      purchase.poCode ? `PO      : ${purchase.poCode}` : '',
+      purchase.supplierInvoiceNo ? `Inv No  : ${purchase.supplierInvoiceNo}` : '',
       `Supplier: ${purchase.supplierName || '-'}`,
       `Staff   : ${purchase.staffName || '-'}`,
       `Date    : ${purchase.purchaseDate ? new Date(purchase.purchaseDate).toLocaleDateString() : '-'}`,
@@ -971,15 +1553,18 @@ const PurchaseManagement: React.FC = () => {
       if (d.serialNumbers?.filter(s => s).length) {
         lines.push(`   Serials: ${d.serialNumbers.filter(s => s).join(', ')}`);
       }
+      if (d.batchNumber) lines.push(`   Batch: ${d.batchNumber}`);
+      if (d.expiryDate) lines.push(`   Expiry: ${d.expiryDate}`);
     });
     lines.push(`------------------------`);
-    lines.push(`Total : ${fmt(purchase.totalAmount)}`);
-    if ((purchase.discountAmount || 0) > 0) {
-      lines.push(`Disc  : ${fmt(purchase.discountAmount || 0)}`);
-      lines.push(`Net   : ${fmt(purchase.netAmount ?? purchase.totalAmount)}`);
-    }
-    lines.push(`Paid  : ${fmt(purchase.paidAmount)}`);
-    if ((purchase.dueAmount || 0) > 0) lines.push(`Due   : ${fmt(purchase.dueAmount)}`);
+    lines.push(`Subtotal : ${fmt(purchase.totalAmount)}`);
+    if ((purchase.discountAmount || 0) > 0) lines.push(`Discount : - ${fmt(purchase.discountAmount || 0)}`);
+    if ((purchase.taxAmount || 0) > 0) lines.push(`Tax / VAT: ${fmt(purchase.taxAmount || 0)}`);
+    if ((purchase.otherCharges || 0) > 0) lines.push(`Other    : ${fmt(purchase.otherCharges || 0)}`);
+    lines.push(`Net      : ${fmt(purchase.netAmount ?? Math.max(0, (purchase.totalAmount || 0) - (purchase.discountAmount || 0) + (purchase.taxAmount || 0) + (purchase.otherCharges || 0)))}`);
+    lines.push(`Paid     : ${fmt(purchase.paidAmount)}`);
+    const dueText = Math.max(0, Number(purchase.dueAmount ?? ((purchase.netAmount || purchase.totalAmount || 0) - (purchase.paidAmount || 0))));
+    if (dueText > 0) lines.push(`Due      : ${fmt(dueText)}`);
     if (purchase.remark) lines.push(`Remark: ${purchase.remark}`);
     return lines.join('\n');
   };
@@ -1025,6 +1610,8 @@ const PurchaseManagement: React.FC = () => {
     const supplierDays = Math.max(0, Number(supplier.defaultCreditDays ?? 30));
     setPaymentTermDays(supplierDays);
     setDueDate(addDaysInput(purchaseDate, supplierDays));
+    setCreditLimitOverride(false);
+    setCreditOverrideReason('');
     setSupplierOpen(false);
   };
 
@@ -1177,8 +1764,16 @@ const PurchaseManagement: React.FC = () => {
   const isDraftPurchase = (p: PurchaseDTO) => getStatusKey(p) === 'draft';
   const canDeletePurchases = (currentUser.permissions || []).includes('CAN_ACCESS_PURCHASE_DELETE');
   const canUpdatePurchases = (currentUser.permissions || []).includes('CAN_ACCESS_PURCHASE_UPDATE');
+  const canManageBudgets = (currentUser.permissions || []).includes('CAN_ACCESS_PURCHASE_BUDGET');
+  const budgetCategories=useMemo(()=>Array.from(new Map(products.filter(p=>p.categoryId).map(p=>[p.categoryId!,{id:p.categoryId!,name:p.categoryName||`Category ${p.categoryId}`}])).values()),[products]);
+  const saveBudget=async()=>{if(!budgetForm.name.trim()||!budgetForm.dateFrom||!budgetForm.dateTo||budgetForm.limitAmount<=0){Swal.fire('Required','Name, valid dates and limit amount are required.','warning');return}setBudgetSaving(true);try{await purchaseBudgetApiService.save(budgetForm);await fetchBudgets();setBudgetForm({name:'Monthly Purchase Budget',dateFrom:getThisMonthRange().from,dateTo:getThisMonthRange().to,limitAmount:0,enforcement:'BLOCK',active:true});Swal.fire({icon:'success',title:'Purchase budget saved',timer:1400,showConfirmButton:false})}catch(e:any){Swal.fire('Budget failed',e.message||'Unable to save budget','error')}finally{setBudgetSaving(false)}};
+  const toggleBudget=async(b:PurchaseBudgetDTO)=>{if(!b.id)return;try{await purchaseBudgetApiService.active(b.id,!b.active);await fetchBudgets()}catch(e:any){Swal.fire('Update failed',e.message||'Unable to update budget','error')}};
+  const editBudget=(b:PurchaseBudgetDTO)=>setBudgetForm({...b});
+  const deleteBudget=async(b:PurchaseBudgetDTO)=>{if(!b.id)return;const ok=await Swal.fire({icon:'warning',title:'Delete budget?',text:b.name,showCancelButton:true,confirmButtonText:'Delete'});if(!ok.isConfirmed)return;try{await purchaseBudgetApiService.remove(b.id);await fetchBudgets()}catch(e:any){Swal.fire('Delete failed',e.message||'Unable to delete budget','error')}};
+  const openWarehousePanel=async()=>{setWarehousePanelOpen(v=>!v);if(!warehousePanelOpen){try{setWarehouseBalances(await stockLotApiService.warehouseBalances())}catch{setWarehouseBalances([])}}};
+  const openAnalyticsPanel=async()=>{setAnalyticsPanelOpen(v=>!v);if(!analyticsPanelOpen){try{setPurchaseAnalytics(await purchaseApiService.getAnalytics(dateFrom,dateTo))}catch{setPurchaseAnalytics(null)}}};
 
-  const filteredPurchases = purchases.filter((p) => {
+  const filteredPurchases = (listTab === 'overdue' ? overduePurchases : purchases).filter((p) => {
     const statusKey = getStatusKey(p);
     return filterStatus === 'All' || statusKey === filterStatus.toLowerCase();
   });
@@ -1230,73 +1825,175 @@ const PurchaseManagement: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-none space-y-6">
+    <div className="w-full max-w-none space-y-3">
       {!showNewVoucherForm ? (
         <>
-          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center">
-            <div className="ml-auto flex w-full flex-shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center 2xl:order-2 2xl:ml-0">
-              <button onClick={handleExportExcel} disabled={exportingExcel} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">
-                {exportingExcel ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
-                Excel
+
+          {budgetPanelOpen&&<section className="rounded-xl border border-violet-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black text-slate-800">Purchase Budgets</h3><p className="text-[10px] text-slate-500">Overall or product-category spending control before stock is received.</p></div><button onClick={()=>setBudgetPanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div>
+            {canManageBudgets&&<div className="mb-4 grid gap-2 rounded-xl bg-violet-50 p-3 sm:grid-cols-2 lg:grid-cols-4">
+              <input value={budgetForm.name} onChange={e=>setBudgetForm(v=>({...v,name:e.target.value}))} placeholder="Budget name" className="rounded-lg border border-violet-200 px-2 py-2 text-xs"/>
+              <div className="flex gap-1"><input type="date" value={budgetForm.dateFrom} onChange={e=>setBudgetForm(v=>({...v,dateFrom:e.target.value}))} className="min-w-0 flex-1 rounded-lg border border-violet-200 px-2 text-xs"/><input type="date" value={budgetForm.dateTo} onChange={e=>setBudgetForm(v=>({...v,dateTo:e.target.value}))} className="min-w-0 flex-1 rounded-lg border border-violet-200 px-2 text-xs"/></div>
+              <select value={budgetForm.categoryId||''} onChange={e=>setBudgetForm(v=>({...v,categoryId:e.target.value?Number(e.target.value):undefined}))} className="rounded-lg border border-violet-200 px-2 py-2 text-xs"><option value="">All Categories</option>{budgetCategories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+              <div className="flex gap-1"><input type="number" min="0" value={budgetForm.limitAmount||''} onChange={e=>setBudgetForm(v=>({...v,limitAmount:Math.max(0,Number(e.target.value)||0)}))} placeholder="Limit" className="min-w-0 flex-1 rounded-lg border border-violet-200 px-2 text-xs"/><select value={budgetForm.enforcement} onChange={e=>setBudgetForm(v=>({...v,enforcement:e.target.value as 'WARN'|'BLOCK'}))} className="rounded-lg border border-violet-200 px-1 text-xs"><option value="BLOCK">Block</option><option value="WARN">Warn</option></select><button disabled={budgetSaving} onClick={()=>void saveBudget()} className="rounded-lg bg-violet-600 px-3 text-xs font-bold text-white disabled:opacity-50">Save</button></div>
+            </div>}
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{purchaseBudgets.map(b=><div key={b.id} className={`rounded-lg border p-3 ${b.active?'border-violet-200':'border-slate-200 opacity-60'}`}><div className="flex justify-between gap-2"><div><p className="text-xs font-bold text-slate-800">{b.name}</p><p className="text-[10px] text-slate-500">{b.categoryName} / {b.dateFrom} - {b.dateTo}</p></div>{canManageBudgets&&<div className="flex gap-2"><button onClick={()=>editBudget(b)} className="text-[10px] font-bold text-slate-600">Edit</button><button onClick={()=>void toggleBudget(b)} className="text-[10px] font-bold text-violet-700">{b.active?'Disable':'Enable'}</button><button onClick={()=>void deleteBudget(b)} className="text-[10px] font-bold text-rose-600">Delete</button></div>}</div><div className="mt-2 h-2 overflow-hidden rounded bg-slate-100"><div className={`h-full ${(b.usagePercent||0)>100?'bg-rose-500':'bg-violet-500'}`} style={{width:`${Math.min(100,b.usagePercent||0)}%`}}/></div><div className="mt-1 flex justify-between text-[10px]"><span>Spent {money(b.spentAmount||0)} / {money(b.limitAmount)}</span><b className={(b.usagePercent||0)>100?'text-rose-600':'text-violet-700'}>{b.usagePercent||0}% {b.enforcement}</b></div></div>)}</div>
+            {purchaseBudgets.length===0&&<p className="py-4 text-center text-xs text-slate-400">No purchase budgets configured.</p>}
+          </section>}
+
+          {expiryPanelOpen&&<section className="rounded-xl border border-rose-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-black text-slate-800">Expiry / FEFO Stock Lots</h3><p className="text-[10px] text-slate-500">Sales consume tracked lots by earliest expiry date first.</p></div><div className="flex items-center gap-2"><select value={expiryDays} onChange={e=>setExpiryDays(Number(e.target.value))} className="rounded-lg border border-rose-200 px-2 py-1 text-xs"><option value={30}>30 days</option><option value={60}>60 days</option><option value={90}>90 days</option><option value={180}>180 days</option></select><button onClick={()=>setExpiryPanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div></div>
+            <div className="overflow-auto rounded-lg border border-slate-100"><table className="w-full min-w-[760px] text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Product / Batch</th><th className="px-3 py-2 text-left">Purchase</th><th className="px-3 py-2 text-left">Warehouse</th><th className="px-3 py-2 text-right">Remaining</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-center">Alert</th></tr></thead><tbody className="divide-y">{expiringLots.map(l=><tr key={l.id}><td className="px-3 py-2"><b>{l.productName}</b><span className="block text-[10px] text-slate-400">{l.productCode} / {l.batchNumber||`Lot #${l.id}`}</span></td><td className="px-3 py-2 font-mono">{l.purchaseCode}</td><td className="px-3 py-2">{l.warehouseName||'Main'}</td><td className="px-3 py-2 text-right font-bold">{l.remainingQty} / {l.receivedQty}</td><td className="px-3 py-2">{l.expiryDate}<span className="block text-[10px] text-slate-400">{l.daysToExpiry<0?`${Math.abs(l.daysToExpiry)} days overdue`:`${l.daysToExpiry} days left`}</span></td><td className="px-3 py-2 text-center"><span className={`rounded px-2 py-1 text-[10px] font-bold ${l.alertLevel==='EXPIRED'?'bg-slate-200 text-slate-700':l.alertLevel==='CRITICAL'?'bg-rose-100 text-rose-700':l.alertLevel==='WARNING'?'bg-amber-100 text-amber-700':'bg-blue-50 text-blue-700'}`}>{l.alertLevel}</span></td></tr>)}</tbody></table>{expiringLots.length===0&&<p className="p-5 text-center text-xs text-slate-400">No tracked lots expire in this period.</p>}</div>
+          </section>}
+
+          {warehousePanelOpen&&<section className="rounded-xl border border-teal-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black text-slate-800">Warehouse stock balance</h3><p className="text-[10px] text-slate-500">Remaining tracked lot quantity grouped by warehouse name.</p></div><button onClick={()=>setWarehousePanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div>
+            <div className="overflow-auto rounded-lg border border-slate-100"><table className="w-full min-w-[640px] text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Warehouse</th><th className="px-3 py-2 text-left">Product</th><th className="px-3 py-2 text-right">Remaining</th><th className="px-3 py-2 text-right">Received</th><th className="px-3 py-2 text-right">Lots</th></tr></thead><tbody className="divide-y">{warehouseBalances.map((row,i)=><tr key={`${row.warehouseName}-${row.productId}-${i}`}><td className="px-3 py-2 font-semibold">{row.warehouseName}</td><td className="px-3 py-2"><b>{row.productName}</b><span className="block text-[10px] text-slate-400">{row.productCode}</span></td><td className="px-3 py-2 text-right font-bold">{row.remainingQty}</td><td className="px-3 py-2 text-right">{row.receivedQty}</td><td className="px-3 py-2 text-right">{row.lotCount}</td></tr>)}</tbody></table>{warehouseBalances.length===0&&<p className="p-5 text-center text-xs text-slate-400">No warehouse lot balances yet.</p>}</div>
+          </section>}
+
+          {analyticsPanelOpen&&purchaseAnalytics&&<section className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black text-slate-800">Procurement analytics</h3><p className="text-[10px] text-slate-500">{dateFrom || 'From beginning'} - {dateTo || 'Until today'}</p></div><button onClick={()=>setAnalyticsPanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div>
+            <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8 text-xs">
+              {[['Spent',purchaseAnalytics.totalSpent],['Paid',purchaseAnalytics.paidAmount],['Due',purchaseAnalytics.dueAmount],['Tax',purchaseAnalytics.taxAmount],['WHT',purchaseAnalytics.withholdingTaxAmount],['Landed',purchaseAnalytics.landedCostAmount],['Returns',purchaseAnalytics.returnAmount],['FX amount',purchaseAnalytics.foreignAmount]].map(([label,value])=><div key={String(label)} className="rounded-lg border border-slate-100 bg-slate-50 p-2"><p className="text-[10px] text-slate-400">{label}</p><b>{money(Number(value))}</b></div>)}
+            </div>
+            <div className="grid gap-3 md:grid-cols-3 text-xs">
+              {[{title:'By category',rows:purchaseAnalytics.byCategory},{title:'By supplier',rows:purchaseAnalytics.bySupplier},{title:'By currency',rows:purchaseAnalytics.byCurrency}].map(block=><div key={block.title} className="overflow-auto rounded-lg border border-slate-100"><p className="bg-slate-50 px-3 py-2 font-bold">{block.title}</p><table className="w-full"><tbody>{block.rows.map(row=><tr key={row.name} className="border-t"><td className="px-3 py-1.5">{row.name}</td><td className="px-3 py-1.5 text-right text-slate-400">{row.count}</td><td className="px-3 py-1.5 text-right font-bold">{money(row.amount)}</td></tr>)}{block.rows.length===0&&<tr><td className="px-3 py-4 text-center text-slate-400">No data</td></tr>}</tbody></table></div>)}
+            </div>
+            <p className="mt-2 text-[10px] text-slate-400">GRN {purchaseAnalytics.grnCount} · Variance {purchaseAnalytics.grnVarianceCount} · FX vouchers {purchaseAnalytics.fxVoucherCount}</p>
+          </section>}
+
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
+          <aside className="order-2 flex w-full shrink-0 flex-col gap-3 xl:sticky xl:top-2 xl:w-1/5 xl:min-w-[260px] xl:max-w-[320px] xl:max-h-[calc(100vh-5.5rem)] xl:overflow-y-auto custom-scrollbar">
+            <button onClick={() => setShowNewVoucherForm(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">
+              <Plus size={16} />
+              ဝယ်ယူမှုအသစ်
+            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button onClick={handleExportExcel} disabled={exportingExcel} className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">
+                {exportingExcel ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />} Excel
               </button>
-              <button onClick={() => void openReorderModal()} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-700 hover:bg-amber-50">
-                <ClipboardList size={14} />
-                Reorder
+              <button onClick={() => void openReorderModal()} className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50">
+                <ClipboardList size={13} /> Reorder
               </button>
-              <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50">
-                <RefreshCw size={14} className={purchasesLoading ? 'animate-spin' : ''} />
-                ပြန်ဖတ်ရန်
+              <button onClick={() => setSupplierPaymentOpen(true)} className="inline-flex items-center justify-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-50">
+                <CreditCard size={13} /> Payment
               </button>
-              <button onClick={() => setShowNewVoucherForm(true)} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">
-                <Plus size={16} />
-                ဝယ်ယူမှုအသစ်
+              <button onClick={()=>setBudgetPanelOpen(v=>!v)} className="inline-flex items-center justify-center gap-1 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-50"><DollarSign size={13}/> Budgets</button>
+              <button onClick={()=>void openWarehousePanel()} className="inline-flex items-center justify-center gap-1 rounded-lg border border-teal-200 bg-white px-2 py-1.5 text-[11px] font-bold text-teal-700 hover:bg-teal-50"><Warehouse size={13}/> Warehouse</button>
+              <button onClick={()=>void openAnalyticsPanel()} className="inline-flex items-center justify-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50"><BarChart3 size={13}/> Analytics</button>
+              <button onClick={()=>setExpiryPanelOpen(v=>!v)} className="relative inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-50"><AlertTriangle size={13}/> Expiry{expiringLots.length>0&&<span className="ml-0.5 rounded-full bg-rose-600 px-1 text-[9px] text-white">{expiringLots.length}</span>}</button>
+              <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50">
+                <RefreshCw size={13} className={purchasesLoading ? 'animate-spin' : ''} /> ပြန်ဖတ်
               </button>
             </div>
-          {/* Purchase Dashboard - Stat cards */}
-          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:order-1">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဘောင်ချာစုစုပေါင်း</p>
-                <p className="text-2xl font-bold text-slate-800">{serverStats.count}</p>
-                <p className="text-[10px] text-slate-400 mt-1">ဤစာမျက်နှာ: {filteredPurchases.length}</p>
-              </div>
-              <div className="w-11 h-11 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <FileText size={20} className="text-indigo-600" />
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ဝယ်ယူမှု စုစုပေါင်း</p>
-                <p className="text-2xl font-bold text-slate-800">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(serverStats.totalAmount)}</p>
-              </div>
-              <div className="w-11 h-11 rounded-lg bg-slate-100 flex items-center justify-center">
-                <DollarSign size={20} className="text-slate-600" />
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ပေးချေပြီး</p>
-                <p className="text-2xl font-bold text-emerald-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(serverStats.paidAmount)}</p>
-              </div>
-              <div className="w-11 h-11 rounded-lg bg-emerald-50 flex items-center justify-center">
-                <CheckCircle size={20} className="text-emerald-600" />
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">အနှစ်ချုပ်</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500">ဘောင်ချာ</span>
+                  <b className="text-sm text-slate-800">{serverStats.count}</b>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500">ဝယ်ယူမှု</span>
+                  <b className="text-sm tabular-nums text-slate-800">{money(serverStats.totalAmount)}</b>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500">ပေးချေပြီး</span>
+                  <b className="text-sm tabular-nums text-emerald-700">{money(serverStats.paidAmount)}</b>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500">ပေးရန်ကျန်</span>
+                  <b className="text-sm tabular-nums text-amber-700">{money(serverStats.dueAmount)}</b>
+                </div>
+                <p className="text-[10px] text-slate-400">ဤစာမျက်နှာ: {filteredPurchases.length}</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
+
+          <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ပေးရန်ကျန်</p>
-                <p className="text-2xl font-bold text-amber-700">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(serverStats.dueAmount)}</p>
+                <h2 className="text-xs font-black text-slate-800">Purchase / Paid / Payable</h2>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {dateFrom || 'From beginning'} - {dateTo || 'Until today'}
+                </span>
               </div>
-              <div className="w-11 h-11 rounded-lg bg-amber-50 flex items-center justify-center">
-                <AlertCircle size={20} className="text-amber-600" />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <select
+                  value={chartPeriod}
+                  onChange={(e) => setChartPeriod(e.target.value as 'month' | 'year' | 'all')}
+                  className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium focus:border-indigo-400 focus:outline-none"
+                >
+                  <option value="month">This Month</option>
+                  <option value="year">This Year</option>
+                  <option value="all">All Time</option>
+                </select>
+                <button
+                  onClick={() => setChartView('trend')}
+                  className={`px-2.5 py-1 rounded text-[10px] font-bold ${chartView === 'trend' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  Trend
+                </button>
+                <button
+                  onClick={() => setChartView('suppliers')}
+                  className={`px-2.5 py-1 rounded text-[10px] font-bold ${chartView === 'suppliers' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  Top Suppliers
+                </button>
               </div>
             </div>
-          </div>
-          </div>
+            {trendLoading ? (
+              <div className="flex h-28 items-center justify-center text-xs text-slate-400">
+                <Loader2 size={14} className="mr-2 animate-spin" /> Loading...
+              </div>
+            ) : purchaseTrend.length === 0 ? (
+              <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-[11px] text-slate-400">
+                No data
+              </div>
+            ) : (
+              <div className="h-36 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  {chartView === 'trend' ? (
+                    <ComposedChart data={purchaseTrend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 9 }} minTickGap={28} hide={false} />
+                      <YAxis tick={{ fontSize: 9 }} width={32} tickFormatter={(value) => {
+                        const amount = Number(value) || 0;
+                        if (Math.abs(amount) >= 1000000) return `${(amount / 1000000).toFixed(1)}M`;
+                        if (Math.abs(amount) >= 1000) return `${(amount / 1000).toFixed(0)}K`;
+                        return String(amount);
+                      }} />
+                      <Tooltip formatter={(value) => money(Number(value))}
+                        labelFormatter={(label) => `Date: ${label}`}
+                        contentStyle={{ borderRadius: 10, borderColor: '#e2e8f0', fontSize: 12 }} />
+                      <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 9 }} />
+                      <Bar dataKey="purchaseAmount" name="Purchase" fill="#4f46e5" radius={[4, 4, 0, 0]} maxBarSize={18} />
+                      <Line type="monotone" dataKey="paidAmount" name="Paid" stroke="#059669" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      <Line type="monotone" dataKey="payableAmount" name="Payable" stroke="#e11d48" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    </ComposedChart>
+                  ) : (
+                    <BarChart data={topSuppliers.slice(0, 8).reverse()} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                      <XAxis type="number" tick={{ fontSize: 9 }} width={32} tickFormatter={(value) => {
+                        const amount = Number(value) || 0;
+                        if (Math.abs(amount) >= 1000000) return `${(amount / 1000000).toFixed(1)}M`;
+                        if (Math.abs(amount) >= 1000) return `${(amount / 1000).toFixed(0)}K`;
+                        return String(amount);
+                      }} />
+                      <YAxis type="category" dataKey="supplierName" tick={{ fontSize: 9 }} width={100} interval={0} />
+                      <Tooltip formatter={(value) => money(Number(value))}
+                        labelFormatter={(label) => `Supplier: ${label}`}
+                        contentStyle={{ borderRadius: 10, borderColor: '#e2e8f0', fontSize: 12 }} />
+                      <Bar dataKey="totalAmount" name="Total Amount" fill="#059669" radius={[0, 4, 4, 0]} maxBarSize={18} />
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+            )}
+          </section>
 
           {/* Filters */}
           <div className="space-y-3">
-            <div className="grid grid-cols-1 xl:grid-cols-[1fr_0.85fr_0.85fr] gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Quick Search</label>
                 <div className="relative mt-1.5">
@@ -1314,30 +2011,6 @@ const PurchaseManagement: React.FC = () => {
                     </span>
                   )}
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-teal-100 bg-teal-50 p-3">
-                <label className="text-[11px] font-bold uppercase tracking-wide text-teal-700">ပစ္စည်း Stock Search</label>
-                <div className="relative mt-1.5">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-teal-400" />
-                  <input
-                    list="purchase-page-product-options"
-                    type="text"
-                    value={purchaseProductSearch}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setPurchaseProductSearch(value);
-                      const product = products.find((item) => getProductLabel(item).toLowerCase() === value.trim().toLowerCase());
-                      if (product) void openProductHistory(product);
-                    }}
-                    placeholder="ပစ္စည်းအမည် / Code ရှာပါ..."
-                    className="h-10 w-full rounded-lg border border-teal-200 bg-white pl-9 pr-3 text-sm font-medium text-slate-700 outline-none focus:border-teal-500"
-                  />
-                  <datalist id="purchase-page-product-options">
-                    {products.map((product) => <option key={product.id} value={getProductLabel(product)} />)}
-                  </datalist>
-                </div>
-                <p className="mt-1.5 text-[10px] font-semibold text-teal-600">ရွေးပြီးလျှင် Stock History အလိုအလျောက်ဖွင့်မည်</p>
               </div>
 
               <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
@@ -1387,7 +2060,7 @@ const PurchaseManagement: React.FC = () => {
 
             {showFilterPanel && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(190px,0.6fr)_auto] xl:items-end">
+                <div className="grid gap-3">
                   <div className="rounded-lg border border-slate-200 bg-white p-2">
                     <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">လက်ခံရက်စွဲ</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1414,7 +2087,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div className="rounded-lg border border-slate-200 bg-white p-2">
                     <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">ကာလရွေးရန်</p>
-                    <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-1">
                       {[
                         { key: 'TODAY', label: 'Today' },
                         { key: 'WEEK', label: 'This Week' },
@@ -1456,7 +2129,7 @@ const PurchaseManagement: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 lg:flex-row lg:items-center">
+                <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2">
                   <span className="px-1 text-[10px] font-black uppercase tracking-wide text-slate-400">အမြန်ရွေးရန်</span>
                   <div className="flex flex-1 flex-wrap gap-1.5">
                     {([
@@ -1482,11 +2155,19 @@ const PurchaseManagement: React.FC = () => {
               </div>
             )}
           </div>
+          </aside>
+          <div className="order-1 min-w-0 w-full xl:flex-1">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <List size={18} className="text-indigo-500 shrink-0" />
                 <span className="font-semibold text-slate-800">ဝယ်ယူမှု ဘောင်ချာစာရင်း</span>
+                <div className="flex rounded-lg border border-slate-200 overflow-hidden text-[11px] font-bold">
+                  <button type="button" onClick={() => setListTab('all')} className={`px-2.5 py-1 ${listTab === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}>အားလုံး</button>
+                  <button type="button" onClick={() => setListTab('overdue')} className={`px-2.5 py-1 ${listTab === 'overdue' ? 'bg-rose-600 text-white' : 'bg-white text-slate-600'}`}>
+                    ကြွေးကျန် {overduePurchases.length > 0 ? `(${overduePurchases.length})` : ''}
+                  </button>
+                </div>
                 {!purchasesLoading && purchaseTotalElements > 0 && (
                   <span className="text-sm text-slate-500">
                     {purchasePage * purchasePageSize + 1} မှ {Math.min((purchasePage + 1) * purchasePageSize, purchaseTotalElements)} / {purchaseTotalElements.toLocaleString()} ခု ပြနေသည် — ဤစာမျက်နှာတွင် {paidCount} ခု ငွေချေပြီး
@@ -1497,7 +2178,7 @@ const PurchaseManagement: React.FC = () => {
                 နောက်ဆုံးဖတ်ချိန် {new Date().toLocaleDateString()}
               </div>
             </div>
-            <div className="overflow-auto max-h-[58vh] custom-scrollbar">
+            <div className="overflow-auto max-h-[70vh] xl:max-h-[calc(100vh-11rem)] custom-scrollbar">
               <BulkSelectionToolbar
                 visibleCount={visiblePurchaseRows.length}
                 selectedCount={bulk.selectedCount}
@@ -1514,31 +2195,33 @@ const PurchaseManagement: React.FC = () => {
               {purchasesLoading ? (
                 <div className="p-8 text-center text-slate-400">ဖတ်နေသည်...</div>
               ) : (
-                <table className="w-full min-w-[1180px] table-fixed border-collapse text-sm">
+                <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
                   <colgroup>
-                    <col className="w-[54px]" />
-                    <col className="w-[132px]" />
-                    <col className="w-[190px]" />
+                    <col className="w-10" />
+                    <col className="w-11" />
+                    <col className="w-[150px]" />
                     <col className="w-[160px]" />
-                    <col className="w-[132px]" />
-                    <col className="w-[132px]" />
-                    <col className="w-[124px]" />
-                    <col className="w-[126px]" />
-                    <col className="w-[230px]" />
-                    <col className="w-[230px]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[108px]" />
+                    <col className="w-[118px]" />
+                    <col className="w-[118px]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[210px]" />
                   </colgroup>
                   <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
                     <tr className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                                            <th className="px-3 py-3 text-center">Select</th>
-                      <th className="px-3 py-3 text-left">#</th>
+                      <th className="px-1.5 py-3 text-center" title="Select">
+                        <span className="sr-only">Select</span>
+                      </th>
+                      <th className="px-1.5 py-3 text-center">#</th>
                       <th className="px-3 py-3 text-left">ဘောင်ချာ</th>
                       <th className="px-3 py-3 text-left">ပေးသွင်းသူ</th>
                       <th className="px-3 py-3 text-left">ဝယ်ယူသူ</th>
                       <th className="px-3 py-3 text-left">ရက်စွဲ</th>
                       <th className="px-3 py-3 text-right">စုစုပေါင်း</th>
                       <th className="px-3 py-3 text-right">ပေးရန်ကျန်</th>
-                      <th className="px-3 py-3 text-center">အခြေအနေ</th>
-                      <th className="px-3 py-3 text-right">လုပ်ဆောင်ချက်</th>
+                      <th className="px-2 py-3 text-center">အခြေအနေ</th>
+                      <th className="sticky right-0 z-20 border-l border-slate-200 bg-slate-50 px-3 py-3 text-right">လုပ်ဆောင်ချက်</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1550,10 +2233,16 @@ const PurchaseManagement: React.FC = () => {
                          const isDraftRow = statusKey === 'draft';
                          const isCancelledRow = statusKey === 'cancelled';
                          return (
-                           <tr key={p.id!} className={`h-[58px] hover:bg-slate-50/80 transition-colors ${isCancelledRow ? 'opacity-60' : ''}`}>
-                                                        <td className="px-3 py-3 text-center"><input type="checkbox" checked={bulk.selectedIds.has(p.id as number)} onChange={() => bulk.toggle(p.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select purchase ${p.purchaseCode || p.id}`} /></td>
-                            <td className="px-3 py-3 text-xs font-semibold tabular-nums text-slate-400">{purchasePage * purchasePageSize + index + 1}</td>
-                            <td className="px-3 py-3 font-mono text-xs font-bold text-slate-800"><span className="block truncate">{p.purchaseCode || `#${p.id}`}</span></td>
+                           <tr key={p.id!} className={`group h-[58px] hover:bg-slate-50/80 transition-colors ${isCancelledRow ? 'opacity-60' : ''}`}>
+                            <td className="px-1.5 py-3 text-center">
+                              <input type="checkbox" checked={bulk.selectedIds.has(p.id as number)} onChange={() => bulk.toggle(p.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select purchase ${p.purchaseCode || p.id}`} />
+                            </td>
+                            <td className="px-1.5 py-3 text-center text-xs font-semibold tabular-nums text-slate-400">{purchasePage * purchasePageSize + index + 1}</td>
+                            <td className="px-3 py-3 font-mono text-xs font-bold text-slate-800">
+                              <span className="block truncate">{p.purchaseCode || `#${p.id}`}</span>
+                              {p.poCode && <span className="block truncate text-[10px] font-semibold text-indigo-500">{p.poCode}</span>}
+                              {p.supplierInvoiceNo && <span className="block truncate text-[10px] font-medium text-slate-400">{p.supplierInvoiceNo}</span>}
+                            </td>
                             <td className="px-3 py-3 font-semibold text-slate-700"><span className="block truncate">{p.supplierName || '-'}</span></td>
                             <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{p.staffName || '-'}</span></td>
                             <td className="px-3 py-3 text-xs font-medium text-slate-500"><span className="block truncate">{p.purchaseDate ? new Date(p.purchaseDate).toLocaleDateString() : '-'}</span></td>
@@ -1561,13 +2250,13 @@ const PurchaseManagement: React.FC = () => {
                             <td className={`px-3 py-3 text-right font-bold tabular-nums ${(p.dueAmount || 0) > 0 ? 'text-rose-700' : 'text-slate-300'}`}>
                               {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(p.dueAmount || 0)}
                             </td>
-                            <td className="px-3 py-3 text-center">
-                              <span className={`inline-flex min-w-[92px] justify-center rounded-md px-2.5 py-1 text-[10px] font-bold ${statusStyles[statusKey] || 'bg-slate-100 text-slate-600'}`}>
+                            <td className="px-2 py-3 text-center">
+                              <span className={`inline-flex max-w-full truncate justify-center rounded-md px-2 py-1 text-[10px] font-bold ${statusStyles[statusKey] || 'bg-slate-100 text-slate-600'}`}>
                                 {statusLabel}
                               </span>
                             </td>
-                             <td className="px-3 py-3 text-right">
-                               <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                             <td className="sticky right-0 z-[5] border-l border-slate-100 bg-white px-3 py-3 text-right group-hover:bg-slate-50">
+                               <div className="inline-flex w-full items-center justify-end gap-1.5 whitespace-nowrap">
                                  {isDraftRow && canDeletePurchases && (
                                    <button
                                      onClick={() => handleConfirmDraft(p)}
@@ -1589,27 +2278,33 @@ const PurchaseManagement: React.FC = () => {
                                  )}
                                 <button
                                   onClick={() => openVoucherPreview(p.id!)}
-                                  className="inline-flex h-8 items-center gap-1 rounded-md border border-violet-200 px-2.5 text-xs font-bold text-violet-700 hover:bg-violet-50"
+                                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 text-violet-700 hover:bg-violet-50"
                                   title="Voucher Preview"
+                                  aria-label="Voucher Preview"
                                 >
                                   <Printer size={14} />
                                 </button>
                                 <button
                                   onClick={() => openSendTo(p.id!)}
-                                  className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-200 px-2.5 text-xs font-bold text-sky-700 hover:bg-sky-50"
+                                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-sky-200 text-sky-700 hover:bg-sky-50"
                                   title="Send To"
+                                  aria-label="Send voucher"
                                 >
-                                  <Share2 size={14} /> ပို့မည်
+                                  <Share2 size={14} />
                                 </button>
-                                 <button onClick={() => openView(p.id!)} className="inline-flex h-8 items-center gap-1 rounded-md border border-indigo-200 px-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50">
-                                   <Eye size={14} /> ကြည့်မည်
+                                <button onClick={() => void copyPurchaseToNewVoucher(p.id!)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-amber-200 text-amber-700 hover:bg-amber-50" title="Copy to new voucher" aria-label="Copy purchase voucher">
+                                  <Copy size={14} />
+                                </button>
+                                 <button onClick={() => openView(p.id!)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50" title="အသေးစိတ်ကြည့်မည်" aria-label="View purchase details">
+                                   <Eye size={14} />
                                  </button>
                                  {(isDraftRow || (!isCancelledRow && canDeletePurchases)) && (
                                    <button
                                      onClick={() => handleCancelPurchase(p)}
                                      disabled={rowActionBusy}
-                                     className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 px-2.5 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-60"
+                                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-60"
                                      title={isDraftRow ? 'မူကြမ်း ဖျက်မည်' : 'ဘောင်ချာ ပယ်ဖျက် (Void)'}
+                                     aria-label={isDraftRow ? 'မူကြမ်း ဖျက်မည်' : 'ဘောင်ချာ ပယ်ဖျက်မည်'}
                                    >
                                      <Ban size={14} />
                                    </button>
@@ -1675,6 +2370,8 @@ const PurchaseManagement: React.FC = () => {
               </div>
             )}
           </div>
+          </div>
+          </div>
         </>
       ) : (
         <>
@@ -1684,9 +2381,7 @@ const PurchaseManagement: React.FC = () => {
               စာရင်းသို့ပြန်မည်
             </button>
             <h2 className="text-xl font-bold text-slate-800 text-center">ဝယ်ယူမှုဘောင်ချာအသစ်</h2>
-            <button type="button" onClick={resetFormFields} className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">
-              ရှင်းမည်
-            </button>
+            <div className="flex items-center gap-2"><input ref={purchaseImportRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>void handlePurchaseImport(e.target.files?.[0]||null)}/><button type="button" onClick={()=>void purchaseApiService.downloadImportTemplate().catch(e=>Swal.fire('Template failed',e.message||'Unable to download template','error'))} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"><FileDown size={14}/> Template</button><button type="button" disabled={purchaseImporting} onClick={()=>purchaseImportRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">{purchaseImporting?<Loader2 size={14} className="animate-spin"/>:<Upload size={14}/>} Excel Import</button><button type="button" onClick={resetFormFields} className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">ရှင်းမည်</button></div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
@@ -1786,11 +2481,21 @@ const PurchaseManagement: React.FC = () => {
                     const next = e.target.value;
                     setPurchaseDate(next);
                     if (paymentTermDays >= 0) setDueDate(addDaysInput(next, paymentTermDays));
+                    else if (paymentTermDays === -2) setDueDate(endOfMonthInput(next));
                   }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
                 />
               </div>
 
+              <div>
+                <label className="flex h-[28px] items-center text-xs font-semibold text-slate-600">ပေးသွင်းသူ Invoice No.</label>
+                <input
+                  value={supplierInvoiceNo}
+                  onChange={(e) => setSupplierInvoiceNo(e.target.value)}
+                  placeholder="SUP-INV-001"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
+                />
+              </div>
               <div>
                 <label className="flex h-[28px] items-center text-xs font-semibold text-slate-600">ပေးသွင်းသူဘောင်ချာ</label>
                 {attachmentData ? (
@@ -1872,11 +2577,6 @@ const PurchaseManagement: React.FC = () => {
                               placeholder="ပစ္စည်းရှာပါ..."
                               className="min-w-0 flex-1 px-2 py-1.5 rounded border border-slate-200 bg-white text-sm focus:outline-none focus:border-indigo-400"
                             />
-                            {_rowProduct && (
-                              <button type="button" title="Stock History" onClick={() => void openProductHistory(_rowProduct)} className="shrink-0 rounded-md border border-teal-200 bg-teal-50 p-1.5 text-teal-700 hover:bg-teal-100">
-                                <ClipboardList size={14} />
-                              </button>
-                            )}
                             <datalist id={`product-options-${dIndex}`}>
                               {products.map((product) => (
                                 <option key={product.id} value={getProductLabel(product)}>
@@ -1891,6 +2591,22 @@ const PurchaseManagement: React.FC = () => {
                                 {isSerialRequired(detail.productId) ? 'Serial' : 'Qty only'}
                               </span>
                               <span className="text-[10px] font-semibold text-slate-400">Stock {Number(_rowProduct.stockQty ?? _rowProduct.currentStock ?? 0).toLocaleString()}</span>
+                            </div>
+                          )}
+                          {detail.productId > 0 && (
+                            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                              <input
+                                value={detail.batchNumber || ''}
+                                onChange={(e) => handleDetailChange(dIndex, 'batchNumber', e.target.value)}
+                                placeholder="Batch"
+                                className="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] focus:outline-none focus:border-indigo-400"
+                              />
+                              <input
+                                type="date"
+                                value={detail.expiryDate || ''}
+                                onChange={(e) => handleDetailChange(dIndex, 'expiryDate', e.target.value)}
+                                className="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] focus:outline-none focus:border-indigo-400"
+                              />
                             </div>
                           )}
                         </td>
@@ -1913,7 +2629,7 @@ const PurchaseManagement: React.FC = () => {
                             placeholder="0.00"
                             className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-sm focus:outline-none focus:border-indigo-400"
                           />
-                          {_rowProduct?.costPrice ? <p className="mt-1 text-[10px] text-slate-400">နောက်ဆုံး {money(Number(_rowProduct.costPrice))}</p> : null}
+                          {_rowProduct?.lastPurchaseCost || _rowProduct?.costPrice ? <p className="mt-1 text-[10px] text-slate-400">နောက်ဆုံးဝယ်ဈေး {money(suggestedCost(_rowProduct))}</p> : null}
                         </td>
                         <td className="px-3 py-2">
                           <div className="space-y-1">
@@ -2269,7 +2985,7 @@ const PurchaseManagement: React.FC = () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-500 mb-1">လျှော့ဈေး</label>
                     <input
@@ -2283,15 +2999,23 @@ const PurchaseManagement: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Tax</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={taxAmount || ''}
-                      onChange={(e) => setTaxAmount(Math.max(0, parseFloat(e.target.value) || 0))}
-                      placeholder="0"
-                      className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
-                    />
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Tax Mode</label>
+                    <select value={taxMode} onChange={(e) => {
+                      const mode = e.target.value as 'EXCLUSIVE'|'INCLUSIVE'; setTaxMode(mode);
+                      const taxable = Math.max(0, totalAmount - safeDiscountAmount);
+                      setTaxAmount(taxRate > 0 ? (mode === 'INCLUSIVE' ? taxable * taxRate / (100 + taxRate) : taxable * taxRate / 100) : 0);
+                    }} className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm">
+                      <option value="EXCLUSIVE">Tax Exclusive</option><option value="INCLUSIVE">Tax Inclusive</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Tax Rate / Amount</label>
+                    <div className="flex gap-1"><input type="number" min="0" step="0.01" value={taxRate || ''} onChange={(e) => {
+                      const rate=Math.max(0,Number(e.target.value)||0);setTaxRate(rate);
+                      const taxable=Math.max(0,totalAmount-safeDiscountAmount);
+                      setTaxAmount(rate>0?(taxMode==='INCLUSIVE'?taxable*rate/(100+rate):taxable*rate/100):0);
+                    }} placeholder="%" className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"/>
+                    <input type="number" min="0" value={taxAmount || ''} onChange={(e)=>setTaxAmount(Math.max(0,Number(e.target.value)||0))} placeholder="Tax" className="min-w-0 flex-1 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"/></div>
                   </div>
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-500 mb-1">အခြားကုန်ကျ</label>
@@ -2304,12 +3028,40 @@ const PurchaseManagement: React.FC = () => {
                       className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
                     />
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Withholding Tax</label>
+                    <input type="number" min="0" max={grossPayable||undefined} value={withholdingTaxAmount||''} onChange={(e)=>setWithholdingTaxAmount(Math.max(0,Number(e.target.value)||0))} placeholder="0" className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Landed Cost Allocation</label>
+                    <select value={landedCostAllocationMethod} onChange={(e)=>setLandedCostAllocationMethod(e.target.value as 'VALUE'|'QUANTITY'|'MANUAL')} className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"><option value="VALUE">By Value</option><option value="QUANTITY">By Quantity</option><option value="MANUAL">Manual</option></select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Warehouse / Branch</label>
+                    <input value={warehouseName} onChange={(e)=>setWarehouseName(e.target.value)} placeholder="Main Warehouse" className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Invoice Currency</label>
+                    <input maxLength={3} value={currencyCode} onChange={(e)=>{ const code=e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3); setCurrencyCode(code); if(code==='MMK') setExchangeRate(1); }} placeholder="MMK" className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm uppercase"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">1 Currency = MMK</label>
+                    <input type="number" min="0.000001" step="0.000001" disabled={currencyCode==='MMK'} value={currencyCode==='MMK'?1:(exchangeRate||'')} onChange={(e)=>setExchangeRate(Math.max(0,Number(e.target.value)||0))} className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm disabled:opacity-60"/>
+                  </div>
                 </div>
+                {landedCostAllocationMethod === 'MANUAL' && (
+                  <div className={`space-y-1.5 rounded-lg border p-2 ${landedAllocationValid?'border-emerald-200 bg-emerald-50/50':'border-rose-200 bg-rose-50/50'}`}>
+                    <div className="flex justify-between text-[10px] font-bold"><span>Manual Landed Cost per Line</span><span>{money(manualLandedTotal)} / {money(safeOtherCharges)}</span></div>
+                    {details.map((d,index)=>d.productId>0?<label key={index} className="flex items-center justify-between gap-2 text-xs"><span className="truncate text-slate-600">{products.find(p=>p.id===d.productId)?.name||`Line ${index+1}`}</span><input type="number" min="0" value={d.allocatedLandedCost||''} onChange={(e)=>setDetails(prev=>prev.map((row,i)=>i===index?{...row,allocatedLandedCost:Math.max(0,Number(e.target.value)||0)}:row))} className="w-28 rounded border border-slate-200 bg-white px-2 py-1 text-right"/></label>:null)}
+                    {!landedAllocationValid && <p className="text-[10px] font-bold text-rose-600">Allocated total must equal Other Charges.</p>}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2 text-white">
-                  <span className="text-xs font-semibold">ကျသင့်ငွေ</span>
+                  <span className="text-xs font-semibold">ကျသင့်ငွေ {safeWithholdingTaxAmount>0&&<small className="ml-1 text-slate-400">(WHT -{money(safeWithholdingTaxAmount)})</small>}</span>
                   <span className="text-base font-black tracking-tight">{money(netAmount)}</span>
                 </div>
+                {currencyCode !== 'MMK' && safeExchangeRate > 0 && <div className="flex justify-between rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-800"><span>Foreign payable ({currencyCode})</span><span>{foreignNetAmount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / Rate {safeExchangeRate.toLocaleString()}</span></div>}
 
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 space-y-2">
                   <div className="flex items-center gap-2">
@@ -2403,10 +3155,12 @@ const PurchaseManagement: React.FC = () => {
                           const days = Number(e.target.value);
                           setPaymentTermDays(days);
                           if (days >= 0) setDueDate(addDaysInput(purchaseDate, days));
+                          else if (days === -2) setDueDate(endOfMonthInput(purchaseDate));
                         }}
                         className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
                       >
                         <option value={-1}>စိတ်ကြိုက်</option>
+                        <option value={-2}>လကုန်တွင်ပေးမည်</option>
                         <option value={0}>ဒီနေ့</option>
                         <option value={7}>ရက် 7</option>
                         <option value={15}>ရက် 15</option>
@@ -2419,6 +3173,44 @@ const PurchaseManagement: React.FC = () => {
                       <label className="block text-[10px] font-semibold text-slate-500 mb-1">နောက်ဆုံးရက်</label>
                       <input type="date" value={dueDate} onChange={(e) => { setDueDate(e.target.value); setPaymentTermDays(-1); }} className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400" />
                     </div>
+                  </div>
+                )}
+
+                {dueAmount > 0 && selectedSupplier && (
+                  <div className={`rounded-xl border p-3 ${supplierLimitExceeded ? 'border-rose-200 bg-rose-50' : supplierLimitNear ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+                    <div className="flex items-start justify-between gap-3 text-xs">
+                      <div>
+                        <p className="font-bold text-slate-700">Supplier Credit</p>
+                        <p className="mt-0.5 text-slate-600">လက်ရှိ {money(supplierCurrentBalance)} + အသစ် {money(dueAmount)} Ks</p>
+                      </div>
+                      <p className={`text-right font-black ${supplierLimitExceeded ? 'text-rose-700' : supplierLimitNear ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {supplierCreditLimit > 0 ? `${money(projectedSupplierBalance)} / ${money(supplierCreditLimit)} Ks` : 'Limit မသတ်မှတ်ထား'}
+                      </p>
+                    </div>
+                    {supplierCreditLimit > 0 && (
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/80">
+                        <div className={`h-full rounded-full transition-all ${supplierLimitExceeded ? 'bg-rose-500' : supplierLimitNear ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${creditUsagePercent}%` }} />
+                      </div>
+                    )}
+                    <p className={`mt-1.5 text-[11px] font-semibold ${supplierLimitExceeded ? 'text-rose-700' : supplierLimitNear ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {supplierLimitExceeded ? 'Credit limit ကျော်လွန်နေသည်' : supplierLimitNear ? 'Credit limit 80% ကျော်နီးကပ်နေသည်' : supplierCreditLimit > 0 ? `အသုံးပြုမှု ${creditUsagePercent.toFixed(0)}%` : 'အကြွေးကန့်သတ်ချက်မရှိပါ'}
+                    </p>
+                    {supplierLimitExceeded && canApproveCreditOverride && (
+                      <div className="mt-2 space-y-2 border-t border-rose-200 pt-2">
+                        <label className="flex items-center gap-2 text-xs font-bold text-rose-800">
+                          <input type="checkbox" checked={creditLimitOverride} onChange={(e) => setCreditLimitOverride(e.target.checked)} className="h-4 w-4 accent-rose-600" />
+                          Manager override ဖြင့် ဆက်လုပ်မည်
+                        </label>
+                        {creditLimitOverride && <textarea value={creditOverrideReason} onChange={(e) => setCreditOverrideReason(e.target.value)} rows={2} maxLength={1000} placeholder="Override အကြောင်းရင်းကို မဖြစ်မနေထည့်ပါ" className="w-full resize-none rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-xs outline-none focus:border-rose-400" />}
+                      </div>
+                    )}
+                    {supplierLimitExceeded && !canApproveCreditOverride && <p className="mt-2 border-t border-rose-200 pt-2 text-[11px] font-bold text-rose-700">Manager approval လိုအပ်ပါသည်။</p>}
+                  </div>
+                )}
+
+                {dueAmount > 0 && dueDate && (
+                  <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+                    <span className="font-bold">ငွေချေမှုအနှစ်ချုပ်:</span> {purchaseDate} → {dueDate} · ပေးရန်ကျန် {money(dueAmount)} Ks
                   </div>
                 )}
 
@@ -2561,6 +3353,94 @@ const PurchaseManagement: React.FC = () => {
         </div>
       )}
 
+      {cancelTarget && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" onMouseDown={closeCancelModal}>
+          <form onSubmit={submitCancelPurchase} onMouseDown={(e) => e.stopPropagation()} className="w-full rounded-t-2xl bg-white p-5 shadow-xl sm:max-w-md sm:rounded-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-rose-500">ဘောင်ချာ ပယ်ဖျက်မည်</p>
+                <h3 className="mt-0.5 text-base font-black text-slate-800">{cancelTarget.purchaseCode || `#${cancelTarget.id}`}</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Stock ပြန်နုတ်၊ Journal ပြန်ပြင်မည်။ Return ရှိပြီးသော voucher များကို ပယ်ဖျက်မရပါ။</p>
+              </div>
+              <button type="button" onClick={closeCancelModal} disabled={rowActionBusy} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="ပိတ်မည်"><X size={18} /></button>
+            </div>
+            {(Number(cancelTarget.paidAmount) || 0) > 0 && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-amber-800">ငွေပြန်ဝင်မည့် Payment Method *</label>
+                <select
+                  autoFocus
+                  required
+                  value={cancelRefundMethodId}
+                  onChange={(e) => setCancelRefundMethodId(Number(e.target.value))}
+                  className="h-10 w-full rounded-lg border border-amber-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                >
+                  <option value={0}>ရွေးပါ — Cash / Bank</option>
+                  {paymentMethods.map((m) => (
+                    <option key={m.id} value={m.id}>{m.methodName}{m.accountName ? ` · ${m.accountName}` : ''}</option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-[11px] leading-5 text-amber-800">
+                  ပေးပြီး {money(Number(cancelTarget.paidAmount) || 0)} · မူလပေးချေ {paymentMethods.find((m) => m.id === cancelTarget.paymentMethodId)?.methodName || cancelTarget.payments?.[0]?.paymentMethodName || '—'}။
+                  Cash ဝယ်ပြီး Bank ပြန်ဝင်တာမျိုး နည်းလမ်းပြောင်းရွေးနိုင်သည်။
+                </p>
+              </div>
+            )}
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">ပယ်ဖျက်ရသည့်အကြောင်းရင်း *</label>
+              <textarea
+                autoFocus={(Number(cancelTarget.paidAmount) || 0) <= 0}
+                required
+                maxLength={1000}
+                rows={3}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="အကြောင်းရင်းကို မဖြစ်မနေ ရေးပါ"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+              />
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={closeCancelModal} disabled={rowActionBusy} className="flex-1 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-60">မလုပ်တော့ပါ</button>
+              <button type="submit" disabled={rowActionBusy || !cancelReason.trim() || ((Number(cancelTarget.paidAmount) || 0) > 0 && cancelRefundMethodId <= 0)} className="flex-1 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+                {rowActionBusy ? 'ပယ်ဖျက်နေသည်...' : 'ပယ်ဖျက်မည်'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {importPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 p-4">
+              <div>
+                <h3 className="font-bold text-slate-800">Excel import preview</h3>
+                <p className="text-xs text-slate-500">Valid {importPreview.validRows} / {importPreview.totalRows} · Invalid {importPreview.invalidRows} will be skipped</p>
+              </div>
+              <button onClick={()=>setImportPreview(null)} className="p-1.5 text-slate-400"><X size={18}/></button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              <table className="w-full min-w-[720px] text-xs">
+                <thead className="bg-slate-50 text-slate-500"><tr><th className="px-2 py-2 text-left">Row</th><th className="px-2 py-2 text-left">Code</th><th className="px-2 py-2 text-left">Product</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-right">Cost</th><th className="px-2 py-2 text-left">Batch / Expiry</th><th className="px-2 py-2 text-left">Status</th></tr></thead>
+                <tbody className="divide-y">{importPreview.rows.map(row=>(
+                  <tr key={row.rowNumber} className={row.valid?'':'bg-rose-50'}>
+                    <td className="px-2 py-2">{row.rowNumber}</td>
+                    <td className="px-2 py-2 font-mono">{row.productCode}</td>
+                    <td className="px-2 py-2">{row.productName||'-'}</td>
+                    <td className="px-2 py-2 text-right">{row.qty??'-'}</td>
+                    <td className="px-2 py-2 text-right">{row.unitCost??'-'}</td>
+                    <td className="px-2 py-2">{[row.batchNumber,row.expiryDate].filter(Boolean).join(' / ')||'-'}</td>
+                    <td className="px-2 py-2">{row.valid?'Valid':(row.errors||[]).join('; ')}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
+              <button onClick={()=>setImportPreview(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Cancel</button>
+              <button onClick={applyImportPreview} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">Import valid rows</button>
+            </div>
+          </div>
+        </div>
+      )}
       {viewPurchase && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
           <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -2605,21 +3485,36 @@ const PurchaseManagement: React.FC = () => {
                   <Printer size={14} />
                   Print Voucher
                 </button>
-                <button
-                  onClick={() => navigate(`${AppRoute.PURCHASE_RETURNS}?purchaseId=${viewPurchase.id}`)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100"
-                >
-                  <RefreshCw size={14} />
-                  ဝယ်ပြန်ပို့
-                </button>
+                {getStatusKey(viewPurchase) !== 'cancelled' && getStatusKey(viewPurchase) !== 'draft' && (
+                  <button
+                    onClick={() => navigate(`${AppRoute.PURCHASE_RETURNS}?purchaseId=${viewPurchase.id}`)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100"
+                  >
+                    <RefreshCw size={14} />
+                    ဝယ်ပြန်ပို့
+                  </button>
+                )}
                 <button onClick={closeView} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
                   <X size={18} />
                 </button>
               </div>
             </div>
             <div className="p-4 overflow-y-auto space-y-4">
+              {getStatusKey(viewPurchase) === 'cancelled' && (
+                <div className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-700">
+                  <p className="text-sm font-black">ပယ်ဖျက်ပြီး — ဝယ်ပြန်ပို့ မလုပ်နိုင်ပါ</p>
+                  <p className="text-xs mt-1">
+                    {viewPurchase.cancelReason || 'အကြောင်းရင်း မရှိပါ'}
+                    {viewPurchase.cancelledBy ? ` · ${viewPurchase.cancelledBy}` : ''}
+                    {viewPurchase.cancelledAt ? ` · ${new Date(viewPurchase.cancelledAt).toLocaleString()}` : ''}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1">Stock၊ Serial နှင့် Journal ကို ပယ်ဖျက်စဉ်က ပြန်ပြင်ပြီးဖြစ်သည်။ မှတ်တမ်းကြည့်ရန်သာ ဖြစ်သည်။</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Supplier:</span> {viewPurchase.supplierName}</p>
+                {viewPurchase.poCode && <p className="text-slate-600"><span className="font-medium text-slate-500">PO:</span> {viewPurchase.poCode}</p>}
+                {viewPurchase.supplierInvoiceNo && <p className="text-slate-600"><span className="font-medium text-slate-500">Supplier Invoice:</span> {viewPurchase.supplierInvoiceNo}</p>}
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Staff:</span> {viewPurchase.staffName}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Date:</span> {viewPurchase.purchaseDate ? new Date(viewPurchase.purchaseDate).toLocaleString() : '-'}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Due Date:</span> {viewPurchase.dueDate ? new Date(viewPurchase.dueDate).toLocaleDateString() : '-'}</p>
@@ -2648,6 +3543,20 @@ const PurchaseManagement: React.FC = () => {
                 )}
               </div>
               {viewPurchase.remark && <p className="text-sm text-slate-600"><span className="font-medium text-slate-500">Remark:</span> {viewPurchase.remark}</p>}
+              {viewPurchase.cancelReason && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                  <p className="font-bold">ပယ်ဖျက်ရသည့်အကြောင်းရင်း</p>
+                  <p>{viewPurchase.cancelReason}</p>
+                  <p className="mt-1 text-xs text-rose-600">{viewPurchase.cancelledBy || 'Unknown'}{viewPurchase.cancelledAt ? ` • ${new Date(viewPurchase.cancelledAt).toLocaleString()}` : ''}</p>
+                </div>
+              )}
+              {viewPurchase.creditLimitOverride && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-bold">Credit Limit Manager Override</p>
+                  <p>{viewPurchase.creditOverrideReason || '-'}</p>
+                  <p className="mt-1 text-xs text-amber-600">{viewPurchase.creditOverrideBy || 'Unknown'}{viewPurchase.creditOverrideAt ? ` • ${new Date(viewPurchase.creditOverrideAt).toLocaleString()}` : ''}</p>
+                </div>
+              )}
               {(viewPurchase.attachmentData || canUpdatePurchases) && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -2696,7 +3605,14 @@ const PurchaseManagement: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {(viewPurchase.details || []).map((d, i) => (
                     <tr key={i}>
-                      <td className="px-3 py-2">{d.productName || d.productId}</td>
+                      <td className="px-3 py-2">
+                        <p>{d.productName || d.productId}</p>
+                        {(d.batchNumber || d.expiryDate) && (
+                          <p className="text-[10px] text-slate-400">
+                            {d.batchNumber ? `Batch ${d.batchNumber}` : ''}{d.batchNumber && d.expiryDate ? ' · ' : ''}{d.expiryDate ? `Exp ${d.expiryDate}` : ''}
+                          </p>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{d.qty}</td>
                       <td className="px-3 py-2 text-right">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(d.unitCost)}</td>
                       <td className="px-3 py-2 text-xs text-slate-600">
@@ -2725,6 +3641,24 @@ const PurchaseManagement: React.FC = () => {
                 </tbody>
               </table>
 
+              <div className="pt-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-500"><History size={13}/> Activity Timeline</h4>
+                  <span className="text-[11px] text-slate-400">{purchaseTimeline.length} event(s)</span>
+                </div>
+                {purchaseTimeline.length===0 ? <div className="py-3 text-xs text-slate-400">No timeline events yet.</div> : (
+                  <div className="space-y-2">{purchaseTimeline.map((event,i)=>(
+                    <div key={`${event.type}-${event.refCode||i}`} className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <span className="mt-0.5 min-w-[88px] text-[10px] font-black uppercase text-indigo-600">{event.type}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-800">{event.title}{event.refCode ? ` · ${event.refCode}` : ''}</p>
+                        <p className="text-[11px] text-slate-500">{event.detail || event.at || '-'}</p>
+                      </div>
+                      {event.amount!=null && <b className="text-xs tabular-nums text-slate-700">{money(Number(event.amount)||0)}</b>}
+                    </div>
+                  ))}</div>
+                )}
+              </div>
               <div className="pt-2">
                 <div className="mb-2 flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Payment History</h4>
@@ -2914,6 +3848,7 @@ const PurchaseManagement: React.FC = () => {
         </div>
       )}
 
+      {/* Product-wide Stock History lives in Product Management, not Purchase entry.
       {productHistoryProduct && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={closeProductHistory}>
           <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -2936,10 +3871,92 @@ const PurchaseManagement: React.FC = () => {
           </div>
         </div>
       )}
+      */}
       {isBarcodeOpen && (
         <BarcodeScannerCamera
           onDetected={handleBarcodeDetected}
           onClose={() => setIsBarcodeOpen(false)}
+        />
+      )}
+
+      {showSerialModal && serialTarget && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onMouseDown={() => { if (!rowActionBusy) setShowSerialModal(false); }}>
+          <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-black text-slate-800">Serial Numbers ထည့်သွင်းခြင်း</h3>
+                <p className="text-xs font-semibold text-slate-400">{serialTarget.purchaseCode} — Serial အရေအတွက်ကိုက်ညီမှုရှိမှ အတည်ပြုနိုင်မည်</p>
+              </div>
+              <button onClick={() => setShowSerialModal(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-auto p-4">
+              {serialDraftLines.map((line, lineIdx) => {
+                const filledCount = line.serials.filter((s) => s.trim()).length;
+                const issue = serialLineIssue(line);
+                return (
+                  <div key={line.productId} className={`rounded-xl border p-3 ${issue ? 'border-amber-200 bg-amber-50/50' : 'border-emerald-200 bg-emerald-50/40'}`}>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-black text-slate-800">{line.productName}</p>
+                        <p className="text-[10px] font-bold text-slate-400">{line.productCode} · Qty {line.qty}</p>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black text-white ${filledCount >= line.qty ? 'bg-emerald-600' : 'bg-amber-500'}`}>{filledCount} / {line.qty}</span>
+                    </div>
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {line.serials.map((s, si) => (
+                        <span key={si} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold ${s.trim() ? 'bg-indigo-100 text-indigo-800' : 'border border-dashed border-slate-300 bg-white text-slate-300'}`}>
+                          {s.trim() || `Slot ${si + 1}`}
+                          {s.trim() && (
+                            <button type="button" onClick={() => removeSerialFromLine(lineIdx, si)} className="text-indigo-400 hover:text-rose-600" title="ဖယ်ရှား"><X size={11} /></button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={serialEntry[lineIdx] ?? ''}
+                        onChange={(e) => setSerialEntry((prev) => ({ ...prev, [lineIdx]: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitEntry(lineIdx); } }}
+                        placeholder="Serial ရိုက်/Scan ပြီး Enter နှိပ်ပါ"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-indigo-400 focus:outline-none"
+                        autoComplete="off"
+                      />
+                      <button type="button" onClick={() => submitEntry(lineIdx)} className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-black text-white hover:bg-indigo-700">ထည့်</button>
+                      <button type="button" onClick={() => setSerialCameraLine(lineIdx)} title="ကင်မရာဖြင့် scan မည်" className="shrink-0 rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700"><Camera size={13} /></button>
+                    </div>
+                    {issue && <p className="mt-1.5 text-[11px] font-bold text-amber-600">{issue}</p>}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-slate-100 p-4">
+              {globalDupSerial() && (
+                <p className="mb-2 text-[11px] font-bold text-rose-600">Duplicate serial (ပစ္စည်းများကြား): '{globalDupSerial()}'</p>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => setShowSerialModal(false)} disabled={rowActionBusy} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60">နောက်မှ</button>
+                <button
+                  onClick={() => serialTarget && doConfirmDraft(serialTarget.id, serialDraftLines.map((l) => ({
+                    productId: l.productId, qty: l.qty, unitCost: l.unitCost, warrantyMonths: l.warrantyMonths,
+                    serialNumbers: l.serials.map((s) => s.trim()), serialConditions: [], serialPhotos: []
+                  })))}
+                  disabled={!serialModalReady || rowActionBusy}
+                  className="flex-[2] rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                >
+                  {rowActionBusy ? 'အတည်ပြုနေသည်...' : `အတည်ပြု (${serialDraftLines.reduce((a, l) => a + l.qty, 0)} Serial)`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {serialCameraLine != null && (
+        <BarcodeScannerCamera
+          onDetected={handleSerialScanDetected}
+          onClose={() => setSerialCameraLine(null)}
         />
       )}
 
@@ -3030,6 +4047,175 @@ const PurchaseManagement: React.FC = () => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {supplierPaymentOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 p-4">
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-blue-500">Accounts Payable</p><h3 className="text-base font-black text-slate-800">Supplier Payment Allocation</h3></div>
+              <button onClick={() => setSupplierPaymentOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X size={18}/></button>
+            </div>
+            <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1"><span className="text-[10px] font-bold uppercase text-slate-400">Supplier</span>
+                  <PaymentSearchSelect
+                    value={supplierPaymentSupplierId}
+                    placeholder="ပေးသွင်းသူ အမည် / ကုဒ် / ဖုန်းဖြင့်ရှာပါ..."
+                    items={suppliers.map((s) => ({
+                      id: s.id,
+                      label: s.name,
+                      sub: [s.code, s.phone, s.currentBalance != null ? `Balance ${money(Number(s.currentBalance) || 0)}` : '']
+                        .filter(Boolean)
+                        .join(' · '),
+                      searchText: [s.name, s.code, s.phone, s.address].filter(Boolean).join(' ')
+                    }))}
+                    onChange={(id) => void loadSupplierPayables(id)}
+                  />
+                </label>
+                <label className="space-y-1"><span className="text-[10px] font-bold uppercase text-slate-400">Payment Method</span>
+                  <PaymentSearchSelect
+                    value={supplierPaymentMethodId}
+                    placeholder="ငွေပေးနည်း ရှာပါ..."
+                    items={paymentMethods.map((m) => ({
+                      id: m.id,
+                      label: m.methodName,
+                      sub: m.accountName || undefined
+                    }))}
+                    onChange={setSupplierPaymentMethodId}
+                  />
+                </label>
+                <label className="space-y-1"><span className="text-[10px] font-bold uppercase text-slate-400">Total Payment</span>
+                  <input type="number" min="0.01" step="0.01" value={supplierPaymentAmount || ''} onChange={(e) => setSupplierPaymentAmount(Math.max(0, Number(e.target.value) || 0))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-blue-700"/></label>
+                <label className="space-y-1"><span className="text-[10px] font-bold uppercase text-slate-400">Transaction No.</span>
+                  <input value={supplierPaymentTxn} onChange={(e) => setSupplierPaymentTxn(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+              </div>
+              {supplierPaymentSupplierId > 0 && <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center text-xs">
+                <div><p className="text-slate-400">Payable</p><b className="text-rose-600">{money(supplierPayables.reduce((s,p)=>s+p.dueAmount,0))}</b></div>
+                <div><p className="text-slate-400">Existing Advance</p><b className="text-indigo-600">{money(suppliers.find(s=>s.id===supplierPaymentSupplierId)?.advanceBalance || 0)}</b></div>
+                <div><p className="text-slate-400">New Advance</p><b className="text-emerald-600">{money(Math.max(0, supplierPaymentAmount - (supplierPaymentManual ? Object.values(supplierAllocations).reduce((s: number,v)=>s+(Number(v)||0),0) : supplierPayables.reduce((s,p)=>s+p.dueAmount,0))))}</b></div>
+              </div>}
+              {supplierPaymentSupplierId > 0 && supplierCreditSummary.availableCredit > 0 && (
+                <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+                  <div className="flex items-center justify-between"><div><p className="text-xs font-black text-indigo-800">Apply Existing Supplier Credit</p><p className="text-[10px] text-indigo-500">Advance {money(supplierCreditSummary.advanceBalance)} + Return Credit {money(supplierCreditSummary.returnCreditBalance)}</p></div><b className="text-sm text-indigo-700">{money(supplierCreditSummary.availableCredit)}</b></div>
+                  <div className="grid gap-2 sm:grid-cols-[1.3fr_0.7fr]">
+                    <PaymentSearchSelect
+                      value={supplierCreditTargetId}
+                      placeholder="ကြွေး voucher ကုဒ်ဖြင့်ရှာပါ..."
+                      items={supplierPayables.map((p) => ({
+                        id: p.purchaseId,
+                        label: p.purchaseCode,
+                        sub: `Due ${money(p.dueAmount)}${p.dueDate ? ` · ${p.dueDate}` : ''}`
+                      }))}
+                      onChange={(id) => {
+                        setSupplierCreditTargetId(id);
+                        const due = supplierPayables.find((p) => p.purchaseId === id)?.dueAmount || 0;
+                        setSupplierCreditAmount(Math.min(due, supplierCreditSummary.availableCredit));
+                      }}
+                    />
+                    <input type="number" min="0" max={Math.min(supplierCreditSummary.availableCredit,supplierPayables.find(p=>p.purchaseId===supplierCreditTargetId)?.dueAmount||0)} value={supplierCreditAmount||''} onChange={(e)=>setSupplierCreditAmount(Math.max(0,Number(e.target.value)||0))} placeholder="Credit amount" className="rounded-lg border border-indigo-200 bg-white px-2 py-2 text-right text-xs font-bold text-indigo-700"/>
+                  </div>
+                  <input value={supplierCreditReason} onChange={(e)=>setSupplierCreditReason(e.target.value)} placeholder="Application note (optional)" className="w-full rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs"/>
+                  <button onClick={applySupplierCredit} disabled={supplierPaymentSaving||supplierCreditTargetId<=0||supplierCreditAmount<=0} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300">Apply Credit to Voucher</button>
+                </div>
+              )}
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={supplierPaymentManual} onChange={(e)=>setSupplierPaymentManual(e.target.checked)} className="accent-indigo-600"/> Manual voucher allocation (off = FIFO by due date)</label>
+              {supplierPaymentManual && (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={supplierPayableSearch}
+                      onChange={(e) => setSupplierPayableSearch(e.target.value)}
+                      placeholder="Voucher ကုဒ် / due date ဖြင့်ရှာပါ..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm focus:border-blue-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="overflow-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[620px] text-xs">
+                      <thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Voucher</th><th className="px-3 py-2 text-left">Due Date</th><th className="px-3 py-2 text-right">Due</th><th className="px-3 py-2 text-right">Allocate</th></tr></thead>
+                      <tbody className="divide-y">
+                        {supplierPayables
+                          .filter((p) => {
+                            const q = supplierPayableSearch.trim().toLowerCase();
+                            if (!q) return true;
+                            return [p.purchaseCode, p.dueDate, String(p.dueAmount)].filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
+                          })
+                          .map((p) => (
+                            <tr key={p.purchaseId}>
+                              <td className="px-3 py-2 font-bold">{p.purchaseCode}</td>
+                              <td className="px-3 py-2 text-slate-500">{p.dueDate || '-'}</td>
+                              <td className="px-3 py-2 text-right text-rose-600">{money(p.dueAmount)}</td>
+                              <td className="px-3 py-2 text-right">
+                                <input type="number" min="0" max={p.dueAmount} value={supplierAllocations[p.purchaseId] || ''} onChange={(e)=>setSupplierAllocations(prev=>({...prev,[p.purchaseId]:Math.min(p.dueAmount,Math.max(0,Number(e.target.value)||0))}))} className="w-28 rounded border border-slate-200 px-2 py-1 text-right font-bold"/>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <textarea value={supplierPaymentRemark} onChange={(e)=>setSupplierPaymentRemark(e.target.value)} rows={2} placeholder="Remark" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/>
+              {supplierPaymentSupplierId > 0 && (
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black text-slate-800">Allocation Payment History</p>
+                      <p className="text-[10px] text-slate-400">ဘယ်နေ့ / ဘယ် voucher / ဘယ်လောက်ဆပ်ခဲ့သည်</p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {supplierPaymentHistoryLoading ? 'Loading...' : `${supplierPaymentHistory.length} payment(s)`}
+                    </span>
+                  </div>
+                  {supplierPaymentHistoryLoading ? (
+                    <p className="py-4 text-center text-xs text-slate-400">ဖတ်နေသည်...</p>
+                  ) : supplierPaymentHistory.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-slate-400">ဤပေးသွင်းသူအတွက် ငွေပေးမှတ်တမ်း မရှိသေးပါ။</p>
+                  ) : (
+                    <div className="overflow-auto rounded-lg border border-slate-100">
+                      <table className="w-full min-w-[720px] text-xs">
+                        <thead className="bg-slate-50 text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2 text-left">ရက်စွဲ</th>
+                            <th className="px-3 py-2 text-left">Payment No</th>
+                            <th className="px-3 py-2 text-left">Voucher</th>
+                            <th className="px-3 py-2 text-right">ဆပ်ငွေ</th>
+                            <th className="px-3 py-2 text-right">လက်ကျန် (ယခု)</th>
+                            <th className="px-3 py-2 text-left">နည်း</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {supplierPaymentHistory.flatMap((payment) => {
+                            const paidAt = payment.paymentDate
+                              ? new Date(payment.paymentDate).toLocaleString('en-GB', {
+                                  day: '2-digit', month: 'short', year: 'numeric',
+                                  hour: '2-digit', minute: '2-digit'
+                                })
+                              : '-';
+                            const rows = (payment.allocations && payment.allocations.length > 0)
+                              ? payment.allocations
+                              : [{ purchaseId: 0, purchaseCode: payment.advanceAmount > 0 ? '(Advance only)' : '-', amount: payment.allocatedAmount || 0, remainingDue: 0 }];
+                            return rows.map((alloc, idx) => (
+                              <tr key={`${payment.id}-${alloc.purchaseId || 'adv'}-${idx}`} className="hover:bg-slate-50/80">
+                                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{idx === 0 ? paidAt : ''}</td>
+                                <td className="px-3 py-2 font-mono font-semibold text-slate-700">{idx === 0 ? payment.paymentNo : ''}</td>
+                                <td className="px-3 py-2 font-bold text-indigo-700">{alloc.purchaseCode}</td>
+                                <td className="px-3 py-2 text-right font-bold text-emerald-700">{money(alloc.amount)}</td>
+                                <td className="px-3 py-2 text-right text-rose-600">{alloc.purchaseId ? money(alloc.remainingDue) : '-'}</td>
+                                <td className="px-3 py-2 text-slate-500">{idx === 0 ? (payment.paymentMethodName || '-') : ''}</td>
+                              </tr>
+                            ));
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-slate-100 p-4"><button onClick={saveSupplierPayment} disabled={supplierPaymentSaving || supplierPaymentSupplierId<=0 || supplierPaymentMethodId<=0 || supplierPaymentAmount<=0} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-slate-300">{supplierPaymentSaving ? 'Saving...' : 'Allocate & Pay Supplier'}</button></div>
           </div>
         </div>
       )}

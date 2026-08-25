@@ -78,6 +78,9 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
     fun setPaidAmount(v: String)                  = _uiState.update { it.copy(paidAmount = v.filterMoney()) }
     fun setPaymentTransactionNo(v: String)        = _uiState.update { it.copy(paymentTransactionNo = v) }
     fun setDiscountAmount(v: String)              = _uiState.update { it.copy(discountAmount = v.filterMoney()) }
+    fun setTaxAmount(v: String)                   = _uiState.update { it.copy(taxAmount = v.filterMoney()) }
+    fun setOtherCharges(v: String)                = _uiState.update { it.copy(otherCharges = v.filterMoney()) }
+    fun setSupplierInvoiceNo(v: String)           = _uiState.update { it.copy(supplierInvoiceNo = v) }
     fun setRemark(v: String)                      = _uiState.update { it.copy(remark = v) }
     fun clearError()                              = _uiState.update { it.copy(saveError = null) }
 
@@ -120,7 +123,7 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
             _uiState.update { it.copy(saveError = "${product.name} ထပ်နေပါသည်", showProductPicker = false) }
             return
         }
-        val cost            = product.costPrice?.toString() ?: "0"
+        val cost            = (product.lastPurchaseCost ?: product.costPrice)?.toString() ?: "0"
         val defaultWarranty = (product.warrantyMonths ?: 0).toString()
         val isSerial        = product.hasSerial == true
         val orphaned        = if (isSerial) maxOf(0, product.stockQty - (product.availableSerialCount ?: product.stockQty)) else 0
@@ -250,7 +253,9 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val paid          = if (splitPayments.isNotEmpty()) splitTotal(splitPayments) else (s.paidAmount.toDoubleOrNull() ?: 0.0)
         val gross         = totalAmount(s.lines)
         val discount      = s.discountAmount.toDoubleOrNull() ?: 0.0
-        val net           = gross - discount
+        val tax           = s.taxAmount.toDoubleOrNull() ?: 0.0
+        val other         = s.otherCharges.toDoubleOrNull() ?: 0.0
+        val net           = gross - discount + tax + other
 
         if (supplier == null)  return fail("Supplier ရွေးပါ")
         if (staff == null)     return fail("Staff ရွေးပါ")
@@ -311,8 +316,11 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
             dueDate         = s.dueDate.ifBlank { null },
             paymentTermDays = s.paymentTermDays.takeIf { it >= 0 },
             discountAmount  = discount,
+            taxAmount       = tax,
+            otherCharges    = other,
             paidAmount      = paid,
             remark          = s.remark.ifBlank { null },
+            supplierInvoiceNo = s.supplierInvoiceNo.ifBlank { null },
             paymentMethodId = if (paid > 0) (splitPayments.firstOrNull()?.paymentMethodId ?: s.selectedPaymentMethod?.id) else null,
             transactionNo   = s.paymentTransactionNo.ifBlank { null },
             payments        = splitPayments.ifEmpty { null },
@@ -369,6 +377,9 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val dueDate               : String = "",
         val paymentTermDays       : Int = 30,
         val discountAmount        : String = "0",
+        val taxAmount             : String = "0",
+        val otherCharges          : String = "0",
+        val supplierInvoiceNo     : String = "",
         val paidAmount            : String = "0",
         val paymentTransactionNo  : String = "",
         val remark                : String = "",
@@ -388,8 +399,8 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
 fun totalAmount(lines: List<PurchaseFormViewModel.PurchaseLine>): Double =
     lines.sumOf { (it.qty.toIntOrNull() ?: 0) * (it.unitCost.toDoubleOrNull() ?: 0.0) }
 
-fun netAmount(lines: List<PurchaseFormViewModel.PurchaseLine>, discount: String): Double =
-    maxOf(0.0, totalAmount(lines) - (discount.toDoubleOrNull() ?: 0.0))
+fun netAmount(lines: List<PurchaseFormViewModel.PurchaseLine>, discount: String, tax: String = "0", other: String = "0"): Double =
+    maxOf(0.0, totalAmount(lines) - (discount.toDoubleOrNull() ?: 0.0) + (tax.toDoubleOrNull() ?: 0.0) + (other.toDoubleOrNull() ?: 0.0))
 
 private fun normalizePayments(payments: List<PaymentTransactionDTO>): List<PaymentTransactionDTO> =
     payments.mapNotNull { p ->

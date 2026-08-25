@@ -23,6 +23,10 @@ public class SupplierPayment {
     private String transactionNo;
     private String paidBy;
     private String remark;
+    private Boolean voided;
+    private LocalDateTime voidedAt;
+    private String voidedBy;
+    private String voidReason;
     @OneToMany(mappedBy = "supplierPayment", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default private List<SupplierPaymentAllocation> allocations = new ArrayList<>();
 }

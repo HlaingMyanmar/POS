@@ -30,6 +30,7 @@ public class ProductDTO {
 
     private Boolean hasSerial;
     private Integer stockQty;
+    private Integer quarantinedQty;
     private Integer availableSerialCount;
     private Integer unlinkedQty;
     private Integer reorderLevel;

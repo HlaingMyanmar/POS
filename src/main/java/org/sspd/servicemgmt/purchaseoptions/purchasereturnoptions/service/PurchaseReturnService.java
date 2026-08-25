@@ -19,9 +19,17 @@ import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
 import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
 import org.sspd.servicemgmt.purchaseoptions.model.PaymentStatus;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.dto.PurchaseReturnDTO;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.dto.PurchaseReturnActivityDTO;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.dto.PurchaseReturnAttachmentDTO;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.model.PurchaseReturnActivity;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.model.PurchaseReturnAttachment;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnActivityRepository;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnAttachmentRepository;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.mapper.PurchaseReturnMapper;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.model.PurchaseReturn;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnRepository;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnreasonoptions.model.PurchaseReturnReason;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnreasonoptions.repository.PurchaseReturnReasonRepository;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetailWarranty;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturndetails.dto.PurchaseReturnDetailDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturndetails.model.PurchaseReturnDetail;
@@ -36,12 +44,15 @@ import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.supplieroptions.model.Supplier;
 import org.sspd.servicemgmt.supplieroptions.repository.SupplierRepository;
+import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.sspd.servicemgmt.api.PageResponse;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -66,9 +77,19 @@ public class PurchaseReturnService {
     private final ProductSerialRepository productSerialRepository;
     private final org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService companySettingsService;
     private final org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard periodGuard;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
+    private final CashDrawerService cashDrawerService;
+    private final PurchaseReturnReasonRepository returnReasonRepository;
+    private final PurchaseReturnActivityRepository activityRepository;
+    private final PurchaseReturnAttachmentRepository attachmentRepository;
 
     private static final String PURCHASE_RETURN_TOPIC = "/topic/purchase-return";
-    private static final String STATUS_CONFIRMED = "CONFIRMED";
+    private static final String STATUS_DRAFT = "DRAFT";
+    private static final String STATUS_PENDING = "PENDING_APPROVAL";
+    private static final String STATUS_APPROVED = "APPROVED";
+    private static final String STATUS_DISPATCHED = "DISPATCHED";
+    private static final String STATUS_RECEIVED = "SUPPLIER_RECEIVED";
+    private static final String STATUS_SETTLED = "SETTLED";
     private static final String STATUS_VOIDED = "VOIDED";
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_CREATE')")
@@ -93,8 +114,6 @@ public class PurchaseReturnService {
         }
         Supplier supplier = purchase.getSupplier();
 
-        BigDecimal oldDue = purchase.getDueAmount() != null ? purchase.getDueAmount() : BigDecimal.ZERO;
-
         if (dto.getReturnDate() != null && purchase.getPurchaseDate() != null
                 && dto.getReturnDate().isBefore(purchase.getPurchaseDate())) {
             throw new RuntimeException("Return date cannot be before purchase date");
@@ -107,7 +126,7 @@ public class PurchaseReturnService {
         PurchaseReturn entity = mapper.toEntity(dto);
         entity.setReturnNo(generateReturnNo());
         entity.setPurchase(purchase);
-        entity.setStatus(STATUS_CONFIRMED);
+        entity.setStatus(STATUS_DRAFT);
 
         if (entity.getReturnDate() == null) {
             entity.setReturnDate(LocalDateTime.now());
@@ -158,7 +177,6 @@ public class PurchaseReturnService {
                     if (serial.getStatus() != SerialStatus.Available) {
                         throw new RuntimeException("Serial number '" + sn + "' is not available for return");
                     }
-                    productSerialRepository.delete(serial);
                 }
             } else {
                 int current = product.getStockQty() != null ? product.getStockQty() : 0;
@@ -166,8 +184,6 @@ public class PurchaseReturnService {
                     throw new RuntimeException("Available stock is not enough for return: " + product.getName()
                             + ". Available qty: " + current);
                 }
-                product.setStockQty(current - qty);
-                productRepository.save(product);
                 serials = List.of();
             }
 
@@ -178,13 +194,18 @@ public class PurchaseReturnService {
             BigDecimal subtotal = returnUnitPrice.multiply(BigDecimal.valueOf(qty));
             total = total.add(subtotal);
 
+            PurchaseReturnReason detailReason = resolveReason(dDto.getReasonId());
             PurchaseReturnDetail detail = PurchaseReturnDetail.builder()
                     .purchaseReturn(entity)
                     .product(product)
                     .qty(qty)
                     .unitPrice(returnUnitPrice)
                     .subtotal(subtotal)
+                    .allocatedShippingCost(safe(dDto.getAllocatedShippingCost()))
                     .serialNumber(joinSerials(serials))
+                    .reason(detailReason)
+                    .quarantinedQty(0)
+                    .dispatchedQty(0)
                     .build();
             detailEntities.add(detail);
         }
@@ -212,43 +233,12 @@ public class PurchaseReturnService {
 
         entity.setDetails(detailEntities);
         entity.setTotalReturnAmount(total);
-        entity.setRefundAmount(refundAmount);
+        configureShipping(entity, dto);
+        // Financial settlement is deliberately deferred until SUPPLIER_RECEIVED.
+        entity.setRefundAmount(BigDecimal.ZERO);
 
         PurchaseReturn savedEntity = purchaseReturnRepository.save(entity);
-
-        for (PurchaseReturnDetail detail : detailEntities) {
-            stockMovementService.recordMovement(StockMovement.builder()
-                    .product(detail.getProduct())
-                    .movementType(MovementType.OUT)
-                    .qty(detail.getQty())
-                    .referenceId(savedEntity.getId())
-                    .referenceType("PurchaseReturn")
-                    .build());
-        }
-
-        recalculatePurchaseFinancials(purchase);
-
-        // Record refund payment transaction and accounting journal
-        if (refundAmount.compareTo(BigDecimal.ZERO) > 0) {
-            if (dto.getPaymentMethodId() == null && (dto.getPayments() == null || dto.getPayments().isEmpty())) {
-                throw new RuntimeException("Payment Method is required for refund amount");
-            }
-            Integer firstMethodId = dto.getPaymentMethodId() != null ? dto.getPaymentMethodId() : dto.getPayments().get(0).getPaymentMethodId();
-            PaymentMethod method = paymentMethodRepository.findById(firstMethodId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
-
-            recordPaymentTransactions(savedEntity, refundAmount, dto.getTransactionNo(), method, dto.getPayments());
-
-            Integer staffId = purchase.getStaff() != null ? purchase.getStaff().getId() : null;
-            createReturnJournal(savedEntity, method, refundAmount, oldDue.min(total), staffId, supplier != null ? supplier.getName() : "", dto.getPayments());
-        } else if (oldDue.compareTo(BigDecimal.ZERO) > 0) {
-            Integer staffId = purchase.getStaff() != null ? purchase.getStaff().getId() : null;
-            createReturnJournal(savedEntity, null, BigDecimal.ZERO, oldDue.min(total), staffId, supplier != null ? supplier.getName() : "", null);
-        }
-
-        if (supplier != null) {
-            syncSupplierBalance(supplier);
-        }
+        recordActivity(savedEntity, "CREATED", null, savedEntity.getStatus(), savedEntity.getReason());
 
         messagingTemplate.convertAndSend(PURCHASE_RETURN_TOPIC, "PURCHASE_RETURN_CREATED");
         return toDto(savedEntity);
@@ -256,9 +246,9 @@ public class PurchaseReturnService {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_READ')")
     @Transactional(readOnly = true)
-    public PageResponse<PurchaseReturnDTO> findAll(String search, int page, int size) {
+    public PageResponse<PurchaseReturnDTO> findAll(String search,LocalDateTime from,LocalDateTime to,Integer supplierId,Integer purchaseId,String status,String settlementType,String resolutionType,int page,int size) {
         return PageResponse.of(
-                purchaseReturnRepository.findBySearch(search, PageRequest.of(page, size, Sort.by("id").descending()))
+                purchaseReturnRepository.findFiltered(search,from,to,supplierId,purchaseId,status,settlementType,resolutionType,PageRequest.of(page, size, Sort.by("id").descending()))
                         .map(this::toDto)
         );
     }
@@ -278,12 +268,219 @@ public class PurchaseReturnService {
         return toDto(entity);
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_SUBMIT')")
+    @Transactional
+    public PurchaseReturnDTO submit(Integer id) {
+        PurchaseReturn entity = getReturn(id);
+        if (STATUS_PENDING.equals(entity.getStatus())) return toDto(entity);
+        requireStatus(entity, STATUS_DRAFT);
+        entity.setStatus(STATUS_PENDING);
+        entity.setSubmittedBy(currentActor());
+        entity.setSubmittedAt(LocalDateTime.now());
+        return workflowSaved(entity, "PURCHASE_RETURN_SUBMITTED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_APPROVE')")
+    @Transactional
+    public PurchaseReturnDTO approve(Integer id, PurchaseReturnDTO request) {
+        PurchaseReturn entity = getReturn(id);
+        if (STATUS_APPROVED.equals(entity.getStatus())) return toDto(entity);
+        requireStatus(entity, STATUS_PENDING);
+        for (PurchaseReturnDetail detail : entity.getDetails()) {
+            Product product = detail.getProduct();
+            int qty = detail.getQty() == null ? 0 : detail.getQty();
+            List<String> serials = normalizeSerials(detail.getSerialNumber() == null ? List.of() : List.of(detail.getSerialNumber()));
+            if (serials.isEmpty()) {
+                int current = product.getStockQty() == null ? 0 : product.getStockQty();
+                int quarantined = product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty();
+                if (current - quarantined < qty) throw new IllegalStateException("Insufficient stock to quarantine: " + product.getName());
+                product.setQuarantinedQty(quarantined + qty);
+                productRepository.save(product);
+            } else {
+                for (String sn : serials) {
+                    ProductSerial serial = productSerialRepository.findBySerialNumber(sn)
+                            .orElseThrow(() -> new IllegalStateException("Serial not found: " + sn));
+                    if (serial.getStatus() != SerialStatus.Available)
+                        throw new IllegalStateException("Serial is not available to quarantine: " + sn);
+                    serial.setStatus(SerialStatus.Quarantined);
+                    productSerialRepository.save(serial);
+                }
+            }
+            detail.setQuarantinedQty(qty);
+        }
+        entity.setStatus(STATUS_APPROVED);
+        entity.setApprovedBy(currentActor());
+        entity.setApprovedAt(LocalDateTime.now());
+        entity.setApprovalNote(request == null ? null : request.getApprovalNote());
+        return workflowSaved(entity, "PURCHASE_RETURN_APPROVED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_APPROVE')")
+    @Transactional
+    public PurchaseReturnDTO reject(Integer id, PurchaseReturnDTO request) {
+        PurchaseReturn entity = getReturn(id);
+        requireStatus(entity, STATUS_PENDING);
+        if (request == null || request.getRejectionReason() == null || request.getRejectionReason().isBlank())
+            throw new IllegalArgumentException("Rejection reason is required");
+        entity.setRejectedBy(currentActor());
+        entity.setRejectedAt(LocalDateTime.now());
+        entity.setRejectionReason(request.getRejectionReason().trim());
+        entity.setStatus(STATUS_DRAFT);
+        return workflowSaved(entity, "PURCHASE_RETURN_REJECTED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_DISPATCH')")
+    @Transactional
+    public PurchaseReturnDTO dispatch(Integer id, PurchaseReturnDTO request) {
+        PurchaseReturn entity = getReturn(id);
+        if (STATUS_DISPATCHED.equals(entity.getStatus())) return toDto(entity);
+        requireStatus(entity, STATUS_APPROVED);
+        if (request == null || request.getCarrier() == null || request.getCarrier().isBlank()
+                || request.getTrackingNo() == null || request.getTrackingNo().isBlank())
+            throw new IllegalArgumentException("Carrier and tracking number are required");
+        Purchase purchase = entity.getPurchase();
+        for (PurchaseReturnDetail detail : entity.getDetails()) {
+            Product product = detail.getProduct();
+            int qty = detail.getQty();
+            if (!Integer.valueOf(qty).equals(detail.getQuarantinedQty()))
+                throw new IllegalStateException("Return detail is not fully quarantined");
+            List<String> serials = normalizeSerials(detail.getSerialNumber() == null ? List.of() : List.of(detail.getSerialNumber()));
+            if (serials.isEmpty()) {
+                int current = product.getStockQty() == null ? 0 : product.getStockQty();
+                if (current < qty) throw new IllegalStateException("Insufficient quarantined stock: " + product.getName());
+                product.setStockQty(current - qty);
+                product.setQuarantinedQty(Math.max(0, (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty()) - qty));
+                productRepository.save(product);
+                stockLotService.consumePurchaseReturn(purchase, product, qty);
+            } else {
+                for (String sn : serials) {
+                    ProductSerial serial = productSerialRepository.findBySerialNumber(sn)
+                            .orElseThrow(() -> new IllegalStateException("Serial not found: " + sn));
+                    if (serial.getStatus() != SerialStatus.Quarantined)
+                        throw new IllegalStateException("Serial is not quarantined: " + sn);
+                    serial.setStatus(SerialStatus.Returned_To_Supplier);
+                    productSerialRepository.save(serial);
+                }
+            }
+            detail.setDispatchedQty(qty);
+            stockMovementService.recordMovement(StockMovement.builder().product(product)
+                    .movementType(MovementType.OUT).qty(qty).referenceId(entity.getId())
+                    .referenceType("PurchaseReturnDispatch").build());
+        }
+        entity.setCarrier(request.getCarrier().trim());
+        entity.setTrackingNo(request.getTrackingNo().trim());
+        entity.setDispatchedAt(request.getDispatchedAt() == null ? LocalDateTime.now() : request.getDispatchedAt());
+        entity.setDeliveryProof(request.getDeliveryProof());
+        postCompanyShipping(entity);
+        entity.setStatus(STATUS_DISPATCHED);
+        return workflowSaved(entity, "PURCHASE_RETURN_DISPATCHED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_RECEIVE')")
+    @Transactional
+    public PurchaseReturnDTO supplierReceived(Integer id, PurchaseReturnDTO request) {
+        PurchaseReturn entity = getReturn(id);
+        if (STATUS_RECEIVED.equals(entity.getStatus())) return toDto(entity);
+        requireStatus(entity, STATUS_DISPATCHED);
+        entity.setSupplierReceivedAt(request != null && request.getSupplierReceivedAt() != null
+                ? request.getSupplierReceivedAt() : LocalDateTime.now());
+        if (request != null && request.getDeliveryProof() != null) entity.setDeliveryProof(request.getDeliveryProof());
+        entity.setStatus(STATUS_RECEIVED);
+        return workflowSaved(entity, "PURCHASE_RETURN_SUPPLIER_RECEIVED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_SETTLE')")
+    @Transactional
+    public PurchaseReturnDTO settle(Integer id, PurchaseReturnDTO request) {
+        PurchaseReturn entity = getReturn(id);
+        if (STATUS_SETTLED.equals(entity.getStatus())) return toDto(entity);
+        requireStatus(entity, STATUS_RECEIVED);
+        if (request == null) throw new IllegalArgumentException("Settlement details are required");
+        String type = normalizeSettlementType(request.getSettlementType());
+        BigDecimal expected = settlementValue(entity);
+        if (request.getExpectedCreditAmount() != null
+                && safe(request.getExpectedCreditAmount()).compareTo(expected) != 0)
+            throw new IllegalArgumentException("Expected supplier credit must equal return value less supplier shipping responsibility: " + expected);
+        BigDecimal noteAmount = safe(request.getSupplierCreditNoteAmount());
+        boolean creditNoteSettlement = Set.of("CREDIT_NOTE", "OFFSET", "SPLIT").contains(type);
+        BigDecimal variance = creditNoteSettlement ? noteAmount.subtract(expected) : BigDecimal.ZERO;
+        if (creditNoteSettlement && variance.signum() != 0
+                && (request.getCreditVarianceReason() == null || request.getCreditVarianceReason().isBlank()))
+            throw new IllegalArgumentException("Credit note variance reason is required");
+        if (creditNoteSettlement
+                && (request.getSupplierCreditNoteNo() == null || request.getSupplierCreditNoteNo().isBlank()))
+            throw new IllegalArgumentException("Supplier credit note number is required");
+
+        Purchase purchase = entity.getPurchase();
+        Supplier supplier = purchase.getSupplier();
+        BigDecimal oldDue = safe(purchase.getDueAmount());
+        BigDecimal oldCredit = safe(purchase.getSupplierCreditAmount());
+        BigDecimal refund = ("REFUND".equals(type) || "SPLIT".equals(type))
+                ? paymentTotal(request.getPayments(), request.getRefundAmount()) : BigDecimal.ZERO;
+        if (refund.compareTo(expected) > 0)
+            throw new IllegalArgumentException("Refund amount exceeds expected supplier settlement: " + expected);
+        entity.setRefundAmount(refund);
+        entity.setSettlementType(type);
+        entity.setExpectedCreditAmount(expected);
+        entity.setSupplierCreditNoteNo(request.getSupplierCreditNoteNo());
+        entity.setSupplierCreditNoteAmount(noteAmount);
+        entity.setCreditVariance(variance);
+        entity.setCreditVarianceReason(request.getCreditVarianceReason());
+        entity.setSettlementReference(request.getSettlementReference());
+        entity.setSettledAt(LocalDateTime.now());
+        entity.setStatus(STATUS_SETTLED);
+        purchaseReturnRepository.save(entity);
+
+        recalculatePurchaseFinancials(purchase);
+        BigDecimal creditIncrease = safe(purchase.getSupplierCreditAmount()).subtract(oldCredit).max(BigDecimal.ZERO);
+        PaymentMethod refundMethod = null;
+        if (refund.signum() > 0) {
+            Integer methodId = request.getPaymentMethodId() != null ? request.getPaymentMethodId()
+                    : request.getPayments() != null && !request.getPayments().isEmpty()
+                    ? request.getPayments().get(0).getPaymentMethodId() : null;
+            if (methodId == null) throw new IllegalArgumentException("Payment method is required for refund");
+            refundMethod = paymentMethodRepository.findById(methodId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
+            recordPaymentTransactions(entity, refund, request.getTransactionNo(), refundMethod, request.getPayments());
+        }
+        Integer staffId = purchase.getStaff() == null ? null : purchase.getStaff().getId();
+        createReturnJournal(entity, refundMethod, refund, oldDue.min(expected),
+                creditIncrease, staffId, supplier == null ? "" : supplier.getName(), request.getPayments(),
+                safe(entity.getSupplierShippingPortion()));
+        if (supplier != null) syncSupplierBalance(supplier);
+        return workflowSaved(entity, "PURCHASE_RETURN_SETTLED");
+    }
+
 
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
     @Transactional
     public PurchaseReturnDTO update(Integer id, PurchaseReturnDTO dto) {
-        throw new RuntimeException("Confirmed purchase return cannot be edited. Create a reversal/void workflow instead.");
+        PurchaseReturn existing = getReturn(id);
+        requireStatus(existing, STATUS_DRAFT);
+        if (dto.getVersion() != null && !dto.getVersion().equals(existing.getVersion()))
+            throw new jakarta.persistence.OptimisticLockException("Purchase return was changed by another user");
+        if (dto.getReturnDate() != null) existing.setReturnDate(dto.getReturnDate());
+        if (dto.getReason() != null && !dto.getReason().isBlank()) existing.setReason(dto.getReason().trim());
+        existing.setResolutionType(trimToNull(dto.getResolutionType()));
+        existing.setRmaNumber(trimToNull(dto.getRmaNumber()));
+        existing.setClaimDate(dto.getClaimDate());
+        existing.setExpectedResolutionDate(dto.getExpectedResolutionDate());
+        existing.setSupplierContact(trimToNull(dto.getSupplierContact()));
+        existing.setClaimStatus(trimToNull(dto.getClaimStatus()));
+        existing.setReplacementExpectedQty(dto.getReplacementExpectedQty());
+        existing.setReplacementReceivedQty(dto.getReplacementReceivedQty());
+        existing.setGoodsReceiptId(dto.getGoodsReceiptId());
+        if (dto.getDetails() != null && dto.getDetails().size() == existing.getDetails().size()) {
+            for (int i = 0; i < dto.getDetails().size(); i++) {
+                PurchaseReturnDetailDTO incoming = dto.getDetails().get(i);
+                PurchaseReturnDetail detail = existing.getDetails().get(i);
+                if (incoming.getReasonId() != null) detail.setReason(resolveReason(incoming.getReasonId()));
+                detail.setAllocatedShippingCost(safe(incoming.getAllocatedShippingCost()));
+            }
+        }
+        configureShipping(existing, dto);
+        return workflowSaved(existing, "PURCHASE_RETURN_UPDATED");
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
@@ -295,6 +492,9 @@ public class PurchaseReturnService {
         if (STATUS_VOIDED.equalsIgnoreCase(existing.getStatus())) {
             throw new RuntimeException("Purchase return is already voided.");
         }
+        if (STATUS_DISPATCHED.equals(existing.getStatus()) || STATUS_RECEIVED.equals(existing.getStatus())) {
+            throw new IllegalStateException("A dispatched return cannot be voided before settlement; record supplier receipt/settlement or a controlled reversal.");
+        }
         String reason = dto != null ? dto.getVoidReason() : null;
         if (reason == null || reason.isBlank()) {
             reason = dto != null ? dto.getReason() : null;
@@ -303,18 +503,48 @@ public class PurchaseReturnService {
             throw new RuntimeException("Void reason is required");
         }
 
+        boolean posted = STATUS_SETTLED.equals(existing.getStatus());
         Purchase purchase = existing.getPurchase();
         Supplier supplier = purchase != null ? purchase.getSupplier() : null;
+        BigDecimal dueBeforeVoid = purchase != null ? safe(purchase.getDueAmount()) : BigDecimal.ZERO;
+        BigDecimal creditBeforeVoid = purchase != null ? safe(purchase.getSupplierCreditAmount()) : BigDecimal.ZERO;
+        List<PaymentTransaction> refundTransactions = paymentTransactionRepository
+                .findByReferenceIdAndReferenceType(existing.getId(), ReferenceType.Purchase_Return)
+                .stream().filter(tx -> !Boolean.TRUE.equals(tx.getReversed())).toList();
 
         for (PurchaseReturnDetail detail : existing.getDetails()) {
             Product product = detail.getProduct();
             int qty = detail.getQty() != null ? detail.getQty() : 0;
             List<String> serials = normalizeSerials(detail.getSerialNumber() == null ? List.of() : List.of(detail.getSerialNumber()));
 
+            if (!posted) {
+                if (serials.isEmpty()) {
+                    product.setQuarantinedQty(Math.max(0,
+                            (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty())
+                                    - (detail.getQuarantinedQty() == null ? 0 : detail.getQuarantinedQty())));
+                    productRepository.save(product);
+                }
+                for (String sn : serials) {
+                    productSerialRepository.findBySerialNumber(sn).ifPresent(serial -> {
+                        if (serial.getStatus() == SerialStatus.Quarantined) {
+                            serial.setStatus(SerialStatus.Available);
+                            productSerialRepository.save(serial);
+                        }
+                    });
+                }
+                detail.setQuarantinedQty(0);
+                continue;
+            }
             if (!serials.isEmpty()) {
                 for (String sn : serials) {
-                    if (productSerialRepository.existsBySerialNumber(sn)) {
-                        throw new RuntimeException("Cannot void return. Serial already exists in inventory: " + sn);
+                    var tracked = productSerialRepository.findBySerialNumber(sn);
+                    if (tracked.isPresent()) {
+                        if (tracked.get().getStatus() != SerialStatus.Returned_To_Supplier) {
+                            throw new RuntimeException("Cannot void return. Serial is already active in inventory: " + sn);
+                        }
+                        tracked.get().setStatus(SerialStatus.Available);
+                        productSerialRepository.save(tracked.get());
+                        continue;
                     }
                     PurchaseDetailWarranty warranty = findPurchaseWarranty(purchase, product.getId(), sn);
                     productSerialRepository.save(ProductSerial.builder()
@@ -330,6 +560,7 @@ public class PurchaseReturnService {
                 int current = product.getStockQty() != null ? product.getStockQty() : 0;
                 product.setStockQty(current + qty);
                 productRepository.save(product);
+                if (purchase != null) stockLotService.restorePurchaseReturn(purchase, product, qty);
             }
 
             stockMovementService.recordMovement(StockMovement.builder()
@@ -346,11 +577,24 @@ public class PurchaseReturnService {
         existing.setVoidReason(reason);
         PurchaseReturn saved = purchaseReturnRepository.save(existing);
 
-        if (purchase != null) {
+        if (purchase != null && posted) {
             recalculatePurchaseFinancials(purchase);
+            BigDecimal payableReversal = safe(purchase.getDueAmount()).subtract(dueBeforeVoid).max(BigDecimal.ZERO);
+            BigDecimal supplierCreditReversal = creditBeforeVoid
+                    .subtract(safe(purchase.getSupplierCreditAmount())).max(BigDecimal.ZERO);
+            BigDecimal refundReversal = refundTransactions.stream()
+                    .map(PaymentTransaction::getAmount).map(this::safe)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal accounted = payableReversal.add(supplierCreditReversal).add(refundReversal);
+            if (accounted.compareTo(settlementValue(existing)) != 0) {
+                throw new IllegalStateException(
+                        "Cannot void return because its supplier credit was already consumed or balances changed. Reverse credit applications first.");
+            }
+            reverseRefundTransactions(existing, refundTransactions, reason);
             if (supplier != null) syncSupplierBalance(supplier);
             Integer staffId = purchase.getStaff() != null ? purchase.getStaff().getId() : null;
-            createVoidJournal(saved, staffId, supplier != null ? supplier.getName() : "");
+            createVoidJournal(saved, staffId, supplier != null ? supplier.getName() : "",
+                    payableReversal, supplierCreditReversal, refundTransactions);
         }
 
         messagingTemplate.convertAndSend(PURCHASE_RETURN_TOPIC, "PURCHASE_RETURN_VOIDED");
@@ -365,6 +609,8 @@ public class PurchaseReturnService {
 
     private PurchaseReturnDTO toDto(PurchaseReturn entity) {
         PurchaseReturnDTO dto = mapper.toDto(entity);
+        dto.setActivities(activityRepository.findByPurchaseReturnIdOrderByOccurredAtAsc(entity.getId()).stream().map(a -> { PurchaseReturnActivityDTO d=new PurchaseReturnActivityDTO(); d.setId(a.getId()); d.setEventType(a.getEventType()); d.setFromStatus(a.getFromStatus()); d.setToStatus(a.getToStatus()); d.setNote(a.getNote()); d.setActor(a.getActor()); d.setOccurredAt(a.getOccurredAt()); return d; }).toList());
+        dto.setAttachments(attachmentRepository.findByPurchaseReturnIdOrderByUploadedAtDesc(entity.getId()).stream().map(a -> { PurchaseReturnAttachmentDTO d=new PurchaseReturnAttachmentDTO(); d.setId(a.getId()); d.setAttachmentType(a.getAttachmentType()); d.setFileName(a.getFileName()); d.setContentType(a.getContentType()); d.setDataUrl(a.getDataUrl()); d.setUploadedBy(a.getUploadedBy()); d.setUploadedAt(a.getUploadedAt()); return d; }).toList());
         Purchase purchase = entity.getPurchase();
         if (purchase != null) {
             dto.setPurchaseCode(purchase.getPurchaseCode());
@@ -379,6 +625,21 @@ public class PurchaseReturnService {
             dto.setPaymentMethodId(payments.get(0).getPaymentMethod().getId());
             dto.setPaymentMethodName(payments.get(0).getPaymentMethod().getMethodName());
             dto.setTransactionNo(payments.get(0).getTransactionNo());
+        }
+        List<PaymentTransaction> shippingPayments = paymentTransactionRepository
+                .findByReferenceIdAndReferenceType(entity.getId(), ReferenceType.Purchase_Return_Shipping);
+        if (!shippingPayments.isEmpty()) {
+            PaymentTransaction shipping = shippingPayments.get(0);
+            dto.setShippingPaymentTransaction(paymentToDto(shipping));
+            if (shipping.getPaymentMethod() != null) {
+                dto.setShippingPaymentMethodId(shipping.getPaymentMethod().getId());
+                dto.setShippingPaymentMethodName(shipping.getPaymentMethod().getMethodName());
+            }
+        } else if (entity.getShippingPaymentMethodId() != null) {
+            paymentMethodRepository.findById(entity.getShippingPaymentMethodId()).ifPresent(method -> {
+                dto.setShippingPaymentMethodId(method.getId());
+                dto.setShippingPaymentMethodName(method.getMethodName());
+            });
         }
         return dto;
     }
@@ -411,11 +672,11 @@ public class PurchaseReturnService {
 
     private void recalculatePurchaseFinancials(Purchase purchase) {
         BigDecimal returnAmount = purchaseReturnRepository.findByPurchaseId(purchase.getId()).stream()
-                .filter(this::isConfirmed)
-                .map(r -> safe(r.getTotalReturnAmount()))
+                .filter(this::isPosted)
+                .map(this::settlementValue)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal refundedAmount = purchaseReturnRepository.findByPurchaseId(purchase.getId()).stream()
-                .filter(this::isConfirmed)
+                .filter(this::isPosted)
                 .map(r -> safe(r.getRefundAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -451,12 +712,15 @@ public class PurchaseReturnService {
     }
 
     private BigDecimal originalPurchaseNet(Purchase purchase) {
-        BigDecimal gross = safe(purchase.getTotalAmount());
-        BigDecimal discount = safe(purchase.getDiscountAmount());
-        BigDecimal originalNet = gross.subtract(discount);
-        if (originalNet.compareTo(BigDecimal.ZERO) > 0) {
-            return originalNet;
+        // Align with purchase payable net: gross - discount + otherCharges ± tax - WHT
+        BigDecimal gross = safe(purchase.getTotalAmount()).subtract(safe(purchase.getDiscountAmount()))
+                .add(safe(purchase.getOtherCharges()));
+        String taxMode = purchase.getTaxMode() == null ? "EXCLUSIVE" : purchase.getTaxMode();
+        if (!"INCLUSIVE".equalsIgnoreCase(taxMode)) {
+            gross = gross.add(safe(purchase.getTaxAmount()));
         }
+        BigDecimal net = gross.subtract(safe(purchase.getWithholdingTaxAmount()));
+        if (net.compareTo(BigDecimal.ZERO) > 0) return net;
         return safe(purchase.getNetAmount()).add(safe(purchase.getReturnAmount()));
     }
 
@@ -525,6 +789,10 @@ public class PurchaseReturnService {
         return purchaseReturn != null && !STATUS_VOIDED.equalsIgnoreCase(purchaseReturn.getStatus());
     }
 
+    private boolean isPosted(PurchaseReturn purchaseReturn) {
+        return purchaseReturn != null && STATUS_SETTLED.equalsIgnoreCase(purchaseReturn.getStatus());
+    }
+
     private PurchaseDetailWarranty findPurchaseWarranty(Purchase purchase, Integer productId, String serial) {
         if (purchase == null || purchase.getDetails() == null || serial == null) return null;
         String normalized = serial.trim().toUpperCase();
@@ -575,6 +843,10 @@ public class PurchaseReturnService {
                     ? line.transactionNo()
                     : (fallbackTransactionNo == null || fallbackTransactionNo.isBlank() ? generateTransactionNo() : fallbackTransactionNo));
             paymentTransactionRepository.save(paymentTx);
+            if (isCashMethod(line.method())) {
+                cashDrawerService.recordPurchaseCashIn(line.amount(),
+                        "Purchase return refund " + pr.getReturnNo());
+            }
         }
     }
 
@@ -589,6 +861,7 @@ public class PurchaseReturnService {
     private List<PaymentLine> resolvePaymentLines(List<PaymentTransactionDTO> payments, BigDecimal expectedTotal, PaymentMethod fallbackMethod) {
         if (payments == null || payments.isEmpty()) {
             if (fallbackMethod == null) throw new RuntimeException("Payment Method is required.");
+            if (fallbackMethod.getAccount() == null) throw new RuntimeException("Payment Method must have linked account.");
             return List.of(new PaymentLine(fallbackMethod, expectedTotal, null));
         }
         BigDecimal total = paymentTotal(payments, BigDecimal.ZERO);
@@ -614,8 +887,9 @@ public class PurchaseReturnService {
     }
 
     private void createReturnJournal(PurchaseReturn pr, PaymentMethod method, BigDecimal refundAmount,
-                                     BigDecimal payableReduction, Integer staffId, String supplierName,
-                                     List<PaymentTransactionDTO> payments) {
+                                     BigDecimal payableReduction, BigDecimal supplierCreditIncrease,
+                                     Integer staffId, String supplierName,
+                                     List<PaymentTransactionDTO> payments, BigDecimal supplierShippingPortion) {
         JournalEntryDTO journalDTO = new JournalEntryDTO();
         journalDTO.setReferenceNo(pr.getReturnNo());
         journalDTO.setEntryDate(LocalDateTime.now());
@@ -646,11 +920,33 @@ public class PurchaseReturnService {
             totalCredit = totalCredit.add(refundAmount);
         }
 
+        if (supplierCreditIncrease != null && supplierCreditIncrease.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO drSupplierCredit = new JournalDetailDTO();
+            drSupplierCredit.setAccountId(accountResolver.supplierAdvance().getId());
+            drSupplierCredit.setDebit(supplierCreditIncrease);
+            drSupplierCredit.setCredit(BigDecimal.ZERO);
+            details.add(drSupplierCredit);
+            totalCredit = totalCredit.add(supplierCreditIncrease);
+        }
+
+        BigDecimal supplierShipping = safe(supplierShippingPortion);
+        if (supplierShipping.signum() > 0) {
+            JournalDetailDTO drShipping = new JournalDetailDTO();
+            drShipping.setAccountId(accountResolver.transportation().getId());
+            drShipping.setDebit(supplierShipping);
+            drShipping.setCredit(BigDecimal.ZERO);
+            details.add(drShipping);
+        }
+
+        if (totalCredit.compareTo(settlementValue(pr)) != 0) {
+            throw new IllegalStateException("Purchase return journal settlement components do not equal expected supplier credit.");
+        }
+
         // Credit Purchase Return (COA code INC-007)
         JournalDetailDTO crPurchaseReturn = new JournalDetailDTO();
         crPurchaseReturn.setAccountId(accountResolver.purchaseRtn().getId());
         crPurchaseReturn.setDebit(BigDecimal.ZERO);
-        crPurchaseReturn.setCredit(totalCredit);
+        crPurchaseReturn.setCredit(totalCredit.add(supplierShipping));
         details.add(crPurchaseReturn);
 
         if (totalCredit.compareTo(BigDecimal.ZERO) > 0) {
@@ -659,13 +955,11 @@ public class PurchaseReturnService {
         }
     }
 
-    private void createVoidJournal(PurchaseReturn pr, Integer staffId, String supplierName) {
+    private void createVoidJournal(PurchaseReturn pr, Integer staffId, String supplierName,
+                                   BigDecimal payableReversal, BigDecimal supplierCreditReversal,
+                                   List<PaymentTransaction> refundTransactions) {
         BigDecimal total = safe(pr.getTotalReturnAmount());
         if (total.compareTo(BigDecimal.ZERO) <= 0) return;
-
-        BigDecimal refund = safe(pr.getRefundAmount());
-        BigDecimal payableReversal = total.subtract(refund);
-        if (payableReversal.compareTo(BigDecimal.ZERO) < 0) payableReversal = BigDecimal.ZERO;
 
         JournalEntryDTO journalDTO = new JournalEntryDTO();
         journalDTO.setReferenceNo(pr.getReturnNo() + "-VOID");
@@ -689,22 +983,262 @@ public class PurchaseReturnService {
             details.add(crPayable);
         }
 
-        if (refund.compareTo(BigDecimal.ZERO) > 0) {
-            PaymentTransaction tx = paymentTransactionRepository
-                    .findByReferenceIdAndReferenceType(pr.getId(), ReferenceType.Purchase_Return)
-                    .stream()
-                    .findFirst()
-                    .orElse(null);
-            if (tx != null && tx.getPaymentMethod() != null && tx.getPaymentMethod().getAccount() != null) {
+        for (PaymentTransaction tx : refundTransactions) {
+            if (tx.getPaymentMethod() != null && tx.getPaymentMethod().getAccount() != null
+                    && safe(tx.getAmount()).signum() > 0) {
                 JournalDetailDTO crCash = new JournalDetailDTO();
                 crCash.setAccountId(tx.getPaymentMethod().getAccount().getId());
                 crCash.setDebit(BigDecimal.ZERO);
-                crCash.setCredit(refund);
+                crCash.setCredit(tx.getAmount());
                 details.add(crCash);
             }
         }
 
+        if (supplierCreditReversal.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO crSupplierCredit = new JournalDetailDTO();
+            crSupplierCredit.setAccountId(accountResolver.supplierAdvance().getId());
+            crSupplierCredit.setDebit(BigDecimal.ZERO);
+            crSupplierCredit.setCredit(supplierCreditReversal);
+            details.add(crSupplierCredit);
+        }
+
+        BigDecimal supplierShipping = safe(pr.getSupplierShippingPortion());
+        if (supplierShipping.signum() > 0) {
+            JournalDetailDTO crShipping = new JournalDetailDTO();
+            crShipping.setAccountId(accountResolver.transportation().getId());
+            crShipping.setDebit(BigDecimal.ZERO);
+            crShipping.setCredit(supplierShipping);
+            details.add(crShipping);
+        }
+
         journalDTO.setDetails(details);
         journalWriter.write(journalDTO);
+    }
+
+    private void reverseRefundTransactions(PurchaseReturn pr, List<PaymentTransaction> transactions, String reason) {
+        LocalDateTime now = LocalDateTime.now();
+        for (PaymentTransaction tx : transactions) {
+            tx.setReversed(true);
+            tx.setReversedAt(now);
+            tx.setReversedBy(currentActor());
+            tx.setReversalReason(reason);
+            paymentTransactionRepository.save(tx);
+            if (isCashMethod(tx.getPaymentMethod())) {
+                cashDrawerService.recordPurchaseCashOut(safe(tx.getAmount()),
+                        "Void purchase return refund " + pr.getReturnNo());
+            }
+        }
+    }
+
+    private boolean isCashMethod(PaymentMethod method) {
+        return method != null && method.getAccount() != null
+                && method.getAccount().getId().equals(accountResolver.cash().getId());
+    }
+
+    private PurchaseReturn getReturn(Integer id) {
+        return purchaseReturnRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found with id: " + id));
+    }
+
+    private void requireStatus(PurchaseReturn entity, String expected) {
+        if (!expected.equalsIgnoreCase(entity.getStatus()))
+            throw new IllegalStateException("Purchase return must be " + expected + " (current: " + entity.getStatus() + ")");
+    }
+
+    private PurchaseReturnDTO workflowSaved(PurchaseReturn entity, String event) {
+        PurchaseReturn saved = purchaseReturnRepository.save(entity);
+        recordActivity(saved, event, null, saved.getStatus(), null);
+        messagingTemplate.convertAndSend(PURCHASE_RETURN_TOPIC, event);
+        return toDto(saved);
+    }
+
+    @Transactional
+    public PurchaseReturnDTO addAttachment(Integer id, PurchaseReturnAttachmentDTO dto) {
+        PurchaseReturn entity=getReturn(id);
+        if(dto==null || dto.getFileName()==null || dto.getFileName().isBlank() || dto.getDataUrl()==null || dto.getDataUrl().isBlank()) throw new IllegalArgumentException("Attachment file is required");
+        if(dto.getDataUrl().length()>7_000_000) throw new IllegalArgumentException("Attachment exceeds 5 MB");
+        attachmentRepository.save(PurchaseReturnAttachment.builder().purchaseReturn(entity).attachmentType(dto.getAttachmentType()==null?"OTHER":dto.getAttachmentType()).fileName(dto.getFileName()).contentType(dto.getContentType()).dataUrl(dto.getDataUrl()).uploadedBy(currentActor()).uploadedAt(LocalDateTime.now()).build());
+        recordActivity(entity,"ATTACHMENT_ADDED",entity.getStatus(),entity.getStatus(),dto.getFileName()); return toDto(entity);
+    }
+
+    @Transactional
+    public PurchaseReturnDTO deleteAttachment(Integer id,Integer attachmentId) { PurchaseReturn entity=getReturn(id); PurchaseReturnAttachment a=attachmentRepository.findById(attachmentId).orElseThrow(()->new ResourceNotFoundException("Attachment not found")); if(!a.getPurchaseReturn().getId().equals(id)) throw new IllegalArgumentException("Attachment does not belong to return"); attachmentRepository.delete(a); recordActivity(entity,"ATTACHMENT_DELETED",entity.getStatus(),entity.getStatus(),a.getFileName()); return toDto(entity); }
+
+    private void recordActivity(PurchaseReturn entity,String event,String from,String to,String note){ activityRepository.save(PurchaseReturnActivity.builder().purchaseReturn(entity).eventType(event).fromStatus(from).toStatus(to).note(note).actor(currentActor()).occurredAt(LocalDateTime.now()).build()); }
+
+    private PurchaseReturnReason resolveReason(Integer reasonId) {
+        if (reasonId != null) {
+            PurchaseReturnReason reason = returnReasonRepository.findById(reasonId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Purchase return reason not found"));
+            if (!Boolean.TRUE.equals(reason.getActive())) throw new IllegalArgumentException("Purchase return reason is inactive");
+            return reason;
+        }
+        // Compatibility for existing Android/offline clients: map their required
+        // header explanation to the seeded OTHER reason instead of inventing a master.
+        return returnReasonRepository.findByCodeIgnoreCase("OTHER")
+                .orElseThrow(() -> new IllegalStateException("Default OTHER purchase return reason is not configured"));
+    }
+
+    void configureShipping(PurchaseReturn entity, PurchaseReturnDTO dto) {
+        BigDecimal totalCost = money(dto.getShippingCostAmount() != null
+                ? dto.getShippingCostAmount() : entity.getShippingCostAmount());
+        if (totalCost.signum() < 0) throw new IllegalArgumentException("Shipping cost cannot be negative");
+
+        String payer = normalizeChoice(dto.getShippingPayerResponsibility() != null
+                ? dto.getShippingPayerResponsibility() : entity.getShippingPayerResponsibility(),
+                Set.of("COMPANY", "SUPPLIER", "SHARED"), "Shipping payer responsibility");
+        String method = normalizeChoice(dto.getShippingAllocationMethod() != null
+                ? dto.getShippingAllocationMethod() : entity.getShippingAllocationMethod(),
+                Set.of("VALUE", "QUANTITY", "MANUAL"), "Shipping allocation method");
+
+        BigDecimal company = dto.getCompanyShippingPortion() == null ? null : money(dto.getCompanyShippingPortion());
+        BigDecimal supplier = dto.getSupplierShippingPortion() == null ? null : money(dto.getSupplierShippingPortion());
+        if (company == null && supplier == null) {
+            company = "SUPPLIER".equals(payer) ? BigDecimal.ZERO : totalCost;
+            supplier = "SUPPLIER".equals(payer) ? totalCost : BigDecimal.ZERO;
+        } else {
+            company = company == null ? BigDecimal.ZERO : company;
+            supplier = supplier == null ? BigDecimal.ZERO : supplier;
+        }
+        if (company.signum() < 0 || supplier.signum() < 0)
+            throw new IllegalArgumentException("Shipping portions cannot be negative");
+        if (company.add(supplier).compareTo(totalCost) != 0)
+            throw new IllegalArgumentException("Company and supplier shipping portions must sum to shipping cost");
+        if ("COMPANY".equals(payer) && (company.compareTo(totalCost) != 0 || supplier.signum() != 0))
+            throw new IllegalArgumentException("COMPANY responsibility requires the company portion to equal total shipping cost");
+        if ("SUPPLIER".equals(payer) && (supplier.compareTo(totalCost) != 0 || company.signum() != 0))
+            throw new IllegalArgumentException("SUPPLIER responsibility requires the supplier portion to equal total shipping cost");
+        if (supplier.compareTo(safe(entity.getTotalReturnAmount())) > 0)
+            throw new IllegalArgumentException("Supplier shipping portion cannot exceed return value");
+
+        entity.setShippingCostAmount(totalCost);
+        entity.setShippingPayerResponsibility(payer);
+        entity.setCompanyShippingPortion(company);
+        entity.setSupplierShippingPortion(supplier);
+        entity.setShippingAllocationMethod(method);
+        entity.setShippingPaymentMethodId(dto.getShippingPaymentMethodId());
+        entity.setShippingTransactionReference(trimToNull(dto.getShippingTransactionReference()));
+        allocateShipping(entity, method, totalCost);
+    }
+
+    void allocateShipping(PurchaseReturn entity, String method, BigDecimal totalCost) {
+        List<PurchaseReturnDetail> details = entity.getDetails() == null ? List.of() : entity.getDetails();
+        if (details.isEmpty()) {
+            if (totalCost.signum() > 0) throw new IllegalArgumentException("Shipping allocation requires return details");
+            return;
+        }
+        if ("MANUAL".equals(method)) {
+            BigDecimal allocated = details.stream().map(PurchaseReturnDetail::getAllocatedShippingCost)
+                    .map(this::money).reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (details.stream().anyMatch(d -> safe(d.getAllocatedShippingCost()).signum() < 0))
+                throw new IllegalArgumentException("Allocated shipping cost cannot be negative");
+            if (allocated.compareTo(totalCost) != 0)
+                throw new IllegalArgumentException("Manual detail allocations must sum to shipping cost");
+            details.forEach(d -> d.setAllocatedShippingCost(money(d.getAllocatedShippingCost())));
+            return;
+        }
+
+        BigDecimal denominator = details.stream()
+                .map(d -> "QUANTITY".equals(method) ? BigDecimal.valueOf(d.getQty() == null ? 0 : d.getQty()) : safe(d.getSubtotal()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalCost.signum() > 0 && denominator.signum() <= 0)
+            throw new IllegalArgumentException("Shipping allocation basis must be greater than zero");
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 0; i < details.size(); i++) {
+            PurchaseReturnDetail detail = details.get(i);
+            BigDecimal amount;
+            if (i == details.size() - 1) {
+                amount = totalCost.subtract(allocated);
+            } else if (totalCost.signum() == 0) {
+                amount = BigDecimal.ZERO.setScale(2);
+            } else {
+                BigDecimal basis = "QUANTITY".equals(method)
+                        ? BigDecimal.valueOf(detail.getQty() == null ? 0 : detail.getQty())
+                        : safe(detail.getSubtotal());
+                amount = totalCost.multiply(basis).divide(denominator, 2, RoundingMode.HALF_UP);
+                allocated = allocated.add(amount);
+            }
+            detail.setAllocatedShippingCost(money(amount));
+        }
+    }
+
+    private void postCompanyShipping(PurchaseReturn entity) {
+        BigDecimal amount = money(entity.getCompanyShippingPortion());
+        if (amount.signum() == 0) {
+            entity.setShippingPostedAt(LocalDateTime.now());
+            return;
+        }
+        if (!paymentTransactionRepository.findByReferenceIdAndReferenceType(
+                entity.getId(), ReferenceType.Purchase_Return_Shipping).isEmpty()) {
+            entity.setShippingPostedAt(LocalDateTime.now());
+            return;
+        }
+        if (entity.getShippingPaymentMethodId() == null)
+            throw new IllegalArgumentException("Shipping payment method is required for company-paid shipping");
+        PaymentMethod method = paymentMethodRepository.findById(entity.getShippingPaymentMethodId())
+                .orElseThrow(() -> new ResourceNotFoundException("Shipping payment method not found"));
+        if (method.getAccount() == null)
+            throw new IllegalArgumentException("Shipping payment method must have a linked account");
+
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setReferenceId(entity.getId());
+        tx.setReferenceType(ReferenceType.Purchase_Return_Shipping);
+        tx.setPaymentMethod(method);
+        tx.setAmount(amount);
+        tx.setPaymentDate(entity.getDispatchedAt());
+        tx.setTransactionNo(entity.getShippingTransactionReference() == null
+                ? generateTransactionNo() : entity.getShippingTransactionReference());
+        paymentTransactionRepository.save(tx);
+
+        JournalDetailDTO drExpense = new JournalDetailDTO();
+        drExpense.setAccountId(accountResolver.transportation().getId());
+        drExpense.setDebit(amount);
+        drExpense.setCredit(BigDecimal.ZERO);
+        JournalDetailDTO crPayment = new JournalDetailDTO();
+        crPayment.setAccountId(method.getAccount().getId());
+        crPayment.setDebit(BigDecimal.ZERO);
+        crPayment.setCredit(amount);
+        JournalEntryDTO journal = new JournalEntryDTO();
+        journal.setReferenceNo(entity.getReturnNo() + "-SHIP");
+        journal.setEntryDate(entity.getDispatchedAt());
+        journal.setDescription("Return shipping dispatch " + entity.getReturnNo());
+        journal.setStaffId(entity.getPurchase() != null && entity.getPurchase().getStaff() != null
+                ? entity.getPurchase().getStaff().getId() : null);
+        journal.setDetails(List.of(drExpense, crPayment));
+        journalWriter.write(journal);
+        if (isCashMethod(method))
+            cashDrawerService.recordPurchaseCashOut(amount, "Return shipping " + entity.getReturnNo());
+        entity.setShippingPostedAt(LocalDateTime.now());
+    }
+
+    BigDecimal settlementValue(PurchaseReturn entity) {
+        return money(safe(entity.getTotalReturnAmount()).subtract(safe(entity.getSupplierShippingPortion())).max(BigDecimal.ZERO));
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return safe(value).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String normalizeChoice(String value, Set<String> allowed, String label) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        if (!allowed.contains(normalized))
+            throw new IllegalArgumentException(label + " must be one of " + String.join(", ", allowed));
+        return normalized;
+    }
+
+    private String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeSettlementType(String value) {
+        String type = value == null ? "" : value.trim().toUpperCase();
+        if (!Set.of("REFUND", "CREDIT_NOTE", "REPLACEMENT", "OFFSET", "SPLIT").contains(type))
+            throw new IllegalArgumentException("Settlement type must be REFUND, CREDIT_NOTE, REPLACEMENT, OFFSET or SPLIT");
+        return type;
+    }
+
+    private String currentActor() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getName() != null ? auth.getName() : "system";
     }
 }

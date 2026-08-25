@@ -1,5 +1,5 @@
 import { api } from './api';
-import { ApiResponse, PurchaseReturnDTO, PurchaseReturnDetailDTO } from '../types';
+import { ApiResponse, PurchaseReturnDTO, PurchaseReturnDetailDTO, PurchaseReturnReasonDTO } from '../types';
 
 type AnyRecord = Record<string, any>;
 
@@ -59,6 +59,7 @@ const normalizeDetail = (detail: AnyRecord): PurchaseReturnDetailDTO => {
     qty: Number(detail?.qty) || 0,
     unitPrice: Number(detail?.unitPrice ?? detail?.unitCost) || 0,
     subtotal: Number(detail?.subtotal) || (Number(detail?.qty) || 0) * (Number(detail?.unitPrice ?? detail?.unitCost) || 0),
+    allocatedShippingCost: Number(detail?.allocatedShippingCost) || 0,
     serialNumbers
   };
 };
@@ -70,6 +71,9 @@ const normalizePurchaseReturn = (data: AnyRecord): PurchaseReturnDTO => {
   return {
     ...data,
     purchaseId: Number(data?.purchaseId) || 0,
+    shippingCostAmount: Number(data?.shippingCostAmount) || 0,
+    companyShippingPortion: Number(data?.companyShippingPortion) || 0,
+    supplierShippingPortion: Number(data?.supplierShippingPortion) || 0,
     details
   };
 };
@@ -83,9 +87,9 @@ export interface PurchaseReturnPage {
 }
 
 export const purchaseReturnApiService = {
-  getAll: async (page = 0, size = 20, search = ''): Promise<PurchaseReturnPage> => {
-    const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-    const res = await api.get<any, ApiResponse<any>>(`/v1/purchase-returns?page=${page}&size=${size}${q}`);
+  getAll: async (page = 0, size = 20, search = '', filters: Record<string,string|number|undefined> = {}): Promise<PurchaseReturnPage> => {
+    const params=new URLSearchParams({page:String(page),size:String(size)}); if(search.trim())params.set('search',search.trim()); Object.entries(filters).forEach(([k,v])=>{if(v!==undefined&&v!=='')params.set(k,String(v));});
+    const res = await api.get<any, ApiResponse<any>>(`/v1/purchase-returns?${params.toString()}`);
     const d = res.data ?? {};
     const content = Array.isArray(d.content) ? d.content.map((row: any) => normalizePurchaseReturn((row || {}) as AnyRecord)) : [];
     return {
@@ -124,6 +128,27 @@ export const purchaseReturnApiService = {
     });
     return normalizePurchaseReturn((res.data || {}) as AnyRecord);
   },
+
+  submit: async (id: number) => normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/submit`, {})).data || {}),
+  approve: async (id: number, approvalNote?: string) => normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/approve`, { approvalNote })).data || {}),
+  reject: async (id: number, rejectionReason: string) => normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/reject`, { rejectionReason })).data || {}),
+  addAttachment: async (id: number, data: { attachmentType: string; fileName: string; contentType?: string; dataUrl: string }) => normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/attachments`, data)).data || {}),
+  deleteAttachment: async (id: number, attachmentId: number) => normalizePurchaseReturn((await api.delete<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/attachments/${attachmentId}`)).data || {}),
+  dispatch: async (id: number, data: Pick<PurchaseReturnDTO, 'carrier' | 'trackingNo' | 'dispatchedAt' | 'deliveryProof'>) =>
+    normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/dispatch`, data)).data || {}),
+  supplierReceived: async (id: number, data: Pick<PurchaseReturnDTO, 'supplierReceivedAt' | 'deliveryProof'> = {}) =>
+    normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/supplier-received`, data)).data || {}),
+  settle: async (id: number, data: PurchaseReturnDTO) =>
+    normalizePurchaseReturn((await api.post<any, ApiResponse<PurchaseReturnDTO>>(`/v1/purchase-returns/${id}/settle`, data)).data || {}),
+
+  getReasons: async (activeOnly = false): Promise<PurchaseReturnReasonDTO[]> => {
+    const res = await api.get<any, ApiResponse<PurchaseReturnReasonDTO[]>>(`/v1/purchase-return-reasons?activeOnly=${activeOnly}`);
+    return res.data || [];
+  },
+  createReason: async (data: PurchaseReturnReasonDTO): Promise<PurchaseReturnReasonDTO> =>
+    (await api.post<any, ApiResponse<PurchaseReturnReasonDTO>>('/v1/purchase-return-reasons', data)).data!,
+  updateReason: async (id: number, data: PurchaseReturnReasonDTO): Promise<PurchaseReturnReasonDTO> =>
+    (await api.put<any, ApiResponse<PurchaseReturnReasonDTO>>(`/v1/purchase-return-reasons/${id}`, data)).data!,
 
   delete: async (id: number): Promise<void> => {
     await api.delete<any, ApiResponse<void>>(`/v1/purchase-returns/${id}`);

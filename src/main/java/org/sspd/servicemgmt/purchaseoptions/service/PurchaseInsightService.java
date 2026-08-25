@@ -79,7 +79,7 @@ public class PurchaseInsightService {
         return events;
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_ANALYTICS','CAN_ACCESS_REPORT_READ')")
     @Transactional(readOnly = true)
     public PurchaseAnalyticsDTO analytics(String dateFrom, String dateTo) {
         LocalDateTime from = parseStart(dateFrom);

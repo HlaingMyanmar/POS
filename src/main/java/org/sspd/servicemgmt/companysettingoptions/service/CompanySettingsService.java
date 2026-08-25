@@ -47,6 +47,7 @@ public class CompanySettingsService {
         if (dto.getPoDigits() != null && dto.getPoDigits() >= 1 && dto.getPoDigits() <= 10) s.setPoDigits(dto.getPoDigits());
         if (dto.getPurchaseReturnPrefix() != null) s.setPurchaseReturnPrefix(dto.getPurchaseReturnPrefix().isBlank() ? "PRN" : dto.getPurchaseReturnPrefix().trim());
         if (dto.getPurchaseReturnDigits() != null && dto.getPurchaseReturnDigits() >= 1 && dto.getPurchaseReturnDigits() <= 10) s.setPurchaseReturnDigits(dto.getPurchaseReturnDigits());
+        s.setPoFinalApprovalThreshold(dto.getPoFinalApprovalThreshold());
         return toDto(repository.save(s));
     }
 
@@ -86,6 +87,7 @@ public class CompanySettingsService {
         dto.setPoDigits(s.getPoDigits() != null ? s.getPoDigits() : 5);
         dto.setPurchaseReturnPrefix(s.getPurchaseReturnPrefix() != null ? s.getPurchaseReturnPrefix() : "PRN");
         dto.setPurchaseReturnDigits(s.getPurchaseReturnDigits() != null ? s.getPurchaseReturnDigits() : 5);
+        dto.setPoFinalApprovalThreshold(s.getPoFinalApprovalThreshold());
         return dto;
     }
 }

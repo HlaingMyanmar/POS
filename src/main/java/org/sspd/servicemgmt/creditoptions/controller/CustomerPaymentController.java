@@ -6,12 +6,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
+import org.sspd.servicemgmt.creditoptions.dto.CustomerCreditApplyRequest;
 import org.sspd.servicemgmt.creditoptions.dto.CustomerPaymentDTO;
+import org.sspd.servicemgmt.creditoptions.dto.CustomerPaymentRequest;
 import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.saleoptions.dto.SalePaymentDTO;
 import org.sspd.servicemgmt.saleoptions.service.SaleService;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/customer-payments")
@@ -41,10 +44,40 @@ public class CustomerPaymentController {
                 .body(new ApiResponse<>(true, "Advance payment created", paymentService.createAdvancePayment(dto)));
     }
 
+    @PostMapping("/allocate")
+    public ResponseEntity<ApiResponse<CustomerPaymentDTO>> allocate(@RequestBody CustomerPaymentRequest request) {
+        return ResponseEntity.status(201).body(new ApiResponse<>(true, "Customer payment allocated", paymentService.allocate(request)));
+    }
+
+    @PostMapping("/apply-credit")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> applyCredit(@RequestBody CustomerCreditApplyRequest request) {
+        return ResponseEntity.status(201).body(new ApiResponse<>(true, "Customer credit applied", paymentService.applyCredit(request)));
+    }
+
+    @PostMapping("/{id}/void")
+    public ResponseEntity<ApiResponse<CustomerPaymentDTO>> voidPayment(
+            @PathVariable Integer id, @RequestBody Map<String, Object> body) {
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        Integer staffId = body.get("staffId") == null ? null : Integer.valueOf(String.valueOf(body.get("staffId")));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Customer payment voided", paymentService.voidPayment(id, reason, staffId)));
+    }
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<ApiResponse<List<CustomerPaymentDTO>>> byCustomer(@PathVariable Integer customerId) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Customer payments retrieved", paymentService.findByCustomer(customerId)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @GetMapping("/customer/{customerId}/receivables")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> receivables(@PathVariable Integer customerId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Customer receivables", paymentService.receivables(customerId)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @GetMapping("/customer/{customerId}/credit-summary")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> creditSummary(@PathVariable Integer customerId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Customer credit summary", paymentService.creditSummary(customerId)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")

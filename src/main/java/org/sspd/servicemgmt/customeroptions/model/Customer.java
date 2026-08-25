@@ -38,4 +38,8 @@ public class Customer {
 
     @Column(name = "blacklist_reason", columnDefinition = "TEXT")
     private String blacklistReason;
+
+    @Builder.Default
+    @Column(name = "advance_balance", precision = 15, scale = 2, nullable = false)
+    private java.math.BigDecimal advanceBalance = java.math.BigDecimal.ZERO;
 }

@@ -79,7 +79,9 @@ const normalizeDetail = (detail: AnyRecord): SaleReturnDetailDTO => {
     qty: Number(detail?.qty) || 0,
     unitPrice: Number(detail?.unitPrice) || 0,
     subtotal: Number(detail?.subtotal) || (Number(detail?.qty) || 0) * (Number(detail?.unitPrice) || 0),
-    serialNumbers
+    serialNumbers,
+    reasonId: Number(detail?.reasonId) || undefined,
+    restock: detail?.restock !== false
   };
 };
 
@@ -102,6 +104,9 @@ const normalizeSaleReturn = (data: AnyRecord): SaleReturnDTO => {
     paymentMethodId: Number(data?.paymentMethodId) || undefined,
     transactionNo: data?.transactionNo || undefined,
     reason: data?.reason || undefined,
+    warehouseName: data?.warehouseName || undefined,
+    settlementType: data?.settlementType || undefined,
+    creditNoteNo: data?.creditNoteNo || undefined,
     details
   };
 };
@@ -149,7 +154,19 @@ export const saleReturnApiService = {
     return normalizeSaleReturn(extractRecord(res));
   },
 
-  delete: async (id: number): Promise<void> => {
-    await api.delete<any, ApiResponse<void>>(`/v1/sale-returns/${id}`);
+  delete: async (id: number, reason = 'Voided'): Promise<void> => {
+    await api.delete<any, ApiResponse<void>>(`/v1/sale-returns/${id}?reason=${encodeURIComponent(reason)}`);
+  },
+
+  voidReturn: async (id: number, reason: string): Promise<SaleReturnDTO> => {
+    const res = await api.post<any, ApiResponse<SaleReturnDTO>>(`/v1/sale-returns/${id}/void`, { voidReason: reason });
+    return normalizeSaleReturn(extractRecord(res));
+  }
+};
+
+export const saleReturnReasonApiService = {
+  getAll: async (activeOnly = true) => {
+    const res = await api.get<any, ApiResponse<any[]>>(`/v1/sale-return-reasons?activeOnly=${activeOnly}`);
+    return res.data ?? [];
   }
 };

@@ -131,11 +131,19 @@ public enum PermissionName {
     CAN_ACCESS_PURCHASE_ORDER_DELETE("Purchase Order များကို ဖျက်သိမ်းခွင့်"),
     CAN_ACCESS_PURCHASE_ORDER_RECEIVE("Purchase Order ပစ္စည်းလက်ခံခွင့် (Goods Receipt)"),
     CAN_ACCESS_PURCHASE_ORDER_APPROVE("Purchase Order အတည်ပြု/ပယ်ချခွင့်"),
+    CAN_ACCESS_PURCHASE_ORDER_CANCEL_APPROVED("Approved Purchase Order များကို ပယ်ဖျက်ခွင့်"),
+    CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE("Purchase Order ဒုတိယအဆင့် (Final) အတည်ပြုခွင့်"),
 
     CAN_ACCESS_PURCHASE_RETURN_CREATE("Purchase Return အသစ် ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_RETURN_READ("Purchase Return အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_RETURN_UPDATE("Purchase Return အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_RETURN_DELETE("Purchase Return အချက်အလက်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
+    CAN_ACCESS_PURCHASE_RETURN_REASON_MANAGE("Purchase Return reason master စီမံခန့်ခွဲခွင့်"),
+    CAN_ACCESS_PURCHASE_RETURN_SUBMIT("Purchase Return approval သို့တင်ခွင့်"),
+    CAN_ACCESS_PURCHASE_RETURN_APPROVE("Purchase Return အတည်ပြု/ငြင်းပယ်ခွင့်"),
+    CAN_ACCESS_PURCHASE_RETURN_DISPATCH("Purchase Return ပစ္စည်းပို့ခွင့်"),
+    CAN_ACCESS_PURCHASE_RETURN_RECEIVE("Supplier လက်ခံမှု မှတ်တမ်းတင်ခွင့်"),
+    CAN_ACCESS_PURCHASE_RETURN_SETTLE("Purchase Return credit/refund reconciliation ခွင့်"),
 
     CAN_ACCESS_PURCHASE_RETURN_DETAIL_CREATE("Purchase Return Detail အသစ် ဖန်တီးခွင့်ပြုသည်"),
     CAN_ACCESS_PURCHASE_RETURN_DETAIL_READ("Purchase Return Detail အချက်အလက်များကို ကြည့်ရှုခွင့်ပြုသည်"),
@@ -220,7 +228,12 @@ public enum PermissionName {
 
     CAN_ACCESS_AUDIT_LOG_READ("Audit log မှတ်တမ်းများ ကြည့်ရှုခွင့်"),
 
-    CAN_ACCESS_PURCHASE_BUDGET("Purchase budget create/update/activate permission"),
+    CAN_ACCESS_PURCHASE_BUDGET("Purchase Budget ကြည့်ရှု / ဖန်တီး / ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_PURCHASE_REORDER("Purchase Reorder suggestions ကြည့်ရှု / အသုံးပြုခွင့်"),
+    CAN_ACCESS_PURCHASE_WAREHOUSE("Purchase Warehouse stock balance ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_PURCHASE_EXPIRY("Purchase Expiry / FEFO stock lots ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_PURCHASE_ANALYTICS("Purchase Analytics ကြည့်ရှုခွင့်"),
+    CAN_ACCESS_PURCHASE_IMPORT("Purchase Excel Import / Template အသုံးပြုခွင့်"),
 
     // Shelf Location Management
     CAN_ACCESS_SHELF_LOCATION_READ("Shelf Location စာရင်းများကို ကြည့်ရှုခွင့်"),

@@ -18,8 +18,10 @@ public interface PurchaseDetailRepository extends JpaRepository<PurchaseDetail, 
       where (d.purchase.status is null or d.purchase.status=org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
         and d.purchase.purchaseDate>=:from and d.purchase.purchaseDate<:to
         and (:categoryId is null or d.product.category.id=:categoryId)
+        and (:supplierId is null or d.purchase.supplier.id=:supplierId)
       """)
-    BigDecimal sumConfirmedSpend(@Param("from") LocalDateTime from,@Param("to") LocalDateTime to,@Param("categoryId") Integer categoryId);
+    BigDecimal sumConfirmedSpend(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                 @Param("categoryId") Integer categoryId, @Param("supplierId") Integer supplierId);
 
     @Query("""
       select coalesce(d.product.category.name, 'Uncategorized'), count(distinct d.purchase.id), coalesce(sum(d.subtotal),0)

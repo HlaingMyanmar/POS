@@ -3,6 +3,7 @@ package org.sspd.servicemgmt.saleoptions.salereturndetails.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.sspd.servicemgmt.saleoptions.salereturnoptions.model.SaleReturn;
+import org.sspd.servicemgmt.saleoptions.salereturnreasonoptions.model.SaleReturnReason;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 
 import java.math.BigDecimal;
@@ -37,4 +38,12 @@ public class SaleReturnDetail {
 
     @Column(name = "serial_number")
     private String serialNumber;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reason_id")
+    private SaleReturnReason reason;
+
+    @Builder.Default
+    @Column(name = "restock", nullable = false)
+    private Boolean restock = Boolean.TRUE;
 }

@@ -3,12 +3,14 @@ package org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.POStatus;
 import org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.model.PurchaseOrder;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +18,10 @@ import java.util.Optional;
 @Repository
 public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Integer> {
     Optional<PurchaseOrder> findTopByOrderByIdDesc();
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM PurchaseOrder o WHERE o.id = :id")
+    Optional<PurchaseOrder> findByIdForUpdate(@Param("id") Integer id);
 
     @Query("SELECT o FROM PurchaseOrder o WHERE (:search IS NULL OR :search = '' OR LOWER(o.poCode) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(o.supplier.name) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(o.staff.name) LIKE LOWER(CONCAT('%',:search,'%')))")
     Page<PurchaseOrder> findBySearch(@Param("search") String search, Pageable pageable);

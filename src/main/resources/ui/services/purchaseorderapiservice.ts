@@ -71,5 +71,10 @@ export const purchaseOrderApiService = {
   getGoodsReceipts: async (id: number): Promise<GoodsReceiptDTO[]> => {
     const res = await api.get<any, ApiResponse<GoodsReceiptDTO[]>>(`/v1/purchase-orders/${id}/goods-receipts`);
     return res.data ?? [];
+  },
+
+  close: async (id: number, reason?: string): Promise<PurchaseOrderDTO> => {
+    const res = await api.post<any, ApiResponse<PurchaseOrderDTO>>(`/v1/purchase-orders/${id}/close`, { reason: reason || '' });
+    return res.data;
   }
 };

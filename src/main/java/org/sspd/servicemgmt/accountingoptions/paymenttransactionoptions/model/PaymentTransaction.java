@@ -22,7 +22,7 @@ public class PaymentTransaction {
 
     private Integer referenceId; // Purchase ID သို့မဟုတ် Sale ID
 
-    @Column(length = 20)
+    @Column(length = 30)
     @Enumerated(EnumType.STRING)
     private ReferenceType referenceType; // Sale, Purchase, etc.
 

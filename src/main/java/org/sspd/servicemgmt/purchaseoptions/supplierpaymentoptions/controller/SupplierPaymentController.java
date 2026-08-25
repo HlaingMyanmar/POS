@@ -31,4 +31,11 @@ public class SupplierPaymentController {
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> applyCredit(@RequestBody SupplierCreditApplyRequest request) {
         return ResponseEntity.status(201).body(new ApiResponse<>(true, "Supplier credit applied", service.applyCredit(request)));
     }
+
+    @PostMapping("/{id}/void")
+    public ResponseEntity<ApiResponse<SupplierPaymentDTO>> voidPayment(@PathVariable Integer id, @RequestBody java.util.Map<String, Object> body) {
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        Integer staffId = body.get("staffId") == null ? null : Integer.valueOf(String.valueOf(body.get("staffId")));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Supplier payment voided", service.voidPayment(id, reason, staffId)));
+    }
 }

@@ -22,4 +22,5 @@ public class CustomerDTO {
     private String creditHoldReason;
     private Boolean blacklisted;
     private String blacklistReason;
+    private java.math.BigDecimal advanceBalance;
 }

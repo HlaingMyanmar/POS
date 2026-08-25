@@ -15,10 +15,10 @@ public interface CustomerMapper {
     // Entity မှ DTO သို့ ပြောင်းလဲခြင်း
     CustomerDTO toDto(Customer entity);
 
-    // DTO မှ Entity သို့ ပြောင်းလဲခြင်း
+    @Mapping(target = "advanceBalance", ignore = true)
     Customer toEntity(CustomerDTO dto);
 
-    // ရှိပြီးသား Entity ကို DTO ပါအချက်အလက်များဖြင့် Update လုပ်ခြင်း
-    @Mapping(target = "id", ignore = true) // ID ကို update လုပ်ခွင့်မပြုပါ
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "advanceBalance", ignore = true)
     void updateEntityFromDto(CustomerDTO dto, @MappingTarget Customer entity);
 }

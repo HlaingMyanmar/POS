@@ -1,0 +1,2 @@
+package org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository; import org.springframework.data.jpa.repository.JpaRepository; import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.model.PurchaseReturnAttachment; import java.util.List;
+public interface PurchaseReturnAttachmentRepository extends JpaRepository<PurchaseReturnAttachment,Integer>{ List<PurchaseReturnAttachment> findByPurchaseReturnIdOrderByUploadedAtDesc(Integer id); }

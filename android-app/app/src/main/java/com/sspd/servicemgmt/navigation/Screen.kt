@@ -40,6 +40,7 @@ sealed class Screen(val route: String) {
     }
     object NewPurchase     : Screen("new_purchase")
     object PurchaseOrders  : Screen("purchase_orders")
+    object SupplierPayments : Screen("supplier_payments")
     object PurchaseReturns  : Screen("purchase_returns")
     object PurchaseReturnDetail : Screen("purchase_return_detail/{returnId}") {
         fun createRoute(id: Int) = "purchase_return_detail/$id"

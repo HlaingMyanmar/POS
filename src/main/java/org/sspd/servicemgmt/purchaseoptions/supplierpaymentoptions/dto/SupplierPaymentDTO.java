@@ -11,6 +11,7 @@ public class SupplierPaymentDTO {
     private Integer paymentMethodId; private String paymentMethodName;
     private BigDecimal totalAmount; private BigDecimal allocatedAmount; private BigDecimal advanceAmount;
     private LocalDateTime paymentDate; private String transactionNo; private String paidBy; private String remark;
+    private Boolean voided; private LocalDateTime voidedAt; private String voidedBy; private String voidReason;
     private List<Allocation> allocations;
     @Data @Builder public static class Allocation {
         private Integer purchaseId; private String purchaseCode; private BigDecimal amount; private BigDecimal remainingDue;

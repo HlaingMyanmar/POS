@@ -49,4 +49,32 @@ public class CustomerPayment {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "staff_id", nullable = false)
     private Staff staff;
+
+    @Column(name = "payment_no", length = 50)
+    private String paymentNo;
+
+    @Builder.Default
+    @Column(name = "allocated_amount", precision = 15, scale = 2)
+    private BigDecimal allocatedAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "advance_amount", precision = 15, scale = 2)
+    private BigDecimal advanceAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "voided")
+    private Boolean voided = Boolean.FALSE;
+
+    @Column(name = "voided_at")
+    private LocalDateTime voidedAt;
+
+    @Column(name = "voided_by", length = 120)
+    private String voidedBy;
+
+    @Column(name = "void_reason", columnDefinition = "TEXT")
+    private String voidReason;
+
+    @OneToMany(mappedBy = "customerPayment", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private java.util.List<CustomerPaymentAllocation> allocations = new java.util.ArrayList<>();
 }

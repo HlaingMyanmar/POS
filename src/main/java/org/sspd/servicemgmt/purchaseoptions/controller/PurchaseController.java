@@ -19,6 +19,7 @@ public class PurchaseController {
     private final PurchaseService service;
     private final org.sspd.servicemgmt.purchaseoptions.service.PurchaseImportService importService;
     private final org.sspd.servicemgmt.purchaseoptions.service.PurchaseInsightService insightService;
+    private final org.sspd.servicemgmt.purchaseoptions.service.PurchaseOcrService ocrService;
 
     /**
      * ၁။ အဝယ်ဘောက်ချာ အားလုံးကိုကြည့်ခြင်း
@@ -54,7 +55,7 @@ public class PurchaseController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Trend", service.getTrend(dateFrom, dateTo)));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_ANALYTICS','CAN_ACCESS_REPORT_READ')")
     @GetMapping("/analytics")
     public ResponseEntity<ApiResponse<org.sspd.servicemgmt.purchaseoptions.dto.PurchaseAnalyticsDTO>> analytics(
             @RequestParam(required = false) String dateFrom,
@@ -164,7 +165,7 @@ public class PurchaseController {
     /**
      * ၇။ Reorder suggestions — products at/below reorder level for quick purchase drafting
      */
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_REORDER')")
     @GetMapping("/reorder-suggestions")
     public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.purchaseoptions.dto.ReorderSuggestionDTO>>> getReorderSuggestions() {
         return ResponseEntity.ok(
@@ -200,17 +201,24 @@ public class PurchaseController {
                 .body(bytes);
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_CREATE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_IMPORT')")
     @PostMapping(value="/import/preview",consumes=org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<org.sspd.servicemgmt.purchaseoptions.dto.PurchaseImportPreviewDTO>> previewImport(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
         return ResponseEntity.ok(new ApiResponse<>(true,"Purchase import preview",importService.preview(file)));
     }
-    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_CREATE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_IMPORT')")
     @GetMapping("/import/template")
     public ResponseEntity<byte[]> importTemplate() throws java.io.IOException {
         return ResponseEntity.ok().header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=purchase_import_template.xlsx")
                 .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(importService.template());
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_IMPORT','CAN_ACCESS_PURCHASE_CREATE')")
+    @PostMapping(value = "/ocr/preview", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<org.sspd.servicemgmt.purchaseoptions.dto.PurchaseOcrPreviewDTO>> ocrPreview(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws Exception {
+        return ResponseEntity.ok(new ApiResponse<>(true, "OCR preview", ocrService.preview(file)));
     }
 }

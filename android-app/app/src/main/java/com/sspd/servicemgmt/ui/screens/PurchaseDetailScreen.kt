@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,6 +27,7 @@ import com.sspd.servicemgmt.api.PurchaseItemDTO
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.viewmodel.PurchaseDetailViewModel
+import com.sspd.servicemgmt.utils.PreferenceManager
 
 private val PurchaseColor = Color(0xFF0F766E)
 private val PurchaseBg = Color(0xFFECFDF5)
@@ -35,6 +37,10 @@ private val PurchaseBg = Color(0xFFECFDF5)
 fun PurchaseDetailScreen(onBack: () -> Unit) {
     val vm: PurchaseDetailViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val prefs = remember(context) { PreferenceManager(context) }
+    val canConfirm = prefs.hasPermission("CAN_ACCESS_PURCHASE_UPDATE")
+    val canCancel = prefs.hasPermission("CAN_ACCESS_PURCHASE_DELETE")
     var showCancel by remember { mutableStateOf(false) }
     var cancelReason by remember { mutableStateOf("") }
     var refundMethodId by remember { mutableStateOf(0) }
@@ -53,12 +59,12 @@ fun PurchaseDetailScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    if (status == "DRAFT") {
+                    if (status == "DRAFT" && canConfirm) {
                         IconButton(onClick = { vm.confirmDraft() }, enabled = !state.busy) {
                             Icon(Icons.Outlined.CheckCircle, "အတည်ပြု", tint = Color.White)
                         }
                     }
-                    if (status != "CANCELLED") {
+                    if (status != "CANCELLED" && canCancel) {
                         IconButton(onClick = { showCancel = true }, enabled = !state.busy) {
                             Icon(Icons.Outlined.Cancel, "ပယ်ဖျက်", tint = Color.White)
                         }

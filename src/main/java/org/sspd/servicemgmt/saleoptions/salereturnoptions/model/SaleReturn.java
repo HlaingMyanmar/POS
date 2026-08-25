@@ -59,6 +59,35 @@ public class SaleReturn {
     @Column(name = "deleted")
     private Boolean deleted = Boolean.FALSE;
 
+    @Version
+    private Long version;
+
+    @Builder.Default
+    @Column(name = "status", length = 30)
+    private String status = "COMPLETED";
+
+    @Column(name = "voided_at")
+    private LocalDateTime voidedAt;
+
+    @Column(name = "void_reason", columnDefinition = "TEXT")
+    private String voidReason;
+
+    @Column(name = "voided_by", length = 120)
+    private String voidedBy;
+
+    @Column(name = "warehouse_name", length = 120)
+    private String warehouseName;
+
+    @Column(name = "settlement_type", length = 30)
+    private String settlementType;
+
+    @Column(name = "credit_note_no", length = 50)
+    private String creditNoteNo;
+
+    @Builder.Default
+    @Column(name = "credit_posted_amount", precision = 15, scale = 2)
+    private BigDecimal creditPostedAmount = BigDecimal.ZERO;
+
     @OneToMany(mappedBy = "saleReturn", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SaleReturnDetail> details = new ArrayList<>();
 }

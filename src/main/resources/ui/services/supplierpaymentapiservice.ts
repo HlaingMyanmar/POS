@@ -10,6 +10,7 @@ export interface SupplierPayment {
   paymentMethodId: number; paymentMethodName: string; totalAmount: number;
   allocatedAmount: number; advanceAmount: number; paymentDate: string;
   transactionNo?: string; paidBy?: string; remark?: string;
+  voided?: boolean; voidedAt?: string; voidedBy?: string; voidReason?: string;
   allocations: Array<{ purchaseId: number; purchaseCode: string; amount: number; remainingDue: number }>;
 }
 export interface SupplierPaymentRequest {
@@ -40,6 +41,10 @@ export const supplierPaymentApiService = {
   },
   applyCredit: async (payload: { supplierId: number; purchaseId: number; staffId: number; amount: number; reason?: string }) => {
     const res = await api.post<any, ApiResponse<any>>('/v1/supplier-payments/apply-credit', payload);
+    return res.data;
+  },
+  voidPayment: async (id: number, payload: { reason: string; staffId: number }): Promise<SupplierPayment> => {
+    const res = await api.post<any, ApiResponse<SupplierPayment>>(`/v1/supplier-payments/${id}/void`, payload);
     return res.data;
   }
 };

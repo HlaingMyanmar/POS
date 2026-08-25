@@ -7,6 +7,7 @@ import com.sspd.servicemgmt.api.ApiClient
 import com.sspd.servicemgmt.api.PurchaseOrderDTO
 import com.sspd.servicemgmt.api.PurchaseOrderReceiveLineDTO
 import com.sspd.servicemgmt.api.PurchaseOrderReceiveRequest
+import com.sspd.servicemgmt.api.PurchaseOrderRejectRequest
 import com.sspd.servicemgmt.utils.PreferenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,7 +40,55 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
+    fun approve(po: PurchaseOrderDTO) {
+        val status = (po.status ?: "").uppercase()
+        val permitted = if (status == "PENDING_FINAL_APPROVAL")
+            prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE")
+        else prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_APPROVE")
+        if (!permitted) return denyMutation()
+        val id = po.id ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, error = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.approvePurchaseOrder(token, id)
+                if (res.isSuccessful) {
+                    load()
+                } else {
+                    _uiState.update { it.copy(busy = false, error = res.body()?.message ?: "Approve မရပါ (${res.code()})") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(busy = false, error = e.message) }
+            }
+        }
+    }
+
+    fun reject(po: PurchaseOrderDTO, reason: String?) {
+        if (!prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_APPROVE")
+            && !prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_FINAL_APPROVE")) return denyMutation()
+        val id = po.id ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, error = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.rejectPurchaseOrder(
+                    token,
+                    id,
+                    PurchaseOrderRejectRequest(reason = reason?.trim()?.ifBlank { null })
+                )
+                if (res.isSuccessful) {
+                    load()
+                } else {
+                    _uiState.update { it.copy(busy = false, error = res.body()?.message ?: "Reject မရပါ (${res.code()})") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(busy = false, error = e.message) }
+            }
+        }
+    }
+
     fun startReceive(po: PurchaseOrderDTO) {
+        if (!prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_RECEIVE")) return denyMutation()
         val id = po.id ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, error = null) }
@@ -56,7 +105,7 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
                         productId = d.productId ?: 0,
                         productName = d.productName ?: "ပစ္စည်း",
                         qty = pending,
-                        hasSerial = d.hasSerial ?: serialByProduct[d.productId ?: 0] ?: true
+                        hasSerial = d.hasSerial ?: serialByProduct[d.productId ?: 0] ?: false
                     )
                 }
                 if (lines.isEmpty()) {
@@ -96,6 +145,7 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
     }
 
     fun confirmReceive() {
+        if (!prefs.hasPermission("CAN_ACCESS_PURCHASE_ORDER_RECEIVE")) return denyMutation()
         val draft = _uiState.value.receiveDraft ?: return
         val parsed = draft.lines.map { line ->
             val serials = parseSerials(line.serialText)
@@ -141,6 +191,10 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
 
     private fun parseSerials(raw: String): List<String> =
         raw.split('\n', ',', ';').map { it.trim() }.filter { it.isNotEmpty() }
+
+    private fun denyMutation() {
+        _uiState.update { it.copy(error = "ဤလုပ်ဆောင်ချက်အတွက် ခွင့်ပြုချက် မရှိပါ") }
+    }
 
     data class ReceiveLineDraft(
         val detailId: Int,

@@ -172,5 +172,19 @@ export const saleApiService = {
     link.download = `sales_${new Date().toISOString().slice(0, 10)}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
+  },
+
+  timeline: async (id: number) => {
+    const res = await api.get<any, ApiResponse<any[]>>(`/v1/sales/${id}/timeline`);
+    return res.data ?? [];
+  },
+
+  getStats: async (dateFrom = '', dateTo = '') => {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    const q = params.toString() ? `?${params}` : '';
+    const res = await api.get<any, ApiResponse<{ count?: number; netAmount?: number; dueAmount?: number; returnAmount?: number }>>(`/v1/sales/stats${q}`);
+    return res.data ?? {};
   }
 };

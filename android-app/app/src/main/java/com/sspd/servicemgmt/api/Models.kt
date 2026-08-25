@@ -67,6 +67,7 @@ data class ProductDTO(
     val productCode: String = "",
     val name: String = "",
     val stockQty: Int = 0,
+    val quarantinedQty: Int? = null,
     val availableSerialCount: Int? = null,
     val productType: String = "",
     val sellingPrice: Double = 0.0,
@@ -523,6 +524,7 @@ data class PurchaseDTO(
     val poId: Int? = null,
     val poCode: String? = null,
     val supplierInvoiceNo: String? = null,
+    val warehouseName: String? = null,
     val cancelReason: String? = null,
     val cancelledBy: String? = null,
     val cancelledAt: String? = null,
@@ -589,6 +591,79 @@ data class PurchaseOrderReceiveResultDTO(
     val purchase: PurchaseDTO? = null
 )
 
+data class PurchaseOrderRejectRequest(
+    val reason: String? = null
+)
+
+data class SupplierPayable(
+    val purchaseId: Int? = null,
+    val purchaseCode: String? = null,
+    val purchaseDate: String? = null,
+    val dueDate: String? = null,
+    val netAmount: Double? = null,
+    val paidAmount: Double? = null,
+    val dueAmount: Double? = null
+)
+
+data class SupplierPaymentAllocationDTO(
+    val purchaseId: Int? = null,
+    val purchaseCode: String? = null,
+    val amount: Double? = null,
+    val remainingDue: Double? = null
+)
+
+data class SupplierPaymentDTO(
+    val id: Int? = null,
+    val paymentNo: String? = null,
+    val supplierId: Int? = null,
+    val supplierName: String? = null,
+    val paymentMethodId: Int? = null,
+    val paymentMethodName: String? = null,
+    val totalAmount: Double? = null,
+    val allocatedAmount: Double? = null,
+    val advanceAmount: Double? = null,
+    val paymentDate: String? = null,
+    val transactionNo: String? = null,
+    val paidBy: String? = null,
+    val remark: String? = null,
+    val allocations: List<SupplierPaymentAllocationDTO>? = null
+)
+
+data class SupplierPaymentRequest(
+    val supplierId: Int,
+    val staffId: Int,
+    val paymentMethodId: Int,
+    val amount: Double,
+    val transactionNo: String? = null,
+    val remark: String? = null,
+    val allocations: List<SupplierPaymentAllocationRequest>? = null
+)
+
+data class SupplierPaymentAllocationRequest(
+    val purchaseId: Int,
+    val amount: Double
+)
+
+data class SupplierCreditSummaryDTO(
+    val advanceBalance: Double? = null,
+    val returnCreditBalance: Double? = null,
+    val availableCredit: Double? = null
+)
+
+data class SupplierCreditApplyRequest(
+    val supplierId: Int,
+    val purchaseId: Int,
+    val staffId: Int,
+    val amount: Double,
+    val reason: String? = null
+)
+
+data class SupplierCreditApplyResultDTO(
+    val applicationNo: String? = null,
+    val amount: Double? = null,
+    val remainingDue: Double? = null
+)
+
 data class PurchaseItemDTO(
     val id: Int? = null,
     val productId: Int? = null,
@@ -606,13 +681,28 @@ data class PurchaseItemDTO(
 )
 
 data class PurchaseReturnDetailDTO(
+    val id: Int? = null,
     val returnId: Int? = null,
     val productId: Int? = null,
     val productName: String? = null,
     val qty: Int? = null,
     val unitPrice: Double? = null,
     val subtotal: Double? = null,
-    val serialNumbers: List<String>? = null
+    val allocatedShippingCost: Double? = null,
+    val serialNumbers: List<String>? = null,
+    val reasonId: Int? = null,
+    val reasonCode: String? = null,
+    val reasonName: String? = null,
+    val quarantinedQty: Int? = null,
+    val dispatchedQty: Int? = null
+)
+
+data class PurchaseReturnReasonDTO(
+    val id: Int? = null,
+    val code: String = "",
+    val name: String = "",
+    val description: String? = null,
+    val active: Boolean = true
 )
 
 data class PurchaseReturnDTO(
@@ -629,9 +719,38 @@ data class PurchaseReturnDTO(
     val transactionNo: String? = null,
     val payments: List<PaymentTransactionDTO>? = null,
     val status: String? = null,
+    val version: Long? = null,
     val voidedAt: String? = null,
     val voidReason: String? = null,
     val reason: String? = null,
+    val submittedBy: String? = null,
+    val submittedAt: String? = null,
+    val approvedBy: String? = null,
+    val approvedAt: String? = null,
+    val approvalNote: String? = null,
+    val carrier: String? = null,
+    val trackingNo: String? = null,
+    val dispatchedAt: String? = null,
+    val supplierReceivedAt: String? = null,
+    val deliveryProof: String? = null,
+    val shippingCostAmount: Double? = null,
+    val shippingPayerResponsibility: String? = null,
+    val companyShippingPortion: Double? = null,
+    val supplierShippingPortion: Double? = null,
+    val shippingAllocationMethod: String? = null,
+    val shippingPaymentMethodId: Int? = null,
+    val shippingPaymentMethodName: String? = null,
+    val shippingTransactionReference: String? = null,
+    val shippingPostedAt: String? = null,
+    val shippingPaymentTransaction: PaymentTransactionDTO? = null,
+    val settlementType: String? = null,
+    val expectedCreditAmount: Double? = null,
+    val supplierCreditNoteNo: String? = null,
+    val supplierCreditNoteAmount: Double? = null,
+    val creditVariance: Double? = null,
+    val creditVarianceReason: String? = null,
+    val settledAt: String? = null,
+    val settlementReference: String? = null,
     val details: List<PurchaseReturnDetailDTO>? = null
 )
 

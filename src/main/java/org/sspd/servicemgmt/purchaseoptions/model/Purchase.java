@@ -24,6 +24,9 @@ public class Purchase {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Version
+    private Long version;
+
     @Column(name = "purchase_code", unique = true, nullable = false)
     private String purchaseCode;
 

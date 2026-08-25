@@ -14,4 +14,8 @@ public class SaleReturnDetailDTO {
     private BigDecimal unitPrice;
     private BigDecimal subtotal;
     private List<String> serialNumbers;
+    private Integer reasonId;
+    private String reasonCode;
+    private String reasonName;
+    private Boolean restock;
 }

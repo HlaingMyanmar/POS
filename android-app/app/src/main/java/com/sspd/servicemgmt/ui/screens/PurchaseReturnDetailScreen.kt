@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,7 @@ import com.sspd.servicemgmt.api.PurchaseReturnDetailDTO
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.viewmodel.PurchaseReturnDetailViewModel
+import com.sspd.servicemgmt.utils.PreferenceManager
 
 private val PurchaseReturnDetailColor = Color(0xFF0F766E)
 
@@ -30,6 +32,9 @@ private val PurchaseReturnDetailColor = Color(0xFF0F766E)
 fun PurchaseReturnDetailScreen(onBack: () -> Unit) {
     val vm: PurchaseReturnDetailViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val prefs = remember(context) { PreferenceManager(context) }
+    val canVoid = prefs.hasPermission("CAN_ACCESS_PURCHASE_RETURN_UPDATE")
     val ret = state.purchaseReturn
     var showVoidDialog by remember { mutableStateOf(false) }
     var voidReason by remember { mutableStateOf("") }
@@ -61,7 +66,7 @@ fun PurchaseReturnDetailScreen(onBack: () -> Unit) {
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back", tint = Color.White) } },
                 actions = {
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "Refresh", tint = Color.White) }
-                    if (!ret?.status.equals("VOIDED", ignoreCase = true)) {
+                    if (canVoid && !ret?.status.equals("VOIDED", ignoreCase = true)) {
                         IconButton(onClick = { showVoidDialog = true }) { Icon(Icons.Outlined.Block, "Void", tint = Color.White) }
                     }
                 },
@@ -115,6 +120,17 @@ fun PurchaseReturnDetailScreen(onBack: () -> Unit) {
                         if (!ret.paymentMethodName.isNullOrBlank()) {
                             HorizontalDivider(color = BorderColor)
                             DetailInfoRow(Icons.Outlined.AccountBalance, "ငွေလက်ခံနည်း", ret.paymentMethodName)
+                        }
+                        if ((ret.shippingCostAmount ?: 0.0) > 0.0) {
+                            HorizontalDivider(color = BorderColor)
+                            DetailInfoRow(Icons.Outlined.LocalShipping, "Return shipping",
+                                "${moneyDetail(ret.shippingCostAmount ?: 0.0)} · ${ret.shippingPayerResponsibility ?: "COMPANY"}")
+                            DetailInfoRow(Icons.Outlined.Payments, "Company / Supplier",
+                                "${moneyDetail(ret.companyShippingPortion ?: 0.0)} / ${moneyDetail(ret.supplierShippingPortion ?: 0.0)}")
+                            if (!ret.shippingPaymentMethodName.isNullOrBlank()) {
+                                DetailInfoRow(Icons.Outlined.AccountBalance, "Shipping payment",
+                                    "${ret.shippingPaymentMethodName} ${ret.shippingTransactionReference ?: ""}".trim())
+                            }
                         }
                         if (!ret.voidReason.isNullOrBlank()) {
                             HorizontalDivider(color = BorderColor)
@@ -184,6 +200,9 @@ private fun PurchaseReturnDetailCard(detail: PurchaseReturnDetailDTO) {
                     Text("${detail.qty ?: 0} x ${moneyDetail(detail.unitPrice ?: 0.0)}", fontSize = 11.sp, color = TextMuted)
                 }
                 Text(moneyDetail(detail.subtotal ?: 0.0), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = PurchaseReturnDetailColor)
+            }
+            if ((detail.allocatedShippingCost ?: 0.0) > 0.0) {
+                Text("Allocated shipping: ${moneyDetail(detail.allocatedShippingCost ?: 0.0)}", fontSize = 10.sp, color = TextMuted)
             }
             if (!detail.serialNumbers.isNullOrEmpty()) {
                 Spacer(Modifier.height(4.dp))

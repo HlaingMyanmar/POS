@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface CustomerPaymentRepository extends JpaRepository<CustomerPayment, Integer> {
     List<CustomerPayment> findByCustomerId(Integer customerId);
+    List<CustomerPayment> findByCustomerIdOrderByIdDesc(Integer customerId);
     List<CustomerPayment> findBySaleId(Integer saleId);
 }

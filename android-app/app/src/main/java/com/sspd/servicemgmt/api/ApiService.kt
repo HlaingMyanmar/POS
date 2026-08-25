@@ -282,6 +282,21 @@ interface ApiService {
     suspend fun cancelPurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<Void>>
     @POST("purchase-orders/{id}/receive")
     suspend fun receivePurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseOrderReceiveRequest): Response<ApiResponse<PurchaseOrderReceiveResultDTO>>
+    @POST("purchase-orders/{id}/approve")
+    suspend fun approvePurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<PurchaseOrderDTO>>
+    @POST("purchase-orders/{id}/reject")
+    suspend fun rejectPurchaseOrder(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseOrderRejectRequest): Response<ApiResponse<PurchaseOrderDTO>>
+
+    @GET("supplier-payments/supplier/{id}/payables")
+    suspend fun getSupplierPayables(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<List<SupplierPayable>>>
+    @GET("supplier-payments/supplier/{id}/credit-summary")
+    suspend fun getSupplierCreditSummary(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<SupplierCreditSummaryDTO>>
+    @GET("supplier-payments/supplier/{id}")
+    suspend fun getSupplierPayments(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<List<SupplierPaymentDTO>>>
+    @POST("supplier-payments")
+    suspend fun createSupplierPayment(@Header("Authorization") auth: String, @Body body: SupplierPaymentRequest): Response<ApiResponse<SupplierPaymentDTO>>
+    @POST("supplier-payments/apply-credit")
+    suspend fun applySupplierCredit(@Header("Authorization") auth: String, @Body body: SupplierCreditApplyRequest): Response<ApiResponse<SupplierCreditApplyResultDTO>>
 
     @GET("purchase-returns")
     suspend fun getPurchaseReturns(
@@ -322,6 +337,27 @@ interface ApiService {
         @Path("id") id: Int,
         @Body body: PurchaseReturnDTO
     ): Response<ApiResponse<PurchaseReturnDTO>>
+
+    @GET("purchase-return-reasons")
+    suspend fun getPurchaseReturnReasons(
+        @Header("Authorization") auth: String,
+        @Query("activeOnly") activeOnly: Boolean = true
+    ): Response<ApiResponse<List<PurchaseReturnReasonDTO>>>
+
+    @POST("purchase-returns/{id}/submit")
+    suspend fun submitPurchaseReturn(@Header("Authorization") auth: String, @Path("id") id: Int): Response<ApiResponse<PurchaseReturnDTO>>
+
+    @POST("purchase-returns/{id}/approve")
+    suspend fun approvePurchaseReturn(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseReturnDTO): Response<ApiResponse<PurchaseReturnDTO>>
+
+    @POST("purchase-returns/{id}/dispatch")
+    suspend fun dispatchPurchaseReturn(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseReturnDTO): Response<ApiResponse<PurchaseReturnDTO>>
+
+    @POST("purchase-returns/{id}/supplier-received")
+    suspend fun receivePurchaseReturn(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseReturnDTO): Response<ApiResponse<PurchaseReturnDTO>>
+
+    @POST("purchase-returns/{id}/settle")
+    suspend fun settlePurchaseReturn(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PurchaseReturnDTO): Response<ApiResponse<PurchaseReturnDTO>>
 
     @GET("credit-terms/customer/{customerId}")
     suspend fun getCreditTerm(

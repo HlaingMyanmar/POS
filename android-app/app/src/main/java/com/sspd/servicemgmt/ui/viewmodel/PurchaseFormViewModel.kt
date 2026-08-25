@@ -81,6 +81,7 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
     fun setTaxAmount(v: String)                   = _uiState.update { it.copy(taxAmount = v.filterMoney()) }
     fun setOtherCharges(v: String)                = _uiState.update { it.copy(otherCharges = v.filterMoney()) }
     fun setSupplierInvoiceNo(v: String)           = _uiState.update { it.copy(supplierInvoiceNo = v) }
+    fun setWarehouseName(v: String)               = _uiState.update { it.copy(warehouseName = v) }
     fun setRemark(v: String)                      = _uiState.update { it.copy(remark = v) }
     fun clearError()                              = _uiState.update { it.copy(saveError = null) }
 
@@ -179,6 +180,8 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
 
     fun setLineCost(index: Int, v: String)     = updateLine(index) { it.copy(unitCost = v.filterMoney()) }
     fun setLineWarranty(index: Int, v: String) = updateLine(index) { it.copy(warrantyMonths = v.filterDigits()) }
+    fun setLineBatchNumber(index: Int, v: String) = updateLine(index) { it.copy(batchNumber = v) }
+    fun setLineExpiryDate(index: Int, v: String)  = updateLine(index) { it.copy(expiryDate = v) }
 
     fun setLineSerial(lineIndex: Int, serialIndex: Int, v: String) = updateLine(lineIndex) { line ->
         val updated = line.serials.toMutableList()
@@ -301,6 +304,8 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
                 qty              = qty,
                 unitCost         = cost,
                 subtotal         = qty * cost,
+                batchNumber      = line.batchNumber.trim().ifBlank { null },
+                expiryDate       = line.expiryDate.trim().ifBlank { null },
                 warrantyMonths   = if (warrantiesList == null) warranty else null,
                 itemWarranties   = warrantiesList,
                 serialNumbers    = serials.takeIf { it.isNotEmpty() },
@@ -321,6 +326,7 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
             paidAmount      = paid,
             remark          = s.remark.ifBlank { null },
             supplierInvoiceNo = s.supplierInvoiceNo.ifBlank { null },
+            warehouseName   = s.warehouseName.trim().ifBlank { null },
             paymentMethodId = if (paid > 0) (splitPayments.firstOrNull()?.paymentMethodId ?: s.selectedPaymentMethod?.id) else null,
             transactionNo   = s.paymentTransactionNo.ifBlank { null },
             payments        = splitPayments.ifEmpty { null },
@@ -358,6 +364,8 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val qty            : String       = "1",
         val unitCost       : String       = "0",
         val warrantyMonths : String       = "0",
+        val batchNumber    : String       = "",
+        val expiryDate     : String       = "",
         val serials        : List<String> = emptyList(),
         val conditions     : List<String> = emptyList(),
         val warranties     : List<String> = emptyList(),
@@ -380,6 +388,7 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val taxAmount             : String = "0",
         val otherCharges          : String = "0",
         val supplierInvoiceNo     : String = "",
+        val warehouseName         : String = "",
         val paidAmount            : String = "0",
         val paymentTransactionNo  : String = "",
         val remark                : String = "",

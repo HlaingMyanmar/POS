@@ -11,53 +11,26 @@ import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.Pur
 import org.sspd.servicemgmt.purchaseoptions.purchasereturndetails.dto.PurchaseReturnDetailDTO;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturndetails.model.PurchaseReturnDetail;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturndetails.repository.PurchaseReturnDetailRepository;
-import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
-import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
+/**
+ * Read-only detail API. Confirmed/voided returns must not be mutated here —
+ * stock, serials, lots and journals are owned by {@code PurchaseReturnService}.
+ */
 @Service
 @RequiredArgsConstructor
 public class PurchaseReturnDetailService {
 
     private final PurchaseReturnDetailRepository detailRepository;
     private final PurchaseReturnRepository purchaseReturnRepository;
-    private final ProductRepository productRepository;
     private final PurchaseReturnMapper mapper;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_DETAIL_CREATE')")
     @Transactional
     public PurchaseReturnDetailDTO save(PurchaseReturnDetailDTO dto) {
-        if (dto.getReturnId() == null) {
-            throw new RuntimeException("Return ID is required");
-        }
-        PurchaseReturn purchaseReturn = purchaseReturnRepository.findById(dto.getReturnId())
-                .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found"));
-
-        Product product = productRepository.findById(dto.getProductId())
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-
-        if (dto.getSerialNumbers() != null && !Objects.equals(dto.getSerialNumbers().size(), dto.getQty())) {
-            throw new RuntimeException("Serial count must match qty");
-        }
-
-        BigDecimal subtotal = dto.getUnitPrice().multiply(BigDecimal.valueOf(dto.getQty()));
-
-        PurchaseReturnDetail detail = PurchaseReturnDetail.builder()
-                .purchaseReturn(purchaseReturn)
-                .product(product)
-                .qty(dto.getQty())
-                .unitPrice(dto.getUnitPrice())
-                .subtotal(subtotal)
-                .serialNumber(joinSerials(dto.getSerialNumbers()))
-                .build();
-
-        PurchaseReturnDetail saved = detailRepository.save(detail);
-        recalcReturnTotal(purchaseReturn.getId());
-        return mapper.toDto(saved);
+        throw new IllegalStateException(
+                "Purchase return details cannot be added via this API. Create a new purchase return voucher (or void and recreate).");
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_DETAIL_READ')")
@@ -77,77 +50,27 @@ public class PurchaseReturnDetailService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_DETAIL_UPDATE')")
     @Transactional
     public PurchaseReturnDetailDTO update(Integer id, PurchaseReturnDetailDTO dto) {
-        PurchaseReturnDetail existing = detailRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Purchase return detail not found with id: " + id));
-
-        Integer oldReturnId = existing.getPurchaseReturn().getId();
-
-        if (dto.getReturnId() != null && !dto.getReturnId().equals(oldReturnId)) {
-            PurchaseReturn newReturn = purchaseReturnRepository.findById(dto.getReturnId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found"));
-            existing.setPurchaseReturn(newReturn);
-        }
-
-        if (dto.getProductId() != null) {
-            Product product = productRepository.findById(dto.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-            existing.setProduct(product);
-        }
-
-        if (dto.getQty() != null) {
-            existing.setQty(dto.getQty());
-        }
-        if (dto.getUnitPrice() != null) {
-            existing.setUnitPrice(dto.getUnitPrice());
-        }
-        if (dto.getSerialNumbers() != null) {
-            if (!Objects.equals(dto.getSerialNumbers().size(), existing.getQty())) {
-                throw new RuntimeException("Serial count must match qty");
-            }
-            existing.setSerialNumber(joinSerials(dto.getSerialNumbers()));
-        }
-
-        BigDecimal subtotal = existing.getUnitPrice().multiply(BigDecimal.valueOf(existing.getQty()));
-        existing.setSubtotal(subtotal);
-
-        PurchaseReturnDetail saved = detailRepository.save(existing);
-
-        recalcReturnTotal(oldReturnId);
-        recalcReturnTotal(saved.getPurchaseReturn().getId());
-
-        return mapper.toDto(saved);
+        assertMutableParent(id);
+        throw new IllegalStateException(
+                "Purchase return details cannot be edited. Void the return and recreate if correction is needed.");
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_DETAIL_DELETE')")
     @Transactional
     public void delete(Integer id) {
-        PurchaseReturnDetail existing = detailRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Purchase return detail not found with id: " + id));
-        Integer returnId = existing.getPurchaseReturn().getId();
-        detailRepository.delete(existing);
-        recalcReturnTotal(returnId);
+        assertMutableParent(id);
+        throw new IllegalStateException(
+                "Purchase return details cannot be deleted. Void the return voucher instead.");
     }
 
-    private void recalcReturnTotal(Integer returnId) {
-        PurchaseReturn purchaseReturn = purchaseReturnRepository.findById(returnId)
-                .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found"));
-
-        BigDecimal total = detailRepository.findAllByPurchaseReturnId(returnId).stream()
-                .map(PurchaseReturnDetail::getSubtotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        purchaseReturn.setTotalReturnAmount(total);
-        purchaseReturnRepository.save(purchaseReturn);
-    }
-
-    private String joinSerials(List<String> serials) {
-        if (serials == null) {
-            return null;
+    private void assertMutableParent(Integer detailId) {
+        PurchaseReturnDetail existing = detailRepository.findById(detailId)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase return detail not found with id: " + detailId));
+        PurchaseReturn parent = existing.getPurchaseReturn();
+        if (parent != null && parent.getStatus() != null
+                && !"DRAFT".equalsIgnoreCase(parent.getStatus())) {
+            throw new IllegalStateException(
+                    "Confirmed/voided purchase return details are locked. Use void workflow on the return voucher.");
         }
-        return serials.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.joining(","));
     }
 }

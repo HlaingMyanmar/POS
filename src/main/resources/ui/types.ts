@@ -94,6 +94,7 @@ export interface ProductDTO {
   hasSerial?: boolean;
   photoBase64?: string;
   stockQty?: number;
+  quarantinedQty?: number;
   reorderLevel?: number;
   shortageQty?: number;
   productType: ProductType;
@@ -246,6 +247,7 @@ export interface CustomerDTO {
   creditHoldReason?: string;
   blacklisted?: boolean;
   blacklistReason?: string;
+  advanceBalance?: number;
 }
 
 export interface StaffDTO {
@@ -404,6 +406,9 @@ export interface SaleDTO {
   arAccountId?: number;
   transactionNo?: string;
   payments?: PaymentTransactionDTO[];
+  quotationId?: number;
+  quotationCode?: string;
+  warehouseName?: string;
   details: SaleDetailDTO[];
 }
 
@@ -428,6 +433,10 @@ export interface SaleReturnDetailDTO {
   subtotal: number;
   serialNumber?: string;
   serialNumbers?: string[];
+  reasonId?: number;
+  reasonCode?: string;
+  reasonName?: string;
+  restock?: boolean;
 }
 
 export interface SaleReturnDTO {
@@ -446,6 +455,10 @@ export interface SaleReturnDTO {
   transactionNo?: string;
   payments?: PaymentTransactionDTO[];
   status?: string;
+  warehouseName?: string;
+  settlementType?: string;
+  creditNoteNo?: string;
+  creditPostedAmount?: number;
   voidedAt?: string;
   voidReason?: string;
   reason?: string;
@@ -506,6 +519,55 @@ export interface CustomerPaymentDTO {
   saleCode?: string;
   paymentMethodName?: string;
   staffName?: string;
+  paymentNo?: string;
+  allocatedAmount?: number;
+  advanceAmount?: number;
+  voided?: boolean;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
+  allocations?: {
+    saleId: number;
+    saleCode?: string;
+    amount: number;
+    remainingDue?: number;
+  }[];
+}
+
+export interface SaleReturnReasonDTO {
+  id?: number;
+  code?: string;
+  name: string;
+  description?: string;
+  active?: boolean;
+}
+
+export interface QuotationDTO {
+  id?: number;
+  quotationCode?: string;
+  customerId: number;
+  customerName?: string;
+  quotationDate?: string;
+  validUntil?: string;
+  status?: string;
+  totalAmount?: number;
+  discountAmount?: number;
+  netAmount?: number;
+  terms?: string;
+  remark?: string;
+  convertedSaleId?: number;
+  convertedBy?: string;
+  convertedAt?: string;
+  details: SaleDetailDTO[];
+}
+
+export interface SaleTimelineEventDTO {
+  type?: string;
+  at?: string;
+  title?: string;
+  detail?: string;
+  refCode?: string;
+  amount?: number;
 }
 
 export interface AccountBalanceDTO {
@@ -734,18 +796,34 @@ export interface GoodsReceiptDTO {
 }
 
 export interface PurchaseReturnDetailDTO {
+  id?: number;
   returnId?: number;
   productId: number;
   productName?: string;
   qty: number;
   unitPrice: number;
   subtotal: number;
+  allocatedShippingCost?: number;
   serialNumbers: string[];
+  reasonId?: number;
+  reasonCode?: string;
+  reasonName?: string;
+  quarantinedQty?: number;
+  dispatchedQty?: number;
+}
+
+export interface PurchaseReturnReasonDTO {
+  id?: number;
+  code: string;
+  name: string;
+  description?: string;
+  active: boolean;
 }
 
 export interface PurchaseReturnDTO {
   id?: number;
   status?: string;
+  version?: number;
   purchaseId: number;
   returnNo?: string;
   returnDate?: string;
@@ -756,6 +834,48 @@ export interface PurchaseReturnDTO {
   transactionNo?: string;
   payments?: PaymentTransactionDTO[];
   reason?: string;
+  submittedBy?: string;
+  submittedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  approvalNote?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  resolutionType?: 'REFUND' | 'REPLACEMENT' | 'REPAIR' | 'SUPPLIER_CREDIT' | 'PRICE_ADJUSTMENT' | 'WRONG_DELIVERY';
+  rmaNumber?: string;
+  claimDate?: string;
+  expectedResolutionDate?: string;
+  supplierContact?: string;
+  claimStatus?: string;
+  replacementExpectedQty?: number;
+  replacementReceivedQty?: number;
+  goodsReceiptId?: number;
+  activities?: Array<{ id?: number; eventType: string; fromStatus?: string; toStatus?: string; note?: string; actor?: string; occurredAt?: string }>;
+  attachments?: Array<{ id?: number; attachmentType: string; fileName: string; contentType?: string; dataUrl: string; uploadedBy?: string; uploadedAt?: string }>;
+  carrier?: string;
+  trackingNo?: string;
+  dispatchedAt?: string;
+  supplierReceivedAt?: string;
+  deliveryProof?: string;
+  shippingCostAmount?: number;
+  shippingPayerResponsibility?: 'COMPANY' | 'SUPPLIER' | 'SHARED';
+  companyShippingPortion?: number;
+  supplierShippingPortion?: number;
+  shippingAllocationMethod?: 'VALUE' | 'QUANTITY' | 'MANUAL';
+  shippingPaymentMethodId?: number;
+  shippingPaymentMethodName?: string;
+  shippingTransactionReference?: string;
+  shippingPostedAt?: string;
+  shippingPaymentTransaction?: PaymentTransactionDTO;
+  settlementType?: 'REFUND' | 'CREDIT_NOTE' | 'REPLACEMENT' | 'OFFSET' | 'SPLIT';
+  expectedCreditAmount?: number;
+  supplierCreditNoteNo?: string;
+  supplierCreditNoteAmount?: number;
+  creditVariance?: number;
+  creditVarianceReason?: string;
+  settledAt?: string;
+  settlementReference?: string;
   supplierName?: string;
   purchaseCode?: string;
   details: PurchaseReturnDetailDTO[];
@@ -1017,6 +1137,7 @@ export enum AppRoute {
   UNITS = '/inventory/units',
   SUPPLIERS = '/procurement/suppliers',
   SALES = '/crm/sales',
+  QUOTATIONS = '/crm/quotations',
   CREDIT = '/crm/credit-management',
   CUSTOMERS = '/crm/customers',
   STAFF = '/hr/staff',
@@ -1028,6 +1149,7 @@ export enum AppRoute {
   PURCHASES = '/procurement/purchases',
   PURCHASE_RETURNS = '/procurement/purchase-returns',
   PURCHASE_ORDERS = '/procurement/purchase-orders',
+  WAREHOUSES = '/procurement/warehouses',
   SALE_RETURNS = '/sale-returns',
   STOCK_ADJUSTMENTS = '/inventory/stock-adjustments',
   PROFIT_LOSS = '/reports/profit-loss',

@@ -24,6 +24,9 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Version
+    private Long version;
+
     @Column(name = "product_code", length = 20, nullable = false)
     private String productCode;
 
@@ -67,6 +70,10 @@ public class Product {
 
     @Column(name = "stock_qty")
     private Integer stockQty = 0;
+
+    @Builder.Default
+    @Column(name = "quarantined_qty", nullable = false)
+    private Integer quarantinedQty = 0;
 
     @Builder.Default
     @Column(name = "reorder_level")

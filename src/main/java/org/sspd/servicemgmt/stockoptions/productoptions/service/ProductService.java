@@ -286,9 +286,11 @@ public class ProductService {
             dto.setUnlinkedQty(Math.max(0, rawQty - (int) totalSerials));
         } else {
             dto.setAvailableSerialCount(null);
-            dto.setStockQty(entity.getStockQty());
+            dto.setStockQty(Math.max(0, (entity.getStockQty() == null ? 0 : entity.getStockQty())
+                    - (entity.getQuarantinedQty() == null ? 0 : entity.getQuarantinedQty())));
             dto.setUnlinkedQty(0);
         }
+        dto.setQuarantinedQty(entity.getQuarantinedQty() == null ? 0 : entity.getQuarantinedQty());
         dto.setHasSerial(entity.getHasSerial());
         int reorderLevel = sanitizeReorderLevel(entity.getReorderLevel());
         dto.setReorderLevel(reorderLevel);

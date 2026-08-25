@@ -3,8 +3,8 @@ import lombok.RequiredArgsConstructor;import org.springframework.http.ResponseEn
 @RestController @RequestMapping("/api/v1/stock-lots")@RequiredArgsConstructor
 public class StockLotController{
  private final StockLotService service;
- @GetMapping("/expiring")@PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_READ','CAN_ACCESS_STOCK_READ')")
+ @GetMapping("/expiring")@PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_EXPIRY','CAN_ACCESS_STOCK_READ')")
  public ResponseEntity<ApiResponse<List<StockLotDTO>>> expiring(@RequestParam(defaultValue="90")int days){return ResponseEntity.ok(new ApiResponse<>(true,"Expiring stock lots",service.expiring(days)));}
- @GetMapping("/warehouse-balances")@PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_READ','CAN_ACCESS_STOCK_READ')")
+ @GetMapping("/warehouse-balances")@PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_WAREHOUSE','CAN_ACCESS_STOCK_READ')")
  public ResponseEntity<ApiResponse<List<org.sspd.servicemgmt.stockoptions.lotoptions.dto.WarehouseBalanceDTO>>> warehouseBalances(){return ResponseEntity.ok(new ApiResponse<>(true,"Warehouse stock balances",service.warehouseBalances()));}
 }

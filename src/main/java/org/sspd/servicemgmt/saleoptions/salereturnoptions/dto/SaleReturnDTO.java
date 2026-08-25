@@ -24,5 +24,13 @@ public class SaleReturnDTO {
     private String transactionNo;
     private List<PaymentTransactionDTO> payments;
     private String reason;
+    private String status;
+    private String warehouseName;
+    private String settlementType;
+    private String creditNoteNo;
+    private BigDecimal creditPostedAmount;
+    private String voidReason;
+    private String voidedBy;
+    private LocalDateTime voidedAt;
     private List<SaleReturnDetailDTO> details;
 }

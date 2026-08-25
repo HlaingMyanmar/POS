@@ -21,6 +21,8 @@ export type CompanySettings = {
   purchaseReturnDigits?: number;
   bookingPrefix?: string;
   bookingDigits?: number;
+  /** Blank / undefined = no second-level PO approval */
+  poFinalApprovalThreshold?: number | null;
 };
 
 const DEFAULT_SETTINGS: CompanySettings = {
@@ -42,6 +44,7 @@ const DEFAULT_SETTINGS: CompanySettings = {
   purchaseReturnDigits: 5,
   bookingPrefix: 'BK',
   bookingDigits: 6,
+  poFinalApprovalThreshold: null,
 };
 
 let cached: CompanySettings | null = null;

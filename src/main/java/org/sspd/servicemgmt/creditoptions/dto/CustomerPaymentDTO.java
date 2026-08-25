@@ -34,4 +34,20 @@ public class CustomerPaymentDTO {
     private String saleCode;
     private String paymentMethodName;
     private String staffName;
+    private String paymentNo;
+    private java.math.BigDecimal allocatedAmount;
+    private java.math.BigDecimal advanceAmount;
+    private Boolean voided;
+    private java.time.LocalDateTime voidedAt;
+    private String voidedBy;
+    private String voidReason;
+    private java.util.List<Allocation> allocations;
+
+    @lombok.Data
+    public static class Allocation {
+        private Integer saleId;
+        private String saleCode;
+        private java.math.BigDecimal amount;
+        private java.math.BigDecimal remainingDue;
+    }
 }

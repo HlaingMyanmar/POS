@@ -91,4 +91,8 @@ public class CompanySettings {
     @Builder.Default
     @Column(name = "purchase_return_digits")
     private Integer purchaseReturnDigits = 5;
+
+    /** When set (>0), PO totals at/above this amount require a second (final) approval. */
+    @Column(name = "po_final_approval_threshold", precision = 18, scale = 2)
+    private java.math.BigDecimal poFinalApprovalThreshold;
 }

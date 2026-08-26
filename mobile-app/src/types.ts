@@ -221,6 +221,7 @@ export interface ServiceJobDTO {
   assignedStaffId?: number;
   assignedStaffName?: string;
   itemName?: string;
+  deviceType?: string;
   itemCondition?: string;
   deviceConditions?: string;
   partRequests?: string;

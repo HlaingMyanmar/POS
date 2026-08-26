@@ -1,4 +1,4 @@
-﻿package com.sspd.servicemgmt.ui.screens
+package com.sspd.servicemgmt.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -581,7 +581,7 @@ private fun DeviceCard(
     onRemove:  () -> Unit,
     onChange:  (BookingFormViewModel.DeviceDraft) -> Unit
 ) {
-    val deviceTypes = listOf("Phone", "Laptop", "Computer", "Tablet", "Printer", "Other")
+    val deviceTypes = listOf("Phone", "Laptop", "Computer", "Tablet", "Printer", "HDD", "SSD", "Storage", "Other")
 
     Card(
         shape  = RoundedCornerShape(12.dp),

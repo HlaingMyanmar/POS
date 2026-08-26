@@ -44,6 +44,9 @@ public class ServiceJob {
     @Column(name = "item_name", length = 200)
     private String itemName;
 
+    @Column(name = "device_type", length = 80)
+    private String deviceType;
+
     @Column(name = "serial_no", length = 120)
     private String serialNo;
 

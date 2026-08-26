@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { userService } from '../services/userapiservice';
 import { roleService } from '../services/roleapiservice';
 import { staffService } from '../services/staffapiservice';
-import { UserDTO, RoleDTO } from '../types';
+import { UserDTO, RoleDTO, StaffDTO } from '../types';
 import { 
   Loader2, Plus, Search, Shield, Mail, CheckCircle, XCircle, 
   Trash2, Edit2, Wifi, Save, X, MoreHorizontal, UserCheck, 
@@ -12,11 +12,12 @@ import {
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { isTechnicalUserRole } from '../utils/staffRole';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserDTO[]>([]);
   const [availableRoles, setAvailableRoles] = useState<RoleDTO[]>([]);
-  const [availableStaff, setAvailableStaff] = useState<{ id: number; name: string }[]>([]);
+  const [availableStaff, setAvailableStaff] = useState<StaffDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsStatus, setWsStatus] = useState<'online' | 'offline'>('offline');
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,6 +86,17 @@ const UserManagement: React.FC = () => {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.staffId) {
+      const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'ဝန်ထမ်း မချိတ်ရသေးပါ',
+        text: 'ချိတ်မှ ပြုပြင်သူ/လက်ခံသူ dropdown မှာ မိမိနာမည် ပေါ်မည်။ ဆက်သိမ်းမလား။',
+        showCancelButton: true,
+        confirmButtonText: 'Staff မချိတ်ဘဲ သိမ်းမည်',
+        cancelButtonText: 'ပြန်ရွေးမည်',
+      });
+      if (!confirm.isConfirmed) return;
+    }
     setSaving(true);
     const payload = { ...formData };
     if (editingUser && !payload.password) delete (payload as any).password;
@@ -129,6 +141,18 @@ const UserManagement: React.FC = () => {
 
   const handleAssignRoles = async () => {
     if (!editingUser) return;
+    const pickedTech = availableRoles.some(role => selectedRoleIds.includes(role.id) && isTechnicalUserRole(role.name));
+    if (pickedTech && !editingUser.staffId) {
+      const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'Staff မချိတ်ရသေးပါ',
+        text: 'Technical Role ပေးထားသော်လည်း Linked Staff မရှိသေးပါ။ ပြုပြင်သူမှာ မိမိနာမည် မပေါ်ပါ။ Role သိမ်းမလား။',
+        showCancelButton: true,
+        confirmButtonText: 'ဆက်သိမ်းမည်',
+        cancelButtonText: 'အရင် Staff ချိတ်မည်',
+      });
+      if (!confirm.isConfirmed) return;
+    }
     setSaving(true);
     try {
       await userService.assignRoles(editingUser.id, selectedRoleIds);
@@ -152,8 +176,8 @@ const UserManagement: React.FC = () => {
     <div className="space-y-4 animate-in fade-in duration-400">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-800 tracking-tight text-left">Identity Directory</h2>
-          <p className="text-slate-500 text-xs text-left">Manage system access accounts.</p>
+          <h2 className="text-lg font-bold text-slate-800 tracking-tight text-left">အသုံးပြုသူ</h2>
+          <p className="text-slate-500 text-xs text-left">Login အကောင့်။ ဝန်ထမ်းများကို အရင်ဖန်တီးပြီး ဒီမှာ Linked Staff ချိတ်ပါ။</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -188,7 +212,10 @@ const UserManagement: React.FC = () => {
               </div>
             </div>
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 text-left">{user.username} {user.isActive && <CheckCircle size={12} className="text-emerald-500" />}</h3>
-            <p className="text-[10px] text-slate-400 mb-4 truncate text-left">{user.email}</p>
+            <p className="text-[10px] text-slate-400 truncate text-left">{user.email}</p>
+            <p className={`mb-4 text-[10px] font-semibold text-left ${user.staffName ? 'text-emerald-700' : 'text-amber-600'}`}>
+              {user.staffName ? `ဝန်ထမ်း — ${user.staffName}` : 'ဝန်ထမ်း မချိတ်ရသေး'}
+            </p>
             <div className="space-y-3">
               <div className="flex flex-wrap gap-1 min-h-[32px]">
                 {user.roles.map(role => (
@@ -229,11 +256,12 @@ const UserManagement: React.FC = () => {
                 <input type="password" required={!editingUser} value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs" placeholder={editingUser ? "Unchanged" : "••••••••"} />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Linked Staff</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Linked Staff (ဝန်ထမ်း)</label>
                 <select value={formData.staffId} onChange={(e) => setFormData({...formData, staffId: Number(e.target.value) || 0})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs">
                   <option value={0}>မချိတ်ရသေးပါ</option>
-                  {availableStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                  {availableStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}{staff.role ? ` (${staff.role})` : ''}</option>)}
                 </select>
+                <p className="text-[10px] text-slate-500">ပြုပြင်သူအကောင့်ဆိုရင် Technician ဝန်ထမ်းကို ချိတ်ပါ။ ဝန်ထမ်းမရှိသေးရင် ဝန်ထမ်းများ စာမျက်နှာမှာ အရင်ထည့်ပါ။</p>
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-xs font-bold">Cancel</button>

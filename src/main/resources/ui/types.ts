@@ -56,6 +56,7 @@ export interface UserDTO {
   isActive: boolean;
   roles: string[];
   staffId?: number;
+  staffName?: string;
 }
 
 export interface BrandDTO {

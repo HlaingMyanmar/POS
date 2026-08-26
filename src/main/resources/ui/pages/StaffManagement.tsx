@@ -11,6 +11,7 @@ import {
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import { STAFF_JOB_ROLES } from '../utils/staffRole';
 
 const StaffManagement: React.FC = () => {
   const [staffList, setStaffList] = useState<StaffDTO[]>([]);
@@ -138,7 +139,10 @@ const StaffManagement: React.FC = () => {
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-100 shrink-0">
             <UserCheck size={24} />
           </div>
-
+          <div>
+            <h2 className="text-lg font-black text-slate-800">ဝန်ထမ်းများ</h2>
+            <p className="text-[11px] font-semibold text-slate-500">ဆိုင်ထဲက လူ — ပြေစာ/Job နာမည်။ Login လိုရင် အသုံးပြုသူမှာ ချိတ်ပါ။</p>
+          </div>
         </div>
         <button 
           onClick={() => handleOpenModal()} 
@@ -315,16 +319,25 @@ const StaffManagement: React.FC = () => {
                 </div>
 
                 <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 block text-left">Job Designation (Role)</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 block text-left">ရာထူး (Staff Role)</label>
                   <div className="relative group text-left">
                     <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={16} />
-                    <input 
-                      type="text" required value={formData.role} 
-                      onChange={(e) => setFormData({...formData, role: e.target.value})} 
-                      className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm" 
-                      placeholder="e.g. Technician, Manager"
-                    />
+                    <select
+                      required
+                      value={formData.role || ''}
+                      onChange={(e) => setFormData({...formData, role: e.target.value})}
+                      className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
+                    >
+                      <option value="">ရာထူးရွေးပါ</option>
+                      {STAFF_JOB_ROLES.map(item => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                      {formData.role && !STAFF_JOB_ROLES.some(item => item.value === formData.role) && (
+                        <option value={formData.role}>{formData.role}</option>
+                      )}
+                    </select>
                   </div>
+                  <p className="ml-1 text-[10px] font-semibold text-slate-500">ပြုပြင်သူဆိုရင် <b>Technician</b> ရွေးပါ။ ဒီရာထူးက ပြေစာ/Job နာမည်အတွက်သာ — login ခွင့်မဟုတ်ပါ။</p>
                 </div>
               </div>
 

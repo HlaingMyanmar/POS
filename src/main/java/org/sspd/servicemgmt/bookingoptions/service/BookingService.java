@@ -324,6 +324,7 @@ public class BookingService {
                     .customer(booking.getCustomer())
                     .assignedStaff(booking.getStaff())
                     .itemName(itemName.isBlank() ? "Device" : itemName)
+                    .deviceType(device.getDeviceType())
                     .itemCondition(conditionSummary)
                     .deviceConditions(device.getDeviceConditions())
                     .partRequests(device.getPartRequests())
@@ -357,6 +358,7 @@ public class BookingService {
                 .customer(booking.getCustomer())
                 .assignedStaff(booking.getStaff())
                 .itemName(itemName.isBlank() ? "Device" : itemName)
+                .deviceType(booking.getDeviceType())
                 .itemCondition(itemCondition)
                 .problemDesc(booking.getRemark())
                 .serialNo(booking.getSerialNumber())
@@ -735,6 +737,7 @@ public class BookingService {
             dto.setAssignedStaffName(j.getAssignedStaff().getName());
         }
         dto.setItemName(j.getItemName());
+        dto.setDeviceType(j.getDeviceType());
         dto.setItemCondition(j.getItemCondition());
         dto.setDeviceConditions(j.getDeviceConditions());
         dto.setPartRequests(j.getPartRequests());

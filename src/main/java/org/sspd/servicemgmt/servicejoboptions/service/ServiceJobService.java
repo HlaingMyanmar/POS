@@ -180,6 +180,7 @@ public class ServiceJobService {
             .customer(customerRepo.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")))
             .itemName(dto.getItemName())
+            .deviceType(dto.getDeviceType())
             .serialNo(dto.getSerialNo())
             .color(dto.getColor())
             .itemCondition(dto.getItemCondition())
@@ -239,6 +240,7 @@ public class ServiceJobService {
             ? shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null)
             : null);
         if (dto.getItemName() != null)          job.setItemName(dto.getItemName());
+        if (dto.getDeviceType() != null)        job.setDeviceType(dto.getDeviceType());
         if (dto.getSerialNo() != null)          job.setSerialNo(dto.getSerialNo());
         if (dto.getColor() != null)             job.setColor(dto.getColor());
         if (dto.getItemCondition() != null)     job.setItemCondition(dto.getItemCondition());
@@ -685,7 +687,7 @@ public class ServiceJobService {
             .jobNo(generateJobNo()).customer(original.getCustomer())
             .assignedStaff(req.getAssignedStaffId() != null
                 ? staffRepo.findById(req.getAssignedStaffId()).orElse(original.getAssignedStaff()) : original.getAssignedStaff())
-            .itemName(original.getItemName()).itemCondition(original.getItemCondition())
+            .itemName(original.getItemName()).deviceType(original.getDeviceType()).itemCondition(original.getItemCondition())
             .deviceConditions(original.getDeviceConditions()).partRequests(original.getPartRequests())
             .serialNo(original.getSerialNo()).color(original.getColor()).accessories(original.getAccessories())
             .shelfLocation(original.getShelfLocation())
@@ -1256,6 +1258,7 @@ public class ServiceJobService {
             dto.setAssignedStaffName(j.getAssignedStaff().getName());
         }
         dto.setItemName(j.getItemName());
+        dto.setDeviceType(j.getDeviceType());
         dto.setSerialNo(j.getSerialNo());
         dto.setColor(j.getColor());
         dto.setItemCondition(j.getItemCondition());

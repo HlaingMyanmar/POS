@@ -21,17 +21,10 @@ public class PermissionSeeder implements CommandLineRunner {
     public void run(String... args) {
 
         for (PermissionName permissionName : PermissionName.values()) {
-
-
-            if (!repository.existsByName(permissionName.name())) {
-
-                Permission permission = new Permission();
-                // ဒီမှာလည်း String အဖြစ် သိမ်းပါ
-                permission.setName(permissionName.name());
-                permission.setDescription(permissionName.getDescription());
-
-                repository.save(permission);
-            }
+            Permission permission = repository.findByName(permissionName.name()).orElseGet(Permission::new);
+            permission.setName(permissionName.name());
+            permission.setDescription(permissionName.getDescription());
+            repository.save(permission);
         }
 
         log.info("Permission seeding completed");

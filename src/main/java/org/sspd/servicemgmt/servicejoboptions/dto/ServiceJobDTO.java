@@ -19,6 +19,7 @@ public class ServiceJobDTO {
     private Integer assignedStaffId;
     private String assignedStaffName;
     private String itemName;
+    private String deviceType;
     private String itemCondition;
     private String deviceConditions;
     private String partRequests;

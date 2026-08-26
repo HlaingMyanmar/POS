@@ -12,8 +12,35 @@ import { getFromSession } from '../utils/storageHelper';
 import { compressImageFile } from '../utils/imageCompression';
 import { BriefcaseBusiness, Eye, Pencil, Plus, Printer, Trash2 } from 'lucide-react';
 
-const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'Other'];
+const DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'HDD', 'SSD', 'Storage', 'Other'];
 
+const normalizeDeviceToken = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const deviceAliases = (value: unknown) => {
+  const token = normalizeDeviceToken(value);
+  const groups = [
+    ['phone', 'mobile', 'smartphone', 'iphone', 'android'],
+    ['computer', 'desktop', 'pc'],
+    ['laptop', 'notebook', 'macbook'],
+    ['hdd', 'harddisk', 'harddrive', 'storage'],
+    ['ssd', 'solidstate', 'solidstatedrive', 'storage'],
+    ['printer', 'printing'],
+    ['tablet', 'ipad'],
+  ];
+  return new Set([token, ...(groups.find(group => group.some(alias => token.includes(alias))) ?? [])].filter(Boolean));
+};
+const supportedDeviceTokens = (item: any) => String(item?.supportedDeviceTypes ?? '').split(/[,;\n]/).map(normalizeDeviceToken).filter(Boolean);
+const explicitlySupportsDevice = (item: any, deviceType: string) => {
+  const supported = supportedDeviceTokens(item);
+  if (!supported.length) return false;
+  const aliases = deviceAliases(deviceType);
+  return supported.some(token => [...aliases].some(alias => token === alias || token.includes(alias) || alias.includes(token)));
+};
+const servicesForDevice = (items: any[], deviceType: string, showAll: boolean) => {
+  const sorted = [...items].sort((a, b) => Number(explicitlySupportsDevice(b, deviceType)) - Number(explicitlySupportsDevice(a, deviceType)));
+  if (showAll || !deviceType) return sorted;
+  const filtered = sorted.filter(item => supportedDeviceTokens(item).length === 0 || explicitlySupportsDevice(item, deviceType));
+  return filtered.length ? filtered : sorted;
+};
 const BOOKING_STATUSES = ['Pending', 'Confirmed', 'IN_STORAGE', 'Converted', 'Completed', 'Cancelled'] as const;
 type BookingStatus = typeof BOOKING_STATUSES[number];
 const WAITING_STATUSES: BookingStatus[] = ['Pending', 'Confirmed', 'IN_STORAGE'];
@@ -41,6 +68,11 @@ interface PartRequest {
   action: string;
   qty: number;
   notice: string;
+  suggested?: boolean;
+  confirmed?: boolean;
+  sourceServiceId?: string;
+  sourceServiceIds?: string[];
+  sourceServiceName?: string;
 }
 
 interface DeviceEntry {
@@ -64,6 +96,43 @@ const emptyDevice = (): DeviceEntry => ({
 const defaultChecklist = () => [{ name: '', description: '', status: 'Good', notice: '' }];
 const parseChecklist = (value?: string) => { try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) && parsed.length ? parsed : defaultChecklist(); } catch { return defaultChecklist(); } };
 const parsePartRequests = (value?: string): PartRequest[] => { try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; } };
+const defaultPartsForService = (service: any): string[] => {
+  const parts = String(service?.defaultRequiredParts || '').split(/[\r\n,;]+/).map(part => part.trim()).filter(Boolean);
+  return parts.filter((part, index) => parts.findIndex(candidate => candidate.toLocaleLowerCase() === part.toLocaleLowerCase()) === index);
+};
+const mergeSuggestedParts = (requests: PartRequest[], service: any): PartRequest[] => {
+  const serviceId = String(service.id);
+  const defaultPartNames = defaultPartsForService(service);
+  const defaultPartKeys = new Set(defaultPartNames.map(part => part.toLocaleLowerCase()));
+  const withSharedSources = requests.map(request => {
+    if (!request.suggested || !defaultPartKeys.has(String(request.partName || '').trim().toLocaleLowerCase())) return request;
+    const sourceServiceIds = Array.from(new Set([...(request.sourceServiceIds || (request.sourceServiceId ? [request.sourceServiceId] : [])), serviceId]));
+    return { ...request, sourceServiceId: sourceServiceIds[0], sourceServiceIds };
+  });
+  const existingNames = new Set(withSharedSources.map(request => String(request.partName || '').trim().toLocaleLowerCase()).filter(Boolean));
+  const suggestions = defaultPartNames
+    .filter(partName => !existingNames.has(partName.toLocaleLowerCase()))
+    .map(partName => ({
+      partName,
+      action: 'CHECK',
+      qty: 1,
+      notice: 'ဝန်ဆောင်မှုမှ အလိုအလျောက်အကြံပြု',
+      suggested: true,
+      confirmed: false,
+      sourceServiceId: serviceId,
+      sourceServiceIds: [serviceId],
+      sourceServiceName: String(service.item || ''),
+    }));
+  return [...withSharedSources, ...suggestions];
+};
+const removeUnconfirmedSuggestions = (requests: PartRequest[], serviceId: string): PartRequest[] =>
+  requests.flatMap(request => {
+    if (!request.suggested) return [request];
+    const sourceServiceIds = request.sourceServiceIds || (request.sourceServiceId ? [request.sourceServiceId] : []);
+    if (!sourceServiceIds.includes(serviceId)) return [request];
+    const remainingSources = sourceServiceIds.filter(id => id !== serviceId);
+    return remainingSources.length ? [{ ...request, sourceServiceId: remainingSources[0], sourceServiceIds: remainingSources }] : [];
+  });
 const photoDeviceLabel = (attachmentType?: string) => {
   const tagged = String(attachmentType || '').match(/INTAKE_PHOTO_DEVICE_(\d+)/i);
   if (tagged) return `ပစ္စည်း ${tagged[1]}`;
@@ -382,6 +451,8 @@ export default function BookingManagement() {
   const [editId, setEditId]       = useState<number | null>(null);
   const [saving, setSaving]       = useState(false);
   const [form, setForm]           = useState({ ...emptyForm, devices: [emptyDevice()] });
+  const [serviceTargetDeviceIndex, setServiceTargetDeviceIndex] = useState(0);
+  const [showAllServices, setShowAllServices] = useState(false);
   const [printId, setPrintId]     = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [step, setStep]           = useState<'customer' | 'device' | 'review'>('customer');
@@ -390,6 +461,13 @@ export default function BookingManagement() {
     () => form.details.reduce((sum, d) => sum + (Number(d.price) || 0) * (Number(d.qty) || 1), 0),
     [form.details]
   );
+  const serviceDeviceType = form.devices[serviceTargetDeviceIndex]?.deviceType ?? '';
+  const selectableServiceItems = useMemo(() => servicesForDevice(serviceItems, serviceDeviceType, showAllServices), [serviceItems, serviceDeviceType, showAllServices]);
+  const recommendedServiceCount = useMemo(() => serviceItems.filter(item => explicitlySupportsDevice(item, serviceDeviceType)).length, [serviceItems, serviceDeviceType]);
+
+  useEffect(() => {
+    if (serviceTargetDeviceIndex >= form.devices.length) setServiceTargetDeviceIndex(Math.max(0, form.devices.length - 1));
+  }, [form.devices.length, serviceTargetDeviceIndex]);
 
   const load = async () => {
     const ignoresDateRange = tab === 'waiting' || search.trim().length > 0;
@@ -1129,29 +1207,41 @@ export default function BookingManagement() {
                         <p className="mt-1 text-[11px] text-slate-400">တစ်ခုချင်းရွေးပြီး လိုသလောက်ထပ်ထည့်နိုင်ပါသည်။ Technician စစ်ပြီးမှ အတည်ပြုမည်။</p>
                       </div>
                       {!viewOnly && (
-                      <div className="w-full sm:w-80">
-                        <SearchableSelect
-                          value=""
-                          clearAfterSelect
-                          placeholder="+ လုပ်ဆောင်ရန် ရှာ၍ရွေးပါ"
-                          inputClassName="w-full rounded-xl border border-indigo-200 bg-white py-2 pl-3 pr-9 text-sm focus:ring-2 focus:ring-indigo-400"
-                          options={serviceItems.map((item: any) => ({
-                            value: String(item.id),
-                            label: `${item.serviceTypeName ? `[${item.serviceTypeName}] ` : ''}${item.item} — ${Number(item.price || 0).toLocaleString()} Ks`,
-                            searchText: `${item.item || ''} ${item.serviceTypeName || ''} ${item.code || ''}`,
-                          }))}
-                          onChange={serviceId => {
-                            const item = serviceItems.find((entry: any) => String(entry.id) === serviceId);
-                            if (!item) return;
-                            setForm(current => {
-                              const existingIndex = current.details.findIndex(detail => detail.serviceId === String(item.id) && detail.deviceIndex === 0);
-                              if (existingIndex < 0) {
-                                return { ...current, details: [...current.details, { serviceId: String(item.id), serviceName: item.item, deviceIndex: 0, qty: 1, price: Number(item.price || 0) }] };
-                              }
-                              return { ...current, details: current.details.map((detail, index) => index === existingIndex ? { ...detail, qty: detail.qty + 1 } : detail) };
-                            });
-                          }}
-                        />
+                      <div className="w-full space-y-2 sm:w-[30rem]">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[11rem_1fr]">
+                          <select value={serviceTargetDeviceIndex} onChange={event => { setServiceTargetDeviceIndex(Number(event.target.value)); setShowAllServices(false); }} className="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
+                            {form.devices.map((device, index) => <option key={index} value={index}>ပစ္စည်း {index + 1} — {device.deviceType}</option>)}
+                          </select>
+                          <SearchableSelect
+                            value=""
+                            clearAfterSelect
+                            placeholder={`+ ${serviceDeviceType || 'ပစ္စည်း'} ဝန်ဆောင်မှု ရှာပါ`}
+                            inputClassName="w-full rounded-xl border border-indigo-200 bg-white py-2 pl-3 pr-9 text-sm focus:ring-2 focus:ring-indigo-400"
+                            options={selectableServiceItems.map((item: any) => ({
+                              value: String(item.id),
+                              label: `${explicitlySupportsDevice(item, serviceDeviceType) ? '★ ' : ''}${item.serviceTypeName ? `[${item.serviceTypeName}] ` : ''}${item.item} — ${Number(item.price || 0).toLocaleString()} Ks`,
+                              searchText: `${item.item || ''} ${item.serviceTypeName || ''} ${item.code || ''} ${item.supportedDeviceTypes || ''}`,
+                            }))}
+                            onChange={serviceId => {
+                              const item = serviceItems.find((entry: any) => String(entry.id) === serviceId);
+                              if (!item) return;
+                              setForm(current => {
+                                const targetIndex = Math.min(serviceTargetDeviceIndex, current.devices.length - 1);
+                                const existingIndex = current.details.findIndex(detail => detail.serviceId === String(item.id) && detail.deviceIndex === targetIndex);
+                                if (existingIndex < 0) return {
+                                  ...current,
+                                  details: [...current.details, { serviceId: String(item.id), serviceName: item.item, deviceIndex: targetIndex, qty: 1, price: Number(item.price || 0) }],
+                                  devices: current.devices.map((device, index) => index === targetIndex ? { ...device, partRequests: mergeSuggestedParts(device.partRequests, item) } : device),
+                                };
+                                return { ...current, details: current.details.map((detail, index) => index === existingIndex ? { ...detail, qty: detail.qty + 1 } : detail) };
+                              });
+                            }}
+                          />
+                        </div>
+                        <label className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                          <span>{recommendedServiceCount > 0 ? `★ ${serviceDeviceType} အတွက် အကြံပြု ${recommendedServiceCount} ခု` : `${serviceDeviceType} အတွက် သတ်မှတ်ထားသော service မရှိသေးပါ`}</span>
+                          <span className="flex shrink-0 items-center gap-1"><input type="checkbox" checked={showAllServices} onChange={event => setShowAllServices(event.target.checked)} /> အားလုံးပြ</span>
+                        </label>
                       </div>
                       )}
                     </div>
@@ -1170,7 +1260,18 @@ export default function BookingManagement() {
                           return (
                             <div key={`${d.serviceId}-${i}`} className="grid grid-cols-1 items-center gap-2 rounded-lg border bg-slate-50 p-2 text-sm sm:grid-cols-[8rem_1fr_7rem_5rem_7rem_2.5rem]">
                               <select value={d.deviceIndex} aria-label="ဝန်ဆောင်မှုပြုလုပ်မည့်ပစ္စည်း" disabled={viewOnly}
-                                onChange={event => setForm(p => ({ ...p, details: p.details.map((detail, index) => index === i ? { ...detail, deviceIndex: Number(event.target.value) } : detail) }))}
+                                onChange={event => {
+                                  const nextDeviceIndex = Number(event.target.value);
+                                  setForm(current => ({
+                                    ...current,
+                                    details: current.details.map((detail, index) => index === i ? { ...detail, deviceIndex: nextDeviceIndex } : detail),
+                                    devices: current.devices.map((device, deviceIndex) => {
+                                      if (deviceIndex === d.deviceIndex) return { ...device, partRequests: removeUnconfirmedSuggestions(device.partRequests, d.serviceId) };
+                                      if (deviceIndex === nextDeviceIndex && selectedService) return { ...device, partRequests: mergeSuggestedParts(device.partRequests, selectedService) };
+                                      return device;
+                                    }),
+                                  }));
+                                }}
                                 className="min-w-0 rounded-lg border bg-white px-2 py-1.5 text-xs disabled:bg-slate-100">
                                 {form.devices.map((device, deviceIndex) => <option key={deviceIndex} value={deviceIndex}>ပစ္စည်း {deviceIndex + 1} — {device.brand || device.deviceType}</option>)}
                               </select>
@@ -1190,7 +1291,11 @@ export default function BookingManagement() {
                               </label>
                               {!viewOnly && (
                               <button type="button" title="ဖယ်ရှားရန်" className="w-fit rounded p-1.5 text-rose-500 hover:bg-rose-50"
-                                onClick={() => setForm(p => ({ ...p, details: p.details.filter((_, idx) => idx !== i) }))}>
+                                onClick={() => setForm(current => ({
+                                  ...current,
+                                  details: current.details.filter((_, idx) => idx !== i),
+                                  devices: current.devices.map((device, deviceIndex) => deviceIndex === d.deviceIndex ? { ...device, partRequests: removeUnconfirmedSuggestions(device.partRequests, d.serviceId) } : device),
+                                }))}>
                                 <Trash2 size={15} />
                               </button>
                               )}
@@ -1225,30 +1330,46 @@ export default function BookingManagement() {
                             ) : (
                               <div className="space-y-2">
                                 {device.partRequests.map((request, requestIndex) => (
-                                  <div key={requestIndex} className="grid grid-cols-1 items-center gap-2 rounded-lg border bg-white p-2 sm:grid-cols-[1fr_8rem_5rem_1.2fr_auto]">
-                                    <input value={request.partName} placeholder="Part အမည် (ဥပမာ HDD)" readOnly={viewOnly}
-                                      onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, partName: event.target.value } : part) } : entry) }))}
-                                      className="min-w-0 rounded-lg border px-2 py-1.5 text-xs read-only:bg-slate-100" />
-                                    <select value={request.action} disabled={viewOnly}
-                                      onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, action: event.target.value } : part) } : entry) }))}
-                                      className="rounded-lg border px-2 py-1.5 text-xs">
-                                      <option value="CHECK">စစ်ဆေးရန်</option>
-                                      <option value="REPLACE">လဲရန်</option>
-                                      <option value="REPAIR">ပြင်ရန်</option>
-                                    </select>
-                                    <input type="number" min={1} value={request.qty} title="ခန့်မှန်း Qty" readOnly={viewOnly}
-                                      onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, qty: Number(event.target.value) || 1 } : part) } : entry) }))}
-                                      className="w-20 rounded-lg border px-2 py-1.5 text-xs" />
-                                    <input value={request.notice} placeholder="မှတ်ချက် (ဥပမာ SSD 512GB)" readOnly={viewOnly}
-                                      onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, notice: event.target.value } : part) } : entry) }))}
-                                      className="min-w-0 rounded-lg border px-2 py-1.5 text-xs" />
-                                    {!viewOnly && (
-                                    <button type="button" title="ဖယ်ရှားရန်"
-                                      onClick={() => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.filter((_, partIndex) => partIndex !== requestIndex) } : entry) }))}
-                                      className="w-fit rounded p-1.5 text-rose-500 hover:bg-rose-50">
-                                      <Trash2 size={15} />
-                                    </button>
+                                  <div key={requestIndex} className={`rounded-lg border bg-white p-2 ${request.suggested ? 'border-amber-300' : request.confirmed ? 'border-emerald-200' : ''}`}>
+                                    {(request.suggested || request.confirmed) && (
+                                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                        <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${request.suggested ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                          {request.suggested ? '★ Service မှ အကြံပြု Part' : '✓ Technician အတည်ပြုပြီး'}{request.sourceServiceName ? ` — ${request.sourceServiceName}` : ''}
+                                        </span>
+                                        {request.suggested && !viewOnly && (
+                                          <button type="button"
+                                            onClick={() => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, suggested: false, confirmed: true } : part) } : entry) }))}
+                                            className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-emerald-700">
+                                            Technician အတည်ပြု
+                                          </button>
+                                        )}
+                                      </div>
                                     )}
+                                    <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_8rem_5rem_1.2fr_auto]">
+                                      <input value={request.partName} placeholder="Part အမည် (ဥပမာ HDD)" readOnly={viewOnly}
+                                        onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, partName: event.target.value } : part) } : entry) }))}
+                                        className="min-w-0 rounded-lg border px-2 py-1.5 text-xs read-only:bg-slate-100" />
+                                      <select value={request.action} disabled={viewOnly}
+                                        onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, action: event.target.value } : part) } : entry) }))}
+                                        className="rounded-lg border px-2 py-1.5 text-xs">
+                                        <option value="CHECK">စစ်ဆေးရန်</option>
+                                        <option value="REPLACE">လဲရန်</option>
+                                        <option value="REPAIR">ပြင်ရန်</option>
+                                      </select>
+                                      <input type="number" min={1} value={request.qty} title="ခန့်မှန်း Qty" readOnly={viewOnly}
+                                        onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, qty: Number(event.target.value) || 1 } : part) } : entry) }))}
+                                        className="w-full rounded-lg border px-2 py-1.5 text-xs sm:w-20" />
+                                      <input value={request.notice} placeholder="မှတ်ချက် (ဥပမာ SSD 512GB)" readOnly={viewOnly}
+                                        onChange={event => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.map((part, partIndex) => partIndex === requestIndex ? { ...part, notice: event.target.value } : part) } : entry) }))}
+                                        className="min-w-0 rounded-lg border px-2 py-1.5 text-xs" />
+                                      {!viewOnly && (
+                                      <button type="button" title="ဖယ်ရှားရန်"
+                                        onClick={() => setForm(current => ({ ...current, devices: current.devices.map((entry, index) => index === deviceIndex ? { ...entry, partRequests: entry.partRequests.filter((_, partIndex) => partIndex !== requestIndex) } : entry) }))}
+                                        className="w-fit rounded p-1.5 text-rose-500 hover:bg-rose-50">
+                                        <Trash2 size={15} />
+                                      </button>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
                               </div>

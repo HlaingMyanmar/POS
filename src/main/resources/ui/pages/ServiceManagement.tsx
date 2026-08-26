@@ -492,86 +492,146 @@ const ServiceManagement: React.FC = () => {
 
       {/* Item Modal */}
       {showItemModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md space-y-4">
-            <h2 className="font-semibold text-lg">{editItemId ? 'Edit' : 'Add'} Service</h2>
-            <select value={itemForm.serviceTypeId}
-              onChange={e => {
-                const val = e.target.value;
-                setItemForm((p: any) => ({ ...p, serviceTypeId: val, subServiceTypeId: '' }));
-                loadItemSubTypes(val);
-              }}
-              className="w-full border rounded-lg px-3 py-2 text-sm">
-              <option value="">Select Type</option>
-              {types.filter(t => t.isActive).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            {itemSubTypes.length > 0 && (
-              <select value={itemForm.subServiceTypeId}
-                onChange={e => setItemForm((p: any) => ({ ...p, subServiceTypeId: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm">
-                <option value="">Sub Category (Optional)</option>
-                {itemSubTypes.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            )}
-            <input placeholder="Service Name" value={itemForm.item}
-              onChange={e => setItemForm((p: any) => ({ ...p, item: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm" />
-            <input type="number" placeholder="Price" value={itemForm.price}
-              onChange={e => setItemForm((p: any) => ({ ...p, price: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm" />
-            <div className="grid grid-cols-2 gap-2">
-              <input type="number" min="0" placeholder="Minimum Price" value={itemForm.minPrice}
-                onChange={e => setItemForm((p: any) => ({ ...p, minPrice: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="number" min="0" placeholder="Maximum Price" value={itemForm.maxPrice}
-                onChange={e => setItemForm((p: any) => ({ ...p, maxPrice: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-0 sm:p-4">
+          <div className="flex h-full w-full max-w-3xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[92vh] sm:rounded-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b bg-white px-4 py-3 sm:px-6 sm:py-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 sm:text-xl">{editItemId ? 'ဝန်ဆောင်မှု ပြင်ဆင်ရန်' : 'ဝန်ဆောင်မှု အသစ်ထည့်ရန်'}</h2>
+                <p className="mt-0.5 text-xs text-slate-500">စျေးနှုန်း၊ အာမခံနှင့် ပစ္စည်းအမျိုးအစားများ သတ်မှတ်ပါ</p>
+              </div>
+              <button type="button" onClick={() => setShowItemModal(false)} aria-label="ပိတ်ရန်" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100">✕</button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input type="number" placeholder="ကုန်ကျစရိတ်" value={itemForm.costPrice}
-                onChange={e => setItemForm((p: any) => ({ ...p, costPrice: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="number" placeholder="အာမခံ (လ)" value={itemForm.warrantyMonths}
-                onChange={e => setItemForm((p: any) => ({ ...p, warrantyMonths: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="number" placeholder="ကြာချိန် (မိနစ်)" value={itemForm.durationMinutes}
-                onChange={e => setItemForm((p: any) => ({ ...p, durationMinutes: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="number" placeholder="အခွန် %" value={itemForm.taxRate}
-                onChange={e => setItemForm((p: any) => ({ ...p, taxRate: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <input type="number" min="0" max="100" placeholder="Commission %" value={itemForm.commissionPercent}
-                onChange={e => setItemForm((p: any) => ({ ...p, commissionPercent: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <input placeholder="လိုအပ်သော ကျွမ်းကျင်မှု" value={itemForm.skillRequired}
-              onChange={e => setItemForm((p: any) => ({ ...p, skillRequired: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm" />
-            <textarea placeholder="Supported Device Types (comma separated)" value={itemForm.supportedDeviceTypes}
-              onChange={e => setItemForm((p: any) => ({ ...p, supportedDeviceTypes: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
-            <textarea placeholder="Default Required Parts (one per line)" value={itemForm.defaultRequiredParts}
-              onChange={e => setItemForm((p: any) => ({ ...p, defaultRequiredParts: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
-            <textarea placeholder="ဖော်ပြချက်" value={itemForm.description}
-              onChange={e => setItemForm((p: any) => ({ ...p, description: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={Boolean(itemForm.focDefault)}
-                onChange={e => setItemForm((p: any) => ({ ...p, focDefault: e.target.checked }))} />
-              FOC default (အာမခံ/အခမဲ့)
-            </label>
-            {editItemId && (
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={itemForm.isActive}
-                  onChange={e => setItemForm((p: any) => ({ ...p, isActive: e.target.checked }))}
-                  className="w-4 h-4 rounded" />
-                Active
+            <div className="flex-1 space-y-5 overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-6 [&_input]:min-h-11 [&_select]:min-h-11">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">ဝန်ဆောင်မှုအမျိုးအစား</span>
+                <select value={itemForm.serviceTypeId}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setItemForm((p: any) => ({ ...p, serviceTypeId: val, subServiceTypeId: '' }));
+                    loadItemSubTypes(val);
+                  }}
+                  className="w-full rounded-lg border bg-white px-3 py-2 text-sm">
+                  <option value="">— အမျိုးအစားရွေးပါ —</option>
+                  {types.filter(t => t.isActive).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
               </label>
-            )}
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowItemModal(false)} className="px-4 py-2 text-sm rounded-lg border hover:bg-slate-50">Cancel</button>
-              <button onClick={saveItem} disabled={savingItem} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60">{savingItem ? 'Saving...' : 'Save'}</button>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">အမျိုးအစားခွဲ</span>
+                <select value={itemForm.subServiceTypeId}
+                  disabled={itemSubTypes.length === 0}
+                  onChange={e => setItemForm((p: any) => ({ ...p, subServiceTypeId: e.target.value }))}
+                  className="w-full rounded-lg border bg-white px-3 py-2 text-sm disabled:bg-slate-100">
+                  <option value="">— မသတ်မှတ်ထား —</option>
+                  {itemSubTypes.map((subItem: any) => <option key={subItem.id} value={subItem.id}>{subItem.name}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold text-slate-600">ဝန်ဆောင်မှုအမည်</span>
+              <input placeholder="ဥပမာ - Storage Health Check" value={itemForm.item}
+                onChange={e => setItemForm((p: any) => ({ ...p, item: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold text-slate-600">ပုံမှန်ရောင်းဈေး (Ks)</span>
+              <input type="number" min="0" placeholder="0" value={itemForm.price}
+                onChange={e => setItemForm((p: any) => ({ ...p, price: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">အနည်းဆုံးဈေး (Ks)</span>
+                <input type="number" min="0" placeholder="မသတ်မှတ်ထား" value={itemForm.minPrice}
+                  onChange={e => setItemForm((p: any) => ({ ...p, minPrice: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">အများဆုံးဈေး (Ks)</span>
+                <input type="number" min="0" placeholder="မသတ်မှတ်ထား" value={itemForm.maxPrice}
+                  onChange={e => setItemForm((p: any) => ({ ...p, maxPrice: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">ဆိုင်ဘက်ကုန်ကျစရိတ် (Ks)</span>
+                <input type="number" min="0" placeholder="0" value={itemForm.costPrice}
+                  onChange={e => setItemForm((p: any) => ({ ...p, costPrice: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">အာမခံကာလ (လ)</span>
+                <input type="number" min="0" placeholder="0" value={itemForm.warrantyMonths}
+                  onChange={e => setItemForm((p: any) => ({ ...p, warrantyMonths: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">ခန့်မှန်းကြာချိန် (မိနစ်)</span>
+                <input type="number" min="0" placeholder="0" value={itemForm.durationMinutes}
+                  onChange={e => setItemForm((p: any) => ({ ...p, durationMinutes: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">အခွန်နှုန်း (%)</span>
+                <input type="number" min="0" max="100" placeholder="0" value={itemForm.taxRate}
+                  onChange={e => setItemForm((p: any) => ({ ...p, taxRate: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+              <label className="block space-y-1 sm:col-span-2">
+                <span className="text-xs font-semibold text-slate-600">Technician / ဝန်ထမ်းကော်မရှင် (%)</span>
+                <input type="number" min="0" max="100" placeholder="0" value={itemForm.commissionPercent}
+                  onChange={e => setItemForm((p: any) => ({ ...p, commissionPercent: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold text-slate-600">လိုအပ်သောကျွမ်းကျင်မှု</span>
+              <input placeholder="ဥပမာ - Hardware Technician" value={itemForm.skillRequired}
+                onChange={e => setItemForm((p: any) => ({ ...p, skillRequired: e.target.value }))}
+                className="w-full rounded-lg border px-3 py-2 text-sm" />
+            </label>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">အသုံးပြုနိုင်သောပစ္စည်းအမျိုးအစားများ</span>
+                <textarea placeholder="Phone, Laptop, HDD, SSD" value={itemForm.supportedDeviceTypes}
+                  onChange={e => setItemForm((p: any) => ({ ...p, supportedDeviceTypes: e.target.value }))}
+                  className="w-full resize-y rounded-lg border px-3 py-2 text-sm" rows={3} />
+                <span className="block text-[11px] text-slate-400">Comma ဖြင့်ခွဲရေးပါ။ Booking/Job filter တွင် အသုံးပြုမည်။</span>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-slate-600">ပုံမှန်လိုအပ်နိုင်သော Parts</span>
+                <textarea placeholder={'SSD\nSATA Cable\nDrive Caddy'} value={itemForm.defaultRequiredParts}
+                  onChange={e => setItemForm((p: any) => ({ ...p, defaultRequiredParts: e.target.value }))}
+                  className="w-full resize-y rounded-lg border px-3 py-2 text-sm" rows={3} />
+                <span className="block text-[11px] text-slate-400">Part တစ်ခုစီကို တစ်ကြောင်းစီရေးပါ။</span>
+              </label>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold text-slate-600">ဖော်ပြချက်</span>
+              <textarea placeholder="ဝန်ဆောင်မှုအသေးစိတ်..." value={itemForm.description}
+                onChange={e => setItemForm((p: any) => ({ ...p, description: e.target.value }))}
+                className="w-full resize-y rounded-lg border px-3 py-2 text-sm" rows={3} />
+            </label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="flex min-h-12 items-center gap-3 rounded-xl border bg-slate-50 px-3 text-sm">
+                <input type="checkbox" checked={Boolean(itemForm.focDefault)}
+                  onChange={e => setItemForm((p: any) => ({ ...p, focDefault: e.target.checked }))} />
+                <span><strong className="block text-slate-700">FOC Default</strong><span className="text-xs text-slate-500">အာမခံ/အခမဲ့ဝန်ဆောင်မှု</span></span>
+              </label>
+              {editItemId && (
+                <label className="flex min-h-12 items-center gap-3 rounded-xl border bg-slate-50 px-3 text-sm">
+                  <input type="checkbox" checked={itemForm.isActive}
+                    onChange={e => setItemForm((p: any) => ({ ...p, isActive: e.target.checked }))}
+                    className="h-4 w-4 rounded" />
+                  <span><strong className="block text-slate-700">အသုံးပြုနေဆဲ</strong><span className="text-xs text-slate-500">Booking/Job တွင် ရွေးချယ်နိုင်မည်</span></span>
+                </label>
+              )}
+            </div>
+            </div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:px-6">
+              <button type="button" onClick={() => setShowItemModal(false)} className="min-h-11 w-full rounded-xl border px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 sm:w-auto">မလုပ်တော့ပါ</button>
+              <button type="button" onClick={saveItem} disabled={savingItem} className="min-h-11 w-full rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60 sm:w-auto">{savingItem ? 'သိမ်းနေသည်...' : 'သိမ်းဆည်းမည်'}</button>
             </div>
           </div>
         </div>

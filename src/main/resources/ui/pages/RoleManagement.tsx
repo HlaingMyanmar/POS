@@ -39,16 +39,20 @@ const RoleManagement: React.FC = () => {
       'CAN_ACCESS_PURCHASE_READ', 'CAN_ACCESS_PURCHASE_CREATE', 'CAN_ACCESS_PURCHASE_UPDATE',
       'CAN_ACCESS_SUPPLIER_READ', 'CAN_ACCESS_STOCK_READ', 'CAN_ACCESS_STOCK_UPDATE',
       'CAN_ACCESS_BOOKING_UPDATE', 'CAN_ACCESS_SERVICE_JOB_UPDATE', 'CAN_ACCESS_SERVICE_JOB_SETTLE',
+      'CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN',
       'CAN_ACCESS_REPORT_READ', 'CAN_ACCESS_CREDIT_ALERT_READ', 'CAN_ACCESS_CREDIT_OVERRIDE_APPROVE',
     ];
     if (role.includes('CASHIER') || role.includes('SALE')) return [
       'CAN_ACCESS_CUSTOMER_CREATE', ...read, 'CAN_ACCESS_SALE_READ', 'CAN_ACCESS_SALE_CREATE',
       'CAN_ACCESS_SALE_UPDATE', 'CAN_ACCESS_SALE_RETURN_CREATE', 'CAN_ACCESS_PAYMENT_TRANSACTION_CREATE',
+      'CAN_ACCESS_SERVICE_JOB_CREATE', 'CAN_ACCESS_SERVICE_JOB_UPDATE', 'CAN_ACCESS_SERVICE_JOB_SETTLE',
+      'CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN', 'CAN_ACCESS_BOOKING_CREATE', 'CAN_ACCESS_BOOKING_UPDATE',
+      'CAN_ACCESS_BOOKING_CONVERT_JOB',
     ];
     if (role.includes('TECHNICIAN') || role.includes('TECH')) return [
       'CAN_ACCESS_CUSTOMER_READ', 'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_SERVICE_READ',
       'CAN_ACCESS_SERVICE_JOB_READ', 'CAN_ACCESS_SERVICE_JOB_UPDATE', 'CAN_ACCESS_SERVICE_JOB_REWORK',
-      'CAN_ACCESS_BOOKING_READ', 'CAN_ACCESS_BOOKING_UPDATE',
+      'CAN_ACCESS_BOOKING_READ', 'CAN_ACCESS_BOOKING_UPDATE', 'CAN_ACCESS_STAFF_READ',
     ];
     if (role.includes('INVENTORY') || role.includes('STOCK')) return [
       'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_PRODUCT_CREATE', 'CAN_ACCESS_PRODUCT_UPDATE',
@@ -347,6 +351,11 @@ const RoleManagement: React.FC = () => {
               {recommendedMissing.length > 0 && (
                 <p className="mt-1 line-clamp-2 text-[9px] font-medium text-amber-800">
                   {recommendedMissing.map(permission => permission.name).join(' · ')}
+                </p>
+              )}
+              {editingRole && /TECH/i.test(editingRole.name) && (
+                <p className="mt-2 text-[10px] leading-5 text-rose-700">
+                  ပြုပြင်သူ Role တွင် <b>CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN</b> မထည့်ပါနှင့်။ ထည့်ရင် တခြား ပြုပြင်သူကိုပါ ရွေးနိုင်သွားမည်။
                 </p>
               )}
             </div>

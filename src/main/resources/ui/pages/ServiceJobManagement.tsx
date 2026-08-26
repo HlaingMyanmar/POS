@@ -16,8 +16,37 @@ import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { getFromSession } from '../utils/storageHelper';
 import { compressImageFile } from '../utils/imageCompression';
+import { isRepairTechnicianRole } from '../utils/staffRole';
 
 /* ── Status config ─────────────────────────────────────────────── */
+const SERVICE_DEVICE_TYPES = ['Phone', 'Laptop', 'Computer', 'Tablet', 'Printer', 'HDD', 'SSD', 'Storage', 'Other'];
+const normalizeDeviceToken = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const deviceAliases = (value: unknown) => {
+  const token = normalizeDeviceToken(value);
+  const groups = [
+    ['phone', 'mobile', 'smartphone', 'iphone', 'android'], ['computer', 'desktop', 'pc'],
+    ['laptop', 'notebook', 'macbook'], ['hdd', 'harddisk', 'harddrive', 'storage'],
+    ['ssd', 'solidstate', 'solidstatedrive', 'storage'], ['printer', 'printing'], ['tablet', 'ipad'],
+  ];
+  return new Set([token, ...(groups.find(group => group.some(alias => token.includes(alias))) ?? [])].filter(Boolean));
+};
+const supportedDeviceTokens = (item: any) => String(item?.supportedDeviceTypes ?? '').split(/[,;\n]/).map(normalizeDeviceToken).filter(Boolean);
+const explicitlySupportsDevice = (item: any, deviceType: string) => {
+  const supported = supportedDeviceTokens(item);
+  if (!supported.length) return false;
+  const aliases = deviceAliases(deviceType);
+  return supported.some(token => [...aliases].some(alias => token === alias || token.includes(alias) || alias.includes(token)));
+};
+const inferDeviceType = (explicitType: unknown, itemName: unknown) => {
+  if (String(explicitType ?? '').trim()) return String(explicitType).trim();
+  const normalizedName = normalizeDeviceToken(itemName);
+  return SERVICE_DEVICE_TYPES.find(type => [...deviceAliases(type)].some(alias => normalizedName.includes(alias))) ?? '';
+};
+const servicesForDevice = (items: any[], deviceType: string, showAll: boolean) => {
+  const ranked = [...items].sort((a, b) => Number(explicitlySupportsDevice(b, deviceType)) - Number(explicitlySupportsDevice(a, deviceType)));
+  const filtered = showAll || !deviceType ? ranked : ranked.filter(item => supportedDeviceTokens(item).length === 0 || explicitlySupportsDevice(item, deviceType));
+  return (filtered.length ? filtered : ranked).map(item => ({ ...item, _deviceRecommended: explicitlySupportsDevice(item, deviceType) }));
+};
 const STATUS_LIST = ['RECEIVED','INSPECTING','IN_PROGRESS','WAITING_PARTS','COMPLETED','DELIVERED','CANCELLED'] as const;
 type JobStatus = typeof STATUS_LIST[number];
 
@@ -105,7 +134,7 @@ const formatPartRequests = (value?: string | null) => {
 };
 const emptyForm = {
   customerId: '', assignedStaffId: '', helperStaffId: '',
-  itemName: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
+  itemName: '', deviceType: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
   deviceConditions: '', partRequests: '', estimatedCompletion: '', estimatedCost: '', remark: '',
   status: 'RECEIVED', holdReason: '', priority: 'NORMAL',
   lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyMonths: number; warrantyCovered: boolean }[],
@@ -186,7 +215,7 @@ const SearchableSelect: React.FC<{
             <div key={item.id}
               onClick={() => { onChange(item); setSearch(item[displayField]); setOpen(false); }}
               className="px-2.5 py-2 text-xs cursor-pointer hover:bg-indigo-50 flex justify-between items-center">
-              <span className="font-medium text-slate-700">{item[displayField]}</span>
+              <span className="font-medium text-slate-700">{item._deviceRecommended ? '★ ' : ''}{item[displayField]}</span>
               {subField && item[subField] && (
                 <span className="text-[10px] text-slate-400 ml-2">{item[subField]}</span>
               )}
@@ -316,8 +345,7 @@ export default function ServiceJobManagement() {
     try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; name?: string; username?: string; roles?: string[]; permissions?: string[] }; }
     catch { return {}; }
   }, []);
-  const canAssignTechnician = (currentUser.roles || []).some((r) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(r))
-    || (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN');
+  const canAssignTechnician = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN');
   const myStaffId = currentUser.staffId != null ? String(currentUser.staffId) : '';
   const canPickOwnTechnician = Boolean(myStaffId);
   const technicianFieldDisabled = !canAssignTechnician && !canPickOwnTechnician;
@@ -344,7 +372,11 @@ export default function ServiceJobManagement() {
   const [editJobNo, setEditJobNo] = useState('');
   const [origStatus, setOrigStatus] = useState('');
   const [form, setForm]           = useState(emptyForm);
+  const [showAllServices, setShowAllServices] = useState(false);
 
+  const serviceFilterDeviceType = inferDeviceType(form.deviceType, form.itemName);
+  const filteredServiceItems = useMemo(() => servicesForDevice(serviceItems, serviceFilterDeviceType, showAllServices), [serviceItems, serviceFilterDeviceType, showAllServices]);
+  const recommendedServiceCount = useMemo(() => serviceItems.filter(item => explicitlySupportsDevice(item, serviceFilterDeviceType)).length, [serviceItems, serviceFilterDeviceType]);
   const [showSettle, setShowSettle] = useState(false);
   const [settleJob, setSettleJob]   = useState<any>(null);
   const [settleForm, setSettleForm] = useState(emptySettle);
@@ -409,8 +441,8 @@ export default function ServiceJobManagement() {
       if (staffRes.status === 'fulfilled') {
         const allStaff = Array.isArray(staffRes.value) ? staffRes.value : [];
         const rows = allStaff.filter((staff: any) => {
-          const role = String(staff.role || '').toLowerCase();
-          return role.includes('technician') || role.includes('tech');
+          const role = String(staff.role || '');
+          return isRepairTechnicianRole(role);
         });
         const linked = allStaff.find((staff: any) => String(staff.id) === String(currentUser.staffId));
         if (linked && !rows.some((staff: any) => String(staff.id) === String(linked.id))) rows.push(linked);
@@ -513,20 +545,13 @@ export default function ServiceJobManagement() {
     all: statusFilteredJobs.length,
   };
   const availableStatuses = STATUS_LIST;
-  const assignedNameFromJob = editId != null
-    ? jobs.find(j => j.id === editId)?.assignedStaffName
-    : undefined;
   const technicianChoices = (() => {
     if (canAssignTechnician) return staffList;
     const mine = staffList.filter((s: any) => String(s.id) === myStaffId);
     if (myStaffId && !mine.some((s: any) => String(s.id) === myStaffId)) {
       mine.push({ id: myStaffId, name: currentUser.name || currentUser.username || 'ကျွန်ုပ်', role: '' });
     }
-    const assignedId = String(form.assignedStaffId || '');
-    if (!assignedId || assignedId === myStaffId) return mine;
-    const assigned = staffList.find((s: any) => String(s.id) === assignedId);
-    if (assigned) return mine.some((s: any) => String(s.id) === assignedId) ? mine : [...mine, assigned];
-    return [...mine, { id: assignedId, name: assignedNameFromJob || 'လက်ရှိပြုပြင်သူ', role: '' }];
+    return mine;
   })();
 
   /* ── Edit handlers ─────────────────────────────────────────── */
@@ -540,6 +565,7 @@ export default function ServiceJobManagement() {
       accessories:         j.accessories ?? '',
       itemCondition:       j.itemCondition ?? '',
       itemName:            j.itemName ?? '',
+      deviceType:          inferDeviceType(j.deviceType, j.itemName),
       problemDesc:         j.problemDesc ?? '',
       diagnosisNotes:      j.diagnosisNotes ?? '',
       deviceConditions:    j.deviceConditions ?? '',
@@ -575,6 +601,7 @@ export default function ServiceJobManagement() {
         };
       }),
     });
+    setShowAllServices(false);
     setEditId(j.id);
     setEditJobNo(j.jobNo ?? '');
     setOrigStatus(j.status ?? 'RECEIVED');
@@ -622,6 +649,7 @@ export default function ServiceJobManagement() {
       accessories:         form.accessories || null,
       itemCondition:       form.itemCondition || null,
       itemName:            form.itemName || null,
+      deviceType:          form.deviceType || inferDeviceType('', form.itemName) || null,
       problemDesc:         form.problemDesc || null,
       diagnosisNotes:      form.diagnosisNotes || null,
       deviceConditions:    form.deviceConditions || null,
@@ -673,6 +701,7 @@ export default function ServiceJobManagement() {
       accessories:         form.accessories || null,
       itemCondition:       form.itemCondition || null,
       itemName:            form.itemName || null,
+      deviceType:          form.deviceType || inferDeviceType('', form.itemName) || null,
       problemDesc:         form.problemDesc || null,
       diagnosisNotes:      form.diagnosisNotes || null,
       deviceConditions:    form.deviceConditions || null,
@@ -859,7 +888,7 @@ export default function ServiceJobManagement() {
     setReworkParent(job);
     setReworkForm({
       ...emptyRework,
-      assignedStaffId: job.assignedStaffId ? String(job.assignedStaffId) : '',
+      assignedStaffId: canAssignTechnician && job.assignedStaffId ? String(job.assignedStaffId) : myStaffId,
       problemDesc: job.problemDesc ?? '',
     });
     setReworkAvailableSerials([]);
@@ -979,6 +1008,7 @@ export default function ServiceJobManagement() {
   const totalPages = Math.ceil(visibleRootCount / PAGE_SIZE);
 
   const openCreate = () => {
+    setShowAllServices(false);
     setForm({ ...emptyForm, assignedStaffId: currentUser.staffId ? String(currentUser.staffId) : '', lines: [], productParts: [] });
     setShowCreate(true);
   };
@@ -1308,7 +1338,7 @@ export default function ServiceJobManagement() {
                 {reworkForm.resolutionMode === 'REFUND' && <div><label className="block text-xs font-bold text-slate-600 mb-1">ပြန်အမ်းမည့်ငွေ *</label><input type="number" min="0" value={reworkForm.refundAmount} onChange={e => setReworkForm(p => ({ ...p, refundAmount: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /><div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3"><SearchableSelect items={payMethods.map((pm: any) => ({ ...pm, name: pm.methodName, detail: pm.accountName || "Cash / Bank" }))} value={reworkForm.refundPaymentMethodId} displayField="name" subField="detail" placeholder="ပြန်အမ်းမည့် Cash/Bank ရှာပါ..." onChange={pm => setReworkForm(p => ({ ...p, refundPaymentMethodId: pm ? String(pm.id) : "" }))} /><input value={reworkForm.refundTransactionNo} onChange={e => setReworkForm(p => ({ ...p, refundTransactionNo: e.target.value }))} placeholder="Transaction No. (optional)" className="w-full border rounded-xl px-3 py-2 text-sm bg-white" /></div><p className="mt-1 text-[11px] text-emerald-700">ငွေထွက် Payment Transaction နှင့် Refund Journal ကို အလိုအလျောက်ရေးမည်။</p></div>}
                 <textarea value={reworkForm.replacementReason} onChange={e => setReworkForm(p => ({ ...p, replacementReason: e.target.value }))} rows={2} placeholder="လဲ/အမ်းရသည့်အကြောင်းရင်း..." className="w-full border rounded-xl px-3 py-2 text-sm bg-white resize-none" />
               </div>}
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">ပြန်လည်ပြုပြင်သူ</label><SearchableSelect items={staffList.map((staff: any) => ({ ...staff, detail: staff.role || staff.phone || "" }))} value={reworkForm.assignedStaffId} displayField="name" subField="detail" placeholder="ပြုပြင်သူအမည်၊ role ဖြင့်ရှာပါ..." onChange={staff => setReworkForm(p => ({ ...p, assignedStaffId: staff ? String(staff.id) : "" }))} /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">ပြန်လည်ပြုပြင်သူ</label><SearchableSelect items={technicianChoices.map((staff: any) => ({ ...staff, detail: staff.role || staff.phone || "" }))} value={reworkForm.assignedStaffId} displayField="name" subField="detail" placeholder="ပြုပြင်သူအမည်၊ role ဖြင့်ရှာပါ..." onChange={staff => setReworkForm(p => ({ ...p, assignedStaffId: staff ? String(staff.id) : "" }))} /></div>
               <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">Replacement part သည် Linked Job Part အဖြစ်ဝင်ပြီး settlement လုပ်ချိန်တွင်သာ stock ထွက်မည်။ ပစ္စည်းဟောင်းသည် stock ထပ်မလျော့ဘဲ disposition/serial audit မှတ်တမ်းဝင်မည်။</div>
               <div className="sticky bottom-0 z-30 -mx-3 -mb-24 flex flex-col-reverse gap-2 border-t bg-white/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:flex-row sm:justify-end sm:px-6"><button type="button" onClick={() => setShowRework(false)} className="min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold">မလုပ်တော့ပါ</button><button type="button" onClick={handleCreateRework} className="min-h-11 rounded-xl bg-amber-600 px-5 py-2 text-sm font-bold text-white hover:bg-amber-700">Linked Job ဖန်တီးမည်</button></div>
             </div>
@@ -1342,7 +1372,7 @@ export default function ServiceJobManagement() {
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
                   <select value={form.assignedStaffId} disabled={technicianFieldDisabled} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
                     className="w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
-                    <option value="">— မရှိ —</option>
+                    {canAssignTechnician && <option value="">— မရှိ —</option>}
                     {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
                 </div>
@@ -1360,6 +1390,12 @@ export default function ServiceJobManagement() {
                 <input value={form.itemName} onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
                   placeholder="ဥပမာ - Apple iPhone 14 Pro"
                   className="w-full border rounded-xl px-3 py-2 text-sm" />
+              </div>              <div>
+                <label className="block text-xs text-slate-500 mb-1">ပစ္စည်းအမျိုးအစား *</label>
+                <select value={form.deviceType} onChange={e => { setForm(p => ({ ...p, deviceType: e.target.value })); setShowAllServices(false); }} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <option value="">— ရွေးပါ —</option>
+                  {SERVICE_DEVICE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                </select>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div><label className="block text-xs text-slate-500 mb-1">Serial No.</label><input value={form.serialNo} onChange={e => setForm(p => ({ ...p, serialNo: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
@@ -1419,6 +1455,10 @@ export default function ServiceJobManagement() {
                     onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
+                <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                  <span>{serviceFilterDeviceType ? (recommendedServiceCount ? `★ ${serviceFilterDeviceType} အတွက် အကြံပြု ${recommendedServiceCount} ခု` : `${serviceFilterDeviceType} အတွက် သတ်မှတ်ထားသော service မရှိသေးပါ`) : 'ပစ္စည်းအမျိုးအစားရွေးပါ'}</span>
+                  <label className="flex shrink-0 items-center gap-1"><input type="checkbox" checked={showAllServices} onChange={e => setShowAllServices(e.target.checked)} /> အားလုံးပြ</label>
+                </div>
                 {form.lines.length > 0 ? (
                   <div className="space-y-2">
                     {form.lines.map((line: any, li: number) => (
@@ -1437,7 +1477,7 @@ export default function ServiceJobManagement() {
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
                           <SearchableSelect
-                            items={serviceItems}
+                            items={filteredServiceItems}
                             value={line.serviceItemId}
                             displayField="item"
                             subField="code"
@@ -1527,7 +1567,7 @@ export default function ServiceJobManagement() {
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
                   <select value={form.assignedStaffId} disabled={technicianFieldDisabled} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
                     className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
-                    <option value="">— မရှိ —</option>
+                    {canAssignTechnician && <option value="">— မရှိ —</option>}
                     {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
                 </div>
@@ -1539,6 +1579,12 @@ export default function ServiceJobManagement() {
                 <input value={form.itemName} onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
                   placeholder="ဥပမာ - Apple iPhone 14 Pro"
                   className="w-full border rounded-xl px-3 py-2 text-sm" />
+              </div>              <div>
+                <label className="block text-xs text-slate-500 mb-1">ပစ္စည်းအမျိုးအစား</label>
+                <select value={form.deviceType} onChange={e => { setForm(p => ({ ...p, deviceType: e.target.value })); setShowAllServices(false); }} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <option value="">— ရွေးပါ —</option>
+                  {SERVICE_DEVICE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                </select>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div><label className="block text-xs text-slate-500 mb-1">Serial No.</label><input value={form.serialNo} onChange={e => setForm(p => ({ ...p, serialNo: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
@@ -1602,6 +1648,10 @@ export default function ServiceJobManagement() {
                     onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false }] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
+                <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                  <span>{serviceFilterDeviceType ? (recommendedServiceCount ? `★ ${serviceFilterDeviceType} အတွက် အကြံပြု ${recommendedServiceCount} ခု` : `${serviceFilterDeviceType} အတွက် သတ်မှတ်ထားသော service မရှိသေးပါ`) : 'ပစ္စည်းအမျိုးအစားရွေးပါ'}</span>
+                  <label className="flex shrink-0 items-center gap-1"><input type="checkbox" checked={showAllServices} onChange={e => setShowAllServices(e.target.checked)} /> အားလုံးပြ</label>
+                </div>
                 {form.lines.length > 0 ? (
                   <div className="space-y-2">
                     {form.lines.map((line: any, li: number) => (
@@ -1620,7 +1670,7 @@ export default function ServiceJobManagement() {
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
                           <SearchableSelect
-                            items={serviceItems}
+                            items={filteredServiceItems}
                             value={line.serviceItemId}
                             displayField="item"
                             subField="code"

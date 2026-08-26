@@ -28,8 +28,30 @@
     <div><b>No:</b> <span th:text="${inv.invoiceNo}"></span></div>
     <div><b>Date:</b> <span th:text="${inv.invoiceDate}"></span></div>
     <div><b>Customer:</b> <span th:text="${inv.customerName ?: 'Walk-in'}"></span></div>
-    <div th:if="${not #strings.isEmpty(inv.cashierName)}">
-      <b>Staff:</b> <span th:text="${inv.cashierName}"></span>
+    <div th:if="${inv.bookingReceipt and not #strings.isEmpty(inv.cashierName)}">
+      <b>လက်ခံသူ:</b>
+      <span th:text="${inv.cashierName}"></span>
+    </div>
+    <th:block th:if="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}">
+      <div th:if="${not #strings.isEmpty(inv.technicianName)}">
+        <b>ပြုပြင်သူ:</b>
+        <span th:text="${inv.technicianName}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(inv.helperStaffName)}">
+        <b>အကူပြုပြင်သူ:</b>
+        <span th:text="${inv.helperStaffName}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(inv.cashierName)}">
+        <b>ငွေကိုင်:</b>
+        <span th:text="${inv.cashierName}"></span>
+      </div>
+    </th:block>
+    <div th:if="${!inv.bookingReceipt
+                  and inv.documentType != 'SERVICE_JOB'
+                  and inv.documentType != 'SERVICE_DONE'
+                  and not #strings.isEmpty(inv.cashierName)}">
+      <b>Staff:</b>
+      <span th:text="${inv.cashierName}"></span>
     </div>
   </div>
 
@@ -54,6 +76,14 @@
       </div>
       <div th:if="${not #strings.isEmpty(dev.problemDesc)}" style="font-size:10px; color:#b45309;">
         Problem: <span th:text="${dev.problemDesc}"></span>
+      </div>      <div th:if="${not #strings.isEmpty(dev.conditionChecklist)}" style="font-size:10px; white-space:pre-line;">
+        <b>Checklist:</b> <span th:text="${dev.conditionChecklist}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(dev.serviceSummary)}" style="font-size:10px; white-space:pre-line;">
+        <b>Services:</b> <span th:text="${dev.serviceSummary}"></span>
+      </div>
+      <div th:if="${not #strings.isEmpty(dev.partRequests)}" style="font-size:10px; color:#9a3412; white-space:pre-line;">
+        <b>Parts:</b> <span th:text="${dev.partRequests}"></span>
       </div>
     </div>
     <div th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
@@ -63,8 +93,17 @@
     <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:4px;">
       <div style="font-size:10px;"><b>Remark:</b> <span th:text="${inv.remark}"></span></div>
     </div>
+    <div th:if="${inv.estimatedCost != null and inv.estimatedCost != '0'}" style="font-size:10px; margin-top:4px;">
+      <b>Estimate:</b> <span th:text="${inv.estimatedCost}"></span> Ks
+    </div>
+    <div th:if="${inv.paid != null and inv.paid != '0'}" style="font-size:10px;">
+      <b>Deposit:</b> <span th:text="${inv.paid}"></span> Ks
+    </div>
   </div>
 
+  <div th:if="${!inv.bookingReceipt and not #strings.isEmpty(inv.partRequests)}" style="font-size:10px; color:#9a3412; white-space:pre-line; margin:5px 0;">
+    <b>Possible Parts:</b> <span th:text="${inv.partRequests}"></span>
+  </div>
   <!-- ── Non-Booking: Items table ── -->
   <table th:if="${!inv.bookingReceipt}" class="inv-thermal__table">
     <thead>

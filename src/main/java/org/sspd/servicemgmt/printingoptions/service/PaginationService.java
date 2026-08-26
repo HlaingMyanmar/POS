@@ -164,6 +164,8 @@ public class PaginationService {
                 .customerPhone(base.getCustomerPhone())
                 .customerAddress(base.getCustomerAddress())
                 .cashierName(base.getCashierName())
+                .technicianName(base.getTechnicianName())
+                .helperStaffName(base.getHelperStaffName())
                 // ── All items (for reference) + this page's subset ───────────
                 .lineItems(base.getLineItems())
                 .pageItems(pageItems)

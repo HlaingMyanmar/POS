@@ -25,9 +25,12 @@ import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
+import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobLineDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobAttachment;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.serviceoptions.model.ServiceItem;
 import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemRepository;
@@ -43,11 +46,15 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 
@@ -63,6 +70,7 @@ public class BookingService {
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
     private final ServiceJobRepository serviceJobRepository;
+    private final ServiceJobAttachmentRepository jobAttachmentRepository;
     private final ServiceItemRepository serviceItemRepository;
     private final ShelfLocationRepository shelfLocationRepository;
     private final CompanySettingsService companySettingsService;
@@ -71,6 +79,7 @@ public class BookingService {
     private final SimpMessagingTemplate messagingTemplate;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Transactional(readOnly = true)
     public Page<BookingDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
@@ -172,8 +181,8 @@ public class BookingService {
         Staff staff = resolveReceiver(dto.getStaffId());
         validateReceiver(staff);
         booking.setStaff(staff);
-        if (dto.getAppointmentDate() != null && !dto.getAppointmentDate().isBlank())
-            booking.setAppointmentDate(LocalDateTime.parse(dto.getAppointmentDate(), FMT));
+        booking.setAppointmentDate(dto.getAppointmentDate() != null && !dto.getAppointmentDate().isBlank()
+            ? LocalDateTime.parse(dto.getAppointmentDate(), FMT) : null);
         if (dto.getStatus() != null)
             booking.setStatus(dto.getStatus());
 
@@ -186,9 +195,9 @@ public class BookingService {
                 throw new IllegalStateException("လက်ခံငွေ transaction ရှိပြီးဖြစ်၍ Booking မှ တိုက်ရိုက်ပြင်မရပါ။ Deposit ထပ်လက်ခံ/Refund transaction ကိုသုံးပါ။");
             booking.setDepositAmount(dto.getDepositAmount());
         }
-        if (dto.getSignatureData() != null) booking.setSignatureData(dto.getSignatureData());
-        if (dto.getPaymentMethodId() != null)
-            booking.setPaymentMethod(paymentMethodRepository.findById(dto.getPaymentMethodId()).orElse(null));
+        booking.setSignatureData(dto.getSignatureData());
+        booking.setPaymentMethod(dto.getPaymentMethodId() != null
+            ? paymentMethodRepository.findById(dto.getPaymentMethodId()).orElse(null) : null);
         booking.setDeviceType(dto.getDeviceType());
         booking.setBrand(dto.getBrand());
         booking.setModel(dto.getModel());
@@ -253,7 +262,8 @@ public class BookingService {
                 case Pending -> status == BookingStatus.Confirmed || status == BookingStatus.IN_STORAGE || status == BookingStatus.Cancelled;
                 case Confirmed -> status == BookingStatus.IN_STORAGE || status == BookingStatus.Cancelled;
                 case IN_STORAGE -> status == BookingStatus.Cancelled;
-                case Converted, Completed, Cancelled -> false;
+                case Converted -> status == BookingStatus.Completed;
+                case Completed, Cancelled -> false;
             };
             if (!allowed) throw new IllegalStateException("Invalid booking status transition: " + from + " → " + status);
         }
@@ -291,10 +301,12 @@ public class BookingService {
         }
 
         List<ServiceJob> jobs = new ArrayList<>();
+        List<BookingAttachment> intakePhotos = attachmentRepository.findByBookingIdOrderByUploadedAtDesc(bookingId);
 
         if (booking.getDevices() != null && !booking.getDevices().isEmpty()) {
             // One Service Job per device
-            for (BookingDevice device : booking.getDevices()) {
+            for (int deviceIndex = 0; deviceIndex < booking.getDevices().size(); deviceIndex++) {
+                BookingDevice device = booking.getDevices().get(deviceIndex);
                 String itemName = List.of(
                     device.getBrand()      != null ? device.getBrand()      : "",
                     device.getModel()      != null ? device.getModel()      : "",
@@ -303,28 +315,34 @@ public class BookingService {
 
                 String devProblem = (device.getProblemDesc() != null && !device.getProblemDesc().isBlank())
                     ? device.getProblemDesc() : booking.getRemark();
+                String readableChecklist = formatConditionChecklist(device.getConditionChecklist());
+                String conditionSummary = !readableChecklist.isBlank() ? readableChecklist
+                    : (device.getDeviceConditions() != null && !device.getDeviceConditions().isBlank()
+                        ? device.getDeviceConditions() : itemCondition);
                 ServiceJob job = ServiceJob.builder()
                     .jobNo(generateJobNo())
                     .customer(booking.getCustomer())
                     .assignedStaff(booking.getStaff())
                     .itemName(itemName.isBlank() ? "Device" : itemName)
-.itemCondition(device.getConditionChecklist() != null && !device.getConditionChecklist().isBlank()
-                            ? device.getConditionChecklist() : itemCondition)
+                    .itemCondition(conditionSummary)
                     .deviceConditions(device.getDeviceConditions())
+                    .partRequests(device.getPartRequests())
                     .serialNo(device.getSerialNumber())
                     .color(device.getColor())
                     .accessories(device.getAccessories())
                     .shelfLocation(shelfLocation)
                     .problemDesc(devProblem)
-                    .estimatedCost(booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO)
+                    .estimatedCost(BigDecimal.ZERO)
                     .finalCost(BigDecimal.ZERO)
                     .status(ServiceJobStatus.RECEIVED)
                     .bookingId(bookingId)
                     .priority("NORMAL")
                     .lines(new ArrayList<>())
                     .build();
-                applyBookingServices(job, booking);
-                jobs.add(serviceJobRepository.save(job));
+                applyBookingServices(job, booking, deviceIndex, booking.getDevices().size());
+                ServiceJob savedJob = serviceJobRepository.save(job);
+                copyIntakePhotos(savedJob, intakePhotos, deviceIndex, booking.getDevices().size());
+                jobs.add(savedJob);
             }
         } else {
             // Legacy / no devices list — single job from booking fields
@@ -352,8 +370,10 @@ public class BookingService {
                 .priority("NORMAL")
                 .lines(new ArrayList<>())
                 .build();
-            applyBookingServices(job, booking);
-            jobs.add(serviceJobRepository.save(job));
+            applyBookingServices(job, booking, 0, 1);
+            ServiceJob savedJob = serviceJobRepository.save(job);
+            copyIntakePhotos(savedJob, intakePhotos, 0, 1);
+            jobs.add(savedJob);
         }
 
         booking.setStatus(BookingStatus.Converted);
@@ -417,12 +437,16 @@ public class BookingService {
         attachmentRepository.delete(attachment);
     }
 
-    private void applyBookingServices(ServiceJob job, Booking booking) {
+    private void applyBookingServices(ServiceJob job, Booking booking, int deviceIndex, int deviceCount) {
         if (booking.getDetails() == null || booking.getDetails().isEmpty()) return;
         BigDecimal total = BigDecimal.ZERO;
         int minutes = 0;
         for (BookingDetail d : booking.getDetails()) {
             if (d.getServiceItem() == null) continue;
+            // Legacy rows without a device target go to the only device, or the first
+            // device when converting an old multi-device booking, never to every job.
+            if (d.getDeviceIndex() != null && d.getDeviceIndex() != deviceIndex) continue;
+            if (d.getDeviceIndex() == null && deviceCount > 1 && deviceIndex != 0) continue;
             int qty = d.getQty() != null ? d.getQty() : 1;
             BigDecimal price = d.getPrice() != null ? d.getPrice() : d.getServiceItem().getPrice();
             boolean foc = Boolean.TRUE.equals(d.getServiceItem().getFocDefault());
@@ -462,14 +486,16 @@ public class BookingService {
 
     private void validateSerials(BookingDTO dto, Integer excludeBookingId) {
         List<String> serials = new ArrayList<>();
-        if (dto.getSerialNumber() != null && !dto.getSerialNumber().isBlank())
-            serials.add(dto.getSerialNumber().trim());
-        if (dto.getDevices() != null) {
+        // When the multi-device payload is present, the top-level serial is only a
+        // legacy mirror of the first device and must not be counted a second time.
+        if (dto.getDevices() != null && !dto.getDevices().isEmpty()) {
             dto.getDevices().stream()
                 .map(BookingDeviceDTO::getSerialNumber)
                 .filter(s -> s != null && !s.isBlank())
                 .map(String::trim)
                 .forEach(serials::add);
+        } else if (dto.getSerialNumber() != null && !dto.getSerialNumber().isBlank()) {
+            serials.add(dto.getSerialNumber().trim());
         }
         long distinct = serials.stream().map(String::toLowerCase).distinct().count();
         if (distinct != serials.size())
@@ -493,16 +519,62 @@ public class BookingService {
             booking.getDetails().add(BookingDetail.builder()
                 .booking(booking)
                 .serviceItem(item)
+                .deviceIndex(d.getDeviceIndex())
                 .qty(qty)
                 .price(price)
                 .subtotal(price.multiply(BigDecimal.valueOf(qty)))
                 .build());
         }
         BigDecimal serviceTotal = booking.getDetails().stream()
-            .map(BookingDetail::getSubtotal)
+            .map(d -> d.getSubtotal() != null ? d.getSubtotal() : BigDecimal.ZERO)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (serviceTotal.compareTo(BigDecimal.ZERO) > 0 && (dto.getTotalAmount() == null || dto.getTotalAmount().compareTo(BigDecimal.ZERO) == 0))
+        if (!booking.getDetails().isEmpty())
             booking.setTotalAmount(serviceTotal);
+    }
+
+    private void copyIntakePhotos(ServiceJob job, List<BookingAttachment> photos, int deviceIndex, int deviceCount) {
+        if (photos == null || photos.isEmpty() || job.getId() == null) return;
+        String taggedType = "INTAKE_PHOTO_DEVICE_" + (deviceIndex + 1);
+        for (BookingAttachment photo : photos) {
+            if (photo.getDataUrl() == null || photo.getDataUrl().isBlank()) continue;
+            String type = photo.getAttachmentType() == null ? "" : photo.getAttachmentType();
+            boolean matchesTagged = taggedType.equalsIgnoreCase(type);
+            boolean matchesLegacy = (type.isBlank() || "INTAKE_PHOTO".equalsIgnoreCase(type))
+                && (deviceIndex == 0 || deviceCount == 1);
+            if (!matchesTagged && !matchesLegacy) continue;
+            jobAttachmentRepository.save(ServiceJobAttachment.builder()
+                .serviceJob(job)
+                .attachmentType(type.isBlank() ? taggedType : type)
+                .fileName(photo.getFileName())
+                .contentType(photo.getContentType())
+                .dataUrl(photo.getDataUrl())
+                .uploadedBy(photo.getUploadedBy() != null ? photo.getUploadedBy() : currentUsername())
+                .uploadedAt(photo.getUploadedAt() != null ? photo.getUploadedAt() : LocalDateTime.now())
+                .build());
+        }
+    }
+
+    private String formatConditionChecklist(String json) {
+        if (json == null || json.isBlank()) return "";
+        String trimmed = json.trim();
+        if (!trimmed.startsWith("[")) return trimmed;
+        try {
+            List<Map<String, Object>> parsed = JSON.readValue(trimmed, new TypeReference<>() {});
+            List<String> rows = new ArrayList<>();
+            for (Map<String, Object> item : parsed) {
+                String name = item.get("name") == null ? "" : String.valueOf(item.get("name")).trim();
+                if (name.isBlank()) continue;
+                String status = item.get("status") == null ? "" : String.valueOf(item.get("status")).trim();
+                String notice = item.get("notice") == null ? "" : String.valueOf(item.get("notice")).trim();
+                StringBuilder row = new StringBuilder(name);
+                if (!status.isBlank()) row.append(" - ").append(status);
+                if (!notice.isBlank()) row.append(" (").append(notice).append(")");
+                rows.add(row.toString());
+            }
+            return String.join(" | ", rows);
+        } catch (Exception ignored) {
+            return trimmed;
+        }
     }
 
     private String currentUsername() {
@@ -542,6 +614,7 @@ public class BookingService {
                 .problemDesc(d.getProblemDesc())
                 .deviceConditions(d.getDeviceConditions())
                 .conditionChecklist(d.getConditionChecklist())
+                .partRequests(d.getPartRequests())
                 .build());
         }
     }
@@ -610,6 +683,7 @@ public class BookingService {
                 dd.setId(d.getId());
                 dd.setServiceId(d.getServiceItem() != null ? d.getServiceItem().getId() : null);
                 dd.setServiceName(d.getServiceItem() != null ? d.getServiceItem().getItem() : null);
+                dd.setDeviceIndex(d.getDeviceIndex());
                 dd.setQty(d.getQty());
                 dd.setPrice(d.getPrice());
                 dd.setSubtotal(d.getSubtotal());
@@ -629,6 +703,7 @@ public class BookingService {
                 dd.setProblemDesc(d.getProblemDesc());
                 dd.setDeviceConditions(d.getDeviceConditions());
                 dd.setConditionChecklist(d.getConditionChecklist());
+                dd.setPartRequests(d.getPartRequests());
                 return dd;
               }).toList()
             : List.of());
@@ -662,6 +737,7 @@ public class BookingService {
         dto.setItemName(j.getItemName());
         dto.setItemCondition(j.getItemCondition());
         dto.setDeviceConditions(j.getDeviceConditions());
+        dto.setPartRequests(j.getPartRequests());
         dto.setSerialNo(j.getSerialNo());
         dto.setColor(j.getColor());
         dto.setAccessories(j.getAccessories());
@@ -672,7 +748,20 @@ public class BookingService {
         dto.setReceivedDate(j.getReceivedDate() != null ? j.getReceivedDate().toString() : null);
         dto.setEstimatedCost(j.getEstimatedCost());
         dto.setFinalCost(j.getFinalCost());
-        dto.setLines(List.of());
+        dto.setLines(j.getLines() == null ? List.of() : j.getLines().stream().map(line -> {
+            ServiceJobLineDTO lineDto = new ServiceJobLineDTO();
+            lineDto.setId(line.getId());
+            if (line.getServiceItem() != null) {
+                lineDto.setServiceItemId(line.getServiceItem().getId());
+                lineDto.setServiceItemName(line.getServiceItem().getItem());
+            }
+            lineDto.setQty(line.getQty());
+            lineDto.setPrice(line.getPrice());
+            lineDto.setSubtotal(line.getSubtotal());
+            lineDto.setWarrantyMonths(line.getWarrantyMonths());
+            lineDto.setWarrantyCovered(line.getWarrantyCovered());
+            return lineDto;
+        }).toList());
         return dto;
     }
 }

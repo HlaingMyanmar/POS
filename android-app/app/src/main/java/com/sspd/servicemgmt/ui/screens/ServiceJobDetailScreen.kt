@@ -1,4 +1,4 @@
-﻿package com.sspd.servicemgmt.ui.screens
+package com.sspd.servicemgmt.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -36,7 +36,36 @@ import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.viewmodel.ServiceJobDetailViewModel
 import com.sspd.servicemgmt.utils.fmtWarranty
+import org.json.JSONArray
 
+private fun formatPartRequests(value: String?): String {
+    if (value.isNullOrBlank()) return ""
+    return try {
+        val json = JSONArray(value)
+        buildList {
+            for (index in 0 until json.length()) {
+                val row = json.optJSONObject(index) ?: continue
+                val name = row.optString("partName").trim()
+                if (name.isBlank()) continue
+                val action = when (row.optString("action")) {
+                    "REPLACE" -> "လဲရန်"
+                    "REPAIR" -> "ပြုပြင်ရန်"
+                    "CHECK" -> "စစ်ဆေးရန်"
+                    else -> row.optString("action")
+                }
+                val notice = row.optString("notice").trim()
+                add(buildString {
+                    append(name)
+                    if (action.isNotBlank()) append(" — ").append(action)
+                    append(" × ").append(row.optInt("qty", 1).coerceAtLeast(1))
+                    if (notice.isNotBlank()) append(" (").append(notice).append(")")
+                })
+            }
+        }.joinToString("\n")
+    } catch (_: Exception) {
+        value
+    }
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServiceJobDetailScreen(
@@ -319,6 +348,10 @@ fun ServiceJobDetailScreen(
                         if (!job.itemCondition.isNullOrBlank()) {
                             HorizontalDivider(color = BorderColor)
                             JobInfoRow(Icons.Outlined.Info, "အခြေအနေ",    job.itemCondition)
+                        }
+                        if (!job.partRequests.isNullOrBlank()) {
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Build, "Part လိုအပ်ချက်", formatPartRequests(job.partRequests))
                         }
                         if (!job.problemDesc.isNullOrBlank()) {
                             HorizontalDivider(color = BorderColor)

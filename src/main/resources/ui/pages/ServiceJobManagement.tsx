@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
-import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw } from 'lucide-react';
+import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw, Plus } from 'lucide-react';
 import { serviceJobService, serviceItemService } from '../services/api';
 import { staffService } from '../services/staffapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
@@ -55,6 +55,11 @@ const selectableStatuses = (current: string) => [current, ...(NEXT_STATUS[curren
 type WorkTab = 'active' | 'payment' | 'handover' | 'closed' | 'all';
 const needsPayment = (job: any) => job.status === 'COMPLETED' && (!job.paymentStatus || Number(job.dueAmount || 0) > 0);
 const readyForHandover = (job: any) => job.status === 'COMPLETED' && Boolean(job.paymentStatus) && Number(job.dueAmount || 0) <= 0;
+const countWorkQueue = (rows: any[]) => ({
+  active: rows.filter((j: any) => ACTIVE_STATUSES.includes(j.status)).length,
+  payment: rows.filter(needsPayment).length,
+  handover: rows.filter(readyForHandover).length,
+});
 const nextActionLabel = (job: any) => {
   if (ACTIVE_STATUSES.includes(job.status)) return job.status === 'RECEIVED' ? 'စစ်ဆေးရန်' : job.status === 'INSPECTING' ? 'ပြင်ဆင်ရန်' : 'ဆက်လက်လုပ်ဆောင်ရန်';
   if (needsPayment(job)) return Number(job.dueAmount || 0) > 0 ? 'ကျန်ငွေကောက်ရန်' : 'ငွေရှင်းရန်';
@@ -80,10 +85,28 @@ const getLocalToday = () => {
 };
 
 /* ── Empty states ──────────────────────────────────────────────── */
+const formatPartRequests = (value?: string | null) => {
+  if (!value?.trim()) return '';
+  try {
+    const rows = JSON.parse(value);
+    if (!Array.isArray(rows)) return value;
+    return rows
+      .filter((row: any) => String(row?.partName ?? '').trim())
+      .map((row: any) => {
+        const action = ({ REPLACE: 'လဲရန်', REPAIR: 'ပြုပြင်ရန်', CHECK: 'စစ်ဆေးရန်' } as Record<string, string>)[row.action] ?? row.action ?? '';
+        const qty = Number(row.qty || 1);
+        const notice = String(row.notice ?? '').trim();
+        return `${row.partName}${action ? ` — ${action}` : ''} × ${qty}${notice ? ` (${notice})` : ''}`;
+      })
+      .join('\n');
+  } catch {
+    return value;
+  }
+};
 const emptyForm = {
   customerId: '', assignedStaffId: '', helperStaffId: '',
   itemName: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
-  deviceConditions: '', estimatedCompletion: '', estimatedCost: '', remark: '',
+  deviceConditions: '', partRequests: '', estimatedCompletion: '', estimatedCost: '', remark: '',
   status: 'RECEIVED', holdReason: '', priority: 'NORMAL',
   lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyMonths: number; warrantyCovered: boolean }[],
   productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[] }[],
@@ -290,12 +313,16 @@ const CustomerPicker: React.FC<{
 /* ── Main Page ─────────────────────────────────────────────────── */
 export default function ServiceJobManagement() {
   const currentUser = useMemo(() => {
-    try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] }; }
+    try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; name?: string; username?: string; roles?: string[]; permissions?: string[] }; }
     catch { return {}; }
   }, []);
   const canAssignTechnician = (currentUser.roles || []).some((r) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(r))
     || (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN');
+  const myStaffId = currentUser.staffId != null ? String(currentUser.staffId) : '';
+  const canPickOwnTechnician = Boolean(myStaffId);
+  const technicianFieldDisabled = !canAssignTechnician && !canPickOwnTechnician;
   const [jobs, setJobs]           = useState<any[]>([]);
+  const [workQueueCounts, setWorkQueueCounts] = useState({ active: 0, payment: 0, handover: 0 });
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
   const [tab, setTab]             = useState<WorkTab>('active');
@@ -336,21 +363,35 @@ export default function ServiceJobManagement() {
   const [reworkSerialLoading, setReworkSerialLoading] = useState(false);
   const [expandedJobFamilies, setExpandedJobFamilies] = useState<Record<string, boolean>>({});
   const PAGE_SIZE = 20;
+  const workflowTab = tab === 'active' || tab === 'payment' || tab === 'handover';
 
   const load = async () => {
-    // Searching from the All tab is global across the complete job history.
-    // Clearing the search restores the default date range (Today).
-    const globalSearch = tab === 'all' && search.trim().length > 0;
-    const workflowTab = tab === 'active' || tab === 'payment' || tab === 'handover';
-    const ignoresDateRange = workflowTab || globalSearch;
+    const ignoresDateRange = workflowTab || search.trim().length > 0;
     const effectiveDateFrom = ignoresDateRange ? '' : dateFrom;
     const effectiveDateTo = ignoresDateRange ? '' : dateTo;
+    const listIsUnrestrictedQueue = workflowTab && search.trim().length === 0;
     // Load the complete filtered working set so a main job and its linked
     // reworks cannot be separated by server-side pagination.
-    const res = await serviceJobService.getAll(0, 5000, search, effectiveDateFrom, effectiveDateTo);
-    if (res.success) {
-      setJobs(res.data?.content ?? []);
-      setTotal(res.data?.totalElements ?? 0);
+    if (listIsUnrestrictedQueue) {
+      const res = await serviceJobService.getAll(0, 5000, search, effectiveDateFrom, effectiveDateTo);
+      if (res.success) {
+        const rows = res.data?.content ?? [];
+        setJobs(rows);
+        setTotal(res.data?.totalElements ?? 0);
+        setWorkQueueCounts(countWorkQueue(rows));
+      }
+      return;
+    }
+    const [listRes, queueRes] = await Promise.all([
+      serviceJobService.getAll(0, 5000, search, effectiveDateFrom, effectiveDateTo),
+      serviceJobService.getAll(0, 5000, '', '', ''),
+    ]);
+    if (listRes.success) {
+      setJobs(listRes.data?.content ?? []);
+      setTotal(listRes.data?.totalElements ?? 0);
+    }
+    if (queueRes.success) {
+      setWorkQueueCounts(countWorkQueue(queueRes.data?.content ?? []));
     }
   };
 
@@ -366,11 +407,14 @@ export default function ServiceJobManagement() {
       ]);
 
       if (staffRes.status === 'fulfilled') {
-        const rows = (Array.isArray(staffRes.value) ? staffRes.value : []).filter((staff: any) =>
-          String(staff.role || '').toLowerCase().includes('technician') || String(staff.role || '').toLowerCase().includes('tech')
-        );
+        const allStaff = Array.isArray(staffRes.value) ? staffRes.value : [];
+        const rows = allStaff.filter((staff: any) => {
+          const role = String(staff.role || '').toLowerCase();
+          return role.includes('technician') || role.includes('tech');
+        });
+        const linked = allStaff.find((staff: any) => String(staff.id) === String(currentUser.staffId));
+        if (linked && !rows.some((staff: any) => String(staff.id) === String(linked.id))) rows.push(linked);
         setStaffList(rows);
-        const linked = rows.find((staff: any) => staff.id === currentUser.staffId);
         if (linked && !editId) setForm((prev) => ({ ...prev, assignedStaffId: String(linked.id) }));
       }
       if (serviceItemRes.status === 'fulfilled') {
@@ -462,13 +506,28 @@ export default function ServiceJobManagement() {
     ? jobs
     : jobs.filter(j => j.status === statusFilter);
   const counts = {
-    active: statusFilteredJobs.filter(j => ACTIVE_STATUSES.includes(j.status)).length,
-    payment: statusFilteredJobs.filter(needsPayment).length,
-    handover: statusFilteredJobs.filter(readyForHandover).length,
+    active: workQueueCounts.active,
+    payment: workQueueCounts.payment,
+    handover: workQueueCounts.handover,
     closed: statusFilteredJobs.filter(j => ARCHIVED_STATUSES.includes(j.status)).length,
     all: statusFilteredJobs.length,
   };
   const availableStatuses = STATUS_LIST;
+  const assignedNameFromJob = editId != null
+    ? jobs.find(j => j.id === editId)?.assignedStaffName
+    : undefined;
+  const technicianChoices = (() => {
+    if (canAssignTechnician) return staffList;
+    const mine = staffList.filter((s: any) => String(s.id) === myStaffId);
+    if (myStaffId && !mine.some((s: any) => String(s.id) === myStaffId)) {
+      mine.push({ id: myStaffId, name: currentUser.name || currentUser.username || 'ကျွန်ုပ်', role: '' });
+    }
+    const assignedId = String(form.assignedStaffId || '');
+    if (!assignedId || assignedId === myStaffId) return mine;
+    const assigned = staffList.find((s: any) => String(s.id) === assignedId);
+    if (assigned) return mine.some((s: any) => String(s.id) === assignedId) ? mine : [...mine, assigned];
+    return [...mine, { id: assignedId, name: assignedNameFromJob || 'လက်ရှိပြုပြင်သူ', role: '' }];
+  })();
 
   /* ── Edit handlers ─────────────────────────────────────────── */
   const openEdit = (j: any) => {
@@ -484,6 +543,7 @@ export default function ServiceJobManagement() {
       problemDesc:         j.problemDesc ?? '',
       diagnosisNotes:      j.diagnosisNotes ?? '',
       deviceConditions:    j.deviceConditions ?? '',
+      partRequests:        j.partRequests ?? '',
       estimatedCompletion: j.estimatedCompletion ? j.estimatedCompletion.slice(0, 16) : '',
       estimatedCost:       j.estimatedCost ? String(j.estimatedCost) : '',
       remark:              j.remark ?? '',
@@ -565,6 +625,7 @@ export default function ServiceJobManagement() {
       problemDesc:         form.problemDesc || null,
       diagnosisNotes:      form.diagnosisNotes || null,
       deviceConditions:    form.deviceConditions || null,
+      partRequests:        form.partRequests || null,
       estimatedCompletion: form.estimatedCompletion ? form.estimatedCompletion + ':00' : null,
       estimatedCost:       form.estimatedCost ? Number(form.estimatedCost) : null,
       remark:              form.remark || null,
@@ -615,6 +676,7 @@ export default function ServiceJobManagement() {
       problemDesc:         form.problemDesc || null,
       diagnosisNotes:      form.diagnosisNotes || null,
       deviceConditions:    form.deviceConditions || null,
+      partRequests:        form.partRequests || null,
       estimatedCompletion: form.estimatedCompletion ? form.estimatedCompletion + ':00' : null,
       estimatedCost:       form.estimatedCost ? Number(form.estimatedCost) : null,
       remark:              form.remark || null,
@@ -923,11 +985,11 @@ export default function ServiceJobManagement() {
 
   /* ── Tabs config ───────────────────────────────────────────── */
   const tabDef: { key: WorkTab; label: string; note: string; count: number; active: string; inactive: string }[] = [
-    { key: 'active', label: 'လုပ်ဆောင်ဆဲ', note: 'စစ်ဆေး/ပြင်ဆင်ရန်', count: counts.active, active: 'border-blue-500 text-blue-700 bg-blue-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'payment', label: 'ငွေရှင်းရန်', note: 'မရှင်းရသေး/အကြွေးကျန်', count: counts.payment, active: 'border-rose-500 text-rose-700 bg-rose-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'handover', label: 'ပေးအပ်ရန်', note: 'ငွေရှင်းပြီး Customer ကိုပေးရန်', count: counts.handover, active: 'border-emerald-500 text-emerald-700 bg-emerald-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'closed', label: 'ပိတ်ပြီး', note: 'ပေးအပ်ပြီး/ပယ်ဖျက်ပြီး', count: counts.closed, active: 'border-slate-500 text-slate-700 bg-slate-100', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
-    { key: 'all', label: 'အားလုံး', note: 'History နှင့် အဟောင်းရှာရန်', count: counts.all, active: 'border-purple-500 text-purple-700 bg-purple-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'active', label: 'လုပ်ဆောင်ဆဲ', note: 'ရက်မကန့်သတ်', count: counts.active, active: 'border-blue-500 text-blue-700 bg-blue-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'payment', label: 'ငွေရှင်းရန်', note: 'ရက်မကန့်သတ်', count: counts.payment, active: 'border-rose-500 text-rose-700 bg-rose-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'handover', label: 'ပေးအပ်ရန်', note: 'ရက်မကန့်သတ်', count: counts.handover, active: 'border-emerald-500 text-emerald-700 bg-emerald-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'closed', label: 'ပိတ်ပြီး', note: 'ယနေ့ / ရက်ရွေးရန်', count: counts.closed, active: 'border-slate-500 text-slate-700 bg-slate-100', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
+    { key: 'all', label: 'အားလုံး', note: 'ယနေ့ / ရက်ရွေးရန်', count: counts.all, active: 'border-purple-500 text-purple-700 bg-purple-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
   ];
 
   return (
@@ -948,29 +1010,36 @@ export default function ServiceJobManagement() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b bg-white">
+        <div className="flex flex-col gap-2 px-3 py-2 border-b bg-white sm:flex-row sm:flex-wrap sm:items-center">
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder="Job#, ဝယ်သူ၊ ပစ္စည်း — မှတ်တမ်းအားလုံးတွင် ရှာရန်..."
-            className="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-48 focus:ring-2 focus:ring-purple-400" />
-          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value as 'all' | JobStatus); setPage(0); }}
-            aria-label="အခြေအနေဖြင့် စစ်ထုတ်ရန်"
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-purple-400">
-            <option value="all">အခြေအနေအားလုံး</option>
-            {availableStatuses.map(status => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
-          </select>
-          <input type="date" value={dateFrom} disabled={tab === 'active' || tab === 'payment' || tab === 'handover'}
-            title={['active','payment','handover'].includes(tab) ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : undefined}
-            onChange={e => { setDateFrom(e.target.value); setPage(0); }}
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
-          <input type="date" value={dateTo} disabled={tab === 'active' || tab === 'payment' || tab === 'handover'}
-            title={['active','payment','handover'].includes(tab) ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : undefined}
-            onChange={e => { setDateTo(e.target.value); setPage(0); }}
-            className="border rounded-lg px-2.5 py-1.5 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
+            placeholder="Job#, ဝယ်သူ၊ ပစ္စည်း ရှာရန်..."
+            className="min-h-11 w-full border rounded-xl px-3 py-2 text-base sm:text-sm sm:flex-1 sm:min-w-48 focus:ring-2 focus:ring-purple-400" />
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value as 'all' | JobStatus); setPage(0); }}
+              aria-label="အခြေအနေဖြင့် စစ်ထုတ်ရန်"
+              className="min-h-11 border rounded-xl px-2.5 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-400">
+              <option value="all">အခြေအနေအားလုံး</option>
+              {availableStatuses.map(status => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
+            </select>
+            <input type="date" value={dateFrom} disabled={tab === 'active' || tab === 'payment' || tab === 'handover'}
+              title={workflowTab ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : 'ရက်စွဲဖြင့် စစ်ထုတ်ရန်'}
+              onChange={e => { setDateFrom(e.target.value); setPage(0); }}
+              className="min-h-11 border rounded-xl px-2.5 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
+            <input type="date" value={dateTo} disabled={tab === 'active' || tab === 'payment' || tab === 'handover'}
+              title={workflowTab ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : 'ရက်စွဲဖြင့် စစ်ထုတ်ရန်'}
+              onChange={e => { setDateTo(e.target.value); setPage(0); }}
+              className="min-h-11 col-span-2 border rounded-xl px-2.5 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 sm:col-span-1" />
+          </div>
           <button type="button" onClick={openCreate}
-            className="ml-auto px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
-            + Service Job အသစ်
+            className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 sm:ml-auto sm:w-auto">
+            <Plus size={18} strokeWidth={2.5} /> ဝန်ဆောင်မှု Job အသစ်
           </button>
         </div>
+        <p className="border-b bg-white px-3 py-1.5 text-[11px] text-slate-500">
+          {workflowTab
+            ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်'
+            : 'ရက်စွဲအတိုင်း ပြသည် (ရှာဖွေလျှင် ရက်မကန့်သတ်)'}
+        </p>
         <div className="grid gap-3 bg-slate-100 p-3 md:hidden">
           {hierarchicalJobs.map(({ job: j, depth }) => {
             const balance = Number(j.dueAmount || 0);
@@ -1248,17 +1317,17 @@ export default function ServiceJobManagement() {
       )}
       {/* ─── Create Modal ─── */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl">
-            <div className="flex items-center justify-between px-6 py-4 bg-indigo-600 rounded-t-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-0 sm:p-4">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-2xl">
+            <div className="flex shrink-0 items-center justify-between bg-indigo-600 px-4 py-3 sm:rounded-t-2xl sm:px-6 sm:py-4">
               <div>
-                <h2 className="text-lg font-bold text-white">➕ ဝန်ဆောင်မှု Job အသစ်</h2>
+                <h2 className="text-lg font-bold text-white">ဝန်ဆောင်မှု Job အသစ်</h2>
                 <p className="text-xs text-indigo-200 mt-0.5">ဖောက်သည်၊ ပစ္စည်းအချက်အလက်၊ ဝန်ဆောင်မှုစာရင်းကို ထည့်ပါ</p>
               </div>
-              <button onClick={() => setShowCreate(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => setShowCreate(false)} aria-label="ပိတ်ရန်" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl text-white/90 hover:bg-white/15 hover:text-white">✕</button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6 [&_input]:text-base [&_textarea]:text-base [&_select]:text-base sm:[&_input]:text-sm sm:[&_textarea]:text-sm sm:[&_select]:text-sm">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ဖောက်သည်</label>
@@ -1271,10 +1340,10 @@ export default function ServiceJobManagement() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
-                  <select value={form.assignedStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
-                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <select value={form.assignedStaffId} disabled={technicianFieldDisabled} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
+                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
                     <option value="">— မရှိ —</option>
-                    {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
+                    {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1320,6 +1389,13 @@ export default function ServiceJobManagement() {
                   rows={2} placeholder="ပစ္စည်း၏ လက်ရှိ အခြေအနေ..."
                   className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
               </div>
+              {formatPartRequests(form.partRequests) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                  <div className="mb-1 text-xs font-bold text-amber-800">Booking မှ Part လိုအပ်ချက်</div>
+                  <div className="whitespace-pre-line text-sm text-amber-950">{formatPartRequests(form.partRequests)}</div>
+                  <div className="mt-1 text-[11px] text-amber-700">Technician စစ်ဆေးပြီးမှ အတည်ပြု Part စာရင်းထဲ ထည့်ပါ။</div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1400,12 +1476,12 @@ export default function ServiceJobManagement() {
                   <p className="text-xs text-slate-400 italic">ဝန်ဆောင်မှု မရှိသေးပါ</p>
                 )}
               </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 border rounded-lg text-sm font-semibold text-slate-600">ပယ်ဖျက်</button>
-                <button type="button" onClick={handleCreate} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create Service Job</button>
-              </div>
             </div>
+
+              <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:rounded-b-2xl">
+                <button type="button" onClick={() => setShowCreate(false)} className="min-h-11 w-full rounded-xl border px-4 text-sm font-semibold text-slate-600 sm:w-auto">ပယ်ဖျက်</button>
+                <button type="button" onClick={handleCreate} className="min-h-11 w-full rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white sm:w-auto">သိမ်းဆည်းမည်</button>
+              </div>
           </div>
         </div>
       )}
@@ -1416,41 +1492,43 @@ export default function ServiceJobManagement() {
           <div className="flex h-[100dvh] w-full flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-2xl">
             <div className="flex shrink-0 items-center justify-between gap-3 bg-purple-600 px-4 py-3 sm:px-6 sm:py-4 sm:rounded-t-2xl">
               <div>
-                <h2 className="text-lg font-bold text-white">✏ ဝန်ဆောင်မှု ပြင်ဆင်ရန်</h2>
+                <h2 className="text-lg font-bold text-white">ဝန်ဆောင်မှု ပြင်ဆင်ရန်</h2>
                 <p className="text-xs text-purple-200 mt-0.5">{editJobNo}</p>
               </div>
-              <button onClick={() => setShowEdit(false)} aria-label="ပိတ်ရန်" className="shrink-0 rounded-lg p-2 text-xl leading-none text-white/70 hover:bg-white/10 hover:text-white">✕</button>
+              <button onClick={() => setShowEdit(false)} aria-label="ပိတ်ရန်" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl text-white/90 hover:bg-white/15 hover:text-white">✕</button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6 [&_input]:text-base [&_textarea]:text-base [&_select]:text-base sm:[&_input]:text-sm sm:[&_textarea]:text-sm sm:[&_select]:text-sm">
               {/* Status + Technician */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">အခြေအနေ</label>
                   <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
-                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                    className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white">
                     {selectableStatuses(origStatus).map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-400">နောက်တစ်ဆင့်သာ ရွေးနိုင်သည်။ ပြီးစီး ရွေးရန် အရင် ပြင်ဆင်နေ ဖြစ်ရမည်။</p>
                   {form.status === 'WAITING_PARTS' && (
-                    <input value={form.holdReason} placeholder="ပစ္စည်းစောင့်ရသည့်အကြောင်း" className="mt-2 w-full border rounded-xl px-3 py-2 text-sm"
+                    <input value={form.holdReason} placeholder="ပစ္စည်းစောင့်ရသည့်အကြောင်း" className="mt-2 min-h-11 w-full border rounded-xl px-3 py-2 text-sm"
                       onChange={e => setForm(p => ({ ...p, holdReason: e.target.value }))} />
                   )}
+                  <label className="mt-3 block text-xs font-bold text-slate-500 uppercase mb-1">ဦးစားပေး</label>
                   <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
-                    className="mt-2 w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                    className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white">
                     {['LOW','NORMAL','HIGH','URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
-                  <label className="mt-2 block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
-                  <select value={form.helperStaffId} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <label className="mt-3 block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
+                  <select value={form.helperStaffId} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white">
                     <option value="">— မရှိ —</option>
                     {staffList.filter((staff: any) => String(staff.id) !== form.assignedStaffId).map((staff: any) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
-                  <select value={form.assignedStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
-                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <select value={form.assignedStaffId} disabled={technicianFieldDisabled} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
+                    className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
                     <option value="">— မရှိ —</option>
-                    {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
+                    {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
                 </div>
               </div>
@@ -1492,6 +1570,13 @@ export default function ServiceJobManagement() {
                   rows={2} placeholder="ပစ္စည်း၏ လက်ရှိ အခြေအနေ..."
                   className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
               </div>
+              {formatPartRequests(form.partRequests) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                  <div className="mb-1 text-xs font-bold text-amber-800">Booking မှ Part လိုအပ်ချက်</div>
+                  <div className="whitespace-pre-line text-sm text-amber-950">{formatPartRequests(form.partRequests)}</div>
+                  <div className="mt-1 text-[11px] text-amber-700">Technician စစ်ဆေးပြီးမှ အတည်ပြု Part စာရင်းထဲ ထည့်ပါ။</div>
+                </div>
+              )}
 
               {/* Est. Completion + Est. Cost */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -1747,11 +1832,11 @@ export default function ServiceJobManagement() {
               </div>
             </div>
 
-            <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4 sm:rounded-b-2xl">
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:rounded-b-2xl">
               <button onClick={() => setShowEdit(false)}
-                className="w-full rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 sm:w-auto sm:py-2">မလုပ်တော့</button>
+                className="min-h-11 w-full rounded-xl border px-5 text-sm font-medium text-slate-600 hover:bg-slate-100 sm:w-auto">မလုပ်တော့</button>
               <button onClick={handleSave}
-                className="w-full rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-purple-700 sm:w-auto sm:py-2">
+                className="min-h-11 w-full rounded-xl bg-purple-600 px-6 text-sm font-bold text-white shadow hover:bg-purple-700 sm:w-auto">
                 သိမ်းမယ်
               </button>
             </div>

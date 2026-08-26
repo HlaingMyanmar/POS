@@ -57,12 +57,16 @@ export interface InvoiceData {
   dueDate?: string;
   paymentStatus?: string;
   creditStatus?: string;
+  documentType?: DocumentType;
+  bookingReceipt?: boolean;
 
   // Parties
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
   cashierName?: string;
+  technicianName?: string;
+  helperStaffName?: string;
 
   // Lines
   lineItems: PrintLineItem[];

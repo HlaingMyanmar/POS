@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, TextInput, Modal,
+  ActivityIndicator, Alert, TextInput, Modal, Image,
 } from 'react-native';
 import { api } from '../../api/client';
 import { ApiResponse, BookingDTO } from '../../types';
@@ -181,6 +181,32 @@ export default function BookingDetailScreen({ route, navigation }: any) {
           </View>
         )}
 
+        {((booking.attachments && booking.attachments.length > 0) || booking.signatureData) ? (
+          <View style={st.section}>
+            <Text style={st.sectionTitle}>လက်ခံဓာတ်ပုံ / လက်မှတ်</Text>
+            {booking.attachments && booking.attachments.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {booking.attachments.map((photo, i) => photo.dataUrl ? (
+                  <View key={photo.id ?? i} style={{ alignItems: 'center' }}>
+                    <Image source={{ uri: photo.dataUrl }} style={st.photo} />
+                    <Text style={st.photoLabel}>
+                      {(photo.attachmentType || '').replace('INTAKE_PHOTO_DEVICE_', 'ပစ္စည်း ') || 'ဓာတ်ပုံ'}
+                    </Text>
+                  </View>
+                ) : null)}
+              </ScrollView>
+            ) : (
+              <Text style={st.emptyNote}>လက်ခံဓာတ်ပုံ မရှိပါ</Text>
+            )}
+            <Text style={[st.sectionTitle, { marginTop: 12 }]}>ဖောက်သည်လက်မှတ်</Text>
+            {booking.signatureData ? (
+              <Image source={{ uri: booking.signatureData }} style={st.signature} />
+            ) : (
+              <Text style={st.emptyNote}>လက်မှတ် မရှိပါ</Text>
+            )}
+          </View>
+        ) : null}
+
         {/* Status update */}
         {hasPermission('CAN_ACCESS_BOOKING_UPDATE') && (
           <View style={st.section}>
@@ -296,6 +322,10 @@ const st = StyleSheet.create({
   storageBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   shelfBadge:     { marginTop: 8, backgroundColor: '#ccfbf1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
   shelfBadgeText: { fontSize: 12, fontWeight: '700', color: '#0f766e' },
+  photo:          { width: 112, height: 112, borderRadius: 10, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border },
+  photoLabel:     { fontSize: 10, color: C.textMuted, marginTop: 4, fontWeight: '600' },
+  signature:      { width: '100%' as any, height: 96, resizeMode: 'contain', backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: C.border },
+  emptyNote:      { fontSize: 12, color: C.textMuted },
   scanFab:        { position: 'absolute', right: 18, bottom: 90, width: 50, height: 50, borderRadius: 25, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center', elevation: 5 },
   scanFabText:    { fontSize: 22 },
   modalOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },

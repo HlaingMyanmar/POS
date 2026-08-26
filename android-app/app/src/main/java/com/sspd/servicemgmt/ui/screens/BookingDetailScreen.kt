@@ -1,10 +1,13 @@
 ﻿package com.sspd.servicemgmt.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -13,16 +16,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.api.BookingDetailItemDTO
-import com.sspd.servicemgmt.api.BookingDeviceDTO
 import com.sspd.servicemgmt.ui.theme.*
 import com.sspd.servicemgmt.ui.components.AppLoading
 import com.sspd.servicemgmt.ui.viewmodel.BookingDetailViewModel
+import com.sspd.servicemgmt.utils.ImageCodec
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -205,9 +210,46 @@ fun BookingDetailScreen(onBack: () -> Unit, onJobCreated: () -> Unit = {}, onEdi
                 }
             }
 
+            if (!booking.attachments.isNullOrEmpty() || !booking.signatureData.isNullOrBlank()) {
+                item {
+                    Text("လက်ခံဓာတ်ပုံ / လက်မှတ်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
+                }
+            }
             if (!booking.attachments.isNullOrEmpty()) {
                 item {
-                    Text("လက်ခံဓာတ်ပုံ (${booking.attachments.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        booking.attachments.forEach { att ->
+                            IntakePhotoThumb(
+                                dataUrl = att.dataUrl,
+                                label = att.attachmentType?.replace("INTAKE_PHOTO_DEVICE_", "ပစ္စည်း ") ?: "ဓာတ်ပုံ",
+                                fileName = att.fileName
+                            )
+                        }
+                    }
+                }
+            }
+            if (!booking.signatureData.isNullOrBlank()) {
+                item {
+                    val sig = remember(booking.signatureData) { ImageCodec.decodeDataUri(booking.signatureData!!) }
+                    Card(shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("ဖောက်သည်လက်မှတ်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted)
+                            Spacer(Modifier.height(8.dp))
+                            if (sig != null) {
+                                Image(
+                                    bitmap = sig.asImageBitmap(),
+                                    contentDescription = "လက်မှတ်",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxWidth().height(96.dp)
+                                )
+                            } else {
+                                Text("လက်မှတ် ပြ၍မရပါ", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -326,6 +368,22 @@ private fun BookingDeviceCard(
                 Text("အခြေအနေ: $deviceConditions", fontSize = 11.sp, color = TextMuted)
             }
         }
+    }
+}
+
+@Composable
+private fun IntakePhotoThumb(dataUrl: String?, label: String, fileName: String?) {
+    val bmp = remember(dataUrl) { dataUrl?.let { ImageCodec.decodeDataUri(it) } } ?: return
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Card(shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderColor)) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = fileName ?: "လက်ခံဓာတ်ပုံ",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(112.dp)
+            )
+        }
+        Text(label, fontSize = 10.sp, color = TextMuted, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

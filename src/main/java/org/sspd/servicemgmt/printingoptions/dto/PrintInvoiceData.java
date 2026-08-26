@@ -36,6 +36,10 @@ public class PrintInvoiceData {
     private String customerPhone;
     private String customerAddress;
     private String cashierName;
+    /** Service job technician (ပြုပြင်သူ); not the cashier. */
+    private String technicianName;
+    /** Service job helper technician (အကူပြုပြင်သူ), when assigned. */
+    private String helperStaffName;
 
     // ── Line items ───────────────────────────────────────────────────────────
     private List<PrintLineItem> lineItems;
@@ -61,6 +65,7 @@ public class PrintInvoiceData {
     private String itemName;
     private String problemDesc;
     private String accessories;
+    private String partRequests;
     private String estimatedCost;
     private List<ConditionRow> deviceConditionRows;
 
@@ -85,6 +90,9 @@ public class PrintInvoiceData {
         private String accessories;
         private String problemDesc;
         private String deviceConditions;
+        private String serviceSummary;
+        private String conditionChecklist;
+        private String partRequests;
     }
 
     @Data

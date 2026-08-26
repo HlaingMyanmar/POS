@@ -13,9 +13,13 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.Pa
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
+import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
+import org.sspd.servicemgmt.creditoptions.dto.CustomerCreditApplyRequest;
+import org.sspd.servicemgmt.creditoptions.repository.CustomerCreditApplicationRepository;
 import org.sspd.servicemgmt.creditoptions.service.CreditService;
+import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -96,6 +100,8 @@ public class ServiceJobService {
     private final AccountResolver accountResolver;
     private final SaleService saleService;
     private final CreditService creditService;
+    private final CustomerPaymentService customerPaymentService;
+    private final CustomerCreditApplicationRepository creditApplicationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final BookingRepository bookingRepo;
     private final ReworkPartResolutionRepository reworkResolutionRepo;
@@ -178,6 +184,7 @@ public class ServiceJobService {
             .color(dto.getColor())
             .itemCondition(dto.getItemCondition())
             .deviceConditions(dto.getDeviceConditions())
+            .partRequests(dto.getPartRequests())
             .accessories(dto.getAccessories())
             .problemDesc(dto.getProblemDesc())
             .diagnosisNotes(dto.getDiagnosisNotes())
@@ -223,7 +230,9 @@ public class ServiceJobService {
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")));
         if (dto.getAssignedStaffId() != null) {
             Staff technician = staffRepo.findById(dto.getAssignedStaffId()).orElse(null);
-            validateTechnician(technician);
+            Integer existingId = job.getAssignedStaff() != null ? job.getAssignedStaff().getId() : null;
+            boolean unchanged = existingId != null && technician != null && existingId.equals(technician.getId());
+            if (!unchanged) validateTechnician(technician);
             job.setAssignedStaff(technician);
         }
         job.setShelfLocation(dto.getShelfLocationId() != null
@@ -234,6 +243,7 @@ public class ServiceJobService {
         if (dto.getColor() != null)             job.setColor(dto.getColor());
         if (dto.getItemCondition() != null)     job.setItemCondition(dto.getItemCondition());
         if (dto.getDeviceConditions() != null)  job.setDeviceConditions(dto.getDeviceConditions());
+        if (dto.getPartRequests() != null)       job.setPartRequests(dto.getPartRequests());
         if (dto.getAccessories() != null)       job.setAccessories(dto.getAccessories());
         if (dto.getProblemDesc() != null)       job.setProblemDesc(dto.getProblemDesc());
         if (dto.getDiagnosisNotes() != null)    job.setDiagnosisNotes(dto.getDiagnosisNotes());
@@ -308,6 +318,8 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "STATUS", from != null ? from.name() : null, status.name(),
                 status == ServiceJobStatus.WAITING_PARTS ? holdReason : null);
+        if (status == ServiceJobStatus.CANCELLED || status == ServiceJobStatus.DELIVERED)
+            completeBookingIfJobsDone(job.getBookingId());
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_STATUS_CHANGED");
         return result;
     }
@@ -411,8 +423,9 @@ public class ServiceJobService {
         }
         recordActivity(saved, "SETTLED", saved.getStatus().name(), ServiceJobStatus.COMPLETED.name(),
                 "Settled " + saved.getNetAmount());
+        applyBookingDeposit(saved);
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_SETTLED");
-        return toDto(saved);
+        return toDto(repo.findById(saved.getId()).orElse(saved));
     }
 
     @Transactional
@@ -503,8 +516,66 @@ public class ServiceJobService {
         job.setDeliveredDate(LocalDateTime.now());
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "DELIVERED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.DELIVERED.name(), null);
+        completeBookingIfJobsDone(job.getBookingId());
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DELIVERED");
         return result;
+    }
+
+    private void applyBookingDeposit(ServiceJob job) {
+        if (job.getBookingId() == null) return;
+        BigDecimal due = job.getDueAmount() != null ? job.getDueAmount() : BigDecimal.ZERO;
+        if (due.compareTo(BigDecimal.ZERO) <= 0) return;
+        Booking booking = bookingRepo.findById(job.getBookingId()).orElse(null);
+        if (booking == null || booking.getDepositAmount() == null
+                || booking.getDepositAmount().compareTo(BigDecimal.ZERO) <= 0) return;
+        Integer customerId = job.getCustomer() != null ? job.getCustomer().getId() : null;
+        if (customerId == null) return;
+        Customer customer = customerRepo.findById(customerId).orElse(null);
+        if (customer == null) return;
+
+        BigDecimal alreadyApplied = BigDecimal.ZERO;
+        for (ServiceJob sibling : repo.findAllByBookingIdOrderByIdAsc(booking.getId())) {
+            if (sibling.getId() == null) continue;
+            alreadyApplied = alreadyApplied.add(
+                creditApplicationRepository.findByServiceJobIdOrderByIdDesc(sibling.getId()).stream()
+                    .map(app -> app.getAmount() != null ? app.getAmount() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
+        }
+        BigDecimal remainingDeposit = booking.getDepositAmount().subtract(alreadyApplied).max(BigDecimal.ZERO);
+        BigDecimal advance = customer.getAdvanceBalance() != null ? customer.getAdvanceBalance() : BigDecimal.ZERO;
+        BigDecimal apply = remainingDeposit.min(advance).min(due);
+        if (apply.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        Integer staffId = job.getAssignedStaff() != null ? job.getAssignedStaff().getId() : null;
+        if (staffId == null) return;
+
+        CustomerCreditApplyRequest request = new CustomerCreditApplyRequest();
+        request.setCustomerId(customerId);
+        request.setServiceJobId(job.getId());
+        request.setStaffId(staffId);
+        request.setAmount(apply);
+        request.setReason("Booking deposit " + booking.getInvoiceNo());
+        customerPaymentService.applyCredit(request);
+        recordActivity(job, "DEPOSIT_APPLIED", null, job.getStatus() != null ? job.getStatus().name() : null,
+                apply.toPlainString() + " from " + booking.getInvoiceNo());
+    }
+
+    private void completeBookingIfJobsDone(Integer bookingId) {
+        if (bookingId == null) return;
+        Booking booking = bookingRepo.findById(bookingId).orElse(null);
+        if (booking == null || booking.getStatus() != BookingStatus.Converted) return;
+        List<ServiceJob> jobs = repo.findAllByBookingIdOrderByIdAsc(bookingId);
+        if (jobs.isEmpty()) return;
+        boolean anyDelivered = false;
+        for (ServiceJob sibling : jobs) {
+            if (sibling.getStatus() != ServiceJobStatus.DELIVERED && sibling.getStatus() != ServiceJobStatus.CANCELLED)
+                return;
+            if (sibling.getStatus() == ServiceJobStatus.DELIVERED) anyDelivered = true;
+        }
+        if (!anyDelivered) return;
+        booking.setStatus(BookingStatus.Completed);
+        bookingRepo.save(booking);
+        messagingTemplate.convertAndSend("/topic/booking", "BOOKING_UPDATED");
     }
 
     private SaleDTO createSaleFromServiceJob(ServiceJob job, SettleDTO dto, BigDecimal totalAmount) {
@@ -615,6 +686,7 @@ public class ServiceJobService {
             .assignedStaff(req.getAssignedStaffId() != null
                 ? staffRepo.findById(req.getAssignedStaffId()).orElse(original.getAssignedStaff()) : original.getAssignedStaff())
             .itemName(original.getItemName()).itemCondition(original.getItemCondition())
+            .deviceConditions(original.getDeviceConditions()).partRequests(original.getPartRequests())
             .serialNo(original.getSerialNo()).color(original.getColor()).accessories(original.getAccessories())
             .shelfLocation(original.getShelfLocation())
             .problemDesc(req.getProblemDesc() != null ? req.getProblemDesc() : original.getProblemDesc())
@@ -1188,6 +1260,7 @@ public class ServiceJobService {
         dto.setColor(j.getColor());
         dto.setItemCondition(j.getItemCondition());
         dto.setDeviceConditions(j.getDeviceConditions());
+        dto.setPartRequests(j.getPartRequests());
         dto.setProblemDesc(j.getProblemDesc());
         dto.setDiagnosisNotes(j.getDiagnosisNotes());
         dto.setEstimatedCost(j.getEstimatedCost());

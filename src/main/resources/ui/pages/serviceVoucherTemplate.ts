@@ -13,6 +13,17 @@ const escapeHtml = (v?: string | number | null) =>
 const money = (v?: number | null) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v) || 0);
 
+const lineConfirmationLabel = (value?: string) => {
+  switch (value) {
+    case 'INSPECTING': return 'စစ်ဆေးဆဲ';
+    case 'CUSTOMER_APPROVED': return 'Customer အတည်ပြုပြီး';
+    case 'CUSTOMER_REJECTED': return 'Customer ငြင်းပယ်';
+    case 'IN_PROGRESS': return 'လုပ်ဆောင်ဆဲ';
+    case 'COMPLETED': return 'ပြီးစီး';
+    default: return 'အကြံပြုထားသည်';
+  }
+};
+
 const fmtDate = (v?: string) => {
   if (!v) return '-';
   const d = new Date(v);
@@ -74,6 +85,7 @@ export const buildServiceVoucherHtml = ({
             <td class="center">${i + 1}</td>
             <td>
               <div>${escapeHtml(l.serviceItemName || l.serviceName || l.item || '-')}</div>
+              ${l.confirmationStatus ? `<div style="font-size:10px;color:#64748b;margin-top:2px;">${escapeHtml(lineConfirmationLabel(l.confirmationStatus))}</div>` : ''}
               ${warrantyTxt ? `<div style="font-size:10px;color:#0891b2;margin-top:2px;">🛡 ${escapeHtml(warrantyTxt)}</div>` : ''}
             </td>
             <td class="num">${Number(l.qty) || 1}</td>

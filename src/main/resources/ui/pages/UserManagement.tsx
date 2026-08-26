@@ -12,7 +12,7 @@ import {
 import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
-import { isTechnicalUserRole } from '../utils/staffRole';
+import { isRepairTechnicianRole, isTechnicalUserRole } from '../utils/staffRole';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserDTO[]>([]);
@@ -142,6 +142,7 @@ const UserManagement: React.FC = () => {
   const handleAssignRoles = async () => {
     if (!editingUser) return;
     const pickedTech = availableRoles.some(role => selectedRoleIds.includes(role.id) && isTechnicalUserRole(role.name));
+    const linkedStaff = availableStaff.find(staff => staff.id === editingUser.staffId);
     if (pickedTech && !editingUser.staffId) {
       const confirm = await Swal.fire({
         icon: 'warning',
@@ -150,6 +151,16 @@ const UserManagement: React.FC = () => {
         showCancelButton: true,
         confirmButtonText: 'ဆက်သိမ်းမည်',
         cancelButtonText: 'အရင် Staff ချိတ်မည်',
+      });
+      if (!confirm.isConfirmed) return;
+    } else if (pickedTech && linkedStaff && !isRepairTechnicianRole(linkedStaff.role)) {
+      const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'Linked Staff ရာထူး မကိုက်ပါ',
+        text: `${linkedStaff.name} ၏ ရာထူးမှာ ${linkedStaff.role || 'မသတ်မှတ်'} ဖြစ်သည်။ ပြုပြင်သူအကောင့်ဆိုရင် ဝန်ထမ်းများတွင် Technician ရွေးထားရမည်။ Role သိမ်းမလား။`,
+        showCancelButton: true,
+        confirmButtonText: 'ဆက်သိမ်းမည်',
+        cancelButtonText: 'ပြန်စစ်မည်',
       });
       if (!confirm.isConfirmed) return;
     }
@@ -261,7 +272,7 @@ const UserManagement: React.FC = () => {
                   <option value={0}>မချိတ်ရသေးပါ</option>
                   {availableStaff.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}{staff.role ? ` (${staff.role})` : ''}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-500">ပြုပြင်သူအကောင့်ဆိုရင် Technician ဝန်ထမ်းကို ချိတ်ပါ။ ဝန်ထမ်းမရှိသေးရင် ဝန်ထမ်းများ စာမျက်နှာမှာ အရင်ထည့်ပါ။</p>
+                <p className="text-[10px] text-slate-500">ပြုပြင်သူအကောင့်ဆိုရင် Technician ဝန်ထမ်းကို ချိတ်ပါ။ လက်ခံသူအကောင့်ဆိုရင် Receptionist/Cashier ဝန်ထမ်းကို ချိတ်ပါ။ ဝန်ထမ်းမရှိသေးရင် ဝန်ထမ်းများ စာမျက်နှာမှာ အရင်ထည့်ပါ။</p>
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-xs font-bold">Cancel</button>

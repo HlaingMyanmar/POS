@@ -30,6 +30,7 @@ import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobAttachment;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceLineConfirmationStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.serviceoptions.model.ServiceItem;
@@ -322,7 +323,6 @@ public class BookingService {
                 ServiceJob job = ServiceJob.builder()
                     .jobNo(generateJobNo())
                     .customer(booking.getCustomer())
-                    .assignedStaff(booking.getStaff())
                     .itemName(itemName.isBlank() ? "Device" : itemName)
                     .deviceType(device.getDeviceType())
                     .itemCondition(conditionSummary)
@@ -356,7 +356,6 @@ public class BookingService {
             ServiceJob job = ServiceJob.builder()
                 .jobNo(generateJobNo())
                 .customer(booking.getCustomer())
-                .assignedStaff(booking.getStaff())
                 .itemName(itemName.isBlank() ? "Device" : itemName)
                 .deviceType(booking.getDeviceType())
                 .itemCondition(itemCondition)
@@ -461,6 +460,7 @@ public class BookingService {
                 .subtotal(sub)
                 .warrantyMonths(d.getServiceItem().getWarrantyMonths() != null ? d.getServiceItem().getWarrantyMonths() : 0)
                 .warrantyCovered(foc)
+                .confirmationStatus(ServiceLineConfirmationStatus.RECOMMENDED)
                 .build());
             total = total.add(sub);
             minutes += (d.getServiceItem().getDurationMinutes() != null ? d.getServiceItem().getDurationMinutes() : 0) * qty;
@@ -763,6 +763,7 @@ public class BookingService {
             lineDto.setSubtotal(line.getSubtotal());
             lineDto.setWarrantyMonths(line.getWarrantyMonths());
             lineDto.setWarrantyCovered(line.getWarrantyCovered());
+            lineDto.setConfirmationStatus(line.getConfirmationStatus().name());
             return lineDto;
         }).toList());
         return dto;

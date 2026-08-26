@@ -73,6 +73,7 @@ public class RoleSeeder implements CommandLineRunner {
 
         fillIfEmpty("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
         fillIfEmpty("CASHIER", CASHIER_PERMISSIONS, allPermissions);
+        stripTechnicianAssignPermission();
         for (Role role : repository.findAll()) {
             String name = role.getName() == null ? "" : role.getName().toUpperCase();
             if (name.contains("TECH") && (role.getPermissions() == null || role.getPermissions().isEmpty())) {
@@ -83,6 +84,19 @@ public class RoleSeeder implements CommandLineRunner {
         }
 
         log.info("Role seeding completed; ADMINISTRATOR got all permissions");
+    }
+
+    private void stripTechnicianAssignPermission() {
+        for (Role role : repository.findAll()) {
+            String name = role.getName() == null ? "" : role.getName().toUpperCase();
+            if (!name.contains("TECHNICIAN") && !name.equals("TECH")) continue;
+            if (role.getPermissions() == null) continue;
+            boolean removed = role.getPermissions().removeIf(permission ->
+                    "CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN".equals(permission.getName()));
+            if (!removed) continue;
+            repository.save(role);
+            log.info("Removed CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN from technician role {}", role.getName());
+        }
     }
 
     private void fillIfEmpty(String roleName, List<String> permissionNames, List<Permission> allPermissions) {

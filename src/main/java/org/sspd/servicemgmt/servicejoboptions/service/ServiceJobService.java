@@ -43,6 +43,7 @@ import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobActivity;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobAttachment;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceLineConfirmationStatus;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobNotification;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
@@ -199,9 +200,7 @@ public class ServiceJobService {
             .productParts(new ArrayList<>())
             .build();
 
-        Staff technician = dto.getAssignedStaffId() == null ? null : staffRepo.findById(dto.getAssignedStaffId()).orElse(null);
-        validateTechnician(technician);
-        job.setAssignedStaff(technician);
+        job.setAssignedStaff(resolveAssignedTechnician(dto.getAssignedStaffId(), null));
         if (dto.getHelperStaffId() != null)
             job.setHelperStaff(staffRepo.findById(dto.getHelperStaffId()).orElse(null));
         if (dto.getShelfLocationId() != null)
@@ -211,6 +210,7 @@ public class ServiceJobService {
 
         buildLines(job, dto);
         buildProductParts(job, dto);
+        refreshEstimateApproval(job);
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "CREATED", null, job.getStatus() != null ? job.getStatus().name() : "RECEIVED", "Job created");
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_CREATED");
@@ -229,13 +229,7 @@ public class ServiceJobService {
         if (dto.getCustomerId() != null)
             job.setCustomer(customerRepo.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")));
-        if (dto.getAssignedStaffId() != null) {
-            Staff technician = staffRepo.findById(dto.getAssignedStaffId()).orElse(null);
-            Integer existingId = job.getAssignedStaff() != null ? job.getAssignedStaff().getId() : null;
-            boolean unchanged = existingId != null && technician != null && existingId.equals(technician.getId());
-            if (!unchanged) validateTechnician(technician);
-            job.setAssignedStaff(technician);
-        }
+        job.setAssignedStaff(resolveAssignedTechnician(dto.getAssignedStaffId(), job.getAssignedStaff()));
         job.setShelfLocation(dto.getShelfLocationId() != null
             ? shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null)
             : null);
@@ -277,6 +271,9 @@ public class ServiceJobService {
             recordActivity(job, "ESTIMATE_REVISED", null, job.getStatus() != null ? job.getStatus().name() : null,
                     previousEstimate + " → " + currentEstimate);
         }
+        refreshEstimateApproval(job);
+        job.setModifiedBy(currentUsername());
+        job.setModifiedAt(LocalDateTime.now());
         ServiceJobDTO updated = toDto(repo.save(job));
         recordActivity(job, "UPDATED", null, job.getStatus() != null ? job.getStatus().name() : null, "Job updated");
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_UPDATED");
@@ -317,6 +314,7 @@ public class ServiceJobService {
             job.setWorkStartedAt(LocalDateTime.now());
         if (status == ServiceJobStatus.COMPLETED)
             job.setCompletedDate(LocalDateTime.now());
+        syncLineStatuses(job, status);
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "STATUS", from != null ? from.name() : null, status.name(),
                 status == ServiceJobStatus.WAITING_PARTS ? holdReason : null);
@@ -339,15 +337,26 @@ public class ServiceJobService {
         if (!allowed) throw new IllegalStateException("Invalid service job status transition: " + from + " → " + to);
     }
 
-    private void validateTechnician(Staff selectedStaff) {
-        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) return;
+    private Staff resolveAssignedTechnician(Integer requestedStaffId, Staff fallback) {
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) {
+            if (requestedStaffId != null) return staffRepo.findById(requestedStaffId).orElse(fallback);
+            return fallback;
+        }
+        Staff mine = currentUserStaff();
+        if (mine == null) {
+            throw new AccessDeniedException("ဝန်ဆောင်မှုအတွက် သင့်ကျွမ်းကျင်သူ Staff ကိုသာ သတ်မှတ်နိုင်ပါသည်။");
+        }
+        if (requestedStaffId != null && !mine.getId().equals(requestedStaffId)) {
+            throw new AccessDeniedException("ဝန်ဆောင်မှုအတွက် သင့်ကျွမ်းကျင်သူ Staff ကိုသာ သတ်မှတ်နိုင်ပါသည်။");
+        }
+        return mine;
+    }
+
+    private Staff currentUserStaff() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         String username = authentication != null ? authentication.getName() : null;
         User user = username == null ? null : userRepository.findByUsernameOrEmail(username, username).orElse(null);
-        if (user == null || user.getStaff() == null || selectedStaff == null
-                || !user.getStaff().getId().equals(selectedStaff.getId())) {
-            throw new AccessDeniedException("ဝန်ဆောင်မှုအတွက် သင့်ကျွမ်းကျင်သူ Staff ကိုသာ သတ်မှတ်နိုင်ပါသည်။");
-        }
+        return user != null ? user.getStaff() : null;
     }
 
     private boolean hasAuthority(String authority) {
@@ -685,8 +694,7 @@ public class ServiceJobService {
 
         ServiceJob rework = ServiceJob.builder()
             .jobNo(generateJobNo()).customer(original.getCustomer())
-            .assignedStaff(req.getAssignedStaffId() != null
-                ? staffRepo.findById(req.getAssignedStaffId()).orElse(original.getAssignedStaff()) : original.getAssignedStaff())
+            .assignedStaff(resolveAssignedTechnician(req.getAssignedStaffId(), original.getAssignedStaff()))
             .itemName(original.getItemName()).deviceType(original.getDeviceType()).itemCondition(original.getItemCondition())
             .deviceConditions(original.getDeviceConditions()).partRequests(original.getPartRequests())
             .serialNo(original.getSerialNo()).color(original.getColor()).accessories(original.getAccessories())
@@ -906,6 +914,14 @@ public class ServiceJobService {
         job.setEstimateApproved(true);
         job.setEstimateApprovedAt(LocalDateTime.now());
         job.setEstimateApprovedBy(currentUsername());
+        if (job.getLines() != null) {
+            for (ServiceJobLine line : job.getLines()) {
+                ServiceLineConfirmationStatus status = line.getConfirmationStatus();
+                if (status == ServiceLineConfirmationStatus.RECOMMENDED || status == ServiceLineConfirmationStatus.INSPECTING) {
+                    line.setConfirmationStatus(ServiceLineConfirmationStatus.CUSTOMER_APPROVED);
+                }
+            }
+        }
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "ESTIMATE_APPROVED", null, job.getStatus() != null ? job.getStatus().name() : null,
                 "Estimate " + job.getEstimatedCost());
@@ -1021,7 +1037,8 @@ public class ServiceJobService {
                     : Boolean.TRUE.equals(svc.getFocDefault());
             int warranty = l.getWarrantyMonths() != null ? l.getWarrantyMonths()
                     : (svc.getWarrantyMonths() != null ? svc.getWarrantyMonths() : 0);
-            BigDecimal sub = covered ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
+            ServiceLineConfirmationStatus confirmation = ServiceLineConfirmationStatus.from(l.getConfirmationStatus());
+            BigDecimal sub = !confirmation.isBillable() || covered ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
             job.getLines().add(ServiceJobLine.builder()
                 .serviceJob(job)
                 .serviceItem(svc)
@@ -1030,8 +1047,9 @@ public class ServiceJobService {
                 .subtotal(sub)
                 .warrantyMonths(warranty)
                 .warrantyCovered(covered)
+                .confirmationStatus(confirmation)
                 .build());
-            total = total.add(sub);
+            if (confirmation.isBillable()) total = total.add(sub);
             minutes += (svc.getDurationMinutes() != null ? svc.getDurationMinutes() : 0) * qty;
         }
         job.setEstimatedCost(total.add(productPartsTotal(job)));
@@ -1112,9 +1130,43 @@ public class ServiceJobService {
 
     private void recalculateEstimatedCost(ServiceJob job) {
         BigDecimal services = job.getLines() == null ? BigDecimal.ZERO : job.getLines().stream()
-            .map(ServiceJobLine::getSubtotal)
+            .filter(ServiceJobLine::isBillable)
+            .map(line -> line.getSubtotal() != null ? line.getSubtotal() : BigDecimal.ZERO)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         job.setEstimatedCost(services.add(productPartsTotal(job)));
+    }
+
+    private void refreshEstimateApproval(ServiceJob job) {
+        if (job.getLines() == null || job.getLines().isEmpty()) return;
+        var pending = job.getLines().stream()
+                .filter(ServiceJobLine::isBillable)
+                .toList();
+        if (pending.isEmpty()) return;
+        boolean allConfirmed = pending.stream()
+                .allMatch(line -> line.getConfirmationStatus().isCustomerConfirmed());
+        if (allConfirmed && !Boolean.TRUE.equals(job.getEstimateApproved())) {
+            job.setEstimateApproved(true);
+            job.setEstimateApprovedAt(LocalDateTime.now());
+            job.setEstimateApprovedBy(currentUsername());
+        }
+    }
+
+    private void syncLineStatuses(ServiceJob job, ServiceJobStatus to) {
+        if (job.getLines() == null) return;
+        for (ServiceJobLine line : job.getLines()) {
+            ServiceLineConfirmationStatus status = line.getConfirmationStatus();
+            if (status == ServiceLineConfirmationStatus.CUSTOMER_REJECTED
+                    || status == ServiceLineConfirmationStatus.COMPLETED) continue;
+            if (to == ServiceJobStatus.INSPECTING && status == ServiceLineConfirmationStatus.RECOMMENDED) {
+                line.setConfirmationStatus(ServiceLineConfirmationStatus.INSPECTING);
+            } else if (to == ServiceJobStatus.IN_PROGRESS && status == ServiceLineConfirmationStatus.CUSTOMER_APPROVED) {
+                line.setConfirmationStatus(ServiceLineConfirmationStatus.IN_PROGRESS);
+            } else if (to == ServiceJobStatus.COMPLETED
+                    && (status == ServiceLineConfirmationStatus.IN_PROGRESS
+                    || status == ServiceLineConfirmationStatus.CUSTOMER_APPROVED)) {
+                line.setConfirmationStatus(ServiceLineConfirmationStatus.COMPLETED);
+            }
+        }
     }
 
     private BigDecimal productPartsTotal(ServiceJob job) {
@@ -1352,6 +1404,7 @@ public class ServiceJobService {
             ld.setSubtotal(l.getSubtotal());
             ld.setWarrantyMonths(l.getWarrantyMonths());
             ld.setWarrantyCovered(Boolean.TRUE.equals(l.getWarrantyCovered()));
+            ld.setConfirmationStatus(l.getConfirmationStatus().name());
             return ld;
         }).toList());
         dto.setProductParts(j.getProductParts() == null ? List.of() : j.getProductParts().stream().map(p -> {
@@ -1384,6 +1437,8 @@ public class ServiceJobService {
         dto.setHoldReason(j.getHoldReason());
         dto.setWorkStartedAt(j.getWorkStartedAt() != null ? j.getWorkStartedAt().toString() : null);
         dto.setLastNotifiedAt(j.getLastNotifiedAt() != null ? j.getLastNotifiedAt().toString() : null);
+        dto.setModifiedBy(j.getModifiedBy());
+        dto.setModifiedAt(j.getModifiedAt() != null ? j.getModifiedAt().toString() : null);
         if (j.getWorkStartedAt() != null) {
             LocalDateTime end = j.getCompletedDate() != null ? j.getCompletedDate() : LocalDateTime.now();
             dto.setTechnicianMinutes(java.time.Duration.between(j.getWorkStartedAt(), end).toMinutes());

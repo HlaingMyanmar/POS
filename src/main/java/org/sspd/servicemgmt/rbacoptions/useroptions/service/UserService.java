@@ -98,7 +98,8 @@ public class UserService {
     }
 
     private Staff resolveStaff(Integer staffId) {
-        return staffId == null ? null : staffRepository.findById(staffId)
+        if (staffId == null || staffId == 0) return null;
+        return staffRepository.findById(staffId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
     }
 

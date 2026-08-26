@@ -201,6 +201,12 @@ public class ServiceJob {
     @Column(name = "last_notified_at")
     private LocalDateTime lastNotifiedAt;
 
+    @Column(name = "modified_by", length = 120)
+    private String modifiedBy;
+
+    @Column(name = "modified_at")
+    private LocalDateTime modifiedAt;
+
     @OneToMany(mappedBy = "serviceJob", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ServiceJobLine> lines;
 

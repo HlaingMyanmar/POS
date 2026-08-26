@@ -39,4 +39,18 @@ public class ServiceJobLine {
     @Builder.Default
     @Column(name = "warranty_covered")
     private Boolean warrantyCovered = Boolean.FALSE;
+
+    @Getter(AccessLevel.NONE)
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "confirmation_status", length = 30)
+    private ServiceLineConfirmationStatus confirmationStatus = ServiceLineConfirmationStatus.RECOMMENDED;
+
+    public ServiceLineConfirmationStatus getConfirmationStatus() {
+        return confirmationStatus != null ? confirmationStatus : ServiceLineConfirmationStatus.RECOMMENDED;
+    }
+
+    public boolean isBillable() {
+        return getConfirmationStatus().isBillable();
+    }
 }

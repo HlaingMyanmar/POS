@@ -89,6 +89,8 @@ public class ServiceJobDTO {
     private String holdReason;
     private String workStartedAt;
     private String lastNotifiedAt;
+    private String modifiedBy;
+    private String modifiedAt;
     private Long technicianMinutes;
     private Boolean overdue;
     private List<ServiceJobLineDTO> lines;

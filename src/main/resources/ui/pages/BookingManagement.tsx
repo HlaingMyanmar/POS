@@ -427,11 +427,12 @@ const DeviceCard: React.FC<{
 /* ── Main Page ────────────────────────────────────────────────────────── */
 export default function BookingManagement() {
   const currentUser = useMemo(() => {
-    try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; roles?: string[]; permissions?: string[] }; }
+    try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; name?: string; username?: string; roles?: string[]; permissions?: string[] }; }
     catch { return {}; }
   }, []);
   const canOverrideReceiver = (currentUser.roles || []).some((r) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(r))
     || (currentUser.permissions || []).includes('CAN_ACCESS_BOOKING_STAFF_OVERRIDE');
+  const myStaffId = currentUser.staffId != null ? String(currentUser.staffId) : '';
   const [bookings, setBookings]   = useState<any[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
@@ -757,6 +758,16 @@ export default function BookingManagement() {
   };
   const filteredBookings = bookings.filter(matchesTab);
   const visibleBookings = filteredBookings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const receiverChoices = (() => {
+    if (canOverrideReceiver) return staffList;
+    const mine = staffList.filter((s: any) => String(s.id) === myStaffId);
+    if (myStaffId && !mine.some((s: any) => String(s.id) === myStaffId)) {
+      mine.push({ id: Number(myStaffId) || myStaffId, name: currentUser.name || currentUser.username || 'ကျွန်ုပ်', role: '' });
+    }
+    const selected = staffList.find((s: any) => String(s.id) === String(form.staffId));
+    if (selected && !mine.some((s: any) => String(s.id) === String(selected.id))) mine.push(selected);
+    return mine;
+  })();
   const totalPages = Math.ceil(filteredBookings.length / PAGE_SIZE);
   const counts = {
     waiting: bookings.filter(b => WAITING_STATUSES.includes(b.status)).length,
@@ -917,7 +928,7 @@ export default function BookingManagement() {
                         {b.totalAmount && Number(b.totalAmount) > 0 ? Number(b.totalAmount).toLocaleString() + ' Ks' : '—'}
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-500">{b.shelfLocation || '—'}</td>
-                      <td className="px-3 py-3 text-xs text-slate-600">{b.staffName || '—'}</td>
+                      <td className="px-3 py-3 max-w-[8rem] text-xs text-slate-600"><span className="block truncate" title={b.staffName || ''}>{b.staffName || '—'}</span></td>
                       <td className="px-3 py-3">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${col}`}>{BOOKING_STATUS_LABEL[b.status] || b.status}</span>
                       </td>
@@ -1129,11 +1140,12 @@ export default function BookingManagement() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ဝန်ထမ်း</label>
                       <select value={form.staffId} disabled={viewOnly || !canOverrideReceiver} onChange={e => setForm(p => ({ ...p, staffId: e.target.value }))}
                         className="w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:bg-slate-100">
-                        <option value="">— မရွေးထား —</option>
-                        {staffList.map((s: any) => (
+                        {canOverrideReceiver && <option value="">— မရွေးထား —</option>}
+                        {receiverChoices.map((s: any) => (
                           <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>
                         ))}
                       </select>
+                      <p className="mt-1 text-[11px] text-slate-400">{canOverrideReceiver ? 'CAN_ACCESS_BOOKING_STAFF_OVERRIDE ရှိ၍ အခြားလက်ခံသူကို ရွေးနိုင်သည်။' : 'မိမိ Linked Staff ကိုသာ လက်ခံသူအဖြစ် သုံးသည်။'}</p>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ပစ္စည်းထားသည့်နေရာ</label>

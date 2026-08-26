@@ -81,6 +81,16 @@ const NEXT_STATUS: Record<string, string[]> = {
   COMPLETED: ['DELIVERED'], DELIVERED: [], CANCELLED: [],
 };
 const selectableStatuses = (current: string) => [current, ...(NEXT_STATUS[current] || [])];
+const LINE_CONFIRMATION_STATUS = [
+  { value: 'RECOMMENDED', label: 'အကြံပြုထားသည်', cls: 'border-amber-200 bg-amber-50 text-amber-800' },
+  { value: 'INSPECTING', label: 'စစ်ဆေးဆဲ', cls: 'border-sky-200 bg-sky-50 text-sky-800' },
+  { value: 'CUSTOMER_APPROVED', label: 'Customer အတည်ပြုပြီး', cls: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  { value: 'CUSTOMER_REJECTED', label: 'Customer ငြင်းပယ်', cls: 'border-rose-200 bg-rose-50 text-rose-800' },
+  { value: 'IN_PROGRESS', label: 'လုပ်ဆောင်ဆဲ', cls: 'border-indigo-200 bg-indigo-50 text-indigo-800' },
+  { value: 'COMPLETED', label: 'ပြီးစီး', cls: 'border-slate-200 bg-slate-100 text-slate-700' },
+] as const;
+const lineConfirmationMeta = (value?: string) => LINE_CONFIRMATION_STATUS.find(item => item.value === value) || LINE_CONFIRMATION_STATUS[0];
+const emptyServiceLine = () => ({ serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false, confirmationStatus: 'RECOMMENDED' });
 type WorkTab = 'active' | 'payment' | 'handover' | 'closed' | 'all';
 const needsPayment = (job: any) => job.status === 'COMPLETED' && (!job.paymentStatus || Number(job.dueAmount || 0) > 0);
 const readyForHandover = (job: any) => job.status === 'COMPLETED' && Boolean(job.paymentStatus) && Number(job.dueAmount || 0) <= 0;
@@ -137,7 +147,7 @@ const emptyForm = {
   itemName: '', deviceType: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
   deviceConditions: '', partRequests: '', estimatedCompletion: '', estimatedCost: '', remark: '',
   status: 'RECEIVED', holdReason: '', priority: 'NORMAL',
-  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyMonths: number; warrantyCovered: boolean }[],
+  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyMonths: number; warrantyCovered: boolean; confirmationStatus: string }[],
   productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[] }[],
 };
 
@@ -549,7 +559,7 @@ export default function ServiceJobManagement() {
     if (canAssignTechnician) return staffList;
     const mine = staffList.filter((s: any) => String(s.id) === myStaffId);
     if (myStaffId && !mine.some((s: any) => String(s.id) === myStaffId)) {
-      mine.push({ id: myStaffId, name: currentUser.name || currentUser.username || 'ကျွန်ုပ်', role: '' });
+      mine.push({ id: Number(myStaffId) || myStaffId, name: currentUser.name || currentUser.username || 'ကျွန်ုပ်', role: '' });
     }
     return mine;
   })();
@@ -558,7 +568,9 @@ export default function ServiceJobManagement() {
   const openEdit = (j: any) => {
     setForm({
       customerId:          String(j.customerId ?? ''),
-      assignedStaffId:     j.assignedStaffId ? String(j.assignedStaffId) : '',
+      assignedStaffId:     canAssignTechnician
+        ? (j.assignedStaffId ? String(j.assignedStaffId) : '')
+        : myStaffId,
       helperStaffId:       j.helperStaffId ? String(j.helperStaffId) : '',
       serialNo:            j.serialNo ?? '',
       color:               j.color ?? '',
@@ -583,6 +595,7 @@ export default function ServiceJobManagement() {
         price:           Number(l.price ?? 0),
         warrantyMonths:  Number(l.warrantyMonths || 0),
         warrantyCovered: Boolean(l.warrantyCovered),
+        confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
       })),
       productParts: (j.productParts ?? []).map((p: any) => {
         const prod = products.find((pr: any) => String(pr.id) === String(p.productId));
@@ -666,6 +679,7 @@ export default function ServiceJobManagement() {
         price: Number(l.price || 0),
         warrantyMonths: Number(l.warrantyMonths || 0),
         warrantyCovered: Boolean(l.warrantyCovered),
+        confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
       })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
         productId: Number(p.productId),
@@ -718,6 +732,7 @@ export default function ServiceJobManagement() {
         price: Number(l.price || 0),
         warrantyMonths: Number(l.warrantyMonths || 0),
         warrantyCovered: Boolean(l.warrantyCovered),
+        confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
       })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
         productId: Number(p.productId),
@@ -1175,7 +1190,7 @@ export default function ServiceJobManagement() {
                         <p className="text-xs text-slate-400 truncate max-w-32" title={j.problemDesc}>{j.problemDesc}</p>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-xs text-slate-600">{j.assignedStaffName || '—'}</td>
+                    <td className="px-3 py-3 max-w-[8rem] text-xs text-slate-600"><span className="block truncate" title={j.assignedStaffName || ''}>{j.assignedStaffName || '—'}</span></td>
                     <td className="px-3 py-3">
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${col}`}>
                         {STATUS_LABEL[j.status as JobStatus] ?? j.status}
@@ -1375,10 +1390,11 @@ export default function ServiceJobManagement() {
                     {canAssignTechnician && <option value="">— မရှိ —</option>}
                     {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-400">{canAssignTechnician ? 'CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN ရှိ၍ အခြားပြုပြင်သူကို ရွေးနိုင်သည်။' : 'မိမိ Linked Staff ကိုသာ ရွေးနိုင်သည်။'}</p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
-                  <select value={form.helperStaffId} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <select value={form.helperStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
                     <option value="">— မရှိ —</option>
                     {staffList.filter((staff: any) => String(staff.id) !== form.assignedStaffId).map((staff: any) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
                   </select>
@@ -1452,7 +1468,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false }] }))}
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, emptyServiceLine()] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
@@ -1474,6 +1490,14 @@ export default function ServiceJobManagement() {
                             onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], warrantyCovered: e.target.checked }; return { ...p, lines }; })} />
                           Warranty အကျုံးဝင် — အခမဲ့
                         </label>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">အတည်ပြုမှု အခြေအနေ</label>
+                          <select value={line.confirmationStatus || 'RECOMMENDED'}
+                            onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], confirmationStatus: e.target.value }; return { ...p, lines }; })}
+                            className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>
+                            {LINE_CONFIRMATION_STATUS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </select>
+                        </div>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
                           <SearchableSelect
@@ -1558,7 +1582,7 @@ export default function ServiceJobManagement() {
                     {['LOW','NORMAL','HIGH','URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                   <label className="mt-3 block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
-                  <select value={form.helperStaffId} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                  <select value={form.helperStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
                     <option value="">— မရှိ —</option>
                     {staffList.filter((staff: any) => String(staff.id) !== form.assignedStaffId).map((staff: any) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
                   </select>
@@ -1570,6 +1594,7 @@ export default function ServiceJobManagement() {
                     {canAssignTechnician && <option value="">— မရှိ —</option>}
                     {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-400">{canAssignTechnician ? 'CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN ရှိ၍ အခြားပြုပြင်သူကို ရွေးနိုင်သည်။' : 'မိမိ Linked Staff ကိုသာ ရွေးနိုင်သည်။'}</p>
                 </div>
               </div>
 
@@ -1645,7 +1670,7 @@ export default function ServiceJobManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, { serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false }] }))}
+                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, emptyServiceLine()] }))}
                     className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
                 </div>
                 <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
@@ -1667,6 +1692,14 @@ export default function ServiceJobManagement() {
                             onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], warrantyCovered: e.target.checked }; return { ...p, lines }; })} />
                           Warranty အကျုံးဝင် — အခမဲ့
                         </label>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">အတည်ပြုမှု အခြေအနေ</label>
+                          <select value={line.confirmationStatus || 'RECOMMENDED'}
+                            onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], confirmationStatus: e.target.value }; return { ...p, lines }; })}
+                            className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>
+                            {LINE_CONFIRMATION_STATUS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </select>
+                        </div>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
                           <SearchableSelect
@@ -1704,7 +1737,7 @@ export default function ServiceJobManagement() {
                         </div>
                         {line.serviceItemName && (
                           <div className="text-[10px] text-slate-400">
-                            စုစုပေါင်း: <span className={`font-bold ${line.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{line.warrantyCovered ? 'FREE' : `${(Number(line.qty || 1) * Number(line.price || 0)).toLocaleString()} Ks`}</span>
+                            စုစုပေါင်း: <span className={`font-bold ${line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'text-rose-600' : line.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'ငြင်းပယ် — 0 Ks' : line.warrantyCovered ? 'FREE' : `${(Number(line.qty || 1) * Number(line.price || 0)).toLocaleString()} Ks`}</span>
                           </div>
                         )}
                       </div>
@@ -2218,6 +2251,18 @@ export default function ServiceJobManagement() {
             <div className="space-y-4 p-5 text-sm">
               {logJob.overdue && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700 font-bold">SLA ကျော်နေသည်</p>}
               <p className="text-xs text-slate-500">Priority: {logJob.priority || 'NORMAL'} · Technician time: {logJob.technicianMinutes || 0} min</p>
+              <section>
+                <p className="mb-2 text-xs font-black uppercase text-slate-500">ဝန်ဆောင်မှု အတည်ပြုမှု</p>
+                <div className="space-y-1">
+                  {(logJob.lines || []).map((line: any, index: number) => (
+                    <div key={line.id || index} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs">
+                      <span className="font-semibold text-slate-700">{line.serviceItemName || `ဝန်ဆောင်မှု ${index + 1}`}</span>
+                      <span className={`rounded-full border px-2 py-0.5 font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>{lineConfirmationMeta(line.confirmationStatus).label}</span>
+                    </div>
+                  ))}
+                  {(!logJob.lines || logJob.lines.length === 0) && <p className="text-slate-400">ဝန်ဆောင်မှုမရှိသေးပါ</p>}
+                </div>
+              </section>
               <section>
                 <p className="mb-2 text-xs font-black uppercase text-slate-500">Timeline</p>
                 <div className="space-y-1">

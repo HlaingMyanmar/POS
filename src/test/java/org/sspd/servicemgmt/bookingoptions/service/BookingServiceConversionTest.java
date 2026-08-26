@@ -24,6 +24,7 @@ import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRep
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.shelflocationoptions.model.ShelfLocation;
 import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
+import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
 
 import java.math.BigDecimal;
@@ -82,8 +83,10 @@ class BookingServiceConversionTest {
             .serviceItem(displayService).deviceIndex(1).qty(1)
             .price(new BigDecimal("15000")).subtotal(new BigDecimal("15000")).build();
 
+        Staff receiver = Staff.builder().id(9).name("Reception Aung").role("Receptionist").isActive(true).build();
         Booking booking = Booking.builder()
             .id(42).invoiceNo("BK-000042").customer(customer)
+            .staff(receiver)
             .status(BookingStatus.Pending).totalAmount(new BigDecimal("25000"))
             .shelfLocation("A-01").devices(new ArrayList<>(List.of(phone, laptop)))
             .details(new ArrayList<>(List.of(phoneDetail, laptopDetail)))
@@ -119,6 +122,7 @@ class BookingServiceConversionTest {
             () -> assertEquals("[{\"partName\":\"Battery\",\"action\":\"REPLACE\",\"qty\":1}]", result.get(0).getPartRequests()),
             () -> assertEquals(1, result.get(0).getLines().size()),
             () -> assertEquals("Battery Service", result.get(0).getLines().get(0).getServiceItemName()),
+            () -> assertEquals("RECOMMENDED", result.get(0).getLines().get(0).getConfirmationStatus()),
             () -> assertEquals(0, new BigDecimal("10000").compareTo(result.get(0).getEstimatedCost())),
             () -> assertEquals("SN-LAPTOP", result.get(1).getSerialNo()),
             () -> assertEquals("Charger", result.get(1).getAccessories()),
@@ -127,7 +131,9 @@ class BookingServiceConversionTest {
             () -> assertEquals("Display Service", result.get(1).getLines().get(0).getServiceItemName()),
             () -> assertEquals(0, new BigDecimal("15000").compareTo(result.get(1).getEstimatedCost())),
             () -> assertEquals(42, result.get(1).getBookingId()),
-            () -> assertEquals("BK-000042", result.get(1).getBookingNo())
+            () -> assertEquals("BK-000042", result.get(1).getBookingNo()),
+            () -> assertNull(result.get(0).getAssignedStaffId()),
+            () -> assertNull(result.get(1).getAssignedStaffId())
         );
         verify(serviceJobRepository, times(2)).save(argThat(job -> job.getShelfLocation() == shelf));
         verify(messagingTemplate).convertAndSend("/topic/booking", "BOOKING_UPDATED");

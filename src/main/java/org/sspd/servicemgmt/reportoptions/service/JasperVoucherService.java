@@ -3,6 +3,7 @@ package org.sspd.servicemgmt.reportoptions.service;
 import lombok.RequiredArgsConstructor;
 import net.sf.jasperreports.engine.*;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
@@ -12,6 +13,8 @@ import org.sspd.servicemgmt.bookingoptions.model.BookingDeviceInfo;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.companysettingoptions.dto.CompanySettingsDTO;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.reportoptions.dto.*;
 import org.sspd.servicemgmt.saleoptions.model.Sale;
 import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
@@ -37,6 +40,7 @@ public class JasperVoucherService {
     private final ServiceJobRepository serviceJobRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final CompanySettingsService companySettingsService;
+    private final UserRepository userRepository;
 
     private final Map<String, JasperReport> reportCache = new ConcurrentHashMap<>();
 
@@ -228,6 +232,8 @@ public class JasperVoucherService {
         params.put("PROBLEM_DESC",    nullSafe(job.getProblemDesc()));
         params.put("DIAGNOSIS_NOTES", nullSafe(job.getDiagnosisNotes()));
         params.put("TECHNICIAN",      job.getAssignedStaff() != null ? job.getAssignedStaff().getName() : "");
+        params.put("HELPER",          job.getHelperStaff() != null ? job.getHelperStaff().getName() : "");
+        params.put("CASHIER_NAME",    currentCashierName());
         params.put("ESTIMATED_COST",  job.getEstimatedCost() != null ? formatMoney(job.getEstimatedCost()) : "");
         params.put("DEVICE_CONDITIONS", formatConditionsText(job.getDeviceConditions()));
         // Accessories: entity's own value first, then booking fallback
@@ -389,5 +395,25 @@ public class JasperVoucherService {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private String currentCashierName() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null
+                || "anonymousUser".equals(authentication.getName())) {
+            return "";
+        }
+        String username = authentication.getName();
+        return userRepository.findByUsernameOrEmail(username, username)
+                .map(this::userDisplayName)
+                .orElse("");
+    }
+
+    private String userDisplayName(User user) {
+        if (user.getStaff() != null && user.getStaff().getName() != null && !user.getStaff().getName().isBlank()) {
+            return user.getStaff().getName();
+        }
+        if (user.getName() != null && !user.getName().isBlank()) return user.getName();
+        return user.getUsername() != null ? user.getUsername() : "";
     }
 }

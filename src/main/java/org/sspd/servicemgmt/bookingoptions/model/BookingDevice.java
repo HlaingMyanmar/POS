@@ -42,4 +42,7 @@ public class BookingDevice {
     private String deviceConditions;
     @Column(name = "condition_checklist", columnDefinition = "TEXT")
     private String conditionChecklist;
+
+    @Column(name = "part_requests", columnDefinition = "TEXT")
+    private String partRequests;
 }

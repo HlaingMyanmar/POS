@@ -14,4 +14,5 @@ public class BookingDeviceDTO {
     private String problemDesc;
     private String deviceConditions;
     private String conditionChecklist;
+    private String partRequests;
 }

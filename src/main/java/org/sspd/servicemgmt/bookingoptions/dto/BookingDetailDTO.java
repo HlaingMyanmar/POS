@@ -9,6 +9,7 @@ public class BookingDetailDTO {
     private Integer id;
     private Integer serviceId;
     private String serviceName;
+    private Integer deviceIndex;
     private Integer qty;
     private BigDecimal price;
     private BigDecimal subtotal;

@@ -40,6 +40,20 @@ function Row({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function formatPartRequests(value?: string | null) {
+  if (!value?.trim()) return '';
+  try {
+    const rows = JSON.parse(value);
+    if (!Array.isArray(rows)) return value;
+    return rows.filter((row: any) => String(row?.partName ?? '').trim()).map((row: any) => {
+      const action = ({ REPLACE: 'လဲရန်', REPAIR: 'ပြုပြင်ရန်', CHECK: 'စစ်ဆေးရန်' } as Record<string, string>)[row.action] ?? row.action ?? '';
+      const notice = String(row.notice ?? '').trim();
+      return `${row.partName}${action ? ` — ${action}` : ''} × ${Number(row.qty || 1)}${notice ? ` (${notice})` : ''}`;
+    }).join('\n');
+  } catch {
+    return value;
+  }
+}
 // ── Settle Modal ──────────────────────────────────────────────────────────────
 function SettleModal({ visible, job, onClose, onSettled }: {
   visible: boolean; job: ServiceJobDTO; onClose: () => void; onSettled: (j: ServiceJobDTO) => void;
@@ -826,6 +840,7 @@ function buildVoucherHtml(job: ServiceJobDTO, snWarMap: SnWarrantyMap = {}): str
       </div>
     </div>
     ${job.diagnosisNotes ? `<div class="section-label">Diagnosis Notes</div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:10px 12px;font-size:11px;color:#475569;white-space:pre-wrap">${esc(job.diagnosisNotes)}</div>` : ''}
+    ${job.partRequests ? `<div class="section-label">Possible Parts / Actions</div><div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:10px 12px;font-size:11px;color:#9a3412;white-space:pre-wrap">${esc(formatPartRequests(job.partRequests))}</div>` : ''}
     <div class="section-label">Services</div>
     <div class="table-wrap"><table>
       <thead><tr><th style="width:5%" class="center">#</th><th style="width:40%">Service</th><th style="width:35%">Notes</th><th style="width:20%" class="num">Price</th></tr></thead>
@@ -1037,6 +1052,7 @@ export default function ServiceJobDetailScreen({ route, navigation }: any) {
           <Text style={st.sectionTitle}>ITEM</Text>
           <Row label="Item"      value={job.itemName} />
           <Row label="Condition" value={job.itemCondition} />
+          <Row label="Part Requests" value={formatPartRequests(job.partRequests)} />
           <Row label="Problem"   value={job.problemDesc} />
           <Row label="Diagnosis" value={job.diagnosisNotes} />
           <Row label="Remark"    value={job.remark} />

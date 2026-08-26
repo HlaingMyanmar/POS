@@ -52,6 +52,10 @@
 
   </div>
 
+  <div th:if="${not #strings.isEmpty(inv.partRequests)}" style="margin-bottom:12px; border:1px solid #fed7aa; background:#fff7ed; border-radius:5px; padding:8px 10px; page-break-inside:avoid;">
+    <div style="font-size:9px; font-weight:800; color:#9a3412; text-transform:uppercase; letter-spacing:.7px; margin-bottom:3px;">Possible Parts / Actions</div>
+    <div style="font-size:10px; line-height:1.5; color:#7c2d12; white-space:pre-line;" th:text="${inv.partRequests}"></div>
+  </div>
   <!-- ── Device Condition checklist table ───────────────────────────────── -->
   <div th:if="${inv.deviceConditionRows != null and not #lists.isEmpty(inv.deviceConditionRows)}">
     <div class="inv-section-label">Device Condition on Intake</div>

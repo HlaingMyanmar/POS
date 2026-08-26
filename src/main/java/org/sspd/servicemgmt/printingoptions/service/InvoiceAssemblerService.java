@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.printingoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
@@ -8,6 +9,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.Re
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.model.BookingDevice;
+import org.sspd.servicemgmt.bookingoptions.model.BookingDetail;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.companysettingoptions.dto.CompanySettingsDTO;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
@@ -19,6 +21,8 @@ import org.sspd.servicemgmt.printingoptions.entity.VoucherSetting;
 import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetail;
 import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.saleoptions.model.Sale;
 import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
 import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
@@ -26,6 +30,7 @@ import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+import org.sspd.servicemgmt.staffoptions.model.Staff;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,6 +62,7 @@ public class InvoiceAssemblerService {
     private final CompanySettingsService companySettingsService;
     private final QrCodeService qrCodeService;
     private final ObjectMapper objectMapper;
+    private final UserRepository userRepository;
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private static final DateTimeFormatter D_FMT  = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -205,7 +211,9 @@ public class InvoiceAssemblerService {
         // Build device rows — prefer the devices list; fall back to single device fields
         List<PrintInvoiceData.DeviceRow> deviceRows = new ArrayList<>();
         if (b.getDevices() != null && !b.getDevices().isEmpty()) {
-            for (BookingDevice d : b.getDevices()) {
+            int deviceCount = b.getDevices().size();
+            for (int deviceIndex = 0; deviceIndex < deviceCount; deviceIndex++) {
+                BookingDevice d = b.getDevices().get(deviceIndex);
                 deviceRows.add(PrintInvoiceData.DeviceRow.builder()
                         .deviceType(safe(d.getDeviceType()))
                         .brand(safe(d.getBrand()))
@@ -215,6 +223,9 @@ public class InvoiceAssemblerService {
                         .accessories(safe(d.getAccessories()))
                         .problemDesc(safe(d.getProblemDesc()))
                         .deviceConditions(safe(d.getDeviceConditions()))
+                        .serviceSummary(formatBookingServices(b, deviceIndex, deviceCount))
+                        .conditionChecklist(formatConditionChecklist(d.getConditionChecklist()))
+                        .partRequests(formatPartRequests(d.getPartRequests()))
                         .build());
             }
         } else if (!safe(b.getBrand()).isBlank() || !safe(b.getModel()).isBlank()
@@ -229,6 +240,9 @@ public class InvoiceAssemblerService {
                     .accessories(safe(b.getAccessories()))
                     .problemDesc("")
                     .deviceConditions("")
+                    .serviceSummary(formatBookingServices(b, 0, 1))
+                    .conditionChecklist("")
+                    .partRequests("")
                     .build());
         }
 
@@ -250,12 +264,12 @@ public class InvoiceAssemblerService {
                 .cashierName(b.getStaff() != null ? b.getStaff().getName() : "")
                 .shelfLocation(safe(b.getShelfLocation()))
                 .estimatedCost(b.getTotalAmount() != null ? fmt(b.getTotalAmount()) : "0")
+                .paid(b.getDepositAmount() != null ? fmt(b.getDepositAmount()) : "0")
                 .lineItems(List.of())
                 .payments(List.of())
                 .subtotal("0")
                 .discount("0")
-                .netAmount("0")
-                .paid("0")
+                .netAmount(b.getTotalAmount() != null ? fmt(b.getTotalAmount()) : "0")
                 .balanceDue("0")
                 .remark(safe(b.getRemark()))
                 .bookingReceipt(true)
@@ -338,7 +352,9 @@ public class InvoiceAssemblerService {
                 .paymentStatus(job.getPaymentStatus() != null ? job.getPaymentStatus().name() : "")
                 .customerName(job.getCustomer() != null ? job.getCustomer().getName() : "")
                 .customerPhone(job.getCustomer() != null ? safe(job.getCustomer().getPhone()) : "")
-                .cashierName(job.getAssignedStaff() != null ? job.getAssignedStaff().getName() : "")
+                .cashierName(currentCashierName())
+                .technicianName(staffName(job.getAssignedStaff()))
+                .helperStaffName(staffName(job.getHelperStaff()))
                 .lineItems(items)
                 .payments(payments)
                 .subtotal(fmt(gross))
@@ -350,12 +366,77 @@ public class InvoiceAssemblerService {
                 .itemName(safe(job.getItemName()))
                 .problemDesc(safe(job.getProblemDesc()))
                 .accessories(accessories)
+                .partRequests(formatPartRequests(job.getPartRequests()))
                 .estimatedCost(job.getEstimatedCost() != null && job.getEstimatedCost().compareTo(BigDecimal.ZERO) > 0
                         ? fmt(job.getEstimatedCost()) : "")
                 .deviceConditionRows(conditionRows)
                 .build();
     }
 
+    private String formatBookingServices(Booking booking, int deviceIndex, int deviceCount) {
+        if (booking.getDetails() == null) return "";
+        List<String> rows = new ArrayList<>();
+        for (BookingDetail detail : booking.getDetails()) {
+            Integer targetIndex = detail.getDeviceIndex();
+            boolean applies = targetIndex != null
+                    ? targetIndex == deviceIndex
+                    : deviceCount == 1 || deviceIndex == 0;
+            if (!applies || detail.getServiceItem() == null) continue;
+            int qty = detail.getQty() != null ? detail.getQty() : 1;
+            String price = detail.getSubtotal() != null ? fmt(detail.getSubtotal()) : fmt(detail.getPrice());
+            rows.add(detail.getServiceItem().getItem() + " x " + qty + " - " + price + " Ks");
+        }
+        return String.join("\n", rows);
+    }
+
+    private String formatConditionChecklist(String json) {
+        if (json == null || json.isBlank()) return "";
+        try {
+            List<Map<String, Object>> parsed = objectMapper.readValue(json, new TypeReference<>() {});
+            List<String> rows = new ArrayList<>();
+            for (Map<String, Object> item : parsed) {
+                String name = safe(Objects.toString(item.get("name"), ""));
+                if (name.isBlank()) continue;
+                String status = switch (safe(Objects.toString(item.get("status"), ""))) {
+                    case "Good" -> "Good";
+                    case "Damaged" -> "Damaged";
+                    case "Check Required" -> "Check required";
+                    default -> safe(Objects.toString(item.get("status"), ""));
+                };
+                String notice = safe(Objects.toString(item.get("notice"), ""));
+                rows.add(name + (status.isBlank() ? "" : " - " + status)
+                        + (notice.isBlank() ? "" : " (" + notice + ")"));
+            }
+            return String.join("\n", rows);
+        } catch (Exception ignored) {
+            return safe(json);
+        }
+    }
+
+    private String formatPartRequests(String json) {
+        if (json == null || json.isBlank()) return "";
+        try {
+            List<Map<String, Object>> parsed = objectMapper.readValue(json, new TypeReference<>() {});
+            List<String> rows = new ArrayList<>();
+            for (Map<String, Object> item : parsed) {
+                String name = safe(Objects.toString(item.get("partName"), ""));
+                if (name.isBlank()) continue;
+                String action = switch (safe(Objects.toString(item.get("action"), ""))) {
+                    case "REPLACE" -> "Replace";
+                    case "REPAIR" -> "Repair";
+                    case "CHECK" -> "Check";
+                    default -> safe(Objects.toString(item.get("action"), ""));
+                };
+                String qty = safe(Objects.toString(item.get("qty"), "1"));
+                String notice = safe(Objects.toString(item.get("notice"), ""));
+                rows.add(name + (action.isBlank() ? "" : " - " + action) + " x " + qty
+                        + (notice.isBlank() ? "" : " (" + notice + ")"));
+            }
+            return String.join("\n", rows);
+        } catch (Exception ignored) {
+            return safe(json);
+        }
+    }
     private List<PrintInvoiceData.ConditionRow> parseConditionRows(String json) {
         List<PrintInvoiceData.ConditionRow> rows = new ArrayList<>();
         if (json == null || json.isBlank()) return rows;
@@ -492,6 +573,31 @@ public class InvoiceAssemblerService {
     private String safe(String s) { return s != null ? s : ""; }
 
     private String safe(String s, String fallback) { return (s != null && !s.isBlank()) ? s : fallback; }
+
+    private String staffName(Staff staff) {
+        return staff != null ? safe(staff.getName()) : "";
+    }
+
+    /** Logged-in staff (or user name) who printed / collected payment — not the technician. */
+    private String currentCashierName() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null
+                || "anonymousUser".equals(authentication.getName())) {
+            return "";
+        }
+        String username = authentication.getName();
+        return userRepository.findByUsernameOrEmail(username, username)
+                .map(this::userDisplayName)
+                .orElse("");
+    }
+
+    private String userDisplayName(User user) {
+        if (user.getStaff() != null && !safe(user.getStaff().getName()).isBlank()) {
+            return user.getStaff().getName();
+        }
+        if (!safe(user.getName()).isBlank()) return user.getName();
+        return safe(user.getUsername());
+    }
 
     /** Converts warranty months → "N Year(s)" / "N Month(s)", optionally appending expiry. */
     private String fmtWarrantyLabel(Integer months, java.time.LocalDate expiryDate) {

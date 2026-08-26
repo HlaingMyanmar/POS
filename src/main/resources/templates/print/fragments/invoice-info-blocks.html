@@ -57,7 +57,32 @@
         <span class="inv-block__label">Due Date</span>
         <span class="inv-block__value" th:text="${inv.dueDate}">—</span>
       </div>
-      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.cashierName)}">
+      <!-- Booking: receiver only -->
+      <div class="inv-block__row" th:if="${inv.bookingReceipt and not #strings.isEmpty(inv.cashierName)}">
+        <span class="inv-block__label">လက်ခံသူ</span>
+        <span class="inv-block__value" th:text="${inv.cashierName}">—</span>
+      </div>
+      <!-- Service job: technician vs cashier as separate roles -->
+      <th:block th:if="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}">
+        <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.technicianName)}">
+          <span class="inv-block__label">ပြုပြင်သူ</span>
+          <span class="inv-block__value" th:text="${inv.technicianName}">—</span>
+        </div>
+        <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.helperStaffName)}">
+          <span class="inv-block__label">အကူပြုပြင်သူ</span>
+          <span class="inv-block__value" th:text="${inv.helperStaffName}">—</span>
+        </div>
+        <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.cashierName)}">
+          <span class="inv-block__label">ငွေကိုင်</span>
+          <span class="inv-block__value" th:text="${inv.cashierName}">—</span>
+        </div>
+      </th:block>
+      <!-- Sale / purchase cashier -->
+      <div class="inv-block__row"
+           th:if="${!inv.bookingReceipt
+                    and inv.documentType != 'SERVICE_JOB'
+                    and inv.documentType != 'SERVICE_DONE'
+                    and not #strings.isEmpty(inv.cashierName)}">
         <span class="inv-block__label">Cashier</span>
         <span class="inv-block__value" th:text="${inv.cashierName}">—</span>
       </div>

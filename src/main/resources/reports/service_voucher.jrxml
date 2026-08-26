@@ -29,6 +29,8 @@
   <parameter name="PROBLEM_DESC"    class="java.lang.String"/>
   <parameter name="DIAGNOSIS_NOTES" class="java.lang.String"/>
   <parameter name="TECHNICIAN"      class="java.lang.String"/>
+  <parameter name="HELPER"          class="java.lang.String"/>
+  <parameter name="CASHIER_NAME"    class="java.lang.String"/>
   <parameter name="BOOKING_NO"      class="java.lang.String"/>
 
   <!-- Totals -->
@@ -50,7 +52,7 @@
   <parameter name="SERVICE_PARTS_SUBREPORT" class="net.sf.jasperreports.engine.JasperReport"/>
 
   <title>
-    <band height="168">
+    <band height="180">
       <!-- Header bar -->
       <rectangle>
         <reportElement x="0" y="0" width="535" height="62" backcolor="#1E3A5F" forecolor="#1E3A5F"/>
@@ -133,7 +135,7 @@
       <staticText>
         <reportElement x="270" y="68" width="80" height="10"/>
         <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7" forecolor="#64748B"/></textElement>
-        <text><![CDATA[Technician:]]></text>
+        <text><![CDATA[ပြုပြင်သူ:]]></text>
       </staticText>
       <textField isBlankWhenNull="true">
         <reportElement x="354" y="68" width="177" height="10"/>
@@ -251,6 +253,36 @@
         <reportElement x="67" y="148" width="464" height="10"/>
         <textElement><font fontName="DejaVu Sans" size="7" forecolor="#475569"/></textElement>
         <textFieldExpression><![CDATA[$P{DIAGNOSIS_NOTES}]]></textFieldExpression>
+      </textField>
+
+      <!-- Row 8: ငွေကိုင် | အကူပြုပြင်သူ -->
+      <staticText>
+        <reportElement x="0" y="163" width="65" height="10">
+          <printWhenExpression><![CDATA[$P{CASHIER_NAME} != null && !$P{CASHIER_NAME}.isEmpty()]]></printWhenExpression>
+        </reportElement>
+        <textElement><font fontName="DejaVu Sans" size="7" isBold="true" forecolor="#64748B"/></textElement>
+        <text><![CDATA[ငွေကိုင်:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="67" y="163" width="185" height="10">
+          <printWhenExpression><![CDATA[$P{CASHIER_NAME} != null && !$P{CASHIER_NAME}.isEmpty()]]></printWhenExpression>
+        </reportElement>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{CASHIER_NAME}]]></textFieldExpression>
+      </textField>
+      <staticText>
+        <reportElement x="270" y="163" width="80" height="10">
+          <printWhenExpression><![CDATA[$P{HELPER} != null && !$P{HELPER}.isEmpty()]]></printWhenExpression>
+        </reportElement>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7" forecolor="#64748B"/></textElement>
+        <text><![CDATA[အကူ:]]></text>
+      </staticText>
+      <textField isBlankWhenNull="true">
+        <reportElement x="354" y="163" width="177" height="10">
+          <printWhenExpression><![CDATA[$P{HELPER} != null && !$P{HELPER}.isEmpty()]]></printWhenExpression>
+        </reportElement>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$P{HELPER}]]></textFieldExpression>
       </textField>
     </band>
   </title>

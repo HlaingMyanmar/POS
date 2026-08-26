@@ -175,6 +175,14 @@ export interface BookingDTO {
   color?: string;
   accessories?: string;
   shelfLocation?: string;
+  depositAmount?: number;
+  signatureData?: string;
+  attachments?: {
+    id?: number;
+    attachmentType?: string;
+    fileName?: string;
+    dataUrl?: string;
+  }[];
   details?: BookingDetailDTO[];
   devices?: {
     id?: number;
@@ -214,6 +222,8 @@ export interface ServiceJobDTO {
   assignedStaffName?: string;
   itemName?: string;
   itemCondition?: string;
+  deviceConditions?: string;
+  partRequests?: string;
   problemDesc?: string;
   diagnosisNotes?: string;
   estimatedCost?: number;

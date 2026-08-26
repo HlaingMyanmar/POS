@@ -61,7 +61,10 @@ public class ServiceSchemaMigration implements CommandLineRunner {
         addColumnIfMissing("bookings", "advance_payment_id", "INT NULL");
         addColumnIfMissing("bookings", "signature_data", "LONGTEXT NULL");
         addColumnIfMissing("booking_devices", "condition_checklist", "TEXT NULL");
+        addColumnIfMissing("booking_devices", "part_requests", "TEXT NULL");
+        addColumnIfMissing("booking_details", "device_index", "INT NULL");
 
+        addColumnIfMissing("service_jobs", "part_requests", "TEXT NULL");
         addColumnIfMissing("service_jobs", "voided", "BIT NOT NULL DEFAULT 0");
         addColumnIfMissing("service_jobs", "void_reason", "TEXT NULL");
         addColumnIfMissing("service_jobs", "voided_by", "VARCHAR(120) NULL");

@@ -497,6 +497,7 @@ data class ServiceJobDTO(
     val itemName: String? = null,
     val itemCondition: String? = null,
     val deviceConditions: String? = null,
+    val partRequests: String? = null,
     val problemDesc: String? = null,
     val diagnosisNotes: String? = null,
     val accessories: String? = null,

@@ -54,7 +54,10 @@ public class ServiceJob {
     private String itemCondition;
 
     @Column(name = "device_conditions", columnDefinition = "TEXT")
-    private String deviceConditions; // JSON: [{"name":"Screen","status":"Good"},...]
+    private String deviceConditions;
+
+    @Column(name = "part_requests", columnDefinition = "TEXT")
+    private String partRequests;
 
     @Column(name = "accessories_received", columnDefinition = "TEXT")
     private String accessories; // comma-separated: "Charger,USB Cable"

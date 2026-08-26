@@ -21,6 +21,7 @@ public class ServiceJobDTO {
     private String itemName;
     private String itemCondition;
     private String deviceConditions;
+    private String partRequests;
     private String problemDesc;
     private String diagnosisNotes;
     private BigDecimal estimatedCost;

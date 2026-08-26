@@ -24,6 +24,9 @@ public class BookingDetail {
     @JoinColumn(name = "service_id", nullable = false)
     private ServiceItem serviceItem;
 
+    @Column(name = "device_index")
+    private Integer deviceIndex;
+
     @Column(name = "qty")
     private Integer qty = 1;
 

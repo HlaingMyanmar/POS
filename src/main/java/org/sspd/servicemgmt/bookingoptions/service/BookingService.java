@@ -451,12 +451,19 @@ public class BookingService {
             int qty = d.getQty() != null ? d.getQty() : 1;
             BigDecimal price = d.getPrice() != null ? d.getPrice() : d.getServiceItem().getPrice();
             boolean foc = Boolean.TRUE.equals(d.getServiceItem().getFocDefault());
+            BigDecimal catalog = d.getServiceItem().getPrice() != null ? d.getServiceItem().getPrice() : price;
             BigDecimal sub = foc ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
+            String reason = price.compareTo(catalog) != 0 ? "Booking မှရွေးထားသောစျေး" : null;
             job.getLines().add(ServiceJobLine.builder()
                 .serviceJob(job)
                 .serviceItem(d.getServiceItem())
                 .qty(qty)
-                .price(price)
+                .catalogPrice(catalog)
+                .estimatedPrice(price)
+                .minPrice(d.getServiceItem().getMinPrice())
+                .maxPrice(d.getServiceItem().getMaxPrice())
+                .priceChangeReason(reason)
+                .price(foc ? BigDecimal.ZERO : price)
                 .subtotal(sub)
                 .warrantyMonths(d.getServiceItem().getWarrantyMonths() != null ? d.getServiceItem().getWarrantyMonths() : 0)
                 .warrantyCovered(foc)
@@ -759,8 +766,17 @@ public class BookingService {
                 lineDto.setServiceItemName(line.getServiceItem().getItem());
             }
             lineDto.setQty(line.getQty());
+            lineDto.setCatalogPrice(line.getCatalogPrice());
+            lineDto.setEstimatedPrice(line.getEstimatedPrice());
+            lineDto.setApprovedPrice(line.getApprovedPrice());
+            lineDto.setBilledPrice(line.getBilledPrice());
             lineDto.setPrice(line.getPrice());
             lineDto.setSubtotal(line.getSubtotal());
+            lineDto.setMinPrice(line.getMinPrice());
+            lineDto.setMaxPrice(line.getMaxPrice());
+            lineDto.setPriceChangeReason(line.getPriceChangeReason());
+            lineDto.setPriceOverrideApproved(Boolean.TRUE.equals(line.getPriceOverrideApproved()));
+            lineDto.setPriceOverrideApprovedBy(line.getPriceOverrideApprovedBy());
             lineDto.setWarrantyMonths(line.getWarrantyMonths());
             lineDto.setWarrantyCovered(line.getWarrantyCovered());
             lineDto.setConfirmationStatus(line.getConfirmationStatus().name());

@@ -78,6 +78,26 @@ public class ServiceSchemaMigration implements CommandLineRunner {
         addColumnIfMissing("service_jobs", "hold_reason", "VARCHAR(500) NULL");
         addColumnIfMissing("service_jobs", "work_started_at", "DATETIME(6) NULL");
         addColumnIfMissing("service_jobs", "last_notified_at", "DATETIME(6) NULL");
+        addColumnIfMissing("service_job_lines", "confirmation_status", "VARCHAR(30) NOT NULL DEFAULT 'RECOMMENDED'");
+        addColumnIfMissing("service_job_lines", "catalog_price", "DECIMAL(15,2) NULL");
+        addColumnIfMissing("service_job_lines", "estimated_price", "DECIMAL(15,2) NULL");
+        addColumnIfMissing("service_job_lines", "approved_price", "DECIMAL(15,2) NULL");
+        addColumnIfMissing("service_job_lines", "billed_price", "DECIMAL(15,2) NULL");
+        addColumnIfMissing("service_job_lines", "min_price", "DECIMAL(15,2) NULL");
+        addColumnIfMissing("service_job_lines", "max_price", "DECIMAL(15,2) NULL");
+        addColumnIfMissing("service_job_lines", "price_change_reason", "VARCHAR(500) NULL");
+        addColumnIfMissing("service_job_lines", "price_override_approved", "BIT NOT NULL DEFAULT 0");
+        addColumnIfMissing("service_job_lines", "price_override_approved_by", "VARCHAR(120) NULL");
+        try {
+            jdbcTemplate.execute("""
+                UPDATE service_job_lines
+                   SET catalog_price = COALESCE(catalog_price, price),
+                       estimated_price = COALESCE(estimated_price, price)
+                 WHERE price IS NOT NULL
+                """);
+        } catch (Exception e) {
+            log.warn("Could not backfill service_job_lines price columns: {}", e.getMessage());
+        }
 
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS booking_attachments (

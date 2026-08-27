@@ -86,11 +86,12 @@ export const buildServiceVoucherHtml = ({
             <td>
               <div>${escapeHtml(l.serviceItemName || l.serviceName || l.item || '-')}</div>
               ${l.confirmationStatus ? `<div style="font-size:10px;color:#64748b;margin-top:2px;">${escapeHtml(lineConfirmationLabel(l.confirmationStatus))}</div>` : ''}
+              ${l.catalogPrice != null && Number(l.estimatedPrice ?? l.price) !== Number(l.catalogPrice) ? `<div style="font-size:10px;color:#b45309;margin-top:2px;">မူရင်း ${escapeHtml(money(l.catalogPrice))} · ခန့်မှန်း ${escapeHtml(money(l.estimatedPrice ?? l.price))}${l.priceChangeReason ? ` — ${escapeHtml(l.priceChangeReason)}` : ''}</div>` : ''}
               ${warrantyTxt ? `<div style="font-size:10px;color:#0891b2;margin-top:2px;">🛡 ${escapeHtml(warrantyTxt)}</div>` : ''}
             </td>
             <td class="num">${Number(l.qty) || 1}</td>
-            <td class="num">${money(l.price)}</td>
-            <td class="num">${money(l.subtotal ?? (Number(l.qty || 1) * Number(l.price || 0)))}</td>
+            <td class="num">${money(l.billedPrice ?? l.approvedPrice ?? l.estimatedPrice ?? l.price)}</td>
+            <td class="num">${money(l.subtotal ?? (Number(l.qty || 1) * Number((l.billedPrice ?? l.approvedPrice ?? l.estimatedPrice ?? l.price) || 0)))}</td>
           </tr>
         `;
       }).join('')

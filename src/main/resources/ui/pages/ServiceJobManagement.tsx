@@ -90,7 +90,85 @@ const LINE_CONFIRMATION_STATUS = [
   { value: 'COMPLETED', label: 'ပြီးစီး', cls: 'border-slate-200 bg-slate-100 text-slate-700' },
 ] as const;
 const lineConfirmationMeta = (value?: string) => LINE_CONFIRMATION_STATUS.find(item => item.value === value) || LINE_CONFIRMATION_STATUS[0];
-const emptyServiceLine = () => ({ serviceItemId: '', serviceItemName: '', qty: 1, price: 0, warrantyMonths: 0, warrantyCovered: false, confirmationStatus: 'RECOMMENDED' });
+const emptyServiceLine = () => ({
+  serviceItemId: '', serviceItemName: '', qty: 1,
+  catalogPrice: 0, estimatedPrice: 0, approvedPrice: '' as number | '', billedPrice: '' as number | '',
+  minPrice: null as number | null, maxPrice: null as number | null, priceChangeReason: '',
+  warrantyMonths: 0, warrantyCovered: false, confirmationStatus: 'RECOMMENDED',
+});
+const mapLineFromApi = (l: any) => ({
+  serviceItemId: l.serviceItemId ?? '',
+  serviceItemName: l.serviceItemName ?? '',
+  qty: l.qty ?? 1,
+  catalogPrice: Number(l.catalogPrice ?? l.price ?? 0),
+  estimatedPrice: Number(l.estimatedPrice ?? l.price ?? 0),
+  approvedPrice: l.approvedPrice != null && l.approvedPrice !== '' ? Number(l.approvedPrice) : '' as number | '',
+  billedPrice: l.billedPrice != null && l.billedPrice !== '' ? Number(l.billedPrice) : '' as number | '',
+  minPrice: l.minPrice != null && l.minPrice !== '' ? Number(l.minPrice) : null,
+  maxPrice: l.maxPrice != null && l.maxPrice !== '' ? Number(l.maxPrice) : null,
+  priceChangeReason: l.priceChangeReason ?? '',
+  warrantyMonths: Number(l.warrantyMonths || 0),
+  warrantyCovered: Boolean(l.warrantyCovered),
+  confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
+});
+const lineToPayload = (l: any) => ({
+  serviceItemId: Number(l.serviceItemId),
+  qty: Number(l.qty || 1),
+  price: Number(l.estimatedPrice ?? l.price ?? 0),
+  catalogPrice: Number(l.catalogPrice || 0),
+  estimatedPrice: Number(l.estimatedPrice ?? l.price ?? 0),
+  approvedPrice: l.approvedPrice === '' || l.approvedPrice == null ? null : Number(l.approvedPrice),
+  billedPrice: l.billedPrice === '' || l.billedPrice == null ? null : Number(l.billedPrice),
+  priceChangeReason: l.priceChangeReason || null,
+  priceOverrideApproved: Boolean(l.priceOverrideApproved),
+  warrantyMonths: Number(l.warrantyMonths || 0),
+  warrantyCovered: Boolean(l.warrantyCovered),
+  confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
+});
+const outsideMinMax = (value: number | '' | null | undefined, min: number | null, max: number | null) => {
+  if (value === '' || value == null) return false;
+  const n = Number(value);
+  if (min != null && n < min) return true;
+  if (max != null && n > max) return true;
+  return false;
+};
+const pricesDifferFromCatalog = (l: any) => {
+  const cat = Number(l.catalogPrice || 0);
+  const est = Number(l.estimatedPrice ?? l.price ?? 0);
+  const appr = l.approvedPrice === '' || l.approvedPrice == null ? null : Number(l.approvedPrice);
+  const billed = l.billedPrice === '' || l.billedPrice == null ? null : Number(l.billedPrice);
+  return est !== cat || (appr != null && appr !== cat) || (billed != null && billed !== cat);
+};
+const lineOutOfRange = (l: any) =>
+  outsideMinMax(l.estimatedPrice ?? l.price, l.minPrice, l.maxPrice)
+  || outsideMinMax(l.approvedPrice, l.minPrice, l.maxPrice)
+  || outsideMinMax(l.billedPrice, l.minPrice, l.maxPrice);
+const displayChargeUnit = (l: any) => {
+  if (l.confirmationStatus === 'CUSTOMER_REJECTED' || l.warrantyCovered) return 0;
+  if (l.billedPrice !== '' && l.billedPrice != null) return Number(l.billedPrice);
+  if (['CUSTOMER_APPROVED', 'IN_PROGRESS', 'COMPLETED'].includes(l.confirmationStatus) && l.approvedPrice !== '' && l.approvedPrice != null) {
+    return Number(l.approvedPrice);
+  }
+  return Number(l.estimatedPrice ?? l.price ?? 0);
+};
+const applyServiceItem = (line: any, si: any) => {
+  if (!si) return { ...line, serviceItemId: '', serviceItemName: '', catalogPrice: 0, estimatedPrice: 0, minPrice: null, maxPrice: null };
+  const catalog = Number(si.price ?? 0);
+  return {
+    ...line,
+    serviceItemId: String(si.id),
+    serviceItemName: si.item ?? '',
+    catalogPrice: catalog,
+    estimatedPrice: catalog,
+    approvedPrice: '',
+    billedPrice: '',
+    minPrice: si.minPrice != null && si.minPrice !== '' ? Number(si.minPrice) : null,
+    maxPrice: si.maxPrice != null && si.maxPrice !== '' ? Number(si.maxPrice) : null,
+    priceChangeReason: '',
+    warrantyMonths: Number(si.warrantyMonths || 0),
+    warrantyCovered: Boolean(si.focDefault),
+  };
+};
 type WorkTab = 'active' | 'payment' | 'handover' | 'closed' | 'all';
 const needsPayment = (job: any) => job.status === 'COMPLETED' && (!job.paymentStatus || Number(job.dueAmount || 0) > 0);
 const readyForHandover = (job: any) => job.status === 'COMPLETED' && Boolean(job.paymentStatus) && Number(job.dueAmount || 0) <= 0;
@@ -124,31 +202,43 @@ const getLocalToday = () => {
 };
 
 /* ── Empty states ──────────────────────────────────────────────── */
-const formatPartRequests = (value?: string | null) => {
-  if (!value?.trim()) return '';
+const PART_ACTION_LABEL: Record<string, string> = { REPLACE: 'လဲရန်', REPAIR: 'ပြုပြင်ရန်', CHECK: 'စစ်ဆေးရန်' };
+type ParsedPartRequest = { key: string; partName: string; action: string; qty: number; notice: string; label: string };
+const parsePartRequestRows = (value?: string | null): ParsedPartRequest[] => {
+  if (!value?.trim()) return [];
   try {
     const rows = JSON.parse(value);
-    if (!Array.isArray(rows)) return value;
-    return rows
-      .filter((row: any) => String(row?.partName ?? '').trim())
-      .map((row: any) => {
-        const action = ({ REPLACE: 'လဲရန်', REPAIR: 'ပြုပြင်ရန်', CHECK: 'စစ်ဆေးရန်' } as Record<string, string>)[row.action] ?? row.action ?? '';
-        const qty = Number(row.qty || 1);
-        const notice = String(row.notice ?? '').trim();
-        return `${row.partName}${action ? ` — ${action}` : ''} × ${qty}${notice ? ` (${notice})` : ''}`;
-      })
-      .join('\n');
-  } catch {
-    return value;
-  }
+    if (Array.isArray(rows)) {
+      return rows
+        .filter((row: any) => String(row?.partName ?? '').trim())
+        .map((row: any, idx: number) => {
+          const partName = String(row.partName).trim();
+          const action = String(row.action ?? '');
+          const qty = Number(row.qty || 1) || 1;
+          const notice = String(row.notice ?? '').trim();
+          const actionLabel = PART_ACTION_LABEL[action] ?? action;
+          return {
+            key: `${idx}:${partName.toLowerCase()}`,
+            partName, action, qty, notice,
+            label: `${partName}${actionLabel ? ` — ${actionLabel}` : ''} × ${qty}${notice ? ` (${notice})` : ''}`,
+          };
+        });
+    }
+  } catch { /* free-text fallback */ }
+  return String(value).split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, idx) => ({
+    key: `${idx}:${line.toLowerCase()}`,
+    partName: line, action: '', qty: 1, notice: '', label: line,
+  }));
 };
+const partRequestSearchText = (partName: string) =>
+  partName.replace(/လိုအပ်နိုင်သည်|လိုအပ်သည်|စစ်ရန်|လဲရန်|ပြုပြင်ရန်/g, ' ').replace(/\s+/g, ' ').trim() || partName;
 const emptyForm = {
   customerId: '', assignedStaffId: '', helperStaffId: '',
   itemName: '', deviceType: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
   deviceConditions: '', partRequests: '', estimatedCompletion: '', estimatedCost: '', remark: '',
   status: 'RECEIVED', holdReason: '', priority: 'NORMAL',
-  lines: [] as { serviceItemId: string; serviceItemName: string; qty: number; price: number; warrantyMonths: number; warrantyCovered: boolean; confirmationStatus: string }[],
-  productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[] }[],
+  lines: [] as ReturnType<typeof emptyServiceLine>[],
+  productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[]; convertedFromKey?: string }[],
 };
 
 const emptySettle = {
@@ -178,10 +268,11 @@ const SearchableSelect: React.FC<{
   displayField?: string;
   subField?: string;
   placeholder?: string;
+  initialSearch?: string;
   onChange: (item: any | null) => void;
-}> = ({ items, value, displayField = 'name', subField, placeholder = 'Search...', onChange }) => {
-  const [search, setSearch] = useState('');
-  const [open, setOpen] = useState(false);
+}> = ({ items, value, displayField = 'name', subField, placeholder = 'Search...', initialSearch, onChange }) => {
+  const [search, setSearch] = useState(initialSearch ?? '');
+  const [open, setOpen] = useState(Boolean(initialSearch));
   const ref = useRef<HTMLDivElement>(null);
   const safeItems = Array.isArray(items) ? items : [];
 
@@ -189,10 +280,12 @@ const SearchableSelect: React.FC<{
     if (value) {
       const item = safeItems.find(i => i && String(i.id) === String(value));
       setSearch(item ? (item[displayField] ?? '') : '');
+    } else if (initialSearch) {
+      setSearch(initialSearch);
     } else {
       setSearch('');
     }
-  }, [value, items, displayField]);
+  }, [value, items, displayField, initialSearch]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -202,12 +295,30 @@ const SearchableSelect: React.FC<{
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const filtered = safeItems.filter(i => {
-    if (!i) return false;
-    const txt = (search || '').toLowerCase();
+  const txt = (search || '').toLowerCase();
+  const itemSearchHaystack = (i: any) => {
     const name = (i[displayField] ?? '').toLowerCase();
     const sub = subField ? (i[subField] ?? '').toLowerCase() : '';
-    return name.includes(txt) || sub.includes(txt);
+    const extra = [i.productCode, i.code, i.barcode].filter(Boolean).join(' ').toLowerCase();
+    return { name, sub, extra };
+  };
+  const filtered = safeItems.filter(i => {
+    if (!i) return false;
+    if (!txt) return true;
+    const { name, sub, extra } = itemSearchHaystack(i);
+    if (name.includes(txt) || sub.includes(txt) || extra.includes(txt)) return true;
+    const tokens = txt.split(/\s+/).filter(t => /[a-z0-9]/.test(t) && t.length >= 2);
+    return tokens.length > 0 && tokens.every(t => name.includes(t) || sub.includes(t) || extra.includes(t));
+  }).sort((a, b) => {
+    if (!txt) return 0;
+    const score = (i: any) => {
+      const { name, sub, extra } = itemSearchHaystack(i);
+      if (name === txt || sub === txt || extra === txt) return 4;
+      if (name.startsWith(txt) || extra.startsWith(txt)) return 3;
+      if (name.includes(txt) || extra.includes(txt) || sub.includes(txt)) return 2;
+      return 1;
+    };
+    return score(b) - score(a);
   }).slice(0, 30);
 
   return (
@@ -236,6 +347,113 @@ const SearchableSelect: React.FC<{
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+const PartRequestConvertPanel: React.FC<{
+  partRequests: string;
+  products: any[];
+  productParts: typeof emptyForm.productParts;
+  convertedKeys: string[];
+  pickingKey: string | null;
+  showInlineSerials?: boolean;
+  onStartPick: (key: string) => void;
+  onCancelPick: () => void;
+  onConvert: (request: ParsedPartRequest, product: any) => void;
+  onPatchConvertedPart: (key: string, updater: (part: any) => any) => void;
+}> = ({ partRequests, products, productParts, convertedKeys, pickingKey, showInlineSerials, onStartPick, onCancelPick, onConvert, onPatchConvertedPart }) => {
+  const rows = parsePartRequestRows(partRequests);
+  if (!rows.length) return null;
+  return (
+    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+      <div className="text-xs font-bold text-amber-800">Booking မှ Part လိုအပ်ချက်</div>
+      {rows.map(row => {
+        const converted = convertedKeys.includes(row.key);
+        const picking = pickingKey === row.key;
+        const convertedPart = productParts.find(part => part.convertedFromKey === row.key);
+        const searchPrefill = partRequestSearchText(row.partName);
+        return (
+          <div key={row.key} className="space-y-2 rounded-lg border border-amber-200 bg-white px-3 py-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-amber-950">{row.label}</div>
+                {converted && convertedPart?.productName && (
+                  <div className="mt-0.5 text-[11px] font-semibold text-emerald-700">Stock Part: {convertedPart.productName} × {convertedPart.qty}</div>
+                )}
+              </div>
+              {converted ? (
+                <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">ပြောင်းပြီး</span>
+              ) : (
+                <button type="button"
+                  onClick={() => picking ? onCancelPick() : onStartPick(row.key)}
+                  className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">
+                  {picking ? 'ပိတ်ရန်' : 'Stock Part အဖြစ်ပြောင်း'}
+                </button>
+              )}
+            </div>
+            {picking && !converted && (
+              <div>
+                <label className="mb-0.5 block text-[10px] text-slate-500">Stock ပစ္စည်း ရွေးပါ</label>
+                <SearchableSelect
+                  key={row.key}
+                  items={products}
+                  value=""
+                  displayField="name"
+                  subField="productCode"
+                  placeholder={searchPrefill || 'ပစ္စည်း ရှာရန်...'}
+                  initialSearch={searchPrefill}
+                  onChange={prod => { if (prod) onConvert(row, prod); }}
+                />
+              </div>
+            )}
+            {showInlineSerials && converted && convertedPart?.hasSerial && convertedPart.productId && (
+              <div>
+                <label className="mb-1 block text-[10px] font-bold text-amber-600">
+                  Serial Numbers ({convertedPart.serialNumbers.length}/{convertedPart.qty})
+                  {convertedPart.serialNumbers.length !== convertedPart.qty && (
+                    <span className="ml-1 text-red-500">— {convertedPart.qty - convertedPart.serialNumbers.length} remaining</span>
+                  )}
+                </label>
+                {convertedPart.serialNumbers.length > 0 && (
+                  <div className="mb-1.5 flex flex-wrap gap-1">
+                    {convertedPart.serialNumbers.map((sn, si) => (
+                      <span key={si} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[10px] text-amber-800">
+                        {sn}
+                        <button type="button"
+                          onClick={() => onPatchConvertedPart(row.key, part => ({ ...part, serialNumbers: part.serialNumbers.filter((_: string, idx: number) => idx !== si) }))}
+                          className="font-bold leading-none text-amber-500 hover:text-red-600">x</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {convertedPart.serialNumbers.length < convertedPart.qty && (
+                  <div className="max-h-28 overflow-y-auto rounded-lg border bg-white">
+                    {(convertedPart.availableSerials || []).length === 0 ? (
+                      <div className="px-2 py-2 text-[10px] italic text-slate-400">Available serial မရှိပါ</div>
+                    ) : (
+                      (convertedPart.availableSerials || [])
+                        .filter((s: any) => s.status === 'Available' && !convertedPart.serialNumbers.includes(s.serialNumber))
+                        .map((s: any) => (
+                          <div key={s.id}
+                            onClick={() => {
+                              if (convertedPart.serialNumbers.length >= convertedPart.qty) return;
+                              onPatchConvertedPart(row.key, part => ({ ...part, serialNumbers: [...part.serialNumbers, s.serialNumber] }));
+                            }}
+                            className="flex cursor-pointer items-center justify-between border-b px-2.5 py-1.5 font-mono text-[11px] last:border-b-0 hover:bg-amber-50">
+                            <span>{s.serialNumber}</span>
+                            <span className="text-[9px] font-bold text-emerald-500">+ ရွေးပါ</span>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="text-[11px] text-amber-700">Technician စစ်ဆေးပြီးမှ Stock Part အဖြစ်ပြောင်းပါ။ Booking မူရင်းစာရင်း မပြောင်းပါ။</div>
     </div>
   );
 };
@@ -349,6 +567,79 @@ const CustomerPicker: React.FC<{
   );
 };
 
+const ServiceLinePriceFields: React.FC<{
+  line: any;
+  onPatch: (patch: Record<string, unknown>) => void;
+  canOverridePrice: boolean;
+}> = ({ line, onPatch, canOverridePrice }) => {
+  const out = lineOutOfRange(line);
+  const changed = pricesDifferFromCatalog(line);
+  const rangeHint = [
+    line.minPrice != null ? `Min ${Number(line.minPrice).toLocaleString()}` : null,
+    line.maxPrice != null ? `Max ${Number(line.maxPrice).toLocaleString()}` : null,
+  ].filter(Boolean).join(' · ');
+  const charge = displayChargeUnit(line);
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
+          <input type="number" min={1} value={line.qty}
+            onChange={e => onPatch({ qty: Number(e.target.value) })}
+            className="w-full border rounded-lg px-2 py-1.5 text-xs text-center" />
+        </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">မူရင်းဝန်ဆောင်မှုစျေး</label>
+          <input type="number" readOnly value={Number(line.catalogPrice || 0)}
+            className="w-full border rounded-lg bg-slate-100 px-2 py-1.5 text-xs text-right text-slate-500" />
+        </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">ခန့်မှန်းစျေး</label>
+          <input type="number" min={0} value={line.estimatedPrice ?? 0}
+            onChange={e => onPatch({ estimatedPrice: Number(e.target.value) })}
+            className={`w-full border rounded-lg px-2 py-1.5 text-xs text-right ${outsideMinMax(line.estimatedPrice, line.minPrice, line.maxPrice) ? 'border-rose-400 bg-rose-50' : ''}`} />
+        </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">Customer အတည်ပြုစျေး</label>
+          <input type="number" min={0} value={line.approvedPrice}
+            onChange={e => onPatch({ approvedPrice: e.target.value === '' ? '' : Number(e.target.value) })}
+            placeholder="—"
+            className={`w-full border rounded-lg px-2 py-1.5 text-xs text-right ${outsideMinMax(line.approvedPrice, line.minPrice, line.maxPrice) ? 'border-rose-400 bg-rose-50' : ''}`} />
+        </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">နောက်ဆုံးကောက်ခံစျေး</label>
+          <input type="number" min={0} value={line.billedPrice}
+            onChange={e => onPatch({ billedPrice: e.target.value === '' ? '' : Number(e.target.value) })}
+            placeholder="—"
+            className={`w-full border rounded-lg px-2 py-1.5 text-xs text-right ${outsideMinMax(line.billedPrice, line.minPrice, line.maxPrice) ? 'border-rose-400 bg-rose-50' : ''}`} />
+        </div>
+        <div className="flex items-end">
+          <p className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-500">
+            ကောက်ခံမည်: <span className={`font-bold ${line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'text-rose-600' : line.warrantyCovered ? 'text-emerald-600' : 'text-slate-700'}`}>
+              {line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'ငြင်းပယ် — 0' : line.warrantyCovered ? 'FREE' : `${(Number(line.qty || 1) * charge).toLocaleString()} Ks`}
+            </span>
+          </p>
+        </div>
+      </div>
+      {rangeHint && <p className="text-[10px] text-slate-400">{rangeHint} Ks</p>}
+      {out && (
+        <p className={`text-[10px] font-bold ${canOverridePrice ? 'text-amber-700' : 'text-rose-600'}`}>
+          {canOverridePrice ? 'Min/Max ကျော်နေသည် — Manager အတည်ပြုပြီး သိမ်းမည်' : 'Min/Max ကျော်နေသည် — Manager approval လိုအပ်သည်'}
+        </p>
+      )}
+      {changed && (
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">စျေးပြောင်းရသည့်အကြောင်းပြချက်</label>
+          <input value={line.priceChangeReason || ''}
+            onChange={e => onPatch({ priceChangeReason: e.target.value })}
+            placeholder="ဘာကြောင့် စျေးပြောင်းသလဲ"
+            className="w-full border rounded-lg px-2 py-1.5 text-xs" />
+        </div>
+      )}
+    </>
+  );
+};
+
 /* ── Main Page ─────────────────────────────────────────────────── */
 export default function ServiceJobManagement() {
   const currentUser = useMemo(() => {
@@ -356,6 +647,8 @@ export default function ServiceJobManagement() {
     catch { return {}; }
   }, []);
   const canAssignTechnician = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN');
+  const canOverridePrice = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE')
+    || (currentUser.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR');
   const myStaffId = currentUser.staffId != null ? String(currentUser.staffId) : '';
   const canPickOwnTechnician = Boolean(myStaffId);
   const technicianFieldDisabled = !canAssignTechnician && !canPickOwnTechnician;
@@ -383,6 +676,8 @@ export default function ServiceJobManagement() {
   const [origStatus, setOrigStatus] = useState('');
   const [form, setForm]           = useState(emptyForm);
   const [showAllServices, setShowAllServices] = useState(false);
+  const [convertedPartKeys, setConvertedPartKeys] = useState<string[]>([]);
+  const [pickingPartKey, setPickingPartKey] = useState<string | null>(null);
 
   const serviceFilterDeviceType = inferDeviceType(form.deviceType, form.itemName);
   const filteredServiceItems = useMemo(() => servicesForDevice(serviceItems, serviceFilterDeviceType, showAllServices), [serviceItems, serviceFilterDeviceType, showAllServices]);
@@ -566,6 +861,8 @@ export default function ServiceJobManagement() {
 
   /* ── Edit handlers ─────────────────────────────────────────── */
   const openEdit = (j: any) => {
+    setConvertedPartKeys([]);
+    setPickingPartKey(null);
     setForm({
       customerId:          String(j.customerId ?? ''),
       assignedStaffId:     canAssignTechnician
@@ -588,15 +885,7 @@ export default function ServiceJobManagement() {
       status:              j.status ?? 'RECEIVED',
       holdReason:          j.holdReason ?? '',
       priority:            j.priority ?? 'NORMAL',
-      lines: (j.lines ?? []).map((l: any) => ({
-        serviceItemId:   l.serviceItemId ?? '',
-        serviceItemName: l.serviceItemName ?? '',
-        qty:             l.qty ?? 1,
-        price:           Number(l.price ?? 0),
-        warrantyMonths:  Number(l.warrantyMonths || 0),
-        warrantyCovered: Boolean(l.warrantyCovered),
-        confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
-      })),
+      lines: (j.lines ?? []).map(mapLineFromApi),
       productParts: (j.productParts ?? []).map((p: any) => {
         const prod = products.find((pr: any) => String(pr.id) === String(p.productId));
         // detect serial: either product.hasSerial or already has serial numbers saved
@@ -638,6 +927,20 @@ export default function ServiceJobManagement() {
     });
   };
 
+  const validateServiceLinePrices = () => {
+    for (const line of form.lines.filter((item: any) => item.serviceItemId)) {
+      if (pricesDifferFromCatalog(line) && !String(line.priceChangeReason || '').trim()) {
+        Swal.fire('အမှား', `${line.serviceItemName || 'ဝန်ဆောင်မှု'} အတွက် စျေးပြောင်းရသည့်အကြောင်းပြချက် ဖြည့်ပါ`, 'error');
+        return false;
+      }
+      if (lineOutOfRange(line) && !canOverridePrice) {
+        Swal.fire('Manager approval လိုအပ်သည်', `${line.serviceItemName || 'ဝန်ဆောင်မှု'} သည် Min/Max စျေးအပြင်ကျနေသည်`, 'warning');
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleCreate = async () => {
     const serialMismatch = form.productParts.find(p => p.hasSerial && p.productId && p.serialNumbers.length !== p.qty);
     if (serialMismatch) {
@@ -652,6 +955,7 @@ export default function ServiceJobManagement() {
       Swal.fire('အမှား', 'ပစ္စည်း / ကိရိယာ အမည် ထည့်ပါ', 'error');
       return;
     }
+    if (!validateServiceLinePrices()) return;
 
     const payload = {
       customerId:          form.customerId ? Number(form.customerId) : undefined,
@@ -673,14 +977,7 @@ export default function ServiceJobManagement() {
       status:              form.status,
       holdReason:          form.holdReason || null,
       priority:            form.priority || 'NORMAL',
-      lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => ({
-        serviceItemId: Number(l.serviceItemId),
-        qty: Number(l.qty || 1),
-        price: Number(l.price || 0),
-        warrantyMonths: Number(l.warrantyMonths || 0),
-        warrantyCovered: Boolean(l.warrantyCovered),
-        confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
-      })),
+      lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => lineToPayload({ ...l, priceOverrideApproved: canOverridePrice && lineOutOfRange(l) })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
         productId: Number(p.productId),
         qty: p.qty,
@@ -706,6 +1003,7 @@ export default function ServiceJobManagement() {
       Swal.fire('Serial Number လိုအပ်ပါ', `"${serialMismatch.productName}" အတွက် serial number ${serialMismatch.qty} ခု လိုအပ်သော်လည်း ${serialMismatch.serialNumbers.length} ခု ရွေးထားပါသည်`, 'warning');
       return;
     }
+    if (!validateServiceLinePrices()) return;
     const payload = {
       customerId:          form.customerId ? Number(form.customerId) : undefined,
       assignedStaffId:     form.assignedStaffId ? Number(form.assignedStaffId) : null,
@@ -726,14 +1024,7 @@ export default function ServiceJobManagement() {
       status:              form.status,
       holdReason:          form.holdReason || null,
       priority:            form.priority || 'NORMAL',
-      lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => ({
-        serviceItemId: Number(l.serviceItemId),
-        qty: Number(l.qty || 1),
-        price: Number(l.price || 0),
-        warrantyMonths: Number(l.warrantyMonths || 0),
-        warrantyCovered: Boolean(l.warrantyCovered),
-        confirmationStatus: l.confirmationStatus || 'RECOMMENDED',
-      })),
+      lines:               form.lines.filter((l: any) => l.serviceItemId).map((l: any) => lineToPayload({ ...l, priceOverrideApproved: canOverridePrice && lineOutOfRange(l) })),
       productParts:        form.productParts.filter((p: any) => p.productId).map(p => ({
         productId: Number(p.productId),
         qty: p.qty,
@@ -1022,8 +1313,51 @@ export default function ServiceJobManagement() {
 
   const totalPages = Math.ceil(visibleRootCount / PAGE_SIZE);
 
+  const handleConvertPartRequest = (request: ParsedPartRequest, prod: any) => {
+    if (!prod) return;
+    const hs = !!prod.hasSerial;
+    const qty = Math.max(1, Number(request.qty || 1));
+    setForm(p => ({
+      ...p,
+      productParts: [...p.productParts, {
+        productId: String(prod.id),
+        productName: prod.name ?? '',
+        qty,
+        unitPrice: Number(prod.sellingPrice ?? prod.price ?? 0),
+        discountAmount: 0,
+        warrantyCovered: false,
+        hasSerial: hs,
+        serialNumbers: [],
+        availableSerials: [] as any[],
+        convertedFromKey: request.key,
+      }],
+    }));
+    setConvertedPartKeys(prev => prev.includes(request.key) ? prev : [...prev, request.key]);
+    setPickingPartKey(null);
+    if (hs) {
+      productSerialService.getByProductId(Number(prod.id)).then(serials => {
+        setForm(p => {
+          const pp = [...p.productParts];
+          const idx = pp.findIndex(part => part.convertedFromKey === request.key);
+          if (idx >= 0) pp[idx] = { ...pp[idx], availableSerials: serials ?? [] };
+          return { ...p, productParts: pp };
+        });
+      }).catch(() => {});
+    }
+  };
+  const patchConvertedPart = (key: string, updater: (part: any) => any) => {
+    setForm(p => {
+      const pp = [...p.productParts];
+      const idx = pp.findIndex(part => part.convertedFromKey === key);
+      if (idx >= 0) pp[idx] = updater(pp[idx]);
+      return { ...p, productParts: pp };
+    });
+  };
+
   const openCreate = () => {
     setShowAllServices(false);
+    setConvertedPartKeys([]);
+    setPickingPartKey(null);
     setForm({ ...emptyForm, assignedStaffId: currentUser.staffId ? String(currentUser.staffId) : '', lines: [], productParts: [] });
     setShowCreate(true);
   };
@@ -1441,13 +1775,18 @@ export default function ServiceJobManagement() {
                   rows={2} placeholder="ပစ္စည်း၏ လက်ရှိ အခြေအနေ..."
                   className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
               </div>
-              {formatPartRequests(form.partRequests) && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
-                  <div className="mb-1 text-xs font-bold text-amber-800">Booking မှ Part လိုအပ်ချက်</div>
-                  <div className="whitespace-pre-line text-sm text-amber-950">{formatPartRequests(form.partRequests)}</div>
-                  <div className="mt-1 text-[11px] text-amber-700">Technician စစ်ဆေးပြီးမှ အတည်ပြု Part စာရင်းထဲ ထည့်ပါ။</div>
-                </div>
-              )}
+              <PartRequestConvertPanel
+                partRequests={form.partRequests}
+                products={products}
+                productParts={form.productParts}
+                convertedKeys={convertedPartKeys}
+                pickingKey={pickingPartKey}
+                showInlineSerials
+                onStartPick={setPickingPartKey}
+                onCancelPick={() => setPickingPartKey(null)}
+                onConvert={handleConvertPartRequest}
+                onPatchConvertedPart={patchConvertedPart}
+              />
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1509,30 +1848,17 @@ export default function ServiceJobManagement() {
                             onChange={(si) => {
                               setForm(p => {
                                 const lines = [...p.lines];
-                                if (si) {
-                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0), warrantyMonths: Number(si.warrantyMonths || 0), warrantyCovered: Boolean(si.focDefault) };
-                                } else {
-                                  lines[li] = { ...lines[li], serviceItemId: '', serviceItemName: '', price: 0 };
-                                }
+                                lines[li] = applyServiceItem(lines[li], si);
                                 return { ...p, lines };
                               });
                             }}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
-                            <input type="number" min={1} value={line.qty}
-                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], qty: Number(e.target.value) }; return { ...p, lines }; })}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-center" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">ဈေးနှုန်း (Ks)</label>
-                            <input type="number" min={0} value={line.price}
-                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], price: Number(e.target.value) }; return { ...p, lines }; })}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
-                          </div>
-                        </div>
+                        <ServiceLinePriceFields
+                          line={line}
+                          canOverridePrice={canOverridePrice}
+                          onPatch={(patch) => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], ...patch }; return { ...p, lines }; })}
+                        />
                       </div>
                     ))}
                   </div>
@@ -1641,13 +1967,17 @@ export default function ServiceJobManagement() {
                   rows={2} placeholder="ပစ္စည်း၏ လက်ရှိ အခြေအနေ..."
                   className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
               </div>
-              {formatPartRequests(form.partRequests) && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
-                  <div className="mb-1 text-xs font-bold text-amber-800">Booking မှ Part လိုအပ်ချက်</div>
-                  <div className="whitespace-pre-line text-sm text-amber-950">{formatPartRequests(form.partRequests)}</div>
-                  <div className="mt-1 text-[11px] text-amber-700">Technician စစ်ဆေးပြီးမှ အတည်ပြု Part စာရင်းထဲ ထည့်ပါ။</div>
-                </div>
-              )}
+              <PartRequestConvertPanel
+                partRequests={form.partRequests}
+                products={products}
+                productParts={form.productParts}
+                convertedKeys={convertedPartKeys}
+                pickingKey={pickingPartKey}
+                onStartPick={setPickingPartKey}
+                onCancelPick={() => setPickingPartKey(null)}
+                onConvert={handleConvertPartRequest}
+                onPatchConvertedPart={patchConvertedPart}
+              />
 
               {/* Est. Completion + Est. Cost */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -1711,35 +2041,17 @@ export default function ServiceJobManagement() {
                             onChange={(si) => {
                               setForm(p => {
                                 const lines = [...p.lines];
-                                if (si) {
-                                  lines[li] = { ...lines[li], serviceItemId: String(si.id), serviceItemName: si.item ?? '', price: Number(si.price ?? 0), warrantyMonths: Number(si.warrantyMonths || 0), warrantyCovered: Boolean(si.focDefault) };
-                                } else {
-                                  lines[li] = { ...lines[li], serviceItemId: '', serviceItemName: '', price: 0 };
-                                }
+                                lines[li] = applyServiceItem(lines[li], si);
                                 return { ...p, lines };
                               });
                             }}
                           />
                         </div>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
-                            <input type="number" min={1} value={line.qty}
-                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], qty: Number(e.target.value) }; return { ...p, lines }; })}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-center" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">ဈေးနှုန်း (Ks)</label>
-                            <input type="number" min={0} value={line.price}
-                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], price: Number(e.target.value) }; return { ...p, lines }; })}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
-                          </div>
-                        </div>
-                        {line.serviceItemName && (
-                          <div className="text-[10px] text-slate-400">
-                            စုစုပေါင်း: <span className={`font-bold ${line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'text-rose-600' : line.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'ငြင်းပယ် — 0 Ks' : line.warrantyCovered ? 'FREE' : `${(Number(line.qty || 1) * Number(line.price || 0)).toLocaleString()} Ks`}</span>
-                          </div>
-                        )}
+                        <ServiceLinePriceFields
+                          line={line}
+                          canOverridePrice={canOverridePrice}
+                          onPatch={(patch) => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], ...patch }; return { ...p, lines }; })}
+                        />
                       </div>
                     ))}
                   </div>
@@ -2255,9 +2567,18 @@ export default function ServiceJobManagement() {
                 <p className="mb-2 text-xs font-black uppercase text-slate-500">ဝန်ဆောင်မှု အတည်ပြုမှု</p>
                 <div className="space-y-1">
                   {(logJob.lines || []).map((line: any, index: number) => (
-                    <div key={line.id || index} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs">
-                      <span className="font-semibold text-slate-700">{line.serviceItemName || `ဝန်ဆောင်မှု ${index + 1}`}</span>
-                      <span className={`rounded-full border px-2 py-0.5 font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>{lineConfirmationMeta(line.confirmationStatus).label}</span>
+                    <div key={line.id || index} className="rounded-lg border px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-slate-700">{line.serviceItemName || `ဝန်ဆောင်မှု ${index + 1}`}</span>
+                        <span className={`rounded-full border px-2 py-0.5 font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>{lineConfirmationMeta(line.confirmationStatus).label}</span>
+                      </div>
+                      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-slate-500">
+                        <span>မူရင်း: {(Number(line.catalogPrice ?? line.price ?? 0)).toLocaleString()} Ks</span>
+                        <span>ခန့်မှန်း: {(Number(line.estimatedPrice ?? line.price ?? 0)).toLocaleString()} Ks</span>
+                        <span>အတည်ပြု: {line.approvedPrice != null ? `${Number(line.approvedPrice).toLocaleString()} Ks` : '—'}</span>
+                        <span>ကောက်ခံ: {line.billedPrice != null ? `${Number(line.billedPrice).toLocaleString()} Ks` : '—'}</span>
+                      </div>
+                      {line.priceChangeReason && <p className="mt-1 text-[10px] text-amber-700">အကြောင်းပြချက်: {line.priceChangeReason}</p>}
                     </div>
                   ))}
                   {(!logJob.lines || logJob.lines.length === 0) && <p className="text-slate-400">ဝန်ဆောင်မှုမရှိသေးပါ</p>}

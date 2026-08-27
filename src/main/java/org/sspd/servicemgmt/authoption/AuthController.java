@@ -51,6 +51,7 @@ public class AuthController {
         // ၃. Frontend JSON body အတွက် AuthResponse ကို ပြန်ပေးခြင်း
         AuthResponse authResponse = new AuthResponse(
                 result.accessToken(),
+                result.refreshToken(),
                 result.username(),
                 result.name(),
                 result.phone(),

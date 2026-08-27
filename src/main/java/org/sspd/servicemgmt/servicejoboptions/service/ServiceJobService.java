@@ -26,6 +26,7 @@ import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
 import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
+import org.sspd.servicemgmt.serviceoptions.model.ServiceItem;
 import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemRepository;
 import org.sspd.servicemgmt.servicejoboptions.dto.ReworkRequestDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobActivityDTO;
@@ -387,6 +388,7 @@ public class ServiceJobService {
             creditService.enforceCreditLimitForServiceJob(customer.getId(), due, customer, job.getId());
         }
 
+        stampBilledPrices(job);
         job.setFinalCost(grossAmount);
         job.setDiscountAmount(discount);
         job.setFoc(isFoc);
@@ -919,6 +921,10 @@ public class ServiceJobService {
                 ServiceLineConfirmationStatus status = line.getConfirmationStatus();
                 if (status == ServiceLineConfirmationStatus.RECOMMENDED || status == ServiceLineConfirmationStatus.INSPECTING) {
                     line.setConfirmationStatus(ServiceLineConfirmationStatus.CUSTOMER_APPROVED);
+                    if (line.getApprovedPrice() == null) {
+                        line.setApprovedPrice(line.estimateUnitPrice());
+                    }
+                    line.refreshCharge();
                 }
             }
         }
@@ -1021,38 +1027,30 @@ public class ServiceJobService {
     private void buildLines(ServiceJob job, ServiceJobDTO dto) {
         if (dto.getLines() == null || dto.getLines().isEmpty()) return;
         if (job.getLines() == null) job.setLines(new ArrayList<>());
-        BigDecimal total = BigDecimal.ZERO;
         int minutes = 0;
         for (ServiceJobLineDTO l : dto.getLines()) {
             var svc = serviceItemRepo.findById(l.getServiceItemId())
                 .orElseThrow(() -> new ResourceNotFoundException("Service item not found: " + l.getServiceItemId()));
             int qty = l.getQty() != null ? l.getQty() : 1;
-            BigDecimal catalogPrice = svc.getPrice() != null ? svc.getPrice() : BigDecimal.ZERO;
-            BigDecimal price = catalogPrice;
-            if (l.getPrice() != null && l.getPrice().compareTo(catalogPrice) != 0) {
-                if (hasAuthority("CAN_ACCESS_SERVICE_JOB_PRICE_EDIT")) price = l.getPrice();
-            }
             boolean covered = l.getWarrantyCovered() != null
                     ? Boolean.TRUE.equals(l.getWarrantyCovered())
                     : Boolean.TRUE.equals(svc.getFocDefault());
             int warranty = l.getWarrantyMonths() != null ? l.getWarrantyMonths()
                     : (svc.getWarrantyMonths() != null ? svc.getWarrantyMonths() : 0);
             ServiceLineConfirmationStatus confirmation = ServiceLineConfirmationStatus.from(l.getConfirmationStatus());
-            BigDecimal sub = !confirmation.isBillable() || covered ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(qty));
-            job.getLines().add(ServiceJobLine.builder()
+            ServiceJobLine line = ServiceJobLine.builder()
                 .serviceJob(job)
                 .serviceItem(svc)
                 .qty(qty)
-                .price(price)
-                .subtotal(sub)
                 .warrantyMonths(warranty)
                 .warrantyCovered(covered)
                 .confirmationStatus(confirmation)
-                .build());
-            if (confirmation.isBillable()) total = total.add(sub);
+                .build();
+            applyLinePricing(line, svc, l, confirmation);
+            job.getLines().add(line);
             minutes += (svc.getDurationMinutes() != null ? svc.getDurationMinutes() : 0) * qty;
         }
-        job.setEstimatedCost(total.add(productPartsTotal(job)));
+        recalculateEstimatedCost(job);
         if (job.getEstimatedCompletion() == null && minutes > 0)
             job.setEstimatedCompletion(LocalDateTime.now().plusMinutes(minutes));
     }
@@ -1131,7 +1129,8 @@ public class ServiceJobService {
     private void recalculateEstimatedCost(ServiceJob job) {
         BigDecimal services = job.getLines() == null ? BigDecimal.ZERO : job.getLines().stream()
             .filter(ServiceJobLine::isBillable)
-            .map(line -> line.getSubtotal() != null ? line.getSubtotal() : BigDecimal.ZERO)
+            .filter(line -> !Boolean.TRUE.equals(line.getWarrantyCovered()))
+            .map(line -> line.estimateUnitPrice().multiply(BigDecimal.valueOf(line.getQty() != null ? line.getQty() : 1)))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         job.setEstimatedCost(services.add(productPartsTotal(job)));
     }
@@ -1165,6 +1164,10 @@ public class ServiceJobService {
                     && (status == ServiceLineConfirmationStatus.IN_PROGRESS
                     || status == ServiceLineConfirmationStatus.CUSTOMER_APPROVED)) {
                 line.setConfirmationStatus(ServiceLineConfirmationStatus.COMPLETED);
+                if (line.getBilledPrice() == null) {
+                    line.setBilledPrice(line.getApprovedPrice() != null ? line.getApprovedPrice() : line.estimateUnitPrice());
+                }
+                line.refreshCharge();
             }
         }
     }
@@ -1285,6 +1288,93 @@ public class ServiceJobService {
         return accountResolver.cash().getId();
     }
 
+    private void applyLinePricing(ServiceJobLine line, ServiceItem svc, ServiceJobLineDTO dto,
+                                  ServiceLineConfirmationStatus confirmation) {
+        BigDecimal catalog = dto.getCatalogPrice() != null ? dto.getCatalogPrice() : nz(svc.getPrice());
+        BigDecimal estimated = firstPrice(dto.getEstimatedPrice(), dto.getPrice(), catalog);
+        BigDecimal approved = dto.getApprovedPrice();
+        BigDecimal billed = dto.getBilledPrice();
+        if (confirmation.isCustomerConfirmed() && approved == null) {
+            approved = estimated;
+        }
+        if (confirmation == ServiceLineConfirmationStatus.COMPLETED && billed == null) {
+            billed = approved != null ? approved : estimated;
+        }
+
+        boolean changed = differs(estimated, catalog)
+                || (approved != null && differs(approved, catalog))
+                || (billed != null && differs(billed, catalog));
+        String reason = dto.getPriceChangeReason() != null ? dto.getPriceChangeReason().trim() : "";
+        if (changed && reason.isEmpty()) {
+            throw new IllegalArgumentException("စျေးပြောင်းရသည့်အကြောင်းပြချက် ဖြည့်ပါ: " + svc.getItem());
+        }
+
+        BigDecimal min = svc.getMinPrice();
+        BigDecimal max = svc.getMaxPrice();
+        boolean outOfRange = outsideRange(estimated, min, max)
+                || (approved != null && outsideRange(approved, min, max))
+                || (billed != null && outsideRange(billed, min, max));
+        boolean overrideOk = Boolean.TRUE.equals(dto.getPriceOverrideApproved())
+                || hasAuthority("CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE")
+                || isAdministrator();
+        if (outOfRange && !overrideOk) {
+            throw new AccessDeniedException("Min/Max စျေးကျော်နေသည်။ Manager approval လိုအပ်သည်: " + svc.getItem());
+        }
+
+        line.setCatalogPrice(catalog);
+        line.setEstimatedPrice(estimated);
+        line.setApprovedPrice(approved);
+        line.setBilledPrice(billed);
+        line.setMinPrice(min);
+        line.setMaxPrice(max);
+        line.setPriceChangeReason(changed ? reason : null);
+        line.setPriceOverrideApproved(outOfRange && overrideOk);
+        line.setPriceOverrideApprovedBy(outOfRange && overrideOk ? currentUsername() : null);
+        line.refreshCharge();
+    }
+
+    private void stampBilledPrices(ServiceJob job) {
+        if (job.getLines() == null) return;
+        for (ServiceJobLine line : job.getLines()) {
+            if (line.getBilledPrice() == null) {
+                line.setBilledPrice(line.getApprovedPrice() != null ? line.getApprovedPrice() : line.estimateUnitPrice());
+            }
+            if (line.getConfirmationStatus() != ServiceLineConfirmationStatus.CUSTOMER_REJECTED
+                    && line.getConfirmationStatus() != ServiceLineConfirmationStatus.COMPLETED) {
+                line.setConfirmationStatus(ServiceLineConfirmationStatus.COMPLETED);
+            }
+            line.refreshCharge();
+        }
+    }
+
+    private boolean isAdministrator() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(granted -> "ROLE_ADMINISTRATOR".equals(granted.getAuthority())
+                        || "ADMINISTRATOR".equals(granted.getAuthority()));
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private static BigDecimal firstPrice(BigDecimal... values) {
+        for (BigDecimal value : values) {
+            if (value != null) return value;
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private static boolean differs(BigDecimal left, BigDecimal right) {
+        return nz(left).compareTo(nz(right)) != 0;
+    }
+
+    private static boolean outsideRange(BigDecimal value, BigDecimal min, BigDecimal max) {
+        if (value == null) return false;
+        if (min != null && value.compareTo(min) < 0) return true;
+        return max != null && value.compareTo(max) > 0;
+    }
+
     private String generateJobNo() {
         int next = repo.findTopByOrderByIdDesc().map(j -> j.getId() + 1).orElse(1);
         return String.format("SJ-%06d", next);
@@ -1400,8 +1490,17 @@ public class ServiceJobService {
             ld.setServiceItemId(l.getServiceItem().getId());
             ld.setServiceItemName(l.getServiceItem().getItem());
             ld.setQty(l.getQty());
+            ld.setCatalogPrice(l.getCatalogPrice());
+            ld.setEstimatedPrice(l.getEstimatedPrice());
+            ld.setApprovedPrice(l.getApprovedPrice());
+            ld.setBilledPrice(l.getBilledPrice());
             ld.setPrice(l.getPrice());
             ld.setSubtotal(l.getSubtotal());
+            ld.setMinPrice(l.getMinPrice());
+            ld.setMaxPrice(l.getMaxPrice());
+            ld.setPriceChangeReason(l.getPriceChangeReason());
+            ld.setPriceOverrideApproved(Boolean.TRUE.equals(l.getPriceOverrideApproved()));
+            ld.setPriceOverrideApprovedBy(l.getPriceOverrideApprovedBy());
             ld.setWarrantyMonths(l.getWarrantyMonths());
             ld.setWarrantyCovered(Boolean.TRUE.equals(l.getWarrantyCovered()));
             ld.setConfirmationStatus(l.getConfirmationStatus().name());

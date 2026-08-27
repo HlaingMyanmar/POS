@@ -143,6 +143,9 @@ public class PurchaseSchemaMigration implements CommandLineRunner {
         addColumnIfMissing("purchases", "version", "BIGINT NOT NULL DEFAULT 0");
         addColumnIfMissing("purchase_orders", "version", "BIGINT NOT NULL DEFAULT 0");
         addColumnIfMissing("products", "version", "BIGINT NOT NULL DEFAULT 0");
+        normalizeVersionColumn("purchases");
+        normalizeVersionColumn("purchase_orders");
+        normalizeVersionColumn("products");
         addColumnIfMissing("products", "quarantined_qty", "INT NOT NULL DEFAULT 0");
 
         // Purchase return production workflow. Existing CONFIRMED rows already posted
@@ -162,6 +165,7 @@ public class PurchaseSchemaMigration implements CommandLineRunner {
             ('OTHER','Other','Legacy or other documented reason',1)
             """);
         addColumnIfMissing("purchase_returns", "version", "BIGINT NOT NULL DEFAULT 0");
+        normalizeVersionColumn("purchase_returns");
         addColumnIfMissing("purchase_returns", "submitted_by", "VARCHAR(120) NULL");
         addColumnIfMissing("purchase_returns", "submitted_at", "DATETIME(6) NULL");
         addColumnIfMissing("purchase_returns", "approved_by", "VARCHAR(120) NULL");
@@ -272,6 +276,11 @@ public class PurchaseSchemaMigration implements CommandLineRunner {
             jdbcTemplate.execute("INSERT INTO warehouses (code, name, address, active) VALUES ('MAIN', 'Main', NULL, 1)");
             log.info("Seeded default Main warehouse");
         }
+    }
+
+    private void normalizeVersionColumn(String table) {
+        jdbcTemplate.execute("UPDATE " + table + " SET version=0 WHERE version IS NULL");
+        jdbcTemplate.execute("ALTER TABLE " + table + " MODIFY COLUMN version BIGINT NOT NULL DEFAULT 0");
     }
 
     private void addColumnIfMissing(String table, String column, String definition) {

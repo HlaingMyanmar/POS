@@ -25,6 +25,8 @@ android {
 
         // Default server — override per-buildType below if needed
         buildConfigField("String", "DEFAULT_BASE_URL", "\"https://192.168.20.253:8080\"")
+        buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Manager\"")
+        buildConfigField("boolean", "TECHNICIAN_ONLY", "false")
     }
 
     signingConfigs {
@@ -47,7 +49,10 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
+            // Use a stable, unique package so this locally signed APK can be
+            // installed even when a release/debug build with another key exists.
+            applicationIdSuffix = ".clean"
+            versionNameSuffix   = "-clean"
             isDebuggable        = true
         }
     }

@@ -55,6 +55,7 @@ public class SaleSchemaMigration implements CommandLineRunner {
 
         addColumnIfMissing("sale_returns", "status", "VARCHAR(30) NOT NULL DEFAULT 'COMPLETED'");
         addColumnIfMissing("sale_returns", "version", "BIGINT NOT NULL DEFAULT 0");
+        normalizeVersionColumn("sale_returns");
         addColumnIfMissing("sale_returns", "voided_at", "DATETIME(6) NULL");
         addColumnIfMissing("sale_returns", "void_reason", "TEXT NULL");
         addColumnIfMissing("sale_returns", "voided_by", "VARCHAR(120) NULL");
@@ -124,6 +125,11 @@ public class SaleSchemaMigration implements CommandLineRunner {
             """);
         createIndexIfMissing("customer_credit_applications", "idx_cca_customer", "customer_id");
         createIndexIfMissing("customer_credit_applications", "idx_cca_sale", "sale_id");
+    }
+
+    private void normalizeVersionColumn(String table) {
+        jdbcTemplate.execute("UPDATE " + table + " SET version=0 WHERE version IS NULL");
+        jdbcTemplate.execute("ALTER TABLE " + table + " MODIFY COLUMN version BIGINT NOT NULL DEFAULT 0");
     }
 
     private void addColumnIfMissing(String table, String column, String definition) {

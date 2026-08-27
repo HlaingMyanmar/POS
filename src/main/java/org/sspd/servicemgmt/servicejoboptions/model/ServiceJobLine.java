@@ -27,11 +27,39 @@ public class ServiceJobLine {
     @Column(name = "qty")
     private Integer qty;
 
+    @Column(name = "catalog_price", precision = 15, scale = 2)
+    private BigDecimal catalogPrice;
+
+    @Column(name = "estimated_price", precision = 15, scale = 2)
+    private BigDecimal estimatedPrice;
+
+    @Column(name = "approved_price", precision = 15, scale = 2)
+    private BigDecimal approvedPrice;
+
+    @Column(name = "billed_price", precision = 15, scale = 2)
+    private BigDecimal billedPrice;
+
     @Column(name = "price", precision = 15, scale = 2)
     private BigDecimal price;
 
     @Column(name = "subtotal", precision = 15, scale = 2)
     private BigDecimal subtotal;
+
+    @Column(name = "min_price", precision = 15, scale = 2)
+    private BigDecimal minPrice;
+
+    @Column(name = "max_price", precision = 15, scale = 2)
+    private BigDecimal maxPrice;
+
+    @Column(name = "price_change_reason", length = 500)
+    private String priceChangeReason;
+
+    @Builder.Default
+    @Column(name = "price_override_approved")
+    private Boolean priceOverrideApproved = Boolean.FALSE;
+
+    @Column(name = "price_override_approved_by", length = 120)
+    private String priceOverrideApprovedBy;
 
     @Column(name = "warranty_months")
     private Integer warrantyMonths;
@@ -52,5 +80,27 @@ public class ServiceJobLine {
 
     public boolean isBillable() {
         return getConfirmationStatus().isBillable();
+    }
+
+    public BigDecimal chargeUnitPrice() {
+        if (!isBillable() || Boolean.TRUE.equals(warrantyCovered)) return BigDecimal.ZERO;
+        if (billedPrice != null) return billedPrice;
+        if (getConfirmationStatus().isCustomerConfirmed() && approvedPrice != null) return approvedPrice;
+        if (estimatedPrice != null) return estimatedPrice;
+        if (price != null) return price;
+        return catalogPrice != null ? catalogPrice : BigDecimal.ZERO;
+    }
+
+    public BigDecimal estimateUnitPrice() {
+        if (estimatedPrice != null) return estimatedPrice;
+        if (price != null) return price;
+        return catalogPrice != null ? catalogPrice : BigDecimal.ZERO;
+    }
+
+    public void refreshCharge() {
+        BigDecimal unit = chargeUnitPrice();
+        this.price = unit;
+        int q = qty != null ? qty : 1;
+        this.subtotal = unit.multiply(BigDecimal.valueOf(q));
     }
 }

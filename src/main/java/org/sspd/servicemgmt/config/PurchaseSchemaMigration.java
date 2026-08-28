@@ -3,6 +3,7 @@ package org.sspd.servicemgmt.config;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import java.util.Locale;
 
 /** Small idempotent migration for purchase-related schema upgrades. */
 @Component
+@ConditionalOnProperty(name = "app.schema.java-migrations.enabled", havingValue = "true")
 @Order(3)
 @RequiredArgsConstructor
 @Slf4j

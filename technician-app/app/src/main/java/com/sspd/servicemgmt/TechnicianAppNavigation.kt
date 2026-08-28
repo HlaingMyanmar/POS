@@ -88,6 +88,7 @@ import com.sspd.servicemgmt.feature.service.job.ServiceJobListScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobPrintScreen
 import com.sspd.servicemgmt.feature.settings.AboutScreen
 import com.sspd.servicemgmt.feature.settings.AccountSettingsScreen
+import com.sspd.servicemgmt.feature.settings.SoftwareUpdateScreen
 
 private val ExpoOut = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 private const val ANIM_MS = 280
@@ -394,6 +395,7 @@ fun TechnicianAppNavigation() {
                     screen(Screen.ServiceMgmt.route) { ServiceManagementScreen { nav.popBackStack() } }
                     screen(Screen.Chat.route) { ChatScreen { nav.popBackStack() } }
                     screen(Screen.Account.route) { AccountSettingsScreen { nav.popBackStack() } }
+                    screen(Screen.SoftwareUpdate.route) { SoftwareUpdateScreen { nav.popBackStack() } }
                     screen(Screen.About.route) { AboutScreen { nav.popBackStack() } }
                 }
             }

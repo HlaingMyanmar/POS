@@ -29,7 +29,8 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile     = file(localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore"))
+            val keystorePath = localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore")
+            storeFile     = file(keystorePath)
             storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
             keyAlias      = localProps.getProperty("KEY_ALIAS", "sspd")
             keyPassword   = localProps.getProperty("KEY_PASSWORD", "")
@@ -71,6 +72,23 @@ android {
         jniLibs   { useLegacyPackaging = false }
     }
 
+}
+
+fun requireReleaseSigning() {
+    val keystore = file(localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore"))
+    val storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
+    val keyPassword = localProps.getProperty("KEY_PASSWORD", "")
+    val alias = localProps.getProperty("KEY_ALIAS", "sspd")
+    require(keystore.isFile) {
+        "Release keystore not found: ${keystore.absolutePath}. Set KEYSTORE_PATH in technician-app/local.properties."
+    }
+    require(storePassword.isNotBlank() && keyPassword.isNotBlank() && alias.isNotBlank()) {
+        "KEYSTORE_PASSWORD, KEY_PASSWORD, and KEY_ALIAS must be set in technician-app/local.properties."
+    }
+}
+
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    doFirst { requireReleaseSigning() }
 }
 
 

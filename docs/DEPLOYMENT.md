@@ -47,7 +47,7 @@ Set on the server (do not commit real values):
 | `server.ssl.*` | HTTPS on the JVM; keystore `classpath:keystore.p12` |
 | `app.cors.allowed-origins` | Needed if the browser origin is not the API origin |
 | `app.download.base-url` | Public URL baked into APK download links |
-| `app.apk.storage-dir` | Directory must exist |
+| `app.apk.storage-dir` | Directory must exist; holds `servicemgmt.apk` and `technician.apk` |
 | `backup.root-directory` and related `backup.*` | File backups (see [BACKUP-RESTORE.md](BACKUP-RESTORE.md)) |
 | `server.port` / `server.address` | Default `8080` / `0.0.0.0` |
 

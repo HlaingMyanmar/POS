@@ -39,6 +39,25 @@ public class AppVersionSettingsController {
 
     @PostMapping("/upload-apk")
     public ResponseEntity<ApiResponse<String>> uploadApk(@RequestParam("file") MultipartFile file) {
+        return storeApk(file, "servicemgmt.apk");
+    }
+
+    @PostMapping("/upload-technician-apk")
+    public ResponseEntity<ApiResponse<String>> uploadTechnicianApk(@RequestParam("file") MultipartFile file) {
+        return storeApk(file, "technician.apk");
+    }
+
+    @GetMapping("/apk-exists")
+    public ResponseEntity<ApiResponse<Boolean>> apkExists() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", apkFile("servicemgmt.apk").exists()));
+    }
+
+    @GetMapping("/technician-apk-exists")
+    public ResponseEntity<ApiResponse<Boolean>> technicianApkExists() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", apkFile("technician.apk").exists()));
+    }
+
+    private ResponseEntity<ApiResponse<String>> storeApk(MultipartFile file, String fileName) {
         try {
             if (file == null || file.isEmpty()) {
                 return ResponseEntity.ok(new ApiResponse<>(false, "APK file မပါပါ", null));
@@ -49,7 +68,7 @@ public class AppVersionSettingsController {
             }
             Path dir = Paths.get(apkStorageDir);
             Files.createDirectories(dir);
-            Path dest = dir.resolve("servicemgmt.apk");
+            Path dest = dir.resolve(fileName);
             Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
             return ResponseEntity.ok(new ApiResponse<>(true, "APK upload ပြီး", dest.toString()));
         } catch (Exception e) {
@@ -57,9 +76,7 @@ public class AppVersionSettingsController {
         }
     }
 
-    @GetMapping("/apk-exists")
-    public ResponseEntity<ApiResponse<Boolean>> apkExists() {
-        File f = new File(apkStorageDir, "servicemgmt.apk");
-        return ResponseEntity.ok(new ApiResponse<>(true, "OK", f.exists()));
+    private File apkFile(String fileName) {
+        return new File(apkStorageDir, fileName);
     }
 }

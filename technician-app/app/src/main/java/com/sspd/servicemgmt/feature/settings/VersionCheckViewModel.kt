@@ -45,7 +45,7 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
     private fun doCheck() {
         viewModelScope.launch {
             try {
-                val res = ApiClient.service.getAppVersion()
+                val res = ApiClient.service.getTechnicianAppVersion()
                 val dto = res.body()?.data ?: return@launch
                 if (dto.versionCode > BuildConfig.VERSION_CODE) {
                     _state.update { it.copy(update = dto, checked = true) }
@@ -76,7 +76,7 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
                 if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
                 val body = response.body ?: throw Exception("Empty response")
                 val contentLength = body.contentLength()
-                val outFile = File(getApplication<Application>().cacheDir, "servicemgmt-update.apk")
+                val outFile = File(getApplication<Application>().cacheDir, "technician-update.apk")
                 outFile.outputStream().use { out ->
                     var downloaded = 0L
                     body.byteStream().use { inp ->

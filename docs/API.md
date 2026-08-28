@@ -77,7 +77,8 @@ Login success wraps `AuthResponse` in `ApiResponse`.
 | POST | `/api/v1/setup/initialize` | Authenticated `/api/**` | Write company + payment methods (`SetupInitDTO`) |
 | GET | `/api/v1/company-settings` | Public GET | Company profile |
 | POST | `/api/v1/company-settings` | JWT only, **no permission** | Save settings |
-| GET | `/api/v1/app/version` | Public GET | App version + APK URL if file exists |
+| GET | `/api/v1/app/version` | Public GET | POS Manager version + `/app/servicemgmt.apk` URL if file exists |
+| GET | `/api/v1/app/technician/version` | Public GET | Technician version + `/app/technician.apk` URL if file exists |
 | POST | `/api/v1/scan` | Public POST | Broadcast barcode to `/topic/barcode-scan` `{ "barcode": "..." }` |
 
 ---

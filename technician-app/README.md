@@ -33,4 +33,18 @@ KEY_ALIAS=sspd
 KEY_PASSWORD=your-password
 ```
 
+`assembleRelease` fails if the keystore file or passwords are missing.
+
 Do not commit keystores, passwords, `local.properties`, or generated build directories.
+
+## Release and in-app update
+
+1. Increment `versionCode` (and optionally `versionName`) in `app/build.gradle.kts`.
+2. Set `DEFAULT_BASE_URL` to the production HTTPS server.
+3. Run `.\gradlew.bat assembleRelease`.
+4. Output: `app/build/outputs/apk/release/app-release.apk`.
+5. In the web admin, open **Settings → App Version → Technician**.
+6. Upload the APK (stored as `technician.apk`), set version code **greater than** installed devices, write changelog, then Save.
+7. Technicians receive an update dialog on Home, or can open **Software Update** from the drawer.
+
+The technician app checks `GET /api/v1/app/technician/version` and downloads `/app/technician.apk`. It does not use the POS Manager APK.

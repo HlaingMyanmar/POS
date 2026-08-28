@@ -28,20 +28,45 @@ public class AppVersionController {
     @GetMapping("/version")
     public ResponseEntity<ApiResponse<AppVersionResponse>> getVersion() {
         AppVersionSettings s = versionSettingsService.getOrCreate();
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", toResponse(
+                s.getVersionCode(),
+                s.getVersionName(),
+                s.isForceUpdate(),
+                s.getChangelog(),
+                "servicemgmt.apk"
+        )));
+    }
+
+    @GetMapping("/technician/version")
+    public ResponseEntity<ApiResponse<AppVersionResponse>> getTechnicianVersion() {
+        AppVersionSettings s = versionSettingsService.getOrCreate();
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", toResponse(
+                s.getTechnicianVersionCode() == null ? 1 : s.getTechnicianVersionCode(),
+                s.getTechnicianVersionName() == null ? "1.0.0" : s.getTechnicianVersionName(),
+                s.isTechnicianForceUpdate(),
+                s.getTechnicianChangelog(),
+                "technician.apk"
+        )));
+    }
+
+    private AppVersionResponse toResponse(
+            Integer versionCode,
+            String versionName,
+            boolean forceUpdate,
+            String changelog,
+            String apkFileName
+    ) {
         String base = downloadBaseUrl.endsWith("/")
                 ? downloadBaseUrl.substring(0, downloadBaseUrl.length() - 1)
                 : downloadBaseUrl;
-
-        boolean apkReady = new File(apkStorageDir, "servicemgmt.apk").exists();
-
+        boolean apkReady = new File(apkStorageDir, apkFileName).exists();
         AppVersionResponse v = new AppVersionResponse();
-        v.setVersionCode(s.getVersionCode());
-        v.setVersionName(s.getVersionName());
-        v.setForceUpdate(s.isForceUpdate());
-        v.setChangelog(s.getChangelog() != null ? s.getChangelog() : "");
-        v.setDownloadUrl(apkReady ? base + "/app/servicemgmt.apk" : "");
-
-        return ResponseEntity.ok(new ApiResponse<>(true, "OK", v));
+        v.setVersionCode(versionCode == null ? 0 : versionCode);
+        v.setVersionName(versionName == null ? "" : versionName);
+        v.setForceUpdate(forceUpdate);
+        v.setChangelog(changelog != null ? changelog : "");
+        v.setDownloadUrl(apkReady ? base + "/app/" + apkFileName : "");
+        return v;
     }
 
     @Data

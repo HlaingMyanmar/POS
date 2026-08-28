@@ -42,6 +42,7 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/setup/status").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/company-settings").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/version").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/technician/version").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/scan").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()

@@ -39,7 +39,13 @@ Hibernate `spring.jpa.hibernate.ddl-auto=update` creates/updates tables on start
 
 ## 4. Configure the backend
 
-Edit `src/main/resources/application.properties` (there is no backend `.env` file).
+Copy the tracked template to the Git-ignored local secrets file, then replace its placeholders:
+
+```powershell
+Copy-Item .\application-secrets.properties.example .\application-secrets.properties
+```
+
+Non-secret defaults remain in `src/main/resources/application.properties`. Environment variables can be used instead and take precedence; see [SECRETS-SETUP.md](SECRETS-SETUP.md).
 
 Set at least:
 
@@ -55,7 +61,7 @@ Set at least:
 | `app.apk.storage-dir` | Folder for Android APK uploads (must exist if you use version settings) |
 | `backup.root-directory` | Backup root (default `./Backup`) |
 
-Do not commit production passwords or JWT secrets.
+Do not commit `application-secrets.properties`, production passwords, JWT secrets, or private keystores.
 
 **HTTPS:** `server.ssl.enabled=true`. Browsers and tools will warn about the self-signed cert. Vite proxy sets `secure: false`.
 

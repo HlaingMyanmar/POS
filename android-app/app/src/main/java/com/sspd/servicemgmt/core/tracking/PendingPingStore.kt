@@ -50,17 +50,6 @@ class PendingPingStore(context: Context) : SQLiteOpenHelper(context, "technician
         return rows
     }
 
-    fun visitIds(): List<Long> {
-        val ids = mutableListOf<Long>()
-        readableDatabase.rawQuery(
-            "SELECT DISTINCT visit_id FROM pending_location_pings ORDER BY visit_id",
-            emptyArray()
-        ).use { cursor ->
-            while (cursor.moveToNext()) ids += cursor.getLong(0)
-        }
-        return ids
-    }
-
     fun remove(ids: Collection<String>) {
         if (ids.isEmpty()) return
         val placeholders = ids.joinToString(",") { "?" }

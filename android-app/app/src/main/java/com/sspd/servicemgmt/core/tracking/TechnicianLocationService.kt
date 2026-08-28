@@ -13,7 +13,8 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.LocationCallback
 import com.sspd.servicemgmt.R
-import com.sspd.servicemgmt.TechnicianMainActivity
+import com.sspd.servicemgmt.MainActivity
+import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,9 +55,7 @@ class TechnicianLocationService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        prefs.trackingPaused = false
         startUpdates(visitId, prefs.activeVisitStatus == "ON_SITE")
-        PendingPingSyncWorker.enqueue(this)
         return START_STICKY
     }
 
@@ -71,7 +70,6 @@ class TechnicianLocationService : Service() {
     private suspend fun handleFix(visitId: Long, fix: LocationFix) {
         val ping = fix.toPing()
         store.enqueue(visitId, ping)
-        PendingPingSyncWorker.enqueue(this)
         val now = System.currentTimeMillis()
         if (now - lastHeartbeatAt < 20_000L) return
         lastHeartbeatAt = now
@@ -79,14 +77,25 @@ class TechnicianLocationService : Service() {
     }
 
     private suspend fun flush(visitId: Long) {
-        if (!VisitTracker.flushPending(this, visitId)) {
-            PendingPingSyncWorker.enqueue(this)
+        val pending = store.pending(visitId)
+        if (pending.isEmpty()) return
+        val prefs = PreferenceManager(this)
+        val token = ApiClient.bearer(prefs.authToken)
+        runCatching {
+            val res = if (pending.size == 1) {
+                ApiClient.service.pingTechnicianVisit(token, visitId, pending.first())
+            } else {
+                ApiClient.service.pingTechnicianVisitBatch(token, visitId, pending)
+            }
+            if (res.isSuccessful) {
+                store.remove(pending.map { it.clientPingId })
+                res.body()?.data?.let { VisitTracker.onServerVisit(it) }
+            }
         }
     }
 
     override fun onDestroy() {
         callback?.let { locationClient.stopUpdates(it) }
-        PendingPingSyncWorker.enqueue(this)
         scope.cancel()
         super.onDestroy()
     }
@@ -102,7 +111,7 @@ class TechnicianLocationService : Service() {
 
     private fun buildNotification(jobNo: String, customer: String): Notification {
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, TechnicianMainActivity::class.java),
+            this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val stop = PendingIntent.getService(

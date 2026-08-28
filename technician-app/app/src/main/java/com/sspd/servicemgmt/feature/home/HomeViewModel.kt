@@ -114,6 +114,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
+        VisitTracker.stopServiceOnly(getApplication())
         prefs.clear()
         _uiState.update { it.copy(isLoggedOut = true) }
     }

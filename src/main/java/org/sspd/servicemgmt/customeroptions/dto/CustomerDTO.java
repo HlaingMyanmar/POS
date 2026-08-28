@@ -22,5 +22,11 @@ public class CustomerDTO {
     private String creditHoldReason;
     private Boolean blacklisted;
     private String blacklistReason;
+    private java.math.BigDecimal latitude;
+    private java.math.BigDecimal longitude;
+    private java.math.BigDecimal locationAccuracy;
+    private java.time.LocalDateTime locationCapturedAt;
+    private String locationCapturedBy;
+    private String locationSource;
     private java.math.BigDecimal advanceBalance;
 }

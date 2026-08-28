@@ -35,7 +35,7 @@ import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 type ModalTab = 'basic' | 'credit' | 'payments' | 'history';
 type StatusFilter = 'all' | 'normal' | 'hold' | 'blacklist' | 'hasDue' | 'overdue';
 
-const DEFAULT_BASIC = { name: '', phone: '', address: '' };
+const DEFAULT_BASIC = { name: '', phone: '', address: '', latitude: null as number | null, longitude: null as number | null };
 const DEFAULT_CONTROL = {
   creditHold: false,
   creditHoldReason: '',
@@ -87,6 +87,7 @@ const CustomerManagement: React.FC = () => {
   const [history, setHistory] = useState<CustomerCreditTermHistoryDTO[]>([]);
 
   const [basicForm, setBasicForm] = useState(DEFAULT_BASIC);
+  const [capturingLocation, setCapturingLocation] = useState(false);
   const [controlForm, setControlForm] = useState(DEFAULT_CONTROL);
   const [termForm, setTermForm] = useState(DEFAULT_TERM);
   const [paymentForm, setPaymentForm] = useState(DEFAULT_PAYMENT);
@@ -290,7 +291,9 @@ const CustomerManagement: React.FC = () => {
     setBasicForm({
       name: customer.name || '',
       phone: customer.phone || '',
-      address: customer.address || ''
+      address: customer.address || '',
+      latitude: customer.latitude ?? null,
+      longitude: customer.longitude ?? null
     });
     setControlForm({
       creditHold: Boolean(customer.creditHold),
@@ -370,11 +373,21 @@ const CustomerManagement: React.FC = () => {
         creditHold: controlForm.creditHold,
         creditHoldReason: controlForm.creditHold ? controlForm.creditHoldReason.trim() : '',
         blacklisted: controlForm.blacklisted,
-        blacklistReason: controlForm.blacklisted ? controlForm.blacklistReason.trim() : ''
+        blacklistReason: controlForm.blacklisted ? controlForm.blacklistReason.trim() : '',
+        latitude: basicForm.latitude ?? undefined,
+        longitude: basicForm.longitude ?? undefined,
+        locationSource: 'WEB'
       };
 
       if (editingCustomer) {
         await customerService.update(editingCustomer.id, payload);
+        if (basicForm.latitude != null && basicForm.longitude != null) {
+          await customerService.updateLocation(editingCustomer.id, {
+            latitude: basicForm.latitude,
+            longitude: basicForm.longitude,
+            source: 'WEB'
+          });
+        }
         await saveTerm(editingCustomer.id);
       } else {
         const created = await customerService.create(payload);
@@ -757,6 +770,41 @@ const CustomerManagement: React.FC = () => {
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm"
                       placeholder="ဖောက်သည်လိပ်စာ"
                     />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!navigator.geolocation) {
+                            Swal.fire('Location', 'ဤ browser မှာ GPS မရပါ။ လိပ်စာနဲ့ သိမ်းလို့ရသည်။', 'info');
+                            return;
+                          }
+                          setCapturingLocation(true);
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              setBasicForm((prev) => ({
+                                ...prev,
+                                latitude: pos.coords.latitude,
+                                longitude: pos.coords.longitude
+                              }));
+                              setCapturingLocation(false);
+                            },
+                            () => {
+                              setCapturingLocation(false);
+                              Swal.fire('Location', 'GPS မရပါ။ လိပ်စာနဲ့ ဆက်သိမ်းလို့ရသည်။', 'info');
+                            },
+                            { enableHighAccuracy: true, timeout: 12000 }
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        {capturingLocation ? 'နေရာယူနေသည်…' : basicForm.latitude != null ? 'Location ရပြီး (optional)' : 'လက်ရှိနေရာယူမယ် (optional)'}
+                      </button>
+                      {basicForm.latitude != null && basicForm.longitude != null && (
+                        <span className="text-[11px] text-slate-500">
+                          {basicForm.latitude.toFixed(5)}, {basicForm.longitude.toFixed(5)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

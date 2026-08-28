@@ -58,6 +58,7 @@ import OpeningBalancePage from './pages/OpeningBalancePage';
 import OpeningStockPage from './pages/OpeningStockPage';
 import AppVersionSettingsPage from './pages/AppVersionSettingsPage';
 import ManufacturingManagement from './pages/ManufacturingManagement';
+import OutdoorTracking from './pages/OutdoorTracking';
 import Layout from './components/Layout';
 import { User, AppLanguage, AppRoute, AppTheme } from './types';
 import { getFromSession } from './utils/storageHelper';
@@ -270,6 +271,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.SERVICE_JOBS}        element={guard(<ServiceJobManagement />,       'CAN_ACCESS_SERVICE_JOB_READ')} />
           <Route path={AppRoute.SERVICE_HELP}        element={guard(<ServiceHelpPage />)} />
           <Route path={AppRoute.SHELF_LOCATIONS}     element={guard(<ShelfLocationManagement />,    'CAN_ACCESS_SHELF_LOCATION_READ')} />
+          <Route path={AppRoute.OUTDOOR_TRACKING}    element={guard(<OutdoorTracking />,            'CAN_ACCESS_TECHNICIAN_LOCATION_READ')} />
           <Route path={AppRoute.BACKUP}              element={guard(<BackupSettings />,             'CAN_ACCESS_BACKUP_SETTINGS_READ')} />
           <Route path={AppRoute.COMPANY_SETTINGS}    element={guard(<CompanySettingsPage />)} />
           <Route path={AppRoute.VOUCHER_SETTINGS}    element={guard(<VoucherSettingsPage />)} />

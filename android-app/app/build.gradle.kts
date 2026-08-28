@@ -24,7 +24,7 @@ android {
         vectorDrawables { useSupportLibrary = true }
 
         // Default server — override per-buildType below if needed
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://192.168.20.253:8080\"")
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://192.168.1.253:8080\"")
         buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Manager\"")
         buildConfigField("boolean", "TECHNICIAN_ONLY", "false")
     }

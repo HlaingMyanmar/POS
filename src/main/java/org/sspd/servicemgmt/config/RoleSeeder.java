@@ -31,7 +31,9 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_SERVICE_JOB_REWORK",
             "CAN_ACCESS_BOOKING_READ",
             "CAN_ACCESS_BOOKING_UPDATE",
-            "CAN_ACCESS_STAFF_READ"
+            "CAN_ACCESS_STAFF_READ",
+            "CAN_ACCESS_TECHNICIAN_VISIT_START",
+            "CAN_ACCESS_CUSTOMER_LOCATION_UPDATE"
     );
 
     private static final List<String> CASHIER_PERMISSIONS = List.of(
@@ -51,7 +53,8 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_SALE_READ",
             "CAN_ACCESS_SALE_CREATE",
             "CAN_ACCESS_SALE_UPDATE",
-            "CAN_ACCESS_PAYMENT_TRANSACTION_CREATE"
+            "CAN_ACCESS_PAYMENT_TRANSACTION_CREATE",
+            "CAN_ACCESS_TECHNICIAN_LOCATION_READ"
     );
 
     private final RoleRepository repository;
@@ -73,6 +76,8 @@ public class RoleSeeder implements CommandLineRunner {
 
         fillIfEmpty("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
         fillIfEmpty("CASHIER", CASHIER_PERMISSIONS, allPermissions);
+        ensurePermissions("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
+        ensurePermissions("CASHIER", List.of("CAN_ACCESS_TECHNICIAN_LOCATION_READ"), allPermissions);
         stripTechnicianAssignPermission();
         for (Role role : repository.findAll()) {
             String name = role.getName() == null ? "" : role.getName().toUpperCase();
@@ -96,6 +101,24 @@ public class RoleSeeder implements CommandLineRunner {
             if (!removed) continue;
             repository.save(role);
             log.info("Removed CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN from technician role {}", role.getName());
+        }
+    }
+
+    private void ensurePermissions(String roleName, List<String> permissionNames, List<Permission> allPermissions) {
+        Role role = repository.findByName(roleName).orElse(null);
+        if (role == null) return;
+        if (role.getPermissions() == null) role.setPermissions(new HashSet<>());
+        Set<String> have = role.getPermissions().stream().map(Permission::getName).collect(Collectors.toSet());
+        boolean changed = false;
+        for (Permission permission : allPermissions) {
+            if (permissionNames.contains(permission.getName()) && have.add(permission.getName())) {
+                role.getPermissions().add(permission);
+                changed = true;
+            }
+        }
+        if (changed) {
+            repository.save(role);
+            log.info("Added missing outdoor-tracking permissions to {}", roleName);
         }
     }
 

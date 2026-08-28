@@ -33,6 +33,10 @@ public class CustomerService {
         Customer entity = mapper.toEntity(dto);
         entity.setCreditHold(Boolean.TRUE);
         entity.setCreditHoldReason("New customer – pending credit review");
+        if (entity.getLatitude() != null && entity.getLongitude() != null) {
+            entity.setLocationCapturedAt(java.time.LocalDateTime.now());
+            entity.setLocationSource(dto.getLocationSource() == null ? "ANDROID" : dto.getLocationSource());
+        }
         Customer savedEntity = repository.save(entity);
 
         messagingTemplate.convertAndSend(CUSTOMER_TOPIC, "CUSTOMER_CREATED");
@@ -95,5 +99,30 @@ public class CustomerService {
         // တကယ်လို့ ဒီ Customer က Booking တင်ထားတာရှိရင် ဖျက်လို့မရအောင် logic ထည့်လို့ရပါတယ်
         repository.delete(entity);
         messagingTemplate.convertAndSend(CUSTOMER_TOPIC, "CUSTOMER_DELETED");
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_LOCATION_UPDATE')")
+    @Transactional
+    public CustomerDTO updateLocation(Integer id, java.math.BigDecimal latitude, java.math.BigDecimal longitude,
+                                      java.math.BigDecimal accuracy, String source, String capturedBy) {
+        if (latitude == null || longitude == null
+                || latitude.compareTo(java.math.BigDecimal.valueOf(-90)) < 0
+                || latitude.compareTo(java.math.BigDecimal.valueOf(90)) > 0
+                || longitude.compareTo(java.math.BigDecimal.valueOf(-180)) < 0
+                || longitude.compareTo(java.math.BigDecimal.valueOf(180)) > 0
+                || (accuracy != null && accuracy.signum() < 0)) {
+            throw new IllegalArgumentException("Invalid location coordinates");
+        }
+        Customer customer = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer Not Found with id " + id));
+        customer.setLatitude(latitude);
+        customer.setLongitude(longitude);
+        customer.setLocationAccuracy(accuracy);
+        customer.setLocationCapturedAt(java.time.LocalDateTime.now());
+        customer.setLocationCapturedBy(capturedBy);
+        customer.setLocationSource(source == null || source.isBlank() ? "ARRIVAL" : source);
+        Customer saved = repository.save(customer);
+        messagingTemplate.convertAndSend(CUSTOMER_TOPIC, "CUSTOMER_UPDATED");
+        return mapper.toDto(saved);
     }
 }

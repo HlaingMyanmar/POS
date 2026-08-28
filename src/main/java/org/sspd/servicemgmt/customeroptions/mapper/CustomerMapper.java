@@ -16,9 +16,18 @@ public interface CustomerMapper {
     CustomerDTO toDto(Customer entity);
 
     @Mapping(target = "advanceBalance", ignore = true)
+    @Mapping(target = "locationCapturedAt", ignore = true)
+    @Mapping(target = "locationCapturedBy", ignore = true)
+    @Mapping(target = "locationSource", ignore = true)
     Customer toEntity(CustomerDTO dto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "advanceBalance", ignore = true)
+    @Mapping(target = "latitude", ignore = true)
+    @Mapping(target = "longitude", ignore = true)
+    @Mapping(target = "locationAccuracy", ignore = true)
+    @Mapping(target = "locationCapturedAt", ignore = true)
+    @Mapping(target = "locationCapturedBy", ignore = true)
+    @Mapping(target = "locationSource", ignore = true)
     void updateEntityFromDto(CustomerDTO dto, @MappingTarget Customer entity);
 }

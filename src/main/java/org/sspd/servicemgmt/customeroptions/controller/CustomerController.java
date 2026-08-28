@@ -9,6 +9,9 @@ import org.sspd.servicemgmt.customeroptions.dto.CustomerDTO;
 import org.sspd.servicemgmt.customeroptions.service.CustomerService;
 
 import java.util.List;
+import java.math.BigDecimal;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/v1/customers")
@@ -59,4 +62,24 @@ public class CustomerController {
                 new ApiResponse<>(true, "Customer Deleted Successfully", null)
         );
     }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_LOCATION_UPDATE')")
+    @PatchMapping("/{id}/location")
+    public ResponseEntity<ApiResponse<CustomerDTO>> updateLocation(
+            @PathVariable Integer id,
+            @RequestBody CustomerLocationRequest request,
+            Authentication authentication) {
+        CustomerDTO updated = service.updateLocation(
+                id,
+                request.latitude(),
+                request.longitude(),
+                request.accuracy(),
+                request.source(),
+                authentication == null ? null : authentication.getName()
+        );
+        return ResponseEntity.ok(new ApiResponse<>(true, "Customer location updated", updated));
+    }
+
+    public record CustomerLocationRequest(BigDecimal latitude, BigDecimal longitude,
+                                          BigDecimal accuracy, String source) {}
 }

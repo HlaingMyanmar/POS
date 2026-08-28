@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Main app theme — applied after splash screen exits -->
+    <style name="Theme.SSPDManager" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!--
+        Splash screen theme — applied at cold launch via installSplashScreen().
+        Background : Primary blue  #2563EB
+        Icon       : ic_launcher_foreground (white circle + blue S lettermark)
+        After exit : swaps to Theme.SSPDManager automatically
+    -->
+    <style name="Theme.SSPDManager.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#2563EB</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">#2563EB</item>
+        <item name="postSplashScreenTheme">@style/Theme.SSPDManager</item>
+    </style>
+
+</resources>

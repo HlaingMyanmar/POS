@@ -242,14 +242,18 @@ public enum PermissionName {
     CAN_ACCESS_SHELF_LOCATION_READ("Shelf Location စာရင်းများကို ကြည့်ရှုခွင့်"),
     CAN_ACCESS_SHELF_LOCATION_CREATE("Shelf Location အသစ်ဖန်တီးခွင့်"),
     CAN_ACCESS_SHELF_LOCATION_UPDATE("Shelf Location ပြင်ဆင်ခွင့်"),
-    CAN_ACCESS_SHELF_LOCATION_DELETE("Shelf Location ဖျက်သိမ်းခွင့်");
+    CAN_ACCESS_SHELF_LOCATION_DELETE("Shelf Location ဖျက်သိမ်းခွင့်"),
+    CAN_ACCESS_TECHNICIAN_VISIT_START("Technician outdoor visit စတင်/ရောက်/ပိတ်ခွင့်"),
+    CAN_ACCESS_TECHNICIAN_LOCATION_READ("Technician live location ကြည့်ခွင့်"),
+    CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ("Technician route history ကြည့်ခွင့်"),
+    CAN_ACCESS_CUSTOMER_LOCATION_UPDATE("Customer GPS location သီးသန့်ပြင်ခွင့်");
 
 
 
 
     private final String description;
 
-    // Constructor
+
     PermissionName(String description) {
         this.description = description;
     }

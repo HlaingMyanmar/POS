@@ -11,6 +11,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -78,6 +79,20 @@ fun LoginScreen(onSuccess: () -> Unit) {
         )
     }
 
+    if (BuildConfig.TECHNICIAN_ONLY) {
+        TechnicianLoginLayout(
+            username = username,
+            password = password,
+            pwVisible = pwVisible,
+            loading = state.loading,
+            onUsernameChange = { username = it },
+            onPasswordChange = { password = it },
+            onTogglePwVisible = { pwVisible = !pwVisible },
+            onLogin = { vm.login(username, password) }
+        )
+        return
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Primary)) {
 
         TechBackground(modifier = Modifier.fillMaxSize())
@@ -111,6 +126,73 @@ fun LoginScreen(onSuccess: () -> Unit) {
 }
 
 // ── Tech background: Network + Coding + Robot combined ───────────────────────
+@Composable
+private fun TechnicianLoginLayout(
+    username: String, password: String, pwVisible: Boolean, loading: Boolean,
+    onUsernameChange: (String) -> Unit, onPasswordChange: (String) -> Unit,
+    onTogglePwVisible: () -> Unit, onLogin: () -> Unit,
+) {
+    val navy = Color(0xFF0B1830)
+    val teal = Color(0xFF14B8A6)
+    Box(Modifier.fillMaxSize().background(navy)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding()
+            .imePadding().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            TechnicianLoginHeader(teal)
+            Spacer(Modifier.height(24.dp))
+            TechnicianLoginCard(username, password, pwVisible, loading, navy, teal,
+                onUsernameChange, onPasswordChange, onTogglePwVisible, onLogin)
+        }
+    }
+}
+
+@Composable
+private fun TechnicianLoginHeader(teal: Color) {
+    Image(painterResource(R.drawable.logo), "SSPD logo", Modifier.size(52.dp))
+    Spacer(Modifier.height(12.dp))
+    Text("SSPD FIELD SERVICE", color = Color.White, fontWeight = FontWeight.ExtraBold)
+    Text("Technician workspace", color = teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(36.dp))
+    Text("Welcome, Technician", Modifier.fillMaxWidth(), Color.White, 23.sp, fontWeight = FontWeight.ExtraBold)
+    Text("Sign in to start your assigned work", Modifier.fillMaxWidth(), Color.White.copy(0.68f), 12.sp)
+}
+
+@Composable
+private fun TechnicianLoginCard(
+    username: String, password: String, pwVisible: Boolean, loading: Boolean,
+    navy: Color, teal: Color, onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit, onTogglePwVisible: () -> Unit, onLogin: () -> Unit,
+) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(12.dp)) {
+        Column(Modifier.padding(22.dp)) {
+            Text("Technician Sign In", color = navy, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Use your technician account", color = TextMuted, fontSize = 11.sp)
+            Spacer(Modifier.height(22.dp))
+            OutlinedTextField(username, onUsernameChange, Modifier.fillMaxWidth(),
+                label = { Text("Username") }, leadingIcon = { Icon(Icons.Outlined.Badge, null, tint = teal) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), singleLine = true,
+                shape = RoundedCornerShape(14.dp))
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(password, onPasswordChange, Modifier.fillMaxWidth(),
+                label = { Text("Password") }, leadingIcon = { Icon(Icons.Outlined.Lock, null, tint = teal) },
+                trailingIcon = { IconButton(onTogglePwVisible) {
+                    Icon(if (pwVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
+                } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                visualTransformation = if (pwVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                singleLine = true, shape = RoundedCornerShape(14.dp))
+            Spacer(Modifier.height(22.dp))
+            Button(onLogin, Modifier.fillMaxWidth().height(54.dp),
+                enabled = !loading && username.isNotBlank() && password.isNotBlank(),
+                shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(teal)) {
+                if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                else { Icon(Icons.Outlined.Login, null); Spacer(Modifier.width(8.dp)); Text("SIGN IN", fontWeight = FontWeight.ExtraBold) }
+            }
+        }
+    }
+}
+
+// TECHNICIAN_LOGIN_COMPONENTS
+
 @Composable
 private fun TechBackground(modifier: Modifier = Modifier) {
 

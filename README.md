@@ -134,7 +134,7 @@ Schema is created/updated by Hibernate `ddl-auto=update` plus CommandLineRunner 
 
 ## Configuration keys
 
-Backend uses `application.properties` (not a `.env` file). Important **key names** (values belong in local/prod config, not in git):
+Backend keeps non-secret defaults in `application.properties`. Secrets come from environment variables or the Git-ignored `application-secrets.properties`; see [docs/SECRETS-SETUP.md](docs/SECRETS-SETUP.md). Important key names:
 
 - `spring.datasource.url` / `username` / `password`
 - `application.security.jwt.secret-key` / `expiration`
@@ -154,6 +154,7 @@ Backend uses `application.properties` (not a `.env` file). Important **key names
 | [docs/API.md](docs/API.md) | REST + WebSocket catalog |
 | [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md) | Service-layer flows |
 | [docs/SECURITY.md](docs/SECURITY.md) | Auth, RBAC, CORS, findings |
+| [docs/SECRETS-SETUP.md](docs/SECRETS-SETUP.md) | Runtime secret setup and rotation |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Build, Nginx, unknowns |
 | [docs/BACKUP-RESTORE.md](docs/BACKUP-RESTORE.md) | mysqldump backup/restore |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common failures |

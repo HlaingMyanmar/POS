@@ -34,3 +34,13 @@ build/
 
 ### Backups ###
 backups/*.sql
+
+### Local secrets and private keys ###
+.env
+.env.*
+application-secrets.properties
+config/application-secrets.properties
+*.p12
+*.pfx
+*.jks
+*.keystore

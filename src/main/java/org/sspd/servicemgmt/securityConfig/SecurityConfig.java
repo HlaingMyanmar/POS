@@ -38,7 +38,9 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**", "/ws-clinic/**", "/ws-native/**", "/topic/**").permitAll()
+                        // STOMP CONNECT authentication is enforced by WebSocketAuthInterceptor.
+                        // Handshake paths stay public because SockJS cannot attach the JWT to its HTTP handshake.
+                        .requestMatchers("/api/v1/auth/**", "/ws-clinic/**", "/ws-native/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/setup/status").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/company-settings").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/version").permitAll()

@@ -176,6 +176,7 @@ fun TechnicianAppNavigation() {
 
     LaunchedEffect(Unit) {
         if (prefs.authToken.isNotEmpty() && !prefs.isTechnician()) {
+            VisitTracker.stopServiceOnly(context)
             prefs.clear()
             DataEventBus.disconnect()
             nav.navigate(AUTH_GRAPH) {
@@ -189,6 +190,7 @@ fun TechnicianAppNavigation() {
     LaunchedEffect(tokenExpired) {
         if (tokenExpired) {
             AuthEventBus.reset()
+            VisitTracker.stopServiceOnly(context)
             prefs.clear()
             DataEventBus.disconnect()
             nav.navigate(AUTH_GRAPH) {

@@ -62,6 +62,10 @@ class PreferenceManager(context: Context) {
         get() = p.getString("active_visit_status", "") ?: ""
         set(v) { p.edit().putString("active_visit_status", v).apply() }
 
+    var trackingPaused: Boolean
+        get() = p.getBoolean("tracking_paused", false)
+        set(v) { p.edit().putBoolean("tracking_paused", v).apply() }
+
     fun saveActiveVisit(id: Long, jobNo: String, customerName: String, status: String) {
         p.edit()
             .putLong("active_visit_id", id)
@@ -76,6 +80,7 @@ class PreferenceManager(context: Context) {
         .remove("active_visit_job_no")
         .remove("active_visit_customer")
         .remove("active_visit_status")
+        .remove("tracking_paused")
         .apply()
 
     fun hasPermission(perm: String) = permissionsStr

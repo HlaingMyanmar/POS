@@ -36,7 +36,7 @@ Uses Vite `--mode standalone --outDir dist`. Comments in `deploy/nginx.conf` say
 
 ## Production configuration
 
-There is a single `application.properties`. No env-file loader and no `SPRING_APPLICATION_JSON` usage in source.
+Tracked `application.properties` contains no usable runtime secrets. Sensitive values are required through environment variables or the optional Git-ignored `./application-secrets.properties`; setup and rotation steps are in [SECRETS-SETUP.md](SECRETS-SETUP.md).
 
 Set on the server (do not commit real values):
 
@@ -51,7 +51,7 @@ Set on the server (do not commit real values):
 | `backup.root-directory` and related `backup.*` | File backups (see [BACKUP-RESTORE.md](BACKUP-RESTORE.md)) |
 | `server.port` / `server.address` | Default `8080` / `0.0.0.0` |
 
-`server.ssl.enabled=true` in the checked-in file. `deploy/nginx.conf` proxies to **`http://127.0.0.1:8080`**. HTTPS-on-8080 vs HTTP-on-8080 is a mismatch — **Needs Confirmation** which protocol the live process actually speaks.
+`server.ssl.enabled` defaults to `true` unless `SSL_ENABLED` overrides it. `deploy/nginx.conf` proxies to **`http://127.0.0.1:8080`**. HTTPS-on-8080 vs HTTP-on-8080 is a mismatch — **Needs Confirmation** which protocol the live process actually speaks.
 
 Checked-in CORS and `app.download.base-url` contain LAN IPs. Replace them for any new host.
 

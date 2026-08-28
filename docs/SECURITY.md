@@ -1,6 +1,6 @@
 # Security
 
-Do **not** paste real passwords, JWT secrets, or keystore passwords into tickets or this file. Values currently live in `application.properties` and `UserSeeder` — rotate them.
+Do **not** paste real passwords, JWT secrets, or keystore passwords into tickets or this file. Runtime secrets are loaded from environment variables or the Git-ignored `application-secrets.properties`; see [SECRETS-SETUP.md](SECRETS-SETUP.md). Previously exposed values must still be rotated because removing them from the current source does not remove them from Git history.
 
 ## Authentication
 
@@ -48,7 +48,7 @@ Permission catalog: `PermissionName.java` (seeded by `PermissionSeeder`).
 Permit all:
 
 - `/api/v1/auth/**`
-- `/ws-clinic/**`, `/ws-native/**`, `/topic/**`
+- `/ws-clinic/**`, `/ws-native/**` HTTP handshakes; STOMP `CONNECT` still requires a valid JWT
 - GET `/api/v1/setup/status`
 - GET `/api/v1/company-settings`
 - GET `/api/v1/app/version`
@@ -86,11 +86,18 @@ No `logback.xml` in repo. Default Spring Boot logging. `GlobalExceptionHandler` 
 
 ## Security findings (do not “fix” in this docs pass)
 
-1. Secrets and default admin password in source (`application.properties`, `UserSeeder`).
+1. Previously committed DB/JWT/SSL/default-admin values must be rotated and removed from repository history where practical.
 2. Self-signed TLS for LAN.
 3. Refresh API missing; refresh token in login JSON **and** cookie **and** frontend `sessionStorage`.
 4. Public barcode WebSocket inject.
 5. Company settings writable by any authenticated user.
 6. Actuator on classpath; `/actuator/health` may be public via `anyRequest().permitAll()` — **Needs Confirmation**.
-7. STOMP endpoints permitAll.
-8. `assignPermission` **replaces** the whole set.
+7. `assignPermission` **replaces** the whole set.
+
+## WebSocket authentication
+
+- Browser and Android clients send `Authorization: Bearer <JWT>` in the STOMP `CONNECT` frame.
+- `WebSocketAuthInterceptor` validates JWT signature/expiry, active user state, and token version.
+- Unauthenticated `SUBSCRIBE` and `SEND` frames are rejected.
+- `/topic/technician-location` additionally requires `CAN_ACCESS_TECHNICIAN_LOCATION_READ`.
+- Browser origins use the same explicit `app.cors.allowed-origins` list as HTTP CORS; wildcard WebSocket origins are not enabled.

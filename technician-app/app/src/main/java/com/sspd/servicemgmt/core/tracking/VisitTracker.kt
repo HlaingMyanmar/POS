@@ -33,18 +33,30 @@ object VisitTracker {
     }
 
     fun stopServiceOnly(context: Context) {
-        _pendingResume.value = PreferenceManager(context).activeVisitId > 0L
+        val prefs = PreferenceManager(context)
+        prefs.trackingPaused = prefs.activeVisitId > 0L
+        _pendingResume.value = prefs.activeVisitId > 0L
         TechnicianLocationService.stop(context)
     }
 
     suspend fun recover(context: Context) {
         val prefs = PreferenceManager(context)
         if (prefs.authToken.isBlank()) return
+        val localVisitId = prefs.activeVisitId
         val res = runCatching {
             ApiClient.service.getActiveTechnicianVisit(ApiClient.bearer(prefs.authToken))
-        }.getOrNull()
-        val active = res?.body()?.data
+        }.getOrElse {
+            recoverLocalTracking(context, prefs)
+            return
+        }
+        if (!res.isSuccessful) {
+            recoverLocalTracking(context, prefs)
+            return
+        }
+        val active = res.body()?.data
         if (active?.id != null) {
+            val sameLocalVisit = localVisitId == active.id
+            if (!sameLocalVisit) prefs.trackingPaused = true
             prefs.saveActiveVisit(
                 active.id,
                 active.jobNo.orEmpty(),
@@ -52,8 +64,15 @@ object VisitTracker {
                 active.status.orEmpty()
             )
             _visit.value = active
-            _pendingResume.value = true
-            _message.value = "Active visit ရှိနေပါသည်။ Tracking ပြန်စရန် နှိပ်ပါ။"
+            if (sameLocalVisit && !prefs.trackingPaused && LocationPermission.granted(context)) {
+                TechnicianLocationService.start(context)
+                _pendingResume.value = false
+                _message.value = "Active visit tracking အလိုအလျောက် ပြန်စပြီး"
+            } else {
+                _pendingResume.value = true
+                _message.value = "Active visit ရှိနေပါသည်။ Tracking ပြန်စရန် နှိပ်ပါ။"
+            }
+            PendingPingSyncWorker.enqueue(context)
         } else {
             prefs.clearActiveVisit()
             _visit.value = null
@@ -65,6 +84,7 @@ object VisitTracker {
     suspend fun resumeTracking(context: Context) {
         if (_visit.value?.id == null) recover(context)
         if (_visit.value?.id == null) return
+        PreferenceManager(context).trackingPaused = false
         _pendingResume.value = false
         TechnicianLocationService.start(context)
         _message.value = "Tracking ပြန်စပြီး"
@@ -145,11 +165,11 @@ object VisitTracker {
         withBusy {
             val fix = LocationClient(context).current()
             val prefs = PreferenceManager(context)
-            val pending = PendingPingStore(context).pending(visitId)
-            if (pending.isNotEmpty()) {
-                runCatching {
-                    ApiClient.service.pingTechnicianVisitBatch(ApiClient.bearer(prefs.authToken), visitId, pending)
-                }
+            if (!flushPending(context, visitId)) {
+                PendingPingSyncWorker.enqueue(context)
+                throw IllegalStateException(
+                    "Offline GPS data မပို့ရသေးပါ။ Network ရလာပြီး Sync ပြီးမှ Visit ပိတ်ပါ"
+                )
             }
             val res = ApiClient.service.endTechnicianVisit(
                 ApiClient.bearer(prefs.authToken), visitId, fix.toPing()
@@ -167,6 +187,12 @@ object VisitTracker {
         val visitId = requiredVisitId(context)
         withBusy {
             val prefs = PreferenceManager(context)
+            if (!flushPending(context, visitId)) {
+                PendingPingSyncWorker.enqueue(context)
+                throw IllegalStateException(
+                    "Offline GPS data မပို့ရသေးပါ။ Network ရလာပြီး Sync ပြီးမှ Visit ပယ်ဖျက်ပါ"
+                )
+            }
             val res = ApiClient.service.cancelTechnicianVisit(
                 ApiClient.bearer(prefs.authToken), visitId, mapOf("reason" to reason)
             )
@@ -224,7 +250,50 @@ object VisitTracker {
             visit.status.orEmpty()
         )
         _visit.value = visit
+        prefs.trackingPaused = false
         _pendingResume.value = false
+    }
+
+    suspend fun flushPending(context: Context, visitId: Long): Boolean {
+        val prefs = PreferenceManager(context)
+        if (prefs.authToken.isBlank()) return false
+        val store = PendingPingStore(context)
+        val pending = store.pending(visitId)
+        if (pending.isEmpty()) return true
+
+        return runCatching {
+            val token = ApiClient.bearer(prefs.authToken)
+            val res = if (pending.size == 1) {
+                ApiClient.service.pingTechnicianVisit(token, visitId, pending.first())
+            } else {
+                ApiClient.service.pingTechnicianVisitBatch(token, visitId, pending)
+            }
+            if (!res.isSuccessful) return@runCatching false
+            store.remove(pending.map { it.clientPingId })
+            res.body()?.data?.let { onServerVisit(it) }
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun recoverLocalTracking(context: Context, prefs: PreferenceManager) {
+        if (prefs.activeVisitId <= 0L) return
+        if (_visit.value?.id == null) {
+            _visit.value = TechnicianVisitDTO(
+                id = prefs.activeVisitId,
+                jobNo = prefs.activeVisitJobNo,
+                customerName = prefs.activeVisitCustomerName,
+                status = prefs.activeVisitStatus
+            )
+        }
+        PendingPingSyncWorker.enqueue(context)
+        if (!prefs.trackingPaused && LocationPermission.granted(context)) {
+            TechnicianLocationService.start(context)
+            _pendingResume.value = false
+            _message.value = "Server မရသေးသော်လည်း GPS tracking ကို ဆက်ထားပါသည်"
+        } else {
+            _pendingResume.value = true
+            _message.value = "Active visit ရှိနေပါသည်။ Tracking ပြန်စရန် နှိပ်ပါ။"
+        }
     }
 
     private fun requiredVisitId(context: Context): Long {

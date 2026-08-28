@@ -18,5 +18,8 @@ export const customerService = {
     api.put<any, ApiResponse<CustomerDTO>>(`/v1/customers/${id}`, customer).then((res: any) => res.data),
   
   delete: (id: number) => 
-    api.delete<any, ApiResponse<void>>(`/v1/customers/${id}`).then((res: any) => res.data)
+    api.delete<any, ApiResponse<void>>(`/v1/customers/${id}`).then((res: any) => res.data),
+
+  updateLocation: (id: number, body: { latitude: number; longitude: number; accuracy?: number; source?: string }) =>
+    api.patch<any, ApiResponse<CustomerDTO>>(`/v1/customers/${id}/location`, body).then((res: any) => res.data)
 };

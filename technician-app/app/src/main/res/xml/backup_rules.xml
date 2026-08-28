@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Controls what is included in Android Auto-Backup (Google Drive backup).
+    Sensitive data such as auth tokens must NOT be backed up.
+    API 30 and below.
+-->
+<full-backup-content>
+    <!-- Exclude all SharedPreferences (contains auth token, server URL) -->
+    <exclude domain="sharedpref" path="." />
+    <!-- Exclude all databases -->
+    <exclude domain="database" path="." />
+<exclude domain="external" path="." />
+</full-backup-content>

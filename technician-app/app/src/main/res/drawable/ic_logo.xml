@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+
+    <!-- Soft drop-shadow ring -->
+    <path
+        android:fillColor="#0F172A"
+        android:alpha="0.10"
+        android:pathData="M60,12 C34,12 12,34 12,60 C12,86 34,108 60,108 C86,108 108,86 108,60 C108,34 86,12 60,12 Z"/>
+
+    <!-- White circle face -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,7 C31,7 7,31 7,60 C7,89 31,113 60,113 C89,113 113,89 113,60 C113,31 89,7 60,7 Z"/>
+
+    <!-- S lettermark — single continuous stroke -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2563EB"
+        android:strokeWidth="11"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M76,40 C76,30 68,23 58,23 C48,23 40,30 40,40 C40,50 48,54 59,57 C70,60 80,65 80,75 C80,85 71,91 60,91 C49,91 40,85 40,75"/>
+
+</vector>

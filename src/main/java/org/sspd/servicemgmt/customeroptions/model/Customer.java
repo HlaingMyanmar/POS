@@ -39,6 +39,24 @@ public class Customer {
     @Column(name = "blacklist_reason", columnDefinition = "TEXT")
     private String blacklistReason;
 
+    @Column(precision = 10, scale = 7)
+    private java.math.BigDecimal latitude;
+
+    @Column(precision = 10, scale = 7)
+    private java.math.BigDecimal longitude;
+
+    @Column(name = "location_accuracy", precision = 8, scale = 2)
+    private java.math.BigDecimal locationAccuracy;
+
+    @Column(name = "location_captured_at")
+    private java.time.LocalDateTime locationCapturedAt;
+
+    @Column(name = "location_captured_by", length = 120)
+    private String locationCapturedBy;
+
+    @Column(name = "location_source", length = 20)
+    private String locationSource;
+
     @Builder.Default
     @Column(name = "advance_balance", precision = 15, scale = 2, nullable = false)
     private java.math.BigDecimal advanceBalance = java.math.BigDecimal.ZERO;

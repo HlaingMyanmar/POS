@@ -249,6 +249,11 @@ export interface CustomerDTO {
   blacklisted?: boolean;
   blacklistReason?: string;
   advanceBalance?: number;
+  latitude?: number;
+  longitude?: number;
+  locationAccuracy?: number;
+  locationCapturedAt?: string;
+  locationSource?: string;
 }
 
 export interface StaffDTO {
@@ -1177,6 +1182,7 @@ export enum AppRoute {
   VOUCHER_SETTINGS     = '/settings/voucher',
   APP_VERSION_SETTINGS = '/settings/app-version',
   SHELF_LOCATIONS      = '/services/shelf-locations',
+  OUTDOOR_TRACKING     = '/services/outdoor-tracking',
   OPENING_BALANCE          = '/accounting/opening-balance',
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',

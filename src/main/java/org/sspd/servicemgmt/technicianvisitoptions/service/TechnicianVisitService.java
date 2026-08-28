@@ -6,16 +6,22 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.exceptionhandler.ConflictException;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.LocationPingRequest;
+import org.sspd.servicemgmt.technicianvisitoptions.dto.LocationPingDTO;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.TechnicianVisitDTO;
+import org.sspd.servicemgmt.technicianvisitoptions.dto.TechnicianVisitReportDTO;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.VisitEventDTO;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.VisitReasonRequest;
 import org.sspd.servicemgmt.technicianvisitoptions.model.StaffLiveLocation;
@@ -24,6 +30,8 @@ import org.sspd.servicemgmt.technicianvisitoptions.model.TechnicianVisit;
 import org.sspd.servicemgmt.technicianvisitoptions.model.TechnicianVisitEvent;
 import org.sspd.servicemgmt.technicianvisitoptions.model.TechnicianVisitEventType;
 import org.sspd.servicemgmt.technicianvisitoptions.model.TechnicianVisitStatus;
+import org.sspd.servicemgmt.technicianvisitoptions.model.TechnicianVisitPurpose;
+import org.sspd.servicemgmt.technicianvisitoptions.model.TechnicianVisitOutcome;
 import org.sspd.servicemgmt.technicianvisitoptions.repository.StaffLiveLocationRepository;
 import org.sspd.servicemgmt.technicianvisitoptions.repository.TechnicianLocationPingRepository;
 import org.sspd.servicemgmt.technicianvisitoptions.repository.TechnicianVisitEventRepository;
@@ -36,6 +44,8 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -44,7 +54,7 @@ import java.util.UUID;
 public class TechnicianVisitService {
 
     private static final List<TechnicianVisitStatus> ACTIVE = List.of(
-            TechnicianVisitStatus.EN_ROUTE, TechnicianVisitStatus.ON_SITE);
+            TechnicianVisitStatus.EN_ROUTE, TechnicianVisitStatus.ON_SITE, TechnicianVisitStatus.RETURNING);
     private static final ZoneId ZONE = ZoneId.of("Asia/Rangoon");
     private static final double MOVE_METERS = 40d;
     private static final double NEAR_CUSTOMER_METERS = 100d;
@@ -62,19 +72,21 @@ public class TechnicianVisitService {
     private final SimpMessagingTemplate messaging;
 
     @Transactional
-    public TechnicianVisitDTO start(Integer jobId, LocationPingRequest loc, Authentication auth) {
+    public TechnicianVisitDTO start(Integer jobId, String purpose, LocationPingRequest loc, Authentication auth) {
         Staff staff = currentStaff(auth);
         staffs.findByIdForUpdate(staff.getId()).orElseThrow(() -> new AccessDeniedException("Staff not found"));
         validate(loc);
         if (!visits.lockActive(staff.getId(), ACTIVE).isEmpty()) {
-            throw new ConflictException("Technician already has an active visit");
+            throw new ConflictException("သင့်တွင် Active visit ရှိနေပါသည်။ အရင် Visit ကို ပိတ်ပါ");
         }
         ServiceJob job = jobs.findById(jobId).orElseThrow(() -> new IllegalArgumentException("Service job not found"));
-        if (job.getAssignedStaff() == null || !Objects.equals(job.getAssignedStaff().getId(), staff.getId())) {
-            throw new AccessDeniedException("Only the assigned technician can start this visit");
-        }
+        // Outdoor technicians open any customer job; they cannot assign themselves.
+        // Visit start is already gated by CAN_ACCESS_TECHNICIAN_VISIT_START.
         if (job.getCustomer() == null) {
             throw new IllegalArgumentException("Service job has no customer");
+        }
+        if (job.getServiceMode() != ServiceMode.OUTDOOR) {
+            throw new IllegalArgumentException("INDOOR Job တွင် Outdoor Visit စတင်၍မရပါ");
         }
         LocalDateTime now = LocalDateTime.now();
         TechnicianVisit visit = visits.save(TechnicianVisit.builder()
@@ -82,6 +94,7 @@ public class TechnicianVisitService {
                 .serviceJob(job)
                 .customer(job.getCustomer())
                 .status(TechnicianVisitStatus.EN_ROUTE)
+                .purpose(parsePurpose(purpose))
                 .startedAt(now)
                 .lastMovedAt(now)
                 .startLatitude(loc.latitude())
@@ -112,11 +125,52 @@ public class TechnicianVisitService {
     }
 
     @Transactional
+    public TechnicianVisitDTO departCustomer(Long id, String outcome, String note, LocationPingRequest loc, Authentication auth) {
+        TechnicianVisit visit = owned(id, auth);
+        validate(loc);
+        if (visit.getStatus() != TechnicianVisitStatus.ON_SITE) {
+            throw new IllegalStateException("Visit is not ON_SITE");
+        }
+        TechnicianVisitOutcome parsedOutcome = parseOutcome(outcome);
+        visit.setOutcome(parsedOutcome);
+        visit.setOutcomeNote(note == null || note.isBlank() ? null : note.trim());
+        ServiceJob job = visit.getServiceJob();
+        if (parsedOutcome == TechnicianVisitOutcome.BROUGHT_TO_SHOP
+                && job.getStatus() != ServiceJobStatus.COMPLETED
+                && job.getStatus() != ServiceJobStatus.DELIVERED
+                && job.getStatus() != ServiceJobStatus.CANCELLED) {
+            job.setStatus(ServiceJobStatus.IN_PROGRESS);
+            jobs.save(job);
+        } else if (parsedOutcome == TechnicianVisitOutcome.PARTS_REQUIRED
+                && job.getStatus() != ServiceJobStatus.COMPLETED
+                && job.getStatus() != ServiceJobStatus.DELIVERED
+                && job.getStatus() != ServiceJobStatus.CANCELLED) {
+            job.setStatus(ServiceJobStatus.WAITING_PARTS);
+            jobs.save(job);
+        }
+        visit.setStatus(TechnicianVisitStatus.RETURNING);
+        visit.setLeftCustomerAt(LocalDateTime.now());
+        visit.setDepartureLatitude(loc.latitude());
+        visit.setDepartureLongitude(loc.longitude());
+        visit.setLastMovedAt(LocalDateTime.now());
+        savePing(visit, loc);
+        upsertLive(visit, loc);
+        addEvent(visit, TechnicianVisitEventType.CUSTOMER_DEPARTED, loc, parsedOutcome.name(), visit.getOutcomeNote());
+        return publish(visits.save(visit));
+    }
+
+    @Transactional
     public TechnicianVisitDTO end(Long id, LocationPingRequest loc, Authentication auth) {
         TechnicianVisit visit = owned(id, auth);
         validate(loc);
         if (!ACTIVE.contains(visit.getStatus())) {
             throw new IllegalStateException("Visit is not active");
+        }
+        if (visit.getLeftCustomerAt() == null && visit.getStatus() == TechnicianVisitStatus.ON_SITE) {
+            visit.setLeftCustomerAt(LocalDateTime.now());
+            visit.setDepartureLatitude(loc.latitude());
+            visit.setDepartureLongitude(loc.longitude());
+            addEvent(visit, TechnicianVisitEventType.CUSTOMER_DEPARTED, loc, null, "Legacy direct completion");
         }
         visit.setStatus(TechnicianVisitStatus.COMPLETED);
         visit.setEndedAt(LocalDateTime.now());
@@ -169,12 +223,65 @@ public class TechnicianVisitService {
         }
         String code = request == null || request.reasonCode() == null || request.reasonCode().isBlank()
                 ? "OTHER" : request.reasonCode().trim().toUpperCase();
-        String note = request == null ? null : request.note();
-        StaffLiveLocation current = live.findByStaffId(visit.getStaff().getId()).orElse(null);
-        LocationPingRequest loc = current == null ? null : new LocationPingRequest(
-                null, current.getLatitude(), current.getLongitude(), current.getAccuracy(), null);
+        String note = request == null || request.note() == null || request.note().isBlank()
+                ? null : request.note().trim();
+        if ("OTHER".equals(code) && note == null) {
+            throw new IllegalArgumentException("ကိုယ်တိုင်ရေးသည့် အကြောင်းပြချက် ထည့်ပါ");
+        }
+        LocationPingRequest loc = request == null ? null : request.location();
+        if (loc != null) {
+            validate(loc);
+            savePing(visit, loc);
+            upsertLive(visit, loc);
+        } else {
+            StaffLiveLocation current = live.findByStaffId(visit.getStaff().getId()).orElse(null);
+            loc = current == null ? null : new LocationPingRequest(
+                    null, current.getLatitude(), current.getLongitude(), current.getAccuracy(), null);
+        }
         addEvent(visit, TechnicianVisitEventType.REASON_ADDED, loc, code, note);
         return publish(visit);
+    }
+
+    @Transactional
+    public TechnicianVisitDTO resumeJourney(Long id, LocationPingRequest loc, Authentication auth) {
+        TechnicianVisit visit = owned(id, auth);
+        validate(loc);
+        if (visit.getStatus() != TechnicianVisitStatus.EN_ROUTE
+                && visit.getStatus() != TechnicianVisitStatus.RETURNING) {
+            throw new IllegalStateException("ခရီးသွားနေသော Visit မဟုတ်ပါ");
+        }
+
+        List<TechnicianVisitEvent> timeline =
+                events.findByVisitIdOrderByOccurredAtAscIdAsc(visit.getId());
+        TechnicianVisitEvent latestStop = null;
+        TechnicianVisitEvent latestResume = null;
+        for (TechnicianVisitEvent event : timeline) {
+            if (event.getEventType() == TechnicianVisitEventType.STOPPED
+                    || event.getEventType() == TechnicianVisitEventType.LONG_STOP) {
+                latestStop = event;
+            } else if (event.getEventType() == TechnicianVisitEventType.RESUMED) {
+                latestResume = event;
+            }
+        }
+        if (latestStop == null || (latestResume != null
+                && !latestResume.getOccurredAt().isBefore(latestStop.getOccurredAt()))) {
+            throw new IllegalStateException("လက်ရှိခရီးစဉ်တွင် ဆက်သွားရန်လိုသော Stop မရှိပါ");
+        }
+        if (latestStop.getEventType() == TechnicianVisitEventType.LONG_STOP) {
+            LocalDateTime stoppedAt = latestStop.getOccurredAt();
+            boolean hasReason = timeline.stream().anyMatch(event ->
+                    event.getEventType() == TechnicianVisitEventType.REASON_ADDED
+                            && !event.getOccurredAt().isBefore(stoppedAt));
+            if (!hasReason) {
+                throw new IllegalStateException("Long Stop အကြောင်းပြချက်ကို အရင်သိမ်းပါ");
+            }
+        }
+
+        savePing(visit, loc);
+        upsertLive(visit, loc);
+        visit.setLastMovedAt(LocalDateTime.now());
+        addEvent(visit, TechnicianVisitEventType.RESUMED, loc, "MANUAL", "Technician မှ ခရီးဆက်ပြီဟု အတည်ပြု");
+        return publish(visits.save(visit));
     }
 
     @Transactional(readOnly = true)
@@ -194,10 +301,64 @@ public class TechnicianVisitService {
     }
 
     @Transactional(readOnly = true)
+    public List<TechnicianVisitDTO> today() {
+        LocalDateTime now = LocalDateTime.now();
+        return visits.findByStartedAtGreaterThanEqualAndStartedAtLessThanEqualOrderByStartedAtDesc(
+                        now.toLocalDate().atStartOfDay(), now)
+                .stream()
+                .map(visit -> toDto(visit, true))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public TechnicianVisitDTO historyDetail(Long id) {
         TechnicianVisit visit = visits.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Visit not found"));
         return toDto(visit, true);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LocationPingDTO> historyPings(Long id) {
+        if (!visits.existsById(id)) {
+            throw new IllegalArgumentException("Visit not found");
+        }
+        return pings.findByVisit_IdOrderByRecordedAtAscIdAsc(id).stream()
+                .map(ping -> new LocationPingDTO(
+                        ping.getId(),
+                        ping.getLatitude(),
+                        ping.getLongitude(),
+                        ping.getAccuracy(),
+                        ping.getRecordedAt()
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public int deleteVisitGpsHistory(
+            Long id,
+            String confirmation,
+            String reason,
+            Authentication authentication
+    ) {
+        TechnicianVisit visit = visits.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Visit not found"));
+        String requiredConfirmation = "DELETE GPS " + id;
+        if (!requiredConfirmation.equals(confirmation)) {
+            throw new IllegalArgumentException("Confirmation must be exactly: " + requiredConfirmation);
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("GPS history deletion reason is required");
+        }
+        int deleted = pings.deleteByVisit_Id(id);
+        addEvent(
+                visit,
+                TechnicianVisitEventType.GPS_HISTORY_DELETED,
+                null,
+                "ADMIN_DELETE",
+                "Deleted " + deleted + " GPS points by " + authentication.getName()
+                        + ". Reason: " + reason.trim()
+        );
+        return deleted;
     }
 
     @Transactional(readOnly = true)
@@ -210,6 +371,162 @@ public class TechnicianVisitService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<TechnicianVisitReportDTO> report(
+            LocalDateTime from,
+            LocalDateTime to,
+            String job,
+            String customer
+    ) {
+        LocalDateTime start = from == null ? LocalDateTime.now().minusDays(7) : from;
+        LocalDateTime end = to == null ? LocalDateTime.now() : to;
+        if (start.isAfter(end)) {
+            throw new IllegalArgumentException("Report start date must be before end date");
+        }
+        String jobQuery = normalizeSearch(job);
+        String customerQuery = normalizeSearch(customer);
+        return visits.findByStartedAtGreaterThanEqualAndStartedAtLessThanEqualOrderByStartedAtDesc(start, end)
+                .stream()
+                .filter(visit -> matchesSearch(visit.getServiceJob().getJobNo(), jobQuery))
+                .filter(visit -> matchesSearch(visit.getCustomer().getName(), customerQuery))
+                .map(this::toReportDto)
+                .toList();
+    }
+
+    private TechnicianVisitReportDTO toReportDto(TechnicianVisit visit) {
+        List<TechnicianLocationPing> tripPings =
+                pings.findByVisit_IdOrderByRecordedAtAscIdAsc(visit.getId());
+        List<TechnicianVisitEvent> timeline =
+                events.findByVisitIdOrderByOccurredAtAscIdAsc(visit.getId());
+
+        double distanceMeters = 0d;
+        long maxGapMinutes = 0L;
+        boolean inaccurateGps = false;
+        for (int index = 0; index < tripPings.size(); index++) {
+            TechnicianLocationPing ping = tripPings.get(index);
+            inaccurateGps = inaccurateGps
+                    || (ping.getAccuracy() != null
+                    && ping.getAccuracy().compareTo(BigDecimal.valueOf(100)) > 0);
+            if (index == 0) {
+                continue;
+            }
+            TechnicianLocationPing previous = tripPings.get(index - 1);
+            distanceMeters += haversineMeters(
+                    previous.getLatitude(),
+                    previous.getLongitude(),
+                    ping.getLatitude(),
+                    ping.getLongitude()
+            );
+            maxGapMinutes = Math.max(
+                    maxGapMinutes,
+                    Math.max(0, Duration.between(previous.getRecordedAt(), ping.getRecordedAt()).toMinutes())
+            );
+        }
+
+        StopAggregation stop = aggregateStops(timeline, visit.getEndedAt());
+        Double arrivalDistance = null;
+        if (visit.getArriveLatitude() != null && visit.getArriveLongitude() != null
+                && visit.getCustomer().getLatitude() != null && visit.getCustomer().getLongitude() != null) {
+            arrivalDistance = haversineMeters(
+                    visit.getArriveLatitude(),
+                    visit.getArriveLongitude(),
+                    visit.getCustomer().getLatitude(),
+                    visit.getCustomer().getLongitude()
+            );
+        }
+        List<String> gpsIssues = new ArrayList<>();
+        if (tripPings.isEmpty()) gpsIssues.add("NO_GPS");
+        if (maxGapMinutes > 5) gpsIssues.add("GPS_GAP");
+        if (inaccurateGps) gpsIssues.add("LOW_ACCURACY");
+
+        return new TechnicianVisitReportDTO(
+                visit.getId(),
+                visit.getStaff().getId(),
+                visit.getStaff().getName(),
+                visit.getServiceJob().getId(),
+                visit.getServiceJob().getJobNo(),
+                visit.getCustomer().getId(),
+                visit.getCustomer().getName(),
+                visit.getStatus().name(),
+                visit.getStartedAt(),
+                visit.getArrivedAt(),
+                visit.getLeftCustomerAt(),
+                visit.getEndedAt(),
+                minutesBetween(visit.getStartedAt(), visit.getArrivedAt()),
+                minutesBetween(visit.getArrivedAt(), visit.getLeftCustomerAt()),
+                minutesBetween(visit.getLeftCustomerAt(), visit.getEndedAt()),
+                minutesBetween(visit.getStartedAt(), visit.getEndedAt()),
+                Math.round(distanceMeters * 10d) / 10d,
+                arrivalDistance == null ? null : Math.round(arrivalDistance * 10d) / 10d,
+                arrivalDistance == null ? null : arrivalDistance <= NEAR_CUSTOMER_METERS,
+                stop.count(),
+                stop.minutes(),
+                stop.reasons(),
+                tripPings.size(),
+                maxGapMinutes,
+                gpsIssues.isEmpty() ? null : String.join(",", gpsIssues)
+        );
+    }
+
+    private static StopAggregation aggregateStops(
+            List<TechnicianVisitEvent> timeline,
+            LocalDateTime visitEndedAt
+    ) {
+        LocalDateTime stopStarted = null;
+        int count = 0;
+        long minutes = 0L;
+        List<String> reasons = new ArrayList<>();
+        for (TechnicianVisitEvent event : timeline) {
+            if ((event.getEventType() == TechnicianVisitEventType.STOPPED
+                    || event.getEventType() == TechnicianVisitEventType.LONG_STOP)
+                    && stopStarted == null) {
+                stopStarted = event.getOccurredAt();
+                count++;
+                continue;
+            }
+            if (event.getEventType() == TechnicianVisitEventType.REASON_ADDED) {
+                String code = event.getReasonCode();
+                String note = event.getNote();
+                String reason = code == null || code.isBlank()
+                        ? note
+                        : note == null || note.isBlank() ? code : code + ": " + note;
+                if (reason != null) reasons.add(reason);
+                continue;
+            }
+            if (stopStarted != null && (event.getEventType() == TechnicianVisitEventType.RESUMED
+                    || event.getEventType() == TechnicianVisitEventType.ARRIVED
+                    || event.getEventType() == TechnicianVisitEventType.CUSTOMER_DEPARTED
+                    || event.getEventType() == TechnicianVisitEventType.ENDED
+                    || event.getEventType() == TechnicianVisitEventType.CANCELLED)) {
+                minutes += Math.max(0, Duration.between(stopStarted, event.getOccurredAt()).toMinutes());
+                stopStarted = null;
+            }
+        }
+        if (stopStarted != null) {
+            LocalDateTime stopEnd = visitEndedAt == null ? LocalDateTime.now() : visitEndedAt;
+            minutes += Math.max(0, Duration.between(stopStarted, stopEnd).toMinutes());
+        }
+        return new StopAggregation(count, minutes, List.copyOf(reasons));
+    }
+
+    private static Long minutesBetween(LocalDateTime from, LocalDateTime to) {
+        if (from == null || to == null || to.isBefore(from)) return null;
+        return Duration.between(from, to).toMinutes();
+    }
+
+    private static String normalizeSearch(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean matchesSearch(String value, String query) {
+        if (query == null) return true;
+        String normalized = normalizeSearch(value);
+        return normalized != null && normalized.contains(query);
+    }
+
+    private record StopAggregation(int count, long minutes, List<String> reasons) {}
+
     private void applyPing(TechnicianVisit visit, LocationPingRequest loc) {
         validate(loc);
         if (!ACTIVE.contains(visit.getStatus())) {
@@ -218,24 +535,39 @@ public class TechnicianVisitService {
         StaffLiveLocation previous = live.findByStaffId(visit.getStaff().getId()).orElse(null);
         double moved = previous == null ? MOVE_METERS + 1 : haversineMeters(
                 previous.getLatitude(), previous.getLongitude(), loc.latitude(), loc.longitude());
-        String previousMotion = motionStatus(visit, previous);
+        LocalDateTime lastMoved = visit.getLastMovedAt() == null
+                ? visit.getStartedAt() : visit.getLastMovedAt();
+        List<TechnicianVisitEvent> timeline =
+                events.findByVisitIdOrderByOccurredAtAscIdAsc(visit.getId());
         if (moved >= MOVE_METERS) {
-            visit.setLastMovedAt(LocalDateTime.now());
-            if ("STOPPED".equals(previousMotion) || "LONG_STOP".equals(previousMotion)) {
+            boolean stoppedSinceLastMove = timeline.stream().anyMatch(event ->
+                    (event.getEventType() == TechnicianVisitEventType.STOPPED
+                            || event.getEventType() == TechnicianVisitEventType.LONG_STOP)
+                            && lastMoved != null
+                            && !event.getOccurredAt().isBefore(lastMoved));
+            if (stoppedSinceLastMove) {
                 addEvent(visit, TechnicianVisitEventType.RESUMED, loc, null, null);
+            }
+            visit.setLastMovedAt(LocalDateTime.now());
+        } else if (lastMoved != null
+                && (visit.getStatus() == TechnicianVisitStatus.EN_ROUTE
+                || visit.getStatus() == TechnicianVisitStatus.RETURNING)) {
+            long idleMinutes = Duration.between(lastMoved, LocalDateTime.now()).toMinutes();
+            boolean stoppedRecorded = timeline.stream().anyMatch(event ->
+                    event.getEventType() == TechnicianVisitEventType.STOPPED
+                            && !event.getOccurredAt().isBefore(lastMoved));
+            boolean longStopRecorded = timeline.stream().anyMatch(event ->
+                    event.getEventType() == TechnicianVisitEventType.LONG_STOP
+                            && !event.getOccurredAt().isBefore(lastMoved));
+            if (idleMinutes >= STOPPED_MINUTES && !stoppedRecorded) {
+                addEvent(visit, TechnicianVisitEventType.STOPPED, loc, null, null);
+            }
+            if (idleMinutes >= LONG_STOP_MINUTES && !longStopRecorded) {
+                addEvent(visit, TechnicianVisitEventType.LONG_STOP, loc, null, null);
             }
         }
         savePing(visit, loc);
         upsertLive(visit, loc);
-        StaffLiveLocation updated = live.findByStaffId(visit.getStaff().getId()).orElse(null);
-        String nextMotion = motionStatus(visit, updated);
-        if ("STOPPED".equals(nextMotion) && !"STOPPED".equals(previousMotion) && !"LONG_STOP".equals(previousMotion)) {
-            addEvent(visit, TechnicianVisitEventType.STOPPED, loc, null, null);
-        }
-        if ("LONG_STOP".equals(nextMotion) && !"LONG_STOP".equals(previousMotion)
-                && visit.getStatus() == TechnicianVisitStatus.EN_ROUTE) {
-            addEvent(visit, TechnicianVisitEventType.LONG_STOP, loc, null, null);
-        }
         Double distance = distanceToCustomer(visit, loc.latitude(), loc.longitude());
         if (distance != null && distance <= NEAR_CUSTOMER_METERS
                 && visit.getStatus() == TechnicianVisitStatus.EN_ROUTE
@@ -255,10 +587,10 @@ public class TechnicianVisitService {
     }
 
     private Staff currentStaff(Authentication auth) {
-        User user = users.findByUsernameOrEmail(auth.getName(), auth.getName())
+        User user = users.findWithStaffByUsernameOrEmail(auth.getName())
                 .orElseThrow(() -> new AccessDeniedException("User not found"));
         if (user.getStaff() == null) {
-            throw new AccessDeniedException("User is not linked to staff");
+            throw new AccessDeniedException("ဤအကောင့်ကို Staff နှင့် ချိတ်မထားပါ");
         }
         return user.getStaff();
     }
@@ -270,7 +602,7 @@ public class TechnicianVisitService {
                 || ping.longitude().compareTo(BigDecimal.valueOf(-180)) < 0
                 || ping.longitude().compareTo(BigDecimal.valueOf(180)) > 0
                 || (ping.accuracy() != null && ping.accuracy().signum() < 0)) {
-            throw new IllegalArgumentException("Invalid coordinates");
+            throw new IllegalArgumentException("GPS တည်နေရာ မမှန်ကန်ပါ");
         }
     }
 
@@ -339,7 +671,16 @@ public class TechnicianVisitService {
 
     private TechnicianVisitDTO publish(TechnicianVisit visit) {
         TechnicianVisitDTO dto = toDto(visit, false);
-        messaging.convertAndSend("/topic/technician-location", dto);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    messaging.convertAndSend("/topic/technician-location", dto);
+                }
+            });
+        } else {
+            messaging.convertAndSend("/topic/technician-location", dto);
+        }
         return dto;
     }
 
@@ -356,7 +697,8 @@ public class TechnicianVisitService {
         List<VisitEventDTO> eventDtos = includeEvents
                 ? events.findByVisitIdOrderByOccurredAtAscIdAsc(visit.getId()).stream().map(this::toEventDto).toList()
                 : List.of();
-        boolean needsReason = visit.getStatus() == TechnicianVisitStatus.EN_ROUTE
+        boolean needsReason = (visit.getStatus() == TechnicianVisitStatus.EN_ROUTE
+                || visit.getStatus() == TechnicianVisitStatus.RETURNING)
                 && "LONG_STOP".equals(motionStatus(visit, row))
                 && eventDtos.stream().noneMatch(event ->
                 "REASON_ADDED".equals(event.eventType())
@@ -372,6 +714,15 @@ public class TechnicianVisitService {
                             && visit.getLastMovedAt() != null
                             && !event.occurredAt().isBefore(visit.getLastMovedAt()));
         }
+        LocalDateTime arrivedAt = visit.getArrivedAt();
+        if (arrivedAt == null && includeEvents) {
+            arrivedAt = eventDtos.stream()
+                    .filter(event -> "ARRIVED".equals(event.eventType()))
+                    .map(VisitEventDTO::occurredAt)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+        }
         return new TechnicianVisitDTO(
                 visit.getId(),
                 visit.getStaff().getId(),
@@ -380,11 +731,15 @@ public class TechnicianVisitService {
                 visit.getServiceJob().getJobNo(),
                 customer.getId(),
                 customer.getName(),
+                visit.getPurpose() == null ? TechnicianVisitPurpose.SERVICE.name() : visit.getPurpose().name(),
+                visit.getOutcome() == null ? null : visit.getOutcome().name(),
+                visit.getOutcomeNote(),
                 visit.getStatus().name(),
                 motionStatus(visit, row),
                 needsReason,
                 visit.getStartedAt(),
-                visit.getArrivedAt(),
+                arrivedAt,
+                visit.getLeftCustomerAt(),
                 visit.getEndedAt(),
                 lat,
                 lng,
@@ -431,7 +786,7 @@ public class TechnicianVisitService {
         if (idleMinutes >= STOPPED_MINUTES) {
             return "STOPPED";
         }
-        return "MOVING";
+        return visit.getStatus() == TechnicianVisitStatus.RETURNING ? "RETURNING" : "MOVING";
     }
 
     private Double distanceToCustomer(TechnicianVisit visit, BigDecimal lat, BigDecimal lng) {
@@ -456,6 +811,15 @@ public class TechnicianVisitService {
         return 6371000d * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
+    private static TechnicianVisitPurpose parsePurpose(String raw) {
+        try { return TechnicianVisitPurpose.valueOf(raw == null ? "SERVICE" : raw.trim().toUpperCase()); }
+        catch (Exception ex) { throw new IllegalArgumentException("Invalid visit purpose: " + raw); }
+    }
+
+    private static TechnicianVisitOutcome parseOutcome(String raw) {
+        try { return TechnicianVisitOutcome.valueOf(raw == null ? "FIXED_ON_SITE" : raw.trim().toUpperCase()); }
+        catch (Exception ex) { throw new IllegalArgumentException("Invalid visit outcome: " + raw); }
+    }
     private static LocalDateTime parseRecordedAt(String raw) {
         if (raw == null || raw.isBlank()) {
             return LocalDateTime.now();

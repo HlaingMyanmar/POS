@@ -521,6 +521,9 @@ data class ServiceJobDTO(
     val customerId: Int? = null,
     val customerName: String? = null,
     val customerPhone: String? = null,
+    val serviceMode: String? = null,
+    val customerLatitude: Double? = null,
+    val customerLongitude: Double? = null,
     val assignedStaffId: Int? = null,
     val assignedStaffName: String? = null,
     val itemName: String? = null,
@@ -609,11 +612,15 @@ data class TechnicianVisitDTO(
     val jobNo: String? = null,
     val customerId: Int? = null,
     val customerName: String? = null,
+    val purpose: String? = null,
+    val outcome: String? = null,
+    val outcomeNote: String? = null,
     val status: String? = null,
     val motionStatus: String? = null,
     val needsReason: Boolean? = null,
     val startedAt: String? = null,
     val arrivedAt: String? = null,
+    val leftCustomerAt: String? = null,
     val endedAt: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
@@ -621,7 +628,18 @@ data class TechnicianVisitDTO(
     val recordedAt: String? = null,
     val customerLatitude: Double? = null,
     val customerLongitude: Double? = null,
-    val distanceMeters: Double? = null
+    val distanceMeters: Double? = null,
+    val events: List<VisitEventDTO>? = null
+)
+
+data class VisitEventDTO(
+    val id: Long? = null,
+    val eventType: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val reasonCode: String? = null,
+    val note: String? = null,
+    val occurredAt: String? = null
 )
 
 data class LocationPingRequest(
@@ -634,7 +652,8 @@ data class LocationPingRequest(
 
 data class VisitReasonRequest(
     val reasonCode: String,
-    val note: String? = null
+    val note: String? = null,
+    val location: LocationPingRequest
 )
 
 data class CustomerLocationRequest(

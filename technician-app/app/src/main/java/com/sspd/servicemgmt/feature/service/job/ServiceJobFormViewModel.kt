@@ -137,6 +137,18 @@ class ServiceJobFormViewModel(
     fun setNewCustomerName(v: String)      = _uiState.update { it.copy(newCustomerName = v, newCustomerError = null) }
     fun setNewCustomerPhone(v: String)     = _uiState.update { it.copy(newCustomerPhone = v) }
     fun setNewCustomerAddress(v: String)   = _uiState.update { it.copy(newCustomerAddress = v) }
+    fun setNewCustomerLatitude(v: String) = _uiState.update {
+        it.copy(
+            newCustomerLat = v.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull(),
+            newCustomerLatText = v
+        )
+    }
+    fun setNewCustomerLongitude(v: String) = _uiState.update {
+        it.copy(
+            newCustomerLng = v.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull(),
+            newCustomerLngText = v
+        )
+    }
     fun captureCustomerLocation() {
         viewModelScope.launch {
             _uiState.update { it.copy(capturingLocation = true, newCustomerError = null) }
@@ -146,7 +158,9 @@ class ServiceJobFormViewModel(
                         it.copy(
                             capturingLocation = false,
                             newCustomerLat = fix.latitude,
-                            newCustomerLng = fix.longitude
+                            newCustomerLng = fix.longitude,
+                            newCustomerLatText = fix.latitude.toString(),
+                            newCustomerLngText = fix.longitude.toString()
                         )
                     }
                 }
@@ -160,7 +174,14 @@ class ServiceJobFormViewModel(
                 }
         }
     }
-    fun clearCustomerLocation() = _uiState.update { it.copy(newCustomerLat = null, newCustomerLng = null) }
+    fun clearCustomerLocation() = _uiState.update {
+        it.copy(
+            newCustomerLat = null,
+            newCustomerLng = null,
+            newCustomerLatText = "",
+            newCustomerLngText = ""
+        )
+    }
     fun selectStaff(s: StaffDTO?)          = _uiState.update { it.copy(selectedStaff = s) }
     fun selectShelfLocation(loc: ShelfLocationDTO?) = _uiState.update { it.copy(selectedShelfLocation = loc) }
     fun setItemName(v: String)             = _uiState.update { it.copy(itemName = v) }
@@ -400,6 +421,17 @@ class ServiceJobFormViewModel(
             _uiState.update { it.copy(newCustomerError = "ဖောက်သည်အမည် ဖြည့်ပါ") }
             return
         }
+        val hasLatText = s.newCustomerLatText.isNotBlank()
+        val hasLngText = s.newCustomerLngText.isNotBlank()
+        if (hasLatText != hasLngText || (hasLatText && (s.newCustomerLat == null || s.newCustomerLng == null))) {
+            _uiState.update { it.copy(newCustomerError = "Latitude/Longitude နှစ်ခုလုံး မှန်ကန်စွာဖြည့်ပါ") }
+            return
+        }
+        if (s.newCustomerLat != null && s.newCustomerLat !in -90.0..90.0
+            || s.newCustomerLng != null && s.newCustomerLng !in -180.0..180.0) {
+            _uiState.update { it.copy(newCustomerError = "GPS coordinate မမှန်ကန်ပါ") }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(creatingCustomer = true, newCustomerError = null) }
@@ -619,6 +651,8 @@ class ServiceJobFormViewModel(
         val newCustomerAddress:  String                  = "",
         val newCustomerLat:      Double?                 = null,
         val newCustomerLng:      Double?                 = null,
+        val newCustomerLatText:  String                  = "",
+        val newCustomerLngText:  String                  = "",
         val capturingLocation:   Boolean                 = false,
         val creatingCustomer:    Boolean                 = false,
         val newCustomerError:    String?                 = null,

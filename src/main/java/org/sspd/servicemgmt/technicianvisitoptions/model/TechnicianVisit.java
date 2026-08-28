@@ -44,8 +44,20 @@ public class TechnicianVisit {
     @Column(nullable = false, length = 20)
     private TechnicianVisitStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private TechnicianVisitPurpose purpose;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private TechnicianVisitOutcome outcome;
+
+    @Column(length = 500)
+    private String outcomeNote;
+
     private LocalDateTime startedAt;
     private LocalDateTime arrivedAt;
+    private LocalDateTime leftCustomerAt;
     private LocalDateTime endedAt;
     private LocalDateTime lastMovedAt;
 
@@ -57,6 +69,10 @@ public class TechnicianVisit {
     private BigDecimal arriveLatitude;
     @Column(precision = 10, scale = 7)
     private BigDecimal arriveLongitude;
+    @Column(precision = 10, scale = 7)
+    private BigDecimal departureLatitude;
+    @Column(precision = 10, scale = 7)
+    private BigDecimal departureLongitude;
     @Column(precision = 10, scale = 7)
     private BigDecimal endLatitude;
     @Column(precision = 10, scale = 7)

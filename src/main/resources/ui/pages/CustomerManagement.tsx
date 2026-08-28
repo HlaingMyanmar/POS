@@ -324,6 +324,15 @@ const CustomerManagement: React.FC = () => {
     if (!name || !phone || !address) {
       return 'Name, phone and address are required.';
     }
+    if ((basicForm.latitude == null) !== (basicForm.longitude == null)) {
+      return 'Latitude နှင့် Longitude နှစ်ခုလုံး ဖြည့်ပါ၊ သို့မဟုတ် နှစ်ခုလုံးရှင်းပါ။';
+    }
+    if (basicForm.latitude != null && (basicForm.latitude < -90 || basicForm.latitude > 90)) {
+      return 'Latitude သည် -90 မှ 90 အတွင်း ဖြစ်ရမည်။';
+    }
+    if (basicForm.longitude != null && (basicForm.longitude < -180 || basicForm.longitude > 180)) {
+      return 'Longitude သည် -180 မှ 180 အတွင်း ဖြစ်ရမည်။';
+    }
     if (controlForm.creditHold && !controlForm.creditHoldReason.trim()) {
       return 'Credit hold reason is required.';
     }
@@ -381,11 +390,14 @@ const CustomerManagement: React.FC = () => {
 
       if (editingCustomer) {
         await customerService.update(editingCustomer.id, payload);
-        if (basicForm.latitude != null && basicForm.longitude != null) {
+        const locationChanged =
+          (editingCustomer.latitude ?? null) !== basicForm.latitude ||
+          (editingCustomer.longitude ?? null) !== basicForm.longitude;
+        if (locationChanged) {
           await customerService.updateLocation(editingCustomer.id, {
             latitude: basicForm.latitude,
             longitude: basicForm.longitude,
-            source: 'WEB'
+            source: 'MANUAL'
           });
         }
         await saveTerm(editingCustomer.id);
@@ -805,6 +817,57 @@ const CustomerManagement: React.FC = () => {
                         </span>
                       )}
                     </div>
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                          Latitude (စိတ်ကြိုက်)
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="-90"
+                          max="90"
+                          value={basicForm.latitude ?? ''}
+                          onChange={(e) => setBasicForm((prev) => ({
+                            ...prev,
+                            latitude: e.target.value === '' ? null : Number(e.target.value)
+                          }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-mono"
+                          placeholder="16.8409000"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                          Longitude (စိတ်ကြိုက်)
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="-180"
+                          max="180"
+                          value={basicForm.longitude ?? ''}
+                          onChange={(e) => setBasicForm((prev) => ({
+                            ...prev,
+                            longitude: e.target.value === '' ? null : Number(e.target.value)
+                          }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-mono"
+                          placeholder="96.1735000"
+                        />
+                      </div>
+                    </div>
+                    {basicForm.latitude != null && basicForm.longitude != null && (
+                      <button
+                        type="button"
+                        onClick={() => setBasicForm((prev) => ({
+                          ...prev,
+                          latitude: null,
+                          longitude: null
+                        }))}
+                        className="mt-2 text-xs font-semibold text-rose-600 hover:text-rose-700"
+                      >
+                        GPS location ရှင်းမည်
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

@@ -372,6 +372,11 @@ fun TechnicianAppNavigation() {
                             onBack = { nav.popBackStack() },
                             onEdit = { nav.navigate(Screen.EditServiceJob.createRoute(jobId)) },
                             onPrint = { nav.navigate(Screen.ServiceJobPrint.createRoute(jobId)) },
+                            onOpenActiveVisit = { activeJobId ->
+                                nav.navigate(Screen.ServiceJobDetail.createRoute(activeJobId)) {
+                                    launchSingleTop = true
+                                }
+                            },
                             onDeleted = {
                                 nav.navigate(Screen.ServiceJobs.route) {
                                     popUpTo(Screen.ServiceJobDetail.route) { inclusive = true }

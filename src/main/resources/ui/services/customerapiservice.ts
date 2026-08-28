@@ -20,6 +20,6 @@ export const customerService = {
   delete: (id: number) => 
     api.delete<any, ApiResponse<void>>(`/v1/customers/${id}`).then((res: any) => res.data),
 
-  updateLocation: (id: number, body: { latitude: number; longitude: number; accuracy?: number; source?: string }) =>
+  updateLocation: (id: number, body: { latitude: number | null; longitude: number | null; accuracy?: number; source?: string }) =>
     api.patch<any, ApiResponse<CustomerDTO>>(`/v1/customers/${id}/location`, body).then((res: any) => res.data)
 };

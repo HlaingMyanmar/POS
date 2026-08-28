@@ -48,6 +48,8 @@ import org.sspd.servicemgmt.servicejoboptions.model.ServiceLineConfirmationStatu
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobNotification;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
+import org.sspd.servicemgmt.technicianvisitoptions.repository.TechnicianVisitRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRepository;
@@ -89,6 +91,7 @@ import org.springframework.data.domain.Page;
 public class ServiceJobService {
 
     private final ServiceJobRepository repo;
+    private final TechnicianVisitRepository technicianVisitRepo;
     private final CustomerRepository customerRepo;
     private final StaffRepository staffRepo;
     private final UserRepository userRepository;
@@ -132,6 +135,14 @@ public class ServiceJobService {
     private LocalDateTime parseDateEnd(String s) {
         if (s == null || s.isBlank()) return null;
         return java.time.LocalDate.parse(s).atStartOfDay().plusDays(1);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceJobDTO> findByCustomerId(Integer customerId) {
+        return repo.findByCustomerId(customerId).stream()
+                .sorted(java.util.Comparator.comparing(ServiceJob::getId).reversed())
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -194,6 +205,7 @@ public class ServiceJobService {
             .estimatedCost(dto.getEstimatedCost() != null ? dto.getEstimatedCost() : BigDecimal.ZERO)
             .finalCost(BigDecimal.ZERO)
             .status(ServiceJobStatus.RECEIVED)
+            .serviceMode(dto.getServiceMode() == null ? ServiceMode.INDOOR : dto.getServiceMode())
             .remark(dto.getRemark())
             .priority(dto.getPriority() != null && !dto.getPriority().isBlank() ? dto.getPriority() : "NORMAL")
             .holdReason(dto.getHoldReason())
@@ -230,6 +242,12 @@ public class ServiceJobService {
         if (dto.getCustomerId() != null)
             job.setCustomer(customerRepo.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")));
+        if (dto.getServiceMode() != null && dto.getServiceMode() != job.getServiceMode()) {
+            if (technicianVisitRepo.existsByServiceJobId(id)) {
+                throw new IllegalStateException("Visit history ရှိသော Job ကို Indoor/Outdoor Type ပြောင်းမရပါ");
+            }
+            job.setServiceMode(dto.getServiceMode());
+        }
         job.setAssignedStaff(resolveAssignedTechnician(dto.getAssignedStaffId(), job.getAssignedStaff()));
         job.setShelfLocation(dto.getShelfLocationId() != null
             ? shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null)
@@ -703,6 +721,7 @@ public class ServiceJobService {
             .shelfLocation(original.getShelfLocation())
             .problemDesc(req.getProblemDesc() != null ? req.getProblemDesc() : original.getProblemDesc())
             .estimatedCost(customerCharge).finalCost(BigDecimal.ZERO).status(ServiceJobStatus.RECEIVED)
+            .serviceMode(original.getServiceMode() == null ? ServiceMode.INDOOR : original.getServiceMode())
             .rework(true).reworkType(req.getReworkType()).parentJobId(originalJobId)
             .replacementItemName(replacementProduct != null ? replacementProduct.getName() : req.getReplacementItemName())
             .replacementSerialNo(!replacementSerials.isEmpty() ? replacementSerials.get(0) : req.getReplacementSerialNo())
@@ -1395,6 +1414,9 @@ public class ServiceJobService {
         dto.setJobNo(j.getJobNo());
         dto.setCustomerId(j.getCustomer().getId());
         dto.setCustomerName(j.getCustomer().getName());
+        dto.setServiceMode(j.getServiceMode() == null ? ServiceMode.INDOOR : j.getServiceMode());
+        dto.setCustomerLatitude(j.getCustomer().getLatitude());
+        dto.setCustomerLongitude(j.getCustomer().getLongitude());
         if (j.getAssignedStaff() != null) {
             dto.setAssignedStaffId(j.getAssignedStaff().getId());
             dto.setAssignedStaffName(j.getAssignedStaff().getName());

@@ -29,11 +29,13 @@ class TechnicianVisitViewModel(application: Application) : AndroidViewModel(appl
 
     fun clearMessage() = VisitTracker.clearMessage()
 
-    fun start(jobId: Int) = launch { VisitTracker.startVisit(getApplication(), jobId) }
+    fun start(jobId: Int, purpose: String) = launch { VisitTracker.startVisit(getApplication(), jobId, purpose) }
     fun arrive() = launch { VisitTracker.arrive(getApplication()) }
+    fun departCustomer(outcome: String, note: String? = null) = launch { VisitTracker.departCustomer(getApplication(), outcome, note) }
     fun end() = launch { VisitTracker.end(getApplication()) }
     fun cancel(reason: String) = launch { VisitTracker.cancel(getApplication(), reason) }
     fun addReason(code: String, note: String?) = launch { VisitTracker.addReason(getApplication(), code, note) }
+    fun resumeJourney() = launch { VisitTracker.resumeJourney(getApplication()) }
     fun resumeTracking() = launch { VisitTracker.resumeTracking(getApplication()) }
 
     private fun launch(block: suspend () -> Unit) {

@@ -81,7 +81,10 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
             icon = { Icon(Icons.Outlined.PersonAdd, null, tint = Primary, modifier = Modifier.size(28.dp)) },
             title = { Text("ဖောက်သည်အသစ်", fontWeight = FontWeight.ExtraBold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     OutlinedTextField(
                         value = state.newCustomerName,
                         onValueChange = { vm.setNewCustomerName(it) },
@@ -126,6 +129,34 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                                 if (state.newCustomerLat != null) "Location ရပြီး (optional)"
                                 else "လက်ရှိနေရာယူမယ် (optional)"
                             )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = state.newCustomerLatText,
+                            onValueChange = vm::setNewCustomerLatitude,
+                            label = { Text("Latitude") },
+                            placeholder = { Text("16.8409") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = state.newCustomerLngText,
+                            onValueChange = vm::setNewCustomerLongitude,
+                            label = { Text("Longitude") },
+                            placeholder = { Text("96.1735") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (state.newCustomerLat != null || state.newCustomerLng != null) {
+                        TextButton(onClick = vm::clearCustomerLocation) {
+                            Text("GPS location ရှင်းမည်")
                         }
                     }
                     state.newCustomerError?.let {

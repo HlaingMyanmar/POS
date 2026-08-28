@@ -276,6 +276,13 @@ public class SaleService {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
     @Transactional(readOnly = true)
+    public java.util.List<SaleDTO> findByCustomerId(Integer customerId) {
+        return saleRepository.findByCustomerIdOrderBySaleDateDescIdDesc(customerId).stream()
+                .map(mapper::toDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public SaleDTO findById(Integer id) {
         Sale sale = saleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + id));

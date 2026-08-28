@@ -97,6 +97,11 @@ public class ServiceJob {
     @Column(name = "status", length = 20)
     private ServiceJobStatus status;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "service_mode", length = 20)
+    private ServiceMode serviceMode = ServiceMode.INDOOR;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "payment_method_id")
     private PaymentMethod paymentMethod;
@@ -217,6 +222,7 @@ public class ServiceJob {
     protected void onCreate() {
         if (receivedDate == null) receivedDate = LocalDateTime.now();
         if (status == null) status = ServiceJobStatus.RECEIVED;
+        if (serviceMode == null) serviceMode = ServiceMode.INDOOR;
         if (estimatedCost == null) estimatedCost = BigDecimal.ZERO;
         if (finalCost == null) finalCost = BigDecimal.ZERO;
         if (lines == null) lines = new ArrayList<>();

@@ -5,6 +5,7 @@ import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkResolutionMode;
 import org.sspd.servicemgmt.servicejoboptions.model.OldPartDisposition;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,6 +17,9 @@ public class ServiceJobDTO {
     private String jobNo;
     private Integer customerId;
     private String customerName;
+    private ServiceMode serviceMode;
+    private BigDecimal customerLatitude;
+    private BigDecimal customerLongitude;
     private Integer assignedStaffId;
     private String assignedStaffName;
     private String itemName;

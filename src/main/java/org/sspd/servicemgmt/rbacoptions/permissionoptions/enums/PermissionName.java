@@ -246,6 +246,7 @@ public enum PermissionName {
     CAN_ACCESS_TECHNICIAN_VISIT_START("Technician outdoor visit စတင်/ရောက်/ပိတ်ခွင့်"),
     CAN_ACCESS_TECHNICIAN_LOCATION_READ("Technician live location ကြည့်ခွင့်"),
     CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ("Technician route history ကြည့်ခွင့်"),
+    CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_DELETE("Technician raw GPS history ကို အုပ်ချုပ်သူမှ ဖျက်ခွင့်"),
     CAN_ACCESS_CUSTOMER_LOCATION_UPDATE("Customer GPS location သီးသန့်ပြင်ခွင့်");
 
 

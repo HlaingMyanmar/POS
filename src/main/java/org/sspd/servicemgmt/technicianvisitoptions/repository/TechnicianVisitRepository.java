@@ -27,6 +27,8 @@ public interface TechnicianVisitRepository extends JpaRepository<TechnicianVisit
             Collection<TechnicianVisitStatus> statuses
     );
 
+    boolean existsByServiceJobId(Integer serviceJobId);
+
     List<TechnicianVisit> findByStartedAtGreaterThanEqualAndStartedAtLessThanEqualOrderByStartedAtDesc(
             LocalDateTime from,
             LocalDateTime to

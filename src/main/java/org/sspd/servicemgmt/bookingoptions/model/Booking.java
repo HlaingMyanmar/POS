@@ -5,6 +5,7 @@ import lombok.*;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -67,6 +68,11 @@ public class Booking {
     @Column(name = "status", length = 20)
     private BookingStatus status = BookingStatus.Pending;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "service_mode", length = 20)
+    private ServiceMode serviceMode = ServiceMode.INDOOR;
+
     @Column(columnDefinition = "TEXT")
     private String remark;
 
@@ -111,5 +117,6 @@ public class Booking {
     @PrePersist
     protected void onCreate() {
         if (bookingDate == null) bookingDate = LocalDateTime.now();
+        if (serviceMode == null) serviceMode = ServiceMode.INDOOR;
     }
 }

@@ -986,6 +986,7 @@ export interface ServiceJobDTO {
   jobNo?: string;
   customerId: number;
   customerName?: string;
+  serviceMode?: 'INDOOR' | 'OUTDOOR';
   assignedStaffId?: number;
   assignedStaffName?: string;
   itemName?: string;

@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
+import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 
@@ -38,6 +40,10 @@ fun ServiceJobListScreen(
     val vm: ServiceJobListViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val canOutdoorVisit = remember(context) {
+        PreferenceManager(context).hasPermission("CAN_ACCESS_TECHNICIAN_VISIT_START")
+    }
 
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker   by remember { mutableStateOf(false) }
@@ -273,6 +279,24 @@ fun ServiceJobListScreen(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("အပြင်ထွက် Visit", fontWeight = FontWeight.ExtraBold, color = Color(0xFF047857))
+                                Text(
+                                    if (canOutdoorVisit) "Job တစ်ခုဖွင့်ပြီး «ထွက်ခွာပြီ» နှိပ်ပါ"
+                                    else "Admin မှ CAN_ACCESS_TECHNICIAN_VISIT_START ပေးပြီး logout/login ပြန်လုပ်ပါ",
+                                    fontSize = 12.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                    }
                     items(filtered) { job ->
                         Card(
                             shape    = RoundedCornerShape(12.dp),

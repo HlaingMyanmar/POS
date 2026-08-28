@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,7 +15,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.LocationPingRequest;
+import org.sspd.servicemgmt.technicianvisitoptions.dto.LocationPingDTO;
+import org.sspd.servicemgmt.technicianvisitoptions.dto.DeleteGpsHistoryRequest;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.TechnicianVisitDTO;
+import org.sspd.servicemgmt.technicianvisitoptions.dto.TechnicianVisitReportDTO;
 import org.sspd.servicemgmt.technicianvisitoptions.dto.VisitReasonRequest;
 import org.sspd.servicemgmt.technicianvisitoptions.service.TechnicianVisitService;
 
@@ -33,10 +37,11 @@ public class TechnicianVisitController {
     @PostMapping
     public ResponseEntity<ApiResponse<TechnicianVisitDTO>> start(
             @RequestParam Integer jobId,
+            @RequestParam(defaultValue = "SERVICE") String purpose,
             @RequestBody LocationPingRequest ping,
             Authentication authentication
     ) {
-        return ok("Visit started", service.start(jobId, ping, authentication));
+        return ok("Visit started", service.start(jobId, purpose, ping, authentication));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_VISIT_START')")
@@ -47,6 +52,18 @@ public class TechnicianVisitController {
             Authentication authentication
     ) {
         return ok("Arrived", service.arrive(id, ping, authentication));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_VISIT_START')")
+    @PostMapping("/{id}/depart-customer")
+    public ResponseEntity<ApiResponse<TechnicianVisitDTO>> departCustomer(
+            @PathVariable Long id,
+            @RequestBody LocationPingRequest ping,
+            @RequestParam(defaultValue = "FIXED_ON_SITE") String outcome,
+            @RequestParam(required = false) String note,
+            Authentication authentication
+    ) {
+        return ok("Departed customer", service.departCustomer(id, outcome, note, ping, authentication));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_VISIT_START')")
@@ -100,6 +117,16 @@ public class TechnicianVisitController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_VISIT_START')")
+    @PostMapping("/{id}/resume-journey")
+    public ResponseEntity<ApiResponse<TechnicianVisitDTO>> resumeJourney(
+            @PathVariable Long id,
+            @RequestBody LocationPingRequest ping,
+            Authentication authentication
+    ) {
+        return ok("Journey resumed", service.resumeJourney(id, ping, authentication));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_VISIT_START')")
     @GetMapping("/me/active")
     public ResponseEntity<ApiResponse<TechnicianVisitDTO>> active(Authentication authentication) {
         return ok("Active visit", service.active(authentication));
@@ -109,6 +136,12 @@ public class TechnicianVisitController {
     @GetMapping("/live")
     public ResponseEntity<ApiResponse<List<TechnicianVisitDTO>>> live() {
         return ok("Live locations", service.live());
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_READ')")
+    @GetMapping("/today")
+    public ResponseEntity<ApiResponse<List<TechnicianVisitDTO>>> today() {
+        return ok("Today's visits", service.today());
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ')")
@@ -121,9 +154,42 @@ public class TechnicianVisitController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ')")
+    @GetMapping("/report")
+    public ResponseEntity<ApiResponse<List<TechnicianVisitReportDTO>>> report(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(required = false) String job,
+            @RequestParam(required = false) String customer
+    ) {
+        return ok("Visit report", service.report(from, to, job, customer));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ')")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<TechnicianVisitDTO>> detail(@PathVariable Long id) {
         return ok("Visit detail", service.historyDetail(id));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ')")
+    @GetMapping("/{id}/history-pings")
+    public ResponseEntity<ApiResponse<List<LocationPingDTO>>> historyPings(@PathVariable Long id) {
+        return ok("Visit GPS history", service.historyPings(id));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_DELETE')")
+    @DeleteMapping("/{id}/history-pings")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> deleteHistoryPings(
+            @PathVariable Long id,
+            @RequestBody DeleteGpsHistoryRequest request,
+            Authentication authentication
+    ) {
+        int deleted = service.deleteVisitGpsHistory(
+                id,
+                request == null ? null : request.confirmation(),
+                request == null ? null : request.reason(),
+                authentication
+        );
+        return ok("Visit raw GPS history deleted", Map.of("deletedPoints", deleted));
     }
 
     private static <T> ResponseEntity<ApiResponse<T>> ok(String message, T data) {

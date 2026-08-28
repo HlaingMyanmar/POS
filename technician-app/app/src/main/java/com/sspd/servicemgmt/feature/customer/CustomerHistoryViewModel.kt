@@ -54,19 +54,10 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
         }
         viewModelScope.launch {
             val auth = ApiClient.bearer(prefs.authToken)
-            val query = customer.phone?.takeIf { it.isNotBlank() } ?: customer.name
-
             try {
-                val response = ApiClient.service.getServiceJobs(
-                    auth = auth,
-                    size = 100,
-                    search = query,
-                    dateFrom = "",
-                    dateTo = ""
-                )
+                val response = ApiClient.service.getServiceJobsByCustomer(auth, customerId)
                 if (response.isSuccessful) {
-                    val jobs = response.body()?.data?.content.orEmpty()
-                        .filter { it.customerId == customerId }
+                    val jobs = response.body()?.data.orEmpty()
                         .sortedByDescending { it.receivedDate ?: it.modifiedAt.orEmpty() }
                     _state.update { it.copy(jobs = jobs) }
                 } else {
@@ -80,16 +71,10 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
             // explicitly contains the permission assigned by an administrator.
             if (canViewSales) {
                 try {
-                    val response = ApiClient.service.getSales(
-                        auth = auth,
-                        size = 100,
-                        search = query,
-                        dateFrom = "",
-                        dateTo = ""
-                    )
+                    val response = ApiClient.service.getSalesByCustomer(auth, customerId)
                     if (response.isSuccessful) {
-                        val sales = response.body()?.data?.content.orEmpty()
-                            .filter { it.customerId == customerId && it.voided != true }
+                        val sales = response.body()?.data.orEmpty()
+                            .filter { it.voided != true }
                             .sortedByDescending { it.saleDate.orEmpty() }
                         _state.update { it.copy(sales = sales) }
                     } else {

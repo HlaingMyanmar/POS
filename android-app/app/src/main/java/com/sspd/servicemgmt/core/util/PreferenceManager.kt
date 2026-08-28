@@ -41,6 +41,38 @@ class PreferenceManager(context: Context) {
         get() = p.getString("phone", "") ?: ""
         set(v) { p.edit().putString("phone", v).apply() }
 
+    var activeVisitId: Long
+        get() = p.getLong("active_visit_id", 0L)
+        set(v) { p.edit().putLong("active_visit_id", v).apply() }
+
+    var activeVisitJobNo: String
+        get() = p.getString("active_visit_job_no", "") ?: ""
+        set(v) { p.edit().putString("active_visit_job_no", v).apply() }
+
+    var activeVisitCustomerName: String
+        get() = p.getString("active_visit_customer", "") ?: ""
+        set(v) { p.edit().putString("active_visit_customer", v).apply() }
+
+    var activeVisitStatus: String
+        get() = p.getString("active_visit_status", "") ?: ""
+        set(v) { p.edit().putString("active_visit_status", v).apply() }
+
+    fun saveActiveVisit(id: Long, jobNo: String, customerName: String, status: String) {
+        p.edit()
+            .putLong("active_visit_id", id)
+            .putString("active_visit_job_no", jobNo)
+            .putString("active_visit_customer", customerName)
+            .putString("active_visit_status", status)
+            .apply()
+    }
+
+    fun clearActiveVisit() = p.edit()
+        .remove("active_visit_id")
+        .remove("active_visit_job_no")
+        .remove("active_visit_customer")
+        .remove("active_visit_status")
+        .apply()
+
     fun hasPermission(perm: String) = permissionsStr
         .split(',')
         .map { it.trim() }

@@ -17,8 +17,8 @@ object VisitTracker {
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
-    var pendingResume: Boolean = false
-        private set
+    private val _pendingResume = MutableStateFlow(false)
+    val pendingResume: StateFlow<Boolean> = _pendingResume.asStateFlow()
 
     fun clearMessage() {
         _message.value = null
@@ -29,7 +29,7 @@ object VisitTracker {
     }
 
     fun stopServiceOnly(context: Context) {
-        pendingResume = PreferenceManager(context).activeVisitId > 0L
+        _pendingResume.value = PreferenceManager(context).activeVisitId > 0L
         TechnicianLocationService.stop(context)
     }
 
@@ -48,12 +48,12 @@ object VisitTracker {
                 active.status.orEmpty()
             )
             _visit.value = active
-            pendingResume = true
+            _pendingResume.value = true
             _message.value = "Active visit ရှိနေပါသည်။ Tracking ပြန်စရန် နှိပ်ပါ။"
         } else {
             prefs.clearActiveVisit()
             _visit.value = null
-            pendingResume = false
+            _pendingResume.value = false
             TechnicianLocationService.stop(context)
         }
     }
@@ -61,7 +61,7 @@ object VisitTracker {
     suspend fun resumeTracking(context: Context) {
         if (_visit.value?.id == null) recover(context)
         if (_visit.value?.id == null) return
-        pendingResume = false
+        _pendingResume.value = false
         TechnicianLocationService.start(context)
         _message.value = "Tracking ပြန်စပြီး"
     }
@@ -127,7 +127,7 @@ object VisitTracker {
             if (!res.isSuccessful) throw IllegalStateException(res.body()?.message ?: "Visit ပိတ်မရပါ")
             prefs.clearActiveVisit()
             _visit.value = null
-            pendingResume = false
+            _pendingResume.value = false
             TechnicianLocationService.stop(context)
             _message.value = "ပြန်လာပြီး"
         }
@@ -143,7 +143,7 @@ object VisitTracker {
             if (!res.isSuccessful) throw IllegalStateException(res.body()?.message ?: "Cancel မရပါ")
             prefs.clearActiveVisit()
             _visit.value = null
-            pendingResume = false
+            _pendingResume.value = false
             TechnicianLocationService.stop(context)
             _message.value = "Visit ပယ်ဖျက်ပြီး"
         }
@@ -168,7 +168,7 @@ object VisitTracker {
             visit.status.orEmpty()
         )
         _visit.value = visit
-        pendingResume = false
+        _pendingResume.value = false
     }
 
     private fun requiredVisitId(context: Context): Long {

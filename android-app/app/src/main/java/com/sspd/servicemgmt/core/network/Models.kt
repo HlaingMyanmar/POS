@@ -601,6 +601,49 @@ data class ServiceJobDTO(
     val notifications: List<ServiceJobNotificationDTO>? = null
 )
 
+data class TechnicianVisitDTO(
+    val id: Long? = null,
+    val staffId: Int? = null,
+    val staffName: String? = null,
+    val jobId: Int? = null,
+    val jobNo: String? = null,
+    val customerId: Int? = null,
+    val customerName: String? = null,
+    val status: String? = null,
+    val motionStatus: String? = null,
+    val needsReason: Boolean? = null,
+    val startedAt: String? = null,
+    val arrivedAt: String? = null,
+    val endedAt: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracy: Double? = null,
+    val recordedAt: String? = null,
+    val customerLatitude: Double? = null,
+    val customerLongitude: Double? = null,
+    val distanceMeters: Double? = null
+)
+
+data class LocationPingRequest(
+    val clientPingId: String,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Double? = null,
+    val recordedAt: String
+)
+
+data class VisitReasonRequest(
+    val reasonCode: String,
+    val note: String? = null
+)
+
+data class CustomerLocationRequest(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Double? = null,
+    val source: String? = null
+)
+
 // ─── Staff ───────────────────────────────────────────────────────────────────
 
 data class StaffDTO(
@@ -637,7 +680,9 @@ data class CustomerDTO(
     val creditHold: Boolean = false,
     val blacklisted: Boolean = false,
     val creditHoldReason: String? = null,
-    val blacklistReason: String? = null
+    val blacklistReason: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -84,6 +86,7 @@ fun ServiceJobDetailScreen(
     val visit by visitVm.visit.collectAsStateWithLifecycle()
     val visitBusy by visitVm.busy.collectAsStateWithLifecycle()
     val visitMessage by visitVm.message.collectAsStateWithLifecycle()
+    val pendingResume by VisitTracker.pendingResume.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     var pendingVisitAction by remember { mutableStateOf<String?>(null) }
@@ -372,21 +375,19 @@ fun ServiceJobDetailScreen(
                 }
             }
 
-            if (visitVm.canStart && (job.assignedStaffId == null || job.id == visit?.jobId || visit == null)) {
-                item {
-                    OutdoorVisitCard(
-                        jobId = job.id,
-                        visit = visit,
-                        busy = visitBusy,
-                        pendingResume = VisitTracker.pendingResume && visit?.jobId == job.id,
-                        onStart = { runVisit("start") },
-                        onArrive = { runVisit("arrive") },
-                        onEnd = { runVisit("end") },
-                        onResume = { runVisit("resume") },
-                        onCancel = { visitVm.cancel("WRONG_VISIT") },
-                        onReason = { showReasonDialog = true }
-                    )
-                }
+            item {
+                OutdoorVisitCard(
+                    jobId = job.id,
+                    visit = visit,
+                    busy = visitBusy,
+                    pendingResume = pendingResume && visit?.jobId == job.id,
+                    onStart = { runVisit("start") },
+                    onArrive = { runVisit("arrive") },
+                    onEnd = { runVisit("end") },
+                    onResume = { runVisit("resume") },
+                    onCancel = { visitVm.cancel("WRONG_VISIT") },
+                    onReason = { showReasonDialog = true }
+                )
             }
 
             // ── Info card ─────────────────────────────────────────────────────

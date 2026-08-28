@@ -60,6 +60,7 @@ fun HomeScreen(
     val versionState by versionVm.state.collectAsStateWithLifecycle()
     val activeVisit by VisitTracker.visit.collectAsStateWithLifecycle()
     val visitBusy by VisitTracker.busy.collectAsStateWithLifecycle()
+    val pendingResume by VisitTracker.pendingResume.collectAsStateWithLifecycle()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope       = rememberCoroutineScope()
@@ -209,7 +210,7 @@ fun HomeScreen(
                         pendingJobs = state.stats.pendingServiceJobs ?: 0,
                         visit = activeVisit,
                         visitBusy = visitBusy,
-                        pendingResume = VisitTracker.pendingResume,
+                        pendingResume = pendingResume,
                         onResumeTracking = { vm.resumeVisitTracking() },
                         onNavigate  = onNavigate
                     )

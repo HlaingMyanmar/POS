@@ -6,6 +6,41 @@ import retrofit2.http.*
 
 interface ApiService {
 
+    @POST("technician-visits")
+    suspend fun startTechnicianVisit(
+        @Header("Authorization") auth: String,
+        @Query("jobId") jobId: Int,
+        @Body body: LocationPingRequest
+    ): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @GET("technician-visits/me/active")
+    suspend fun getActiveTechnicianVisit(@Header("Authorization") auth: String): Response<ApiResponse<TechnicianVisitDTO?>>
+
+    @POST("technician-visits/{id}/arrive")
+    suspend fun arriveTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/end")
+    suspend fun endTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/cancel")
+    suspend fun cancelTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: Map<String, String>): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/ping")
+    suspend fun pingTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/pings")
+    suspend fun pingTechnicianVisitBatch(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: List<LocationPingRequest>): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/reason")
+    suspend fun addTechnicianVisitReason(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: VisitReasonRequest): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @PATCH("customers/{id}/location")
+    suspend fun updateCustomerLocation(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: CustomerLocationRequest
+    ): Response<ApiResponse<CustomerDTO>>
+
     @GET
     suspend fun getRaw(
         @Header("Authorization") auth: String,

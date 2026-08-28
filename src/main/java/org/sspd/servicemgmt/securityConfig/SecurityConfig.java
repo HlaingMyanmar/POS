@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**", "/ws-clinic/**", "/ws-native/**", "/topic/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/setup/status").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/setup/initial-admin").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/company-settings").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/version").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/technician/version").permitAll()

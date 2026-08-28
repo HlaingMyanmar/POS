@@ -11,7 +11,7 @@ Causes below are tied to this repository’s configuration and code. If a sympto
 **Check**
 
 - MySQL is running and `CREATE DATABASE ser_db` was executed (`utf8mb4`).
-- `spring.datasource.url`, `username`, `password` in `application.properties`.
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` in `.env` or `application-secrets.properties`.
 - JDBC URL database name must match (default `ser_db`).
 
 Hibernate `ddl-auto=update` will not create the **database**, only tables inside it.
@@ -20,23 +20,21 @@ Hibernate `ddl-auto=update` will not create the **database**, only tables inside
 
 ## HTTPS / certificate errors
 
-**Symptoms:** `NET::ERR_CERT_AUTHORITY_INVALID`; curl SSL errors.
+**Symptoms:** `NET::ERR_CERT_AUTHORITY_INVALID`; curl SSL errors; app fails to start because a keystore is missing.
 
-`server.ssl.enabled=true` and `classpath:keystore.p12`. The cert is whatever was packed in that PKCS12 (self-signed in typical local use).
+Default is `SSL_ENABLED=false` (HTTP). The WAR starts without `keystore.p12`. Production TLS belongs on Nginx.
 
-**Workaround for UI work:** Vite on HTTP `:3000` with proxy `secure: false`. Direct API calls to `:8080` must accept the cert.
+If you enable local JVM SSL (`SSL_ENABLED=true`), point `SSL_KEYSTORE` at a gitignored file such as `file:keystore.p12`. Missing keystore → SSL context fails at startup.
 
-Missing `keystore.p12` → SSL context fails at startup.
+**UI work:** Vite on HTTP `:3000` proxies to `http://localhost:8080`.
 
 ---
 
 ## Vite proxy cannot reach the API
 
-Default `VITE_DEV_PROXY_TARGET` is **`http://localhost:8080`**. The backend properties enable **HTTPS** on 8080.
+Default `VITE_DEV_PROXY_TARGET` is **`http://localhost:8080`**, which matches `SSL_ENABLED=false`.
 
-If the proxy target is HTTP and Tomcat only speaks HTTPS, the UI shows 5xx / ECONNRESET / empty proxy errors.
-
-Set `VITE_DEV_PROXY_TARGET=https://localhost:8080` in the UI env (see [LOCAL-SETUP.md](LOCAL-SETUP.md)). `secure: false` is already set so a self-signed cert is accepted.
+If you turn local JVM SSL on, set `VITE_DEV_PROXY_TARGET=https://localhost:8080` (see [LOCAL-SETUP.md](LOCAL-SETUP.md)). `secure: false` accepts a self-signed cert.
 
 ---
 

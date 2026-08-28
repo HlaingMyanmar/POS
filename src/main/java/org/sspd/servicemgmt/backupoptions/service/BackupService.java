@@ -275,7 +275,11 @@ public class BackupService {
     }
 
     private String findMysqldump() {
-        // Check PATH first
+        String configured = backupProperties.getMysqldumpPath();
+        if (configured != null && !configured.isBlank()) {
+            return configured.trim();
+        }
+        // Check PATH first, then common install locations.
         String[] candidates = System.getProperty("os.name", "").toLowerCase().contains("win")
             ? new String[]{
                 "mysqldump",
@@ -299,6 +303,9 @@ public class BackupService {
     }
 
     private String resolveMysqlCommand(String configuredMysqldumpPath) {
+        if (configuredMysqldumpPath == null || configuredMysqldumpPath.isBlank()) {
+            configuredMysqldumpPath = backupProperties.getMysqldumpPath();
+        }
         if (configuredMysqldumpPath != null && !configuredMysqldumpPath.isBlank()) {
             String trimmed = configuredMysqldumpPath.trim();
             if (trimmed.toLowerCase().endsWith("mysqldump.exe")) {

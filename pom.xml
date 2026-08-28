@@ -215,6 +215,11 @@
 				<directory>src/main/resources</directory>
 				<excludes>
 					<exclude>ui/node_modules/**</exclude>
+					<exclude>**/*.p12</exclude>
+					<exclude>**/*.pem</exclude>
+					<exclude>**/*.jks</exclude>
+					<exclude>application-secrets.properties</exclude>
+					<exclude>.env</exclude>
 				</excludes>
 			</resource>
 		</resources>
@@ -239,6 +244,19 @@
                             <version>1.5.5.Final</version>
                         </path>
 					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-war-plugin</artifactId>
+				<configuration>
+					<packagingExcludes>
+						WEB-INF/classes/**/*.p12,
+						WEB-INF/classes/**/*.pem,
+						WEB-INF/classes/**/*.jks,
+						WEB-INF/classes/application-secrets.properties,
+						WEB-INF/classes/.env
+					</packagingExcludes>
 				</configuration>
 			</plugin>
 			<plugin>

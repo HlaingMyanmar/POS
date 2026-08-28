@@ -53,6 +53,7 @@ import StockReport from './pages/reports/StockReport';
 import StaffPerformanceReport from './pages/reports/StaffPerformanceReport';
 import CustomerHistoryReport from './pages/reports/CustomerHistoryReport';
 import SetupWizardPage from './pages/SetupWizardPage';
+import InitialAdminPage from './pages/InitialAdminPage';
 import ScanPage from './pages/ScanPage';
 import OpeningBalancePage from './pages/OpeningBalancePage';
 import OpeningStockPage from './pages/OpeningStockPage';
@@ -100,6 +101,7 @@ const App: React.FC = () => {
   const [user, setUser]             = useState<User | null>(null);
   const [loading, setLoading]       = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [needsInitialAdmin, setNeedsInitialAdmin] = useState(false);
   const [language, setLanguage]     = useState<AppLanguage>(resolveInitialLanguage);
   const [theme, setTheme]           = useState<AppTheme>(resolveInitialTheme);
 
@@ -119,18 +121,31 @@ const App: React.FC = () => {
   const checkSetup = async () => {
     try {
       const status = await setupService.getStatus();
+      setNeedsInitialAdmin(!!status.needsInitialAdmin);
       setNeedsSetup(!status.complete);
     } catch {
+      setNeedsInitialAdmin(false);
       setNeedsSetup(false);
     }
   };
 
   useEffect(() => {
     const initializeAuth = async () => {
+      let initialAdminNeeded = false;
+      try {
+        const status = await setupService.getStatus();
+        initialAdminNeeded = !!status.needsInitialAdmin;
+        setNeedsInitialAdmin(initialAdminNeeded);
+        setNeedsSetup(!status.complete);
+      } catch {
+        setNeedsInitialAdmin(false);
+        setNeedsSetup(false);
+      }
+
       const savedUser = getFromSession('sspd_user');
       const refreshToken = getFromSession('sspd_refresh');
 
-      if (savedUser && refreshToken) {
+      if (!initialAdminNeeded && savedUser && refreshToken) {
         try {
           const res = await authService.refresh();
           if (res.success) {
@@ -196,6 +211,14 @@ const App: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-indigo-600"></div>
       </div>
+    );
+  }
+
+  if (needsInitialAdmin) {
+    return (
+      <InitialAdminPage onComplete={() => {
+        setNeedsInitialAdmin(false);
+      }} />
     );
   }
 

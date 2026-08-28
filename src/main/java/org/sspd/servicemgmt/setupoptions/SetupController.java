@@ -18,6 +18,12 @@ public class SetupController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Setup status", setupService.getStatus()));
     }
 
+    @PostMapping("/initial-admin")
+    public ResponseEntity<ApiResponse<Void>> createInitialAdmin(@RequestBody InitialAdminDTO dto) {
+        setupService.createInitialAdministrator(dto);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Administrator created. Please log in.", null));
+    }
+
     @PostMapping("/initialize")
     public ResponseEntity<ApiResponse<Void>> initialize(@RequestBody SetupInitDTO dto) {
         setupService.initialize(dto);

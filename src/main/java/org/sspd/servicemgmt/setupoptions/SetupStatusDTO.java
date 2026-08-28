@@ -11,4 +11,6 @@ public class SetupStatusDTO {
     private boolean complete;
     private boolean hasPaymentMethods;
     private boolean companyConfigured;
+    private boolean hasAdministrator;
+    private boolean needsInitialAdmin;
 }

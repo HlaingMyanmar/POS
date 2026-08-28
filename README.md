@@ -67,11 +67,14 @@ POS/
 │   ├── exceptionhandler/
 │   └── ServicemgmtApplication.java
 ├── src/main/resources/
-│   ├── application.properties       # Datasource, JWT, SSL, CORS, backup
-│   ├── keystore.p12                 # HTTPS PKCS12 (self-signed)
+│   ├── application.properties       # Safe defaults + ${ENV} placeholders
+│   ├── application-dev.properties
+│   ├── application-prod.properties
 │   └── ui/                          # React + Vite source
 ├── src/test/java/                   # Focused unit/regression tests
-├── deploy/nginx.conf                # Production reverse-proxy example
+├── .env.example                     # VPS/local env template (no real secrets)
+├── deploy/nginx.conf                # HTTPS 443 → HTTP 8080
+├── deploy/sspd.service              # systemd unit
 ├── android-app/                     # Native Android (out of web run path)
 ├── mobile-app/                      # Legacy React Native (out of web run path)
 └── docs/                            # Developer handover documentation
@@ -96,13 +99,13 @@ Frontend lives inside the backend repo. Maven `generate-resources` runs `npm run
 ## Quick start
 
 1. Create MySQL database `ser_db` (utf8mb4). See [docs/LOCAL-SETUP.md](docs/LOCAL-SETUP.md).
-2. Set datasource (and other) values in `src/main/resources/application.properties`. **Do not commit real secrets.**
+2. Copy `.env.example` to `.env` (or `application-secrets.properties.example` to `application-secrets.properties`) and set secrets there. **Do not commit real secrets.**
 3. Start backend: `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`).
 4. For UI hot-reload: `cd src/main/resources/ui && npm install && npm run dev`.
-5. Open `http://localhost:3000` (Vite) or `https://localhost:8080` (embedded UI after Maven build).
-6. Log in with an existing user. A default LOCAL admin is created by `UserSeeder` if that email is missing — **rotate that password immediately**; credentials are not documented here.
+5. Open `http://localhost:3000` (Vite) or `http://localhost:8080` (embedded UI after Maven build).
+6. Log in with an existing user. A bootstrap admin is created only when `BOOTSTRAP_ADMIN_ENABLED=true`.
 
-Backend listens on **HTTPS port 8080** (`server.ssl.enabled=true`). Vite proxies `/api` and `/ws-clinic` to the backend and uses `secure: false` for the self-signed cert.
+Backend listens on **HTTP port 8080** by default (`SSL_ENABLED=false`). Production uses Nginx on 443. Vite proxies `/api` and `/ws-clinic` to `http://localhost:8080`.
 
 ---
 
@@ -130,17 +133,19 @@ Optional env (Vite): `VITE_API_BASE_URL`, `VITE_WS_URL`, `VITE_BACKEND_PORT`, `V
 CREATE DATABASE ser_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Schema is created/updated by Hibernate `ddl-auto=update` plus CommandLineRunner migrations and seeders on startup.
+Schema is owned by Flyway (`ddl-auto=validate`). See [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Configuration keys
 
-Backend uses `application.properties` (not a `.env` file). Important **key names** (values belong in local/prod config, not in git):
+Packaged `application.properties` contains placeholders only. Set values in `.env` or `application-secrets.properties` (gitignored):
 
-- `spring.datasource.url` / `username` / `password`
-- `application.security.jwt.secret-key` / `expiration`
-- `server.ssl.*`, `app.cors.allowed-origins`
-- `app.download.base-url`, `app.apk.storage-dir`
-- `backup.*`
+- `DB_URL` / `DB_USERNAME` / `DB_PASSWORD`
+- `JWT_SECRET` / `JWT_EXPIRATION_MS`
+- `SSL_ENABLED` (production: `false`)
+- `CORS_ALLOWED_ORIGINS`, `APP_BASE_URL`
+- `APP_APK_STORAGE_DIR`, `BACKUP_ROOT_DIRECTORY`
+
+Production: `SPRING_PROFILES_ACTIVE=prod`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and `.env.example`.
 
 ---
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { User, AppLanguage } from '../types';
-import { authService } from '../services/api';
+import { authService, setupService } from '../services/api';
+import InitialAdminForm from './InitialAdminForm';
 import { Lock, User as UserIcon, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, Languages } from 'lucide-react';
 import Swal from 'sweetalert2';
 import fallbackLogoSrc from '../img/logo.png';
@@ -22,8 +23,14 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, language, onLanguageChang
   const [error, setError] = useState<string | null>(null);
   const [company, setCompany]       = useState<CompanySettings | null>(null);
   const [appVersion, setAppVersion] = useState('');
+  const [setupChecking, setSetupChecking] = useState(true);
+  const [needsInitialAdmin, setNeedsInitialAdmin] = useState(false);
 
   useEffect(() => {
+    setupService.getStatus()
+      .then(status => setNeedsInitialAdmin(Boolean(status.needsInitialAdmin)))
+      .catch(() => setNeedsInitialAdmin(false))
+      .finally(() => setSetupChecking(false));
     companySettingsService.getSettings()
       .then(res => {
         if (res.success && res.data) {
@@ -88,6 +95,9 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, language, onLanguageChang
       setLoading(false);
     }
   };
+
+  if (setupChecking) return <div className="min-h-screen flex items-center justify-center bg-slate-100"><Loader2 className="animate-spin text-indigo-600" size={20} /></div>;
+  if (needsInitialAdmin) return <InitialAdminForm company={company} onCreated={(username) => { setUsername(username); setNeedsInitialAdmin(false); }} />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4 py-8" style={{ fontSize: '16px' }}>

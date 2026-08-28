@@ -1,6 +1,6 @@
 # Security
 
-Do **not** paste real passwords, JWT secrets, or keystore passwords into tickets or this file. Values currently live in `application.properties` and `UserSeeder` — rotate them.
+Do **not** paste real passwords, JWT secrets, or keystore passwords into tickets or this file. Secrets belong in environment variables / `.env` / `application-secrets.properties`, never in the WAR.
 
 ## Authentication
 
@@ -50,6 +50,7 @@ Permit all:
 - `/api/v1/auth/**`
 - `/ws-clinic/**`, `/ws-native/**`, `/topic/**`
 - GET `/api/v1/setup/status`
+- POST `/api/v1/setup/initial-admin` (only succeeds when `users` table is empty)
 - GET `/api/v1/company-settings`
 - GET `/api/v1/app/version`
 - GET `/api/v1/app/technician/version`
@@ -67,7 +68,9 @@ Some controllers still have `@CrossOrigin(origins = "*")` (conflicts with creden
 
 ## HTTPS
 
-`server.ssl.enabled=true`, PKCS12 `classpath:keystore.p12`, alias `servicemgmt`. Password is a property — treat as secret.
+Production: Nginx terminates TLS on 443; Spring Boot uses HTTP on `127.0.0.1:8080` (`SSL_ENABLED=false`). No keystore is required to start.
+
+Local optional JVM SSL: `SSL_ENABLED=true` and `SSL_KEYSTORE=file:keystore.p12` (gitignored, excluded from the WAR).
 
 ## File / data sensitivity
 
@@ -87,8 +90,8 @@ No `logback.xml` in repo. Default Spring Boot logging. `GlobalExceptionHandler` 
 
 ## Security findings (do not “fix” in this docs pass)
 
-1. Secrets and default admin password in source (`application.properties`, `UserSeeder`).
-2. Self-signed TLS for LAN.
+1. Rotate any credentials that were previously hardcoded (DB password, JWT secret, keystore password, bootstrap admin).
+2. Self-signed TLS for LAN if local `SSL_ENABLED=true`.
 3. Refresh API missing; refresh token in login JSON **and** cookie **and** frontend `sessionStorage`.
 4. Public barcode WebSocket inject.
 5. Company settings writable by any authenticated user.

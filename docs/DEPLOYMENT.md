@@ -1,8 +1,14 @@
 # Deployment
 
-Source of truth: `pom.xml`, `src/main/resources/application.properties`, `src/main/resources/ui/package.json`, `deploy/nginx.conf`.
+Source of truth: `pom.xml`, `src/main/resources/application.properties`, `application-prod.properties`, `.env.example`, `deploy/nginx.conf`, `deploy/sspd.service`.
 
-There is **no** Dockerfile, **no** CI workflow, **no** systemd unit, and **no** Spring profile (`application-prod.properties` does not exist). Anything not listed here is **Needs Confirmation**.
+Production architecture:
+
+```text
+Internet -- HTTPS 443 --> Nginx -- HTTP 127.0.0.1:8080 --> Spring Boot WAR --> MySQL/MariaDB
+```
+
+Spring Boot does **not** terminate TLS in production (`SSL_ENABLED=false`). Secrets are **not** packaged in the WAR.
 
 ---
 
@@ -36,83 +42,90 @@ Uses Vite `--mode standalone --outDir dist`. Comments in `deploy/nginx.conf` say
 
 ## Production configuration
 
-There is a single `application.properties`. No env-file loader and no `SPRING_APPLICATION_JSON` usage in source.
+Use profile `prod` and environment variables from `.env.example`. Copy that file to `/opt/sspd/.env` on the VPS. Optional file fallbacks: `./application-secrets.properties` and `/opt/sspd/application-secrets.properties`.
 
-Set on the server (do not commit real values):
-
-| Key | Why it matters in production |
+| Environment variable | Purpose |
 |---|---|
-| `spring.datasource.url` / `username` / `password` | MySQL `ser_db` |
-| `application.security.jwt.secret-key` / `expiration` | JWT HMAC |
-| `server.ssl.*` | HTTPS on the JVM; keystore `classpath:keystore.p12` |
-| `app.cors.allowed-origins` | Needed if the browser origin is not the API origin |
-| `app.download.base-url` | Public URL baked into APK download links |
-| `app.apk.storage-dir` | Directory must exist; holds `servicemgmt.apk` and `technician.apk` |
-| `backup.root-directory` and related `backup.*` | File backups (see [BACKUP-RESTORE.md](BACKUP-RESTORE.md)) |
-| `server.port` / `server.address` | Default `8080` / `0.0.0.0` |
+| `SPRING_PROFILES_ACTIVE=prod` | Loads `application-prod.properties` |
+| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | MySQL/MariaDB |
+| `JWT_SECRET` | Base64 HMAC key, at least 32 random bytes |
+| `SSL_ENABLED=false` | No JVM keystore; Nginx terminates HTTPS |
+| `APP_BASE_URL` | Public HTTPS origin used in APK download links |
+| `APP_APK_STORAGE_DIR` | Default `/opt/sspd/apk` |
+| `BACKUP_ROOT_DIRECTORY` | Default `/opt/sspd/Backup` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins |
+| `SERVER_ADDRESS=127.0.0.1` / `SERVER_PORT=8080` | Bind localhost only behind Nginx |
 
-`server.ssl.enabled=true` in the checked-in file. `deploy/nginx.conf` proxies to **`http://127.0.0.1:8080`**. HTTPS-on-8080 vs HTTP-on-8080 is a mismatch — **Needs Confirmation** which protocol the live process actually speaks.
-
-Checked-in CORS and `app.download.base-url` contain LAN IPs. Replace them for any new host.
+Flyway stays enabled; `spring.jpa.hibernate.ddl-auto=validate`; `spring.flyway.clean-disabled=true`. This does **not** drop or recreate the database.
 
 ---
 
 ## Server requirements
 
-From source and the Nginx comments:
-
-- JDK 17
-- MySQL (database `ser_db`) reachable from the app process
-- The `mysqldump` and `mysql` CLIs on PATH **or** a path stored in backup settings (restore/import)
-- Optional: Nginx, if using `deploy/nginx.conf`
-- Writable directories for `backup.root-directory` (default `./Backup`) and `app.apk.storage-dir`
-
-OS, RAM, process supervisor, and TLS termination in front of Nginx: **Needs Confirmation**.
+- Ubuntu VPS, JDK 17, Nginx, MySQL/MariaDB (`ser_db`)
+- `mysqldump` / `mysql` on PATH (or `MYSQLDUMP_PATH`)
+- Writable `/opt/sspd/apk` and `/opt/sspd/Backup`
 
 ---
 
-## Deployment (what exists in the repo)
+## Ubuntu VPS (WAR behind Nginx)
 
-`deploy/nginx.conf` is the only deployment artifact.
+Create the service user and directories:
 
-Comments describe **Option A**:
+```bash
+sudo useradd --system --home /opt/sspd --shell /usr/sbin/nologin sspd
+sudo mkdir -p /opt/sspd/apk /opt/sspd/Backup
+sudo cp .env.example /opt/sspd/.env
+sudo nano /opt/sspd/.env
+sudo chmod 600 /opt/sspd/.env
+sudo chown -R sspd:sspd /opt/sspd
+```
 
-1. `npm run build:standalone`
-2. Copy `dist/` to `root` (`/var/www/sspd` in the sample)
-3. Start the backend on port 8080
-4. Install the file as `/etc/nginx/conf.d/sspd.conf` (or sites-enabled)
-5. `nginx -t` and reload Nginx
+Copy the WAR and unit file:
 
-Nginx sample:
+```bash
+sudo cp target/pos-0.0.1-SNAPSHOT.war /opt/sspd/
+sudo cp deploy/sspd.service /etc/systemd/system/sspd.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now sspd
+```
 
-- `listen 80`
-- `server_name 192.168.20.248` — change this
-- `location /api/` → `http://127.0.0.1:8080/api/`
-- `location /ws-clinic/` → `http://127.0.0.1:8080/ws-clinic/` with WebSocket upgrade, `proxy_read_timeout 3600s`
-- SPA `try_files` for HashRouter
-- Static asset cache 7 days
+Install Nginx TLS proxy (`deploy/nginx.conf`):
 
-There is **no** `/ws-native/` location in this Nginx file (Android native WebSocket). There is **no** TLS server block.
+```bash
+sudo apt install nginx
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/sspd
+sudo nano /etc/nginx/sites-available/sspd   # set YOUR_DOMAIN
+sudo ln -sf /etc/nginx/sites-available/sspd /etc/nginx/sites-enabled/sspd
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo certbot --nginx -d YOUR_DOMAIN
+sudo nginx -t && sudo systemctl reload nginx
+```
 
-How the WAR/process is copied onto the host: **Needs Confirmation**.
+Start command (manual, equivalent to the systemd unit):
+
+```bash
+sudo -u sspd bash -lc 'cd /opt/sspd && set -a && source /opt/sspd/.env && set +a && java -Dspring.profiles.active=prod -jar /opt/sspd/pos-0.0.1-SNAPSHOT.war'
+```
+
+If systemd `EnvironmentFile` is used, this is enough:
+
+```bash
+java -Dspring.profiles.active=prod -jar /opt/sspd/pos-0.0.1-SNAPSHOT.war
+```
 
 ---
 
 ## Start / stop / restart
 
-No systemd, Windows service, or Docker Compose file is in the repository.
-
-Embedded process (what the Maven plugin supports):
-
 ```bash
-./mvnw spring-boot:run
+sudo systemctl start sspd
+sudo systemctl stop sspd
+sudo systemctl restart sspd
+sudo systemctl status sspd
 ```
 
-or run the packaged WAR with a JDK 17 `java` command — exact flags: **Needs Confirmation**.
-
-Stop/restart: **Needs Confirmation** (kill the Java process / whatever supervisor ops use).
-
-Nginx: `sudo nginx -t && sudo systemctl reload nginx` (from file comments). Whether Nginx is actually installed as a systemd unit: **Needs Confirmation**.
+Nginx: `sudo nginx -t && sudo systemctl reload nginx`.
 
 ---
 
@@ -140,16 +153,14 @@ No documented artifact registry, previous-WAR keep policy, or DB migration down-
 
 Practical rollback implied by the code:
 
-- Keep a previous `pos-*.war` / `dist/` copy and redeploy it (**Needs Confirmation** of ops procedure).
-- Schema is `ddl-auto=update` plus one-way `*SchemaMigration` runners — **rolling the app back does not roll the schema back**.
+- Keep a previous `pos-*.war` copy and redeploy it.
+- Schema is Flyway-owned (`ddl-auto=validate`) — **rolling the app back does not roll the schema back**.
 - Before a restore-from-backup, the app takes a SAFETY dump (see [BACKUP-RESTORE.md](BACKUP-RESTORE.md)).
 
 ---
 
 ## Documentation findings (deployment)
 
-- WAR packaging without `SpringBootServletInitializer`; Tomcat starter is not `provided`.
-- Nginx proxies **HTTP** to 8080 while checked-in properties enable **HTTPS** on 8080.
-- Nginx sample has no `/ws-native/` proxy.
+- WAR packaging without `SpringBootServletInitializer`; Tomcat starter is not `provided`. Run with `java -jar`.
+- Production TLS is on Nginx; Spring Boot HTTP on 127.0.0.1:8080.
 - `backup.legacy-settings-scheduler.enabled` appears in properties; **no Java class reads it**.
-- Default Vite proxy target is `http://localhost:8080` while the API is configured for SSL — set `VITE_DEV_PROXY_TARGET=https://localhost:8080` for local proxying (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)).

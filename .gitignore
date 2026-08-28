@@ -32,5 +32,17 @@ build/
 ### VS Code ###
 .vscode/
 
+### Secrets and local environment (never commit real values) ###
+.env
+/.env.local
+/.env.production
+application-secrets.properties
+*.p12
+*.pem
+*.jks
+*.keystore
+
 ### Backups ###
 backups/*.sql
+Backup/
+apk-storage/

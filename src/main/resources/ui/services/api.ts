@@ -88,8 +88,11 @@ api.interceptors.response.use(
       return Promise.reject(errData);
     }
 
+    const requestUrl = String(originalRequest?.url || '');
+    const isPublicSetup = requestUrl.includes('/v1/setup/');
+
     // If token expired (401) and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (!isPublicSetup && error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
         // Attempt silent refresh using the refreshToken from sessionStorage (tab-isolated)
@@ -318,6 +321,8 @@ export interface SetupStatusDTO {
   complete: boolean;
   hasPaymentMethods: boolean;
   companyConfigured: boolean;
+  hasAdministrator?: boolean;
+  needsInitialAdmin?: boolean;
 }
 
 export interface SetupInitDTO {
@@ -328,6 +333,12 @@ export interface SetupInitDTO {
   paymentMethods: string[];
 }
 
+export interface InitialAdminDTO {
+  username: string;
+  email: string;
+  password: string;
+}
+
 export const setupService = {
   getStatus: async (): Promise<SetupStatusDTO> => {
     const res = await api.get<any, ApiResponse<SetupStatusDTO>>('/v1/setup/status');
@@ -335,6 +346,8 @@ export const setupService = {
   },
   initialize: (dto: SetupInitDTO): Promise<ApiResponse<void>> =>
     api.post('/v1/setup/initialize', dto),
+  createInitialAdmin: (dto: InitialAdminDTO): Promise<ApiResponse<void>> =>
+    api.post('/v1/setup/initial-admin', dto),
 };
 
 async function openPdfBlob(path: string): Promise<void> {

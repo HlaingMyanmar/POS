@@ -1,6 +1,6 @@
 # Developer handover
 
-Use this checklist after cloning. Details live in the other files under `docs/`. **Do not copy secrets from `application.properties` or `UserSeeder` into tickets.**
+Use this checklist after cloning. Details live in the other files under `docs/`. **Do not copy secrets from `.env` or `application-secrets.properties` into tickets.**
 
 Android (`android-app/`) and `mobile-app/` are adjacent clients, not required to run the web stack.
 
@@ -19,26 +19,26 @@ See [LOCAL-SETUP.md](LOCAL-SETUP.md).
 
 - [ ] `CREATE DATABASE ser_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
 - [ ] Point `spring.datasource.*` at that database.
-- [ ] First boot: Hibernate `ddl-auto=update` + `*SchemaMigration` runners + seeders (`PermissionSeeder`, `RoleSeeder`, `UserSeeder`, COA/units).
+- [ ] First boot: Flyway migrate + `ddl-auto=validate` + seeders (`PermissionSeeder`, `RoleSeeder`, optional `UserSeeder` when bootstrap is enabled, COA/units).
 
 See [DATABASE.md](DATABASE.md).
 
 ### Backend run
 
 - [ ] `mvnw.cmd spring-boot:run` (Windows) or `./mvnw spring-boot:run`.
-- [ ] API: `https://localhost:8080/api/v1/` (SSL on). Exception: backup history `/api/backups`.
+- [ ] API: `http://localhost:8080/api/v1/` (`SSL_ENABLED=false`). Exception: backup history `/api/backups`.
 - [ ] First run also builds the UI via `frontend-maven-plugin`.
 
 ### Frontend run
 
 - [ ] `cd src/main/resources/ui && npm install && npm run dev` → `http://localhost:3000`.
-- [ ] If the Vite proxy cannot reach the API, set `VITE_DEV_PROXY_TARGET=https://localhost:8080`.
+- [ ] If the Vite proxy cannot reach the API, set `VITE_DEV_PROXY_TARGET=http://localhost:8080`.
 
 ### Authentication
 
 - [ ] `POST /api/v1/auth/login` with `usernameOremail` + `password`. JWT Bearer afterward.
 - [ ] Login increments `token_version` (one active session per user).
-- [ ] Rotate the seeded LOCAL admin password immediately; credentials stay in source, not here.
+- [ ] Rotate the admin password after first login. Bootstrap credentials are env-only, not source.
 - [ ] Roles: `ADMINISTRATOR` has every permission (reset every boot). `ADMIN` / `PURCHASER` start empty.
 - [ ] There is **no** `POST /api/v1/auth/refresh` implementation; the SPA still calls it.
 
@@ -122,7 +122,7 @@ Collected from source vs docs/comments. These are **not** fixed in this document
 
 1. Frontend `POST /v1/auth/refresh` has no backend mapping.
 2. Refresh token returned in JSON, HttpOnly cookie, and `sessionStorage` (`sspd_refresh`).
-3. Secrets and a default admin password live in git (`application.properties`, `UserSeeder`). Rotate; do not paste values here.
+3. Secrets belong in `.env` / environment variables, not git. Rotate any previously hardcoded DB/JWT/keystore/admin credentials.
 4. `POST /api/v1/scan` is `permitAll` and publishes `/topic/barcode-scan`.
 5. GET company-settings is public; POST is JWT without a permission.
 6. STOMP `/ws-clinic` and `/ws-native` are `permitAll`.

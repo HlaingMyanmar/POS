@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "backup")
 public class BackupProperties {
     private String rootDirectory = "./Backup";
+    private String mysqldumpPath = "";
     private String dailyCron = "0 30 5 * * *";
     private String weeklyCron = "0 40 5 * * SUN";
     private String monthlyCron = "0 50 5 1 * *";

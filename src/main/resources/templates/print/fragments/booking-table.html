@@ -53,6 +53,12 @@
           <div style="font-size:12px; line-height:1.45; font-weight:700; color:#7c2d12; margin-top:2px;" th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}">—</div>
         </td>
       </tr>
+      <tr th:if="${not #strings.isEmpty(dev.deviceConditions)}">
+        <td colspan="2" style="padding:7px 9px; background:#f0fdf4; border-bottom:1px solid #bbf7d0;">
+          <div style="font-size:8px; font-weight:800; color:#166534; letter-spacing:1px; text-transform:uppercase;">Item Condition on Intake</div>
+          <div style="font-size:11px; line-height:1.45; font-weight:700; color:#14532d; margin-top:2px; white-space:pre-line;" th:text="${dev.deviceConditions}">—</div>
+        </td>
+      </tr>
       <tr th:if="${not #strings.isEmpty(dev.conditionChecklist)}">
         <td colspan="2" style="padding:6px 9px; background:#f8fafc;">
           <div style="font-size:8px; font-weight:800; color:#475569; letter-spacing:.8px; text-transform:uppercase;">Condition Checklist</div>

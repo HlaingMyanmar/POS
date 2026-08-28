@@ -41,6 +41,12 @@ public class SaleController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @GetMapping("/customer/{customerId}")
+    public ResponseEntity<ApiResponse<java.util.List<SaleDTO>>> getByCustomer(@PathVariable Integer customerId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Customer sale history", service.findByCustomerId(customerId)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<SaleDTO>> getById(@PathVariable Integer id) {
         SaleDTO sale = service.findById(id);

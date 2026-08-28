@@ -25,6 +25,7 @@ public class CustomerService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_CREATE')")
     @Transactional
     public CustomerDTO save(CustomerDTO dto) {
+        validateCoordinates(dto.getLatitude(), dto.getLongitude(), dto.getLocationAccuracy(), true);
         // ဖုန်းနံပါတ် ရှိနှင့်ပြီးသားလား စစ်မယ် (Unique Constraint)
         if (repository.existsByPhone(dto.getPhone())) {
             throw new RuntimeException("Phone number '" + dto.getPhone() + "' is already registered!");
@@ -105,24 +106,37 @@ public class CustomerService {
     @Transactional
     public CustomerDTO updateLocation(Integer id, java.math.BigDecimal latitude, java.math.BigDecimal longitude,
                                       java.math.BigDecimal accuracy, String source, String capturedBy) {
+        validateCoordinates(latitude, longitude, accuracy, true);
+        Customer customer = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer Not Found with id " + id));
+        customer.setLatitude(latitude);
+        customer.setLongitude(longitude);
+        customer.setLocationAccuracy(accuracy);
+        customer.setLocationCapturedAt(latitude == null ? null : java.time.LocalDateTime.now());
+        customer.setLocationCapturedBy(capturedBy);
+        customer.setLocationSource(latitude == null ? null
+                : source == null || source.isBlank() ? "MANUAL" : source);
+        Customer saved = repository.save(customer);
+        messagingTemplate.convertAndSend(CUSTOMER_TOPIC, "CUSTOMER_UPDATED");
+        return mapper.toDto(saved);
+    }
+
+    private static void validateCoordinates(
+            java.math.BigDecimal latitude,
+            java.math.BigDecimal longitude,
+            java.math.BigDecimal accuracy,
+            boolean optional
+    ) {
+        if (optional && latitude == null && longitude == null) {
+            return;
+        }
         if (latitude == null || longitude == null
                 || latitude.compareTo(java.math.BigDecimal.valueOf(-90)) < 0
                 || latitude.compareTo(java.math.BigDecimal.valueOf(90)) > 0
                 || longitude.compareTo(java.math.BigDecimal.valueOf(-180)) < 0
                 || longitude.compareTo(java.math.BigDecimal.valueOf(180)) > 0
                 || (accuracy != null && accuracy.signum() < 0)) {
-            throw new IllegalArgumentException("Invalid location coordinates");
+            throw new IllegalArgumentException("Latitude/Longitude မမှန်ကန်ပါ");
         }
-        Customer customer = repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer Not Found with id " + id));
-        customer.setLatitude(latitude);
-        customer.setLongitude(longitude);
-        customer.setLocationAccuracy(accuracy);
-        customer.setLocationCapturedAt(java.time.LocalDateTime.now());
-        customer.setLocationCapturedBy(capturedBy);
-        customer.setLocationSource(source == null || source.isBlank() ? "ARRIVAL" : source);
-        Customer saved = repository.save(customer);
-        messagingTemplate.convertAndSend(CUSTOMER_TOPIC, "CUSTOMER_UPDATED");
-        return mapper.toDto(saved);
     }
 }

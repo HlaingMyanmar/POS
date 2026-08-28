@@ -141,6 +141,7 @@ const photoDeviceLabel = (attachmentType?: string) => {
 
 const emptyForm = {
   customerId: '', staffId: '',
+  serviceMode: 'INDOOR' as 'INDOOR' | 'OUTDOOR',
   totalAmount: '', depositAmount: '', advancePaymentId: null as number | null, paymentMethodId: '', paymentAccountId: '', transactionNo: '', appointmentDate: '',
   shelfLocation: '', remark: '', signatureData: '',
   devices: [emptyDevice()] as DeviceEntry[],
@@ -568,6 +569,7 @@ export default function BookingManagement() {
     setForm({
       customerId:    String(b.customerId ?? ''),
       staffId:       b.staffId ? String(b.staffId) : '',
+      serviceMode:   b.serviceMode === 'OUTDOOR' ? 'OUTDOOR' : 'INDOOR',
       totalAmount:   b.totalAmount ? String(b.totalAmount) : '',
       depositAmount: b.depositAmount ? String(b.depositAmount) : '',
       advancePaymentId: b.advancePaymentId ?? null,
@@ -664,6 +666,7 @@ export default function BookingManagement() {
     const payload = {
       customerId:    Number(form.customerId),
       staffId:       form.staffId ? Number(form.staffId) : null,
+      serviceMode:   form.serviceMode,
       totalAmount:   serviceEstimate > 0 ? serviceEstimate : (form.totalAmount ? Number(form.totalAmount) : 0),
       depositAmount: form.depositAmount ? Number(form.depositAmount) : 0,
       paymentMethodId: form.paymentMethodId ? Number(form.paymentMethodId) : null,
@@ -906,6 +909,13 @@ export default function BookingManagement() {
                       <td className="px-3 py-3 text-xs text-slate-400">{page * PAGE_SIZE + i + 1}</td>
                       <td className="px-3 py-3">
                         <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{b.invoiceNo}</span>
+                        <div className={`mt-1 w-fit rounded px-1.5 py-0.5 text-[10px] font-black ${
+                          b.serviceMode === 'OUTDOOR'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {b.serviceMode === 'OUTDOOR' ? 'OUTDOOR' : 'INDOOR'}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{b.bookingDate?.slice(0, 10)}</td>
                       <td className="px-3 py-3">
@@ -1190,6 +1200,19 @@ export default function BookingManagement() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">ချိန်းဆိုချိန်</label>
                       <input type="datetime-local" value={form.appointmentDate} readOnly={viewOnly} onChange={e => setForm(p => ({ ...p, appointmentDate: e.target.value }))}
                         className="w-full border rounded-xl px-3 py-2 text-sm read-only:bg-slate-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Service Job Type</label>
+                      <select
+                        value={form.serviceMode}
+                        disabled={viewOnly}
+                        onChange={e => setForm(p => ({ ...p, serviceMode: e.target.value as 'INDOOR' | 'OUTDOOR' }))}
+                        className="w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:bg-slate-100"
+                      >
+                        <option value="INDOOR">Indoor — ဆိုင်တွင်းပြင်ဆင်မှု</option>
+                        <option value="OUTDOOR">Outdoor — Customer နေရာသွားရောက်မှု</option>
+                      </select>
+                      <p className="mt-1 text-[11px] text-slate-400">Outdoor ရွေးမှ GPS Map နှင့် Visit Tracking အလုပ်လုပ်မည်။</p>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">လက်ခံငွေ / Deposit</label>

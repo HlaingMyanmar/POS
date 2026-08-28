@@ -211,6 +211,7 @@ fun HomeScreen(
                         visit = activeVisit,
                         visitBusy = visitBusy,
                         pendingResume = pendingResume,
+                        canOutdoorVisit = state.canOutdoorVisit,
                         onResumeTracking = { vm.resumeVisitTracking() },
                         onNavigate  = onNavigate
                     )
@@ -243,23 +244,22 @@ private fun TechnicianHomeBody(
     visit: com.sspd.servicemgmt.core.network.TechnicianVisitDTO?,
     visitBusy: Boolean,
     pendingResume: Boolean,
+    canOutdoorVisit: Boolean,
     onResumeTracking: () -> Unit,
     onNavigate: (String) -> Unit
 ) {
-    visit?.let { active ->
-        Card(
-            modifier = Modifier.fillMaxWidth().clickable {
-                active.jobId?.let { onNavigate(Screen.ServiceJobDetail.createRoute(it)) }
-            },
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
-            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
-        ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("အခုသွားနေတဲ့ Job", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF047857))
-                Text(active.jobNo ?: "Job", fontWeight = FontWeight.ExtraBold, color = TextMain)
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onNavigate(Screen.ServiceJobs.route) },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Outdoor Visit", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF047857))
+            if (visit != null) {
+                Text(visit.jobNo ?: "Job", fontWeight = FontWeight.ExtraBold, color = TextMain)
                 Text(
-                    listOfNotNull(active.customerName, active.status, active.motionStatus).joinToString(" · "),
+                    listOfNotNull(visit.customerName, visit.status, visit.motionStatus).joinToString(" · "),
                     fontSize = 12.sp,
                     color = TextMuted
                 )
@@ -268,10 +268,16 @@ private fun TechnicianHomeBody(
                         Text("Tracking ပြန်စမည်")
                     }
                 }
+            } else if (canOutdoorVisit) {
+                Text("အပြင်ထွက် Visit", fontWeight = FontWeight.ExtraBold, color = TextMain)
+                Text("Job တစ်ခုဖွင့်ပြီး «ထွက်ခွာပြီ» နှိပ်ပါ", fontSize = 12.sp, color = TextMuted)
+            } else {
+                Text("Visit ခွင့်မရှိသေးပါ", fontWeight = FontWeight.ExtraBold, color = TextMain)
+                Text("Admin မှ CAN_ACCESS_TECHNICIAN_VISIT_START ပေးပြီး logout/login ပြန်လုပ်ပါ", fontSize = 12.sp, color = TextMuted)
             }
         }
-        Spacer(Modifier.height(16.dp))
     }
+    Spacer(Modifier.height(16.dp))
     StatCard(
         modifier = Modifier.fillMaxWidth(),
         label    = "ဆိုင်ခင်းအလုပ်",
@@ -820,6 +826,7 @@ fun DrawerContent(
             if (isTechnician) {
                 DrawerSection("အလုပ်")
                 DrawerMenuItem("Customer History", Icons.Outlined.History, Screen.CustomerHistory.route, onNavigate)
+                DrawerMenuItem("Outdoor Visit", Icons.Outlined.NearMe, Screen.ServiceJobs.route, onNavigate)
                 DrawerMenuItem("ပစ္စည်း",            Icons.Outlined.Inventory2,            Screen.Products.route,     onNavigate)
                 DrawerMenuItem("ပြင်ဆင်",            Icons.Outlined.Build,                 Screen.ServiceJobs.route,  onNavigate)
                 DrawerMenuItem("ဝန်ဆောင်မှုများ", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,  onNavigate)
@@ -994,6 +1001,7 @@ private fun TechnicianDashboardPreview() {
                     visit = null,
                     visitBusy = false,
                     pendingResume = false,
+                    canOutdoorVisit = true,
                     onResumeTracking = {},
                     onNavigate = {}
                 )

@@ -28,7 +28,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(HomeUiState(
         username     = prefs.username,
         displayName  = prefs.displayName.ifEmpty { prefs.username },
-        isTechnician = prefs.isTechnician()
+        isTechnician = prefs.isTechnician(),
+        canOutdoorVisit = prefs.hasPermission("CAN_ACCESS_TECHNICIAN_VISIT_START")
     ))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -134,6 +135,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val displayName:   String          = "",
         val isLoggedOut:   Boolean         = false,
         val isTechnician:  Boolean         = false,
+        val canOutdoorVisit: Boolean       = false,
         val bookingAlerts: List<BookingDTO> = emptyList(),
     )
 }

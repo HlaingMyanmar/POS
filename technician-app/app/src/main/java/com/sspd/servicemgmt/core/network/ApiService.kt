@@ -10,6 +10,7 @@ interface ApiService {
     suspend fun startTechnicianVisit(
         @Header("Authorization") auth: String,
         @Query("jobId") jobId: Int,
+        @Query("purpose") purpose: String,
         @Body body: LocationPingRequest
     ): Response<ApiResponse<TechnicianVisitDTO>>
 
@@ -18,6 +19,9 @@ interface ApiService {
 
     @POST("technician-visits/{id}/arrive")
     suspend fun arriveTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/depart-customer")
+    suspend fun departCustomerVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Query("outcome") outcome: String, @Query("note") note: String? = null, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
 
     @POST("technician-visits/{id}/end")
     suspend fun endTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
@@ -33,6 +37,9 @@ interface ApiService {
 
     @POST("technician-visits/{id}/reason")
     suspend fun addTechnicianVisitReason(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: VisitReasonRequest): Response<ApiResponse<TechnicianVisitDTO>>
+
+    @POST("technician-visits/{id}/resume-journey")
+    suspend fun resumeTechnicianJourney(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
 
     @PATCH("customers/{id}/location")
     suspend fun updateCustomerLocation(
@@ -176,6 +183,12 @@ interface ApiService {
         @Path("id") id: Int,
         @Body body: SalePaymentRequest
     ): Response<ApiResponse<SaleDTO>>
+
+    @GET("sales/customer/{customerId}")
+    suspend fun getSalesByCustomer(
+        @Header("Authorization") auth: String,
+        @Path("customerId") customerId: Int
+    ): Response<ApiResponse<List<SaleDTO>>>
 
     @GET("sales/{id}")
     suspend fun getSaleById(
@@ -627,6 +640,12 @@ interface ApiService {
         @Path("id") id: Int,
         @Body body: ReworkRequestDTO
     ): Response<ApiResponse<ServiceJobDTO>>
+
+    @GET("service-jobs/customer/{customerId}")
+    suspend fun getServiceJobsByCustomer(
+        @Header("Authorization") auth: String,
+        @Path("customerId") customerId: Int
+    ): Response<ApiResponse<List<ServiceJobDTO>>>
 
     @GET("service-jobs/{id}")
     suspend fun getServiceJobById(

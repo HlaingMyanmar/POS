@@ -2,6 +2,7 @@ package org.sspd.servicemgmt.bookingoptions.dto;
 
 import lombok.Data;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,6 +25,7 @@ public class BookingDTO {
     private Integer advancePaymentId;
     private String signatureData;
     private BookingStatus status;
+    private ServiceMode serviceMode;
     private String remark;
     private Integer paymentAccountId;
     private String transactionNo;

@@ -79,9 +79,9 @@ class PreferenceManager(context: Context) {
         .apply()
 
     fun hasPermission(perm: String) = permissionsStr
-        .split(',')
-        .map { it.trim() }
-        .any { it == perm }
+        .split(',', ';')
+        .map { it.trim().removePrefix("ROLE_").uppercase() }
+        .any { it == perm.trim().removePrefix("ROLE_").uppercase() }
 
     fun hasRole(role: String): Boolean {
         val wanted = role.removePrefix("ROLE_").uppercase()

@@ -35,6 +35,12 @@ public class ServiceJobController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
+    @GetMapping("/customer/{customerId}")
+    ResponseEntity<ApiResponse<List<ServiceJobDTO>>> getByCustomer(@PathVariable Integer customerId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Customer service history", service.findByCustomerId(customerId)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
     @GetMapping("/{id}")
     ResponseEntity<ApiResponse<ServiceJobDTO>> getById(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Service Job", service.findById(id)));

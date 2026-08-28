@@ -18,6 +18,7 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
     Optional<Sale> findTopByOrderByIdDesc();
 
     List<Sale> findTop10ByOrderByIdDesc();
+    List<Sale> findByCustomerIdOrderBySaleDateDescIdDesc(Integer customerId);
 
     @Query("select coalesce(sum(s.netAmount), 0) from Sale s")
     BigDecimal sumTotalNetAmount();

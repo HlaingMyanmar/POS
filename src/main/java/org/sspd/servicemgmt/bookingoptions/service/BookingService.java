@@ -30,6 +30,7 @@ import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobAttachment;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceLineConfirmationStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
@@ -138,6 +139,7 @@ public class BookingService {
             .appointmentDate(dto.getAppointmentDate() != null && !dto.getAppointmentDate().isBlank()
                 ? LocalDateTime.parse(dto.getAppointmentDate(), FMT) : null)
             .status(BookingStatus.Pending)
+            .serviceMode(dto.getServiceMode() == null ? ServiceMode.INDOOR : dto.getServiceMode())
             .totalAmount(dto.getTotalAmount() != null ? dto.getTotalAmount() : BigDecimal.ZERO)
             .depositAmount(dto.getDepositAmount() != null ? dto.getDepositAmount() : BigDecimal.ZERO)
             .signatureData(dto.getSignatureData())
@@ -186,6 +188,8 @@ public class BookingService {
             ? LocalDateTime.parse(dto.getAppointmentDate(), FMT) : null);
         if (dto.getStatus() != null)
             booking.setStatus(dto.getStatus());
+        if (dto.getServiceMode() != null)
+            booking.setServiceMode(dto.getServiceMode());
 
         validateSerials(dto, id);
         booking.setRemark(dto.getRemark());
@@ -336,6 +340,7 @@ public class BookingService {
                     .estimatedCost(BigDecimal.ZERO)
                     .finalCost(BigDecimal.ZERO)
                     .status(ServiceJobStatus.RECEIVED)
+                    .serviceMode(booking.getServiceMode() == null ? ServiceMode.INDOOR : booking.getServiceMode())
                     .bookingId(bookingId)
                     .priority("NORMAL")
                     .lines(new ArrayList<>())
@@ -367,6 +372,7 @@ public class BookingService {
                 .estimatedCost(booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO)
                 .finalCost(BigDecimal.ZERO)
                 .status(ServiceJobStatus.RECEIVED)
+                .serviceMode(booking.getServiceMode() == null ? ServiceMode.INDOOR : booking.getServiceMode())
                 .bookingId(bookingId)
                 .priority("NORMAL")
                 .lines(new ArrayList<>())
@@ -659,6 +665,7 @@ public class BookingService {
         dto.setBookingDate(b.getBookingDate() != null ? b.getBookingDate().toString() : null);
         dto.setAppointmentDate(b.getAppointmentDate() != null ? b.getAppointmentDate().toString() : null);
         dto.setStatus(b.getStatus());
+        dto.setServiceMode(b.getServiceMode() == null ? ServiceMode.INDOOR : b.getServiceMode());
         dto.setTotalAmount(b.getTotalAmount());
         dto.setDepositAmount(b.getDepositAmount());
         dto.setAdvancePaymentId(b.getAdvancePaymentId());
@@ -739,6 +746,9 @@ public class BookingService {
         dto.setJobNo(j.getJobNo());
         dto.setCustomerId(j.getCustomer().getId());
         dto.setCustomerName(j.getCustomer().getName());
+        dto.setServiceMode(j.getServiceMode() == null ? ServiceMode.INDOOR : j.getServiceMode());
+        dto.setCustomerLatitude(j.getCustomer().getLatitude());
+        dto.setCustomerLongitude(j.getCustomer().getLongitude());
         if (j.getAssignedStaff() != null) {
             dto.setAssignedStaffId(j.getAssignedStaff().getId());
             dto.setAssignedStaffName(j.getAssignedStaff().getName());

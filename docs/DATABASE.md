@@ -216,7 +216,7 @@ PK: `id`. Used by purchases, POs, returns, supplier payments.
 | Table | Entity | Purpose |
 |---|---|---|
 | `company_settings` | `CompanySettings` | Shop profile for receipts |
-| `app_version_settings` | `AppVersionSettings` | Mobile version / APK metadata |
+| `app_version_settings` | `AppVersionSettings` | POS and technician APK version metadata |
 | `barcode_label_settings` | `BarcodeLabelSettings` | Label defaults |
 | `barcode_label_preset` | `BarcodeLabelPreset` | Saved layouts |
 | `voucher_settings` | `VoucherSetting` | Print templates; unique `document_type` |

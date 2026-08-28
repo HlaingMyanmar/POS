@@ -31,6 +31,14 @@ public class AppVersionSettingsService {
         }
         s.setForceUpdate(dto.isForceUpdate());
         s.setChangelog(dto.getChangelog() != null ? dto.getChangelog() : "");
+        if (dto.getTechnicianVersionCode() != null && dto.getTechnicianVersionCode() > 0) {
+            s.setTechnicianVersionCode(dto.getTechnicianVersionCode());
+        }
+        if (dto.getTechnicianVersionName() != null && !dto.getTechnicianVersionName().isBlank()) {
+            s.setTechnicianVersionName(dto.getTechnicianVersionName().trim());
+        }
+        s.setTechnicianForceUpdate(dto.isTechnicianForceUpdate());
+        s.setTechnicianChangelog(dto.getTechnicianChangelog() != null ? dto.getTechnicianChangelog() : "");
         return toDto(repository.save(s));
     }
 
@@ -46,6 +54,10 @@ public class AppVersionSettingsService {
         dto.setVersionName(s.getVersionName());
         dto.setForceUpdate(s.isForceUpdate());
         dto.setChangelog(s.getChangelog());
+        dto.setTechnicianVersionCode(s.getTechnicianVersionCode() == null ? 1 : s.getTechnicianVersionCode());
+        dto.setTechnicianVersionName(s.getTechnicianVersionName() == null ? "1.0.0" : s.getTechnicianVersionName());
+        dto.setTechnicianForceUpdate(s.isTechnicianForceUpdate());
+        dto.setTechnicianChangelog(s.getTechnicianChangelog() == null ? "" : s.getTechnicianChangelog());
         return dto;
     }
 }

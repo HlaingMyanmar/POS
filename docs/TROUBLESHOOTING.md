@@ -135,7 +135,9 @@ There is **no** Maven profile in `pom.xml` to skip the plugin (**Needs Confirmat
 
 ## APK upload fails
 
-`app.apk.storage-dir` must exist. Multipart limits: `200MB`. Download URL uses `app.download.base-url`.
+`app.apk.storage-dir` must exist. Multipart limits: `200MB`. POS Manager downloads `/app/servicemgmt.apk`; technician downloads `/app/technician.apk`. Download URL uses `app.download.base-url`.
+
+Technician in-app updates require a signed `assembleRelease` APK uploaded from **Settings → App Version → Technician**, with version code greater than `technician-app/app/build.gradle.kts`.
 
 ---
 

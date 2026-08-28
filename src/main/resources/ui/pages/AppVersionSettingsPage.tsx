@@ -3,11 +3,17 @@ import { AlertTriangle, CheckCircle2, FileUp, Info, RefreshCw, Save, ShieldAlert
 import Swal from 'sweetalert2';
 import { appVersionSettingsService } from '../services/api';
 
+type AppKind = 'pos' | 'technician';
+
 interface VersionSettings {
   versionCode: number;
   versionName: string;
   forceUpdate: boolean;
   changelog: string;
+  technicianVersionCode: number;
+  technicianVersionName: string;
+  technicianForceUpdate: boolean;
+  technicianChangelog: string;
 }
 
 const defaultSettings: VersionSettings = {
@@ -15,6 +21,10 @@ const defaultSettings: VersionSettings = {
   versionName: '1.2.0',
   forceUpdate: false,
   changelog: '',
+  technicianVersionCode: 1,
+  technicianVersionName: '1.0.0',
+  technicianForceUpdate: false,
+  technicianChangelog: '',
 };
 
 const changelogTemplates = [
@@ -54,34 +64,65 @@ const nextVersionName = (value: string) => {
 
 const AppVersionSettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<VersionSettings>(defaultSettings);
+  const [activeApp, setActiveApp] = useState<AppKind>('pos');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [apkExists, setApkExists] = useState(false);
+  const [technicianApkExists, setTechnicianApkExists] = useState(false);
   const [apkFile, setApkFile] = useState<File | null>(null);
 
+  const isTechnician = activeApp === 'technician';
+  const versionName = (isTechnician ? settings.technicianVersionName : settings.versionName) || '';
+  const versionCode = isTechnician ? settings.technicianVersionCode : settings.versionCode;
+  const changelog = (isTechnician ? settings.technicianChangelog : settings.changelog) || '';
+  const forceUpdate = isTechnician ? settings.technicianForceUpdate : settings.forceUpdate;
+  const currentApkExists = isTechnician ? technicianApkExists : apkExists;
+  const apkStorageName = isTechnician ? 'technician.apk' : 'servicemgmt.apk';
+  const apkDownloadPath = isTechnician ? '/app/technician.apk' : '/app/servicemgmt.apk';
+
   const releaseReady = useMemo(() => (
-    settings.versionCode > 0 &&
-    settings.versionName.trim().length > 0 &&
-    settings.changelog.trim().length > 0 &&
-    apkExists
-  ), [apkExists, settings]);
+    versionCode > 0 &&
+    versionName.trim().length > 0 &&
+    changelog.trim().length > 0 &&
+    currentApkExists
+  ), [changelog, currentApkExists, versionCode, versionName]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [res, apkRes] = await Promise.all([
+      const [res, apkRes, technicianApkRes] = await Promise.all([
         appVersionSettingsService.getSettings(),
-        appVersionSettingsService.apkExists()
+        appVersionSettingsService.apkExists(),
+        appVersionSettingsService.technicianApkExists()
       ]);
-      if (res.success && res.data) setSettings(res.data);
+      if (res.success && res.data) setSettings({ ...defaultSettings, ...res.data });
       setApkExists(Boolean(apkRes.data));
+      setTechnicianApkExists(Boolean(technicianApkRes.data));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { void load(); }, []);
+
+  const patchActive = (patch: Partial<{ versionName: string; versionCode: number; changelog: string; forceUpdate: boolean }>) => {
+    setSettings((s) => isTechnician
+      ? {
+          ...s,
+          technicianVersionName: patch.versionName ?? s.technicianVersionName,
+          technicianVersionCode: patch.versionCode ?? s.technicianVersionCode,
+          technicianChangelog: patch.changelog ?? s.technicianChangelog,
+          technicianForceUpdate: patch.forceUpdate ?? s.technicianForceUpdate,
+        }
+      : {
+          ...s,
+          versionName: patch.versionName ?? s.versionName,
+          versionCode: patch.versionCode ?? s.versionCode,
+          changelog: patch.changelog ?? s.changelog,
+          forceUpdate: patch.forceUpdate ?? s.forceUpdate,
+        });
+  };
 
   const handleUploadApk = async () => {
     if (!apkFile) {
@@ -95,9 +136,12 @@ const AppVersionSettingsPage: React.FC = () => {
 
     setUploading(true);
     try {
-      const res = await appVersionSettingsService.uploadApk(apkFile);
+      const res = isTechnician
+        ? await appVersionSettingsService.uploadTechnicianApk(apkFile)
+        : await appVersionSettingsService.uploadApk(apkFile);
       if (res.success) {
-        setApkExists(true);
+        if (isTechnician) setTechnicianApkExists(true);
+        else setApkExists(true);
         setApkFile(null);
         Swal.fire({ icon: 'success', title: 'APK upload ပြီးပါပြီ', timer: 1400, showConfirmButton: false });
       } else {
@@ -111,11 +155,11 @@ const AppVersionSettingsPage: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!settings.versionName.trim()) {
+    if (!settings.versionName.trim() || !settings.technicianVersionName.trim()) {
       Swal.fire({ icon: 'warning', title: 'Version Name ထည့်ပါ', timer: 1600, showConfirmButton: false });
       return;
     }
-    if (settings.versionCode < 1) {
+    if (settings.versionCode < 1 || settings.technicianVersionCode < 1) {
       Swal.fire({ icon: 'warning', title: 'Version Code သည် 1 အထက် ဖြစ်ရမည်', timer: 1600, showConfirmButton: false });
       return;
     }
@@ -123,7 +167,7 @@ const AppVersionSettingsPage: React.FC = () => {
     try {
       const res = await appVersionSettingsService.saveSettings(settings);
       if (res.success) {
-        setSettings(res.data);
+        setSettings({ ...defaultSettings, ...res.data });
         Swal.fire({ icon: 'success', title: 'Version settings သိမ်းပြီးပါပြီ', timer: 1400, showConfirmButton: false });
       }
     } catch {
@@ -150,7 +194,7 @@ const AppVersionSettingsPage: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-800">Android App Version</h1>
-            <p className="text-sm text-slate-500">Mobile APK release, update dialog, changelog ကိုစီမံရန်</p>
+            <p className="text-sm text-slate-500">POS Manager နှင့် Technician APK များကို သီးခြား version / upload လုပ်ရန်</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -164,6 +208,23 @@ const AppVersionSettingsPage: React.FC = () => {
         </div>
       </div>
 
+      <div className="flex gap-2">
+        {([
+          ['pos', 'POS Manager', 'servicemgmt.apk'],
+          ['technician', 'Technician', 'technician.apk'],
+        ] as const).map(([id, label, fileName]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => { setActiveApp(id); setApkFile(null); }}
+            className={`px-4 py-2 rounded-lg text-xs font-bold border ${activeApp === id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+          >
+            {label}
+            <span className="ml-2 font-mono font-medium opacity-80">{fileName}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5">
         <div className="space-y-5">
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -174,7 +235,7 @@ const AppVersionSettingsPage: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setSettings((s) => ({ ...s, versionCode: Math.max(1, s.versionCode + 1), versionName: nextVersionName(s.versionName) }))}
+                onClick={() => patchActive({ versionCode: Math.max(1, versionCode + 1), versionName: nextVersionName(versionName) })}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-xs font-bold hover:bg-slate-900"
               >
                 <RefreshCw size={13} /> Next Version
@@ -186,8 +247,8 @@ const AppVersionSettingsPage: React.FC = () => {
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Version Name</label>
                 <input
                   type="text"
-                  value={settings.versionName}
-                  onChange={(e) => setSettings((s) => ({ ...s, versionName: e.target.value }))}
+                  value={versionName}
+                  onChange={(e) => patchActive({ versionName: e.target.value })}
                   placeholder="1.0.1"
                   className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-sm font-semibold focus:outline-none focus:border-indigo-400"
                 />
@@ -198,8 +259,8 @@ const AppVersionSettingsPage: React.FC = () => {
                 <input
                   type="number"
                   min={1}
-                  value={settings.versionCode}
-                  onChange={(e) => setSettings((s) => ({ ...s, versionCode: Math.max(1, Number(e.target.value) || 1) }))}
+                  value={versionCode}
+                  onChange={(e) => patchActive({ versionCode: Math.max(1, Number(e.target.value) || 1) })}
                   className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-sm font-semibold focus:outline-none focus:border-indigo-400"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">App ထဲက BuildConfig.VERSION_CODE ထက်ကြီးရမည်။</p>
@@ -218,7 +279,7 @@ const AppVersionSettingsPage: React.FC = () => {
                   <button
                     key={item.label}
                     type="button"
-                    onClick={() => setSettings((s) => ({ ...s, changelog: item.text }))}
+                    onClick={() => patchActive({ changelog: item.text })}
                     className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
                   >
                     {item.label}
@@ -228,8 +289,8 @@ const AppVersionSettingsPage: React.FC = () => {
             </div>
             <textarea
               rows={8}
-              value={settings.changelog}
-              onChange={(e) => setSettings((s) => ({ ...s, changelog: e.target.value }))}
+              value={changelog}
+              onChange={(e) => patchActive({ changelog: e.target.value })}
               placeholder="- Cash, KPay, Bank တို့ကို ခွဲ၍ ငွေပေးချေနိုင်ပါပြီ။&#10;- Minor bug fixes and performance improvements."
               className="w-full px-3 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm leading-6 focus:outline-none focus:border-indigo-400 resize-none"
             />
@@ -242,8 +303,8 @@ const AppVersionSettingsPage: React.FC = () => {
                 <p className="text-xs text-slate-500 mt-0.5">Upload လုပ်ပြီးသော APK ကို mobile app က download လုပ်မည်။</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${apkExists ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                {apkExists ? <CheckCircle2 size={13} /> : <Info size={13} />}
-                {apkExists ? 'APK Ready' : 'No APK'}
+                {currentApkExists ? <CheckCircle2 size={13} /> : <Info size={13} />}
+                {currentApkExists ? 'APK Ready' : 'No APK'}
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
@@ -268,7 +329,7 @@ const AppVersionSettingsPage: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              Server ထဲတွင် <span className="font-mono font-semibold">C:/sspd-apk/servicemgmt.apk</span> အဖြစ်သိမ်းမည်။ APK file name ဘာဖြစ်ဖြစ် upload ပြီးပါက app က <span className="font-mono">/app/servicemgmt.apk</span> မှ download လုပ်ပါမည်။
+              Server ထဲတွင် <span className="font-mono font-semibold">C:/sspd-apk/{apkStorageName}</span> အဖြစ်သိမ်းမည်။ APK file name ဘာဖြစ်ဖြစ် upload ပြီးပါက app က <span className="font-mono">{apkDownloadPath}</span> မှ download လုပ်ပါမည်။
             </p>
           </div>
         </div>
@@ -278,23 +339,25 @@ const AppVersionSettingsPage: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-800 mb-3">Mobile Preview</h2>
             <div className="rounded-2xl border border-slate-200 bg-slate-950 p-3">
               <div className="rounded-xl bg-white overflow-hidden">
-                <div className={`px-4 py-4 ${settings.forceUpdate ? 'bg-rose-50' : 'bg-indigo-50'}`}>
+                <div className={`px-4 py-4 ${forceUpdate ? 'bg-rose-50' : 'bg-indigo-50'}`}>
                   <div className="flex items-center gap-2">
-                    <Smartphone size={18} className={settings.forceUpdate ? 'text-rose-600' : 'text-indigo-600'} />
-                    <p className={`text-sm font-bold ${settings.forceUpdate ? 'text-rose-800' : 'text-indigo-800'}`}>
-                      {settings.forceUpdate ? 'Update လုပ်ရန်လိုအပ်ပါသည်' : 'Update ရှိပါသည်'}
+                    <Smartphone size={18} className={forceUpdate ? 'text-rose-600' : 'text-indigo-600'} />
+                    <p className={`text-sm font-bold ${forceUpdate ? 'text-rose-800' : 'text-indigo-800'}`}>
+                      {forceUpdate ? 'Update လုပ်ရန်လိုအပ်ပါသည်' : 'Update ရှိပါသည်'}
                     </p>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Version {settings.versionName} (code {settings.versionCode})</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isTechnician ? 'Technician' : 'POS Manager'} · Version {versionName} (code {versionCode})
+                  </p>
                 </div>
                 <div className="p-4 space-y-3">
                   <pre className="whitespace-pre-wrap text-xs leading-5 text-slate-600 font-sans bg-slate-50 rounded-lg p-3 min-h-[120px]">
-                    {settings.changelog || 'Changelog မရေးရသေးပါ'}
+                    {changelog || 'Changelog မရေးရသေးပါ'}
                   </pre>
-                  <button className={`w-full py-2 rounded-lg text-white text-sm font-bold ${settings.forceUpdate ? 'bg-rose-600' : 'bg-indigo-600'}`}>
+                  <button className={`w-full py-2 rounded-lg text-white text-sm font-bold ${forceUpdate ? 'bg-rose-600' : 'bg-indigo-600'}`}>
                     Download APK
                   </button>
-                  {!settings.forceUpdate && <p className="text-center text-xs text-slate-400">နောက်မှလုပ်မည်</p>}
+                  {!forceUpdate && <p className="text-center text-xs text-slate-400">နောက်မှလုပ်မည်</p>}
                 </div>
               </div>
             </div>
@@ -302,10 +365,10 @@ const AppVersionSettingsPage: React.FC = () => {
 
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
             <h2 className="text-sm font-bold text-slate-800">Release Checklist</h2>
-            <ChecklistRow done={settings.versionName.trim().length > 0} label="Version Name ဖြည့်ပြီး" />
-            <ChecklistRow done={settings.versionCode > 0} label="Version Code တိုးပြီး" />
-            <ChecklistRow done={settings.changelog.trim().length > 0} label="Changelog ရေးပြီး" />
-            <ChecklistRow done={apkExists} label="APK upload ပြီး" />
+            <ChecklistRow done={versionName.trim().length > 0} label="Version Name ဖြည့်ပြီး" />
+            <ChecklistRow done={versionCode > 0} label="Version Code တိုးပြီး" />
+            <ChecklistRow done={changelog.trim().length > 0} label="Changelog ရေးပြီး" />
+            <ChecklistRow done={currentApkExists} label="APK upload ပြီး" />
             <div className={`mt-3 rounded-lg px-3 py-2 flex items-start gap-2 ${releaseReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
               {releaseReady ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertTriangle size={16} className="mt-0.5" />}
               <p className="text-xs font-semibold">
@@ -317,15 +380,15 @@ const AppVersionSettingsPage: React.FC = () => {
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ShieldAlert size={16} className={settings.forceUpdate ? 'text-rose-600' : 'text-slate-400'} />
+                <ShieldAlert size={16} className={forceUpdate ? 'text-rose-600' : 'text-slate-400'} />
                 <h2 className="text-sm font-bold text-slate-800">Force Update</h2>
               </div>
               <button
                 type="button"
-                onClick={() => setSettings((s) => ({ ...s, forceUpdate: !s.forceUpdate }))}
-                className={`relative w-12 h-6 rounded-full transition-colors ${settings.forceUpdate ? 'bg-rose-500' : 'bg-slate-300'}`}
+                onClick={() => patchActive({ forceUpdate: !forceUpdate })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${forceUpdate ? 'bg-rose-500' : 'bg-slate-300'}`}
               >
-                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.forceUpdate ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${forceUpdate ? 'translate-x-6' : 'translate-x-0.5'}`} />
               </button>
             </div>
             <p className="text-xs text-slate-500 leading-5">

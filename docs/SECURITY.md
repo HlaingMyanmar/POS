@@ -52,6 +52,7 @@ Permit all:
 - GET `/api/v1/setup/status`
 - GET `/api/v1/company-settings`
 - GET `/api/v1/app/version`
+- GET `/api/v1/app/technician/version`
 - POST `/api/v1/scan`
 - OPTIONS `/**`
 

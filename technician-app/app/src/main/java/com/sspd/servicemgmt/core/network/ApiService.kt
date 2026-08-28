@@ -57,6 +57,9 @@ interface ApiService {
     @GET("app/version")
     suspend fun getAppVersion(): Response<ApiResponse<AppVersionDTO>>
 
+    @GET("app/technician/version")
+    suspend fun getTechnicianAppVersion(): Response<ApiResponse<AppVersionDTO>>
+
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthResponse>>
 

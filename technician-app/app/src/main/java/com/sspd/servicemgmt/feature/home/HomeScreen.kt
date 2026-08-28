@@ -67,23 +67,20 @@ fun HomeScreen(
 
     LaunchedEffect(state.isLoggedOut) { if (state.isLoggedOut) onLogout() }
     LaunchedEffect(Unit) {
-        // Technician APK has a different applicationId — do not offer the full POS update.
-        if (!BuildConfig.TECHNICIAN_ONLY) versionVm.check()
+        versionVm.check()
         while (true) { vm.loadStats(); delay(30_000) }
     }
 
-    if (!BuildConfig.TECHNICIAN_ONLY) {
-        versionState.update?.let { update ->
-            UpdateDialog(
-                update           = update,
-                downloadProgress = versionState.downloadProgress,
-                apkFile          = versionState.apkFile,
-                downloadError    = versionState.downloadError,
-                onDownload       = versionVm::downloadAndInstall,
-                onInstall        = { versionVm.triggerInstall(context) },
-                onDismiss        = versionVm::dismiss
-            )
-        }
+    versionState.update?.let { update ->
+        UpdateDialog(
+            update           = update,
+            downloadProgress = versionState.downloadProgress,
+            apkFile          = versionState.apkFile,
+            downloadError    = versionState.downloadError,
+            onDownload       = versionVm::downloadAndInstall,
+            onInstall        = { versionVm.triggerInstall(context) },
+            onDismiss        = versionVm::dismiss
+        )
     }
 
     val cal      = remember { Calendar.getInstance() }
@@ -833,6 +830,7 @@ fun DrawerContent(
                 DrawerMenuItem("အဖွဲ့ စကားဝိုင်း",      Icons.Outlined.Chat,                  Screen.Chat.route,         onNavigate)
                 DrawerSection("စနစ်")
                 DrawerMenuItem("အကောင့်သတ်မှတ်ချက်", Icons.Outlined.ManageAccounts, Screen.Account.route, onNavigate)
+                DrawerMenuItem("Software Update", Icons.Outlined.SystemUpdate, Screen.SoftwareUpdate.route, onNavigate)
                 DrawerMenuItem("အကြောင်းအရာ",        Icons.Outlined.Info,           Screen.About.route,   onNavigate)
             } else {
                 DrawerSection("စီမံခန့်ခွဲမှု")

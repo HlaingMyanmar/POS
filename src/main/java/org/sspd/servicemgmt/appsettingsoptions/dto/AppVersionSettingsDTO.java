@@ -8,4 +8,8 @@ public class AppVersionSettingsDTO {
     private String  versionName;
     private boolean forceUpdate;
     private String  changelog;
+    private Integer technicianVersionCode;
+    private String  technicianVersionName;
+    private boolean technicianForceUpdate;
+    private String  technicianChangelog;
 }

@@ -155,10 +155,18 @@ export const appVersionSettingsService = {
   getSettings: () => api.get<any, ApiResponse<any>>('/v1/app-version-settings'),
   saveSettings: (dto: any) => api.post<any, ApiResponse<any>>('/v1/app-version-settings', dto),
   apkExists: () => api.get<any, ApiResponse<boolean>>('/v1/app-version-settings/apk-exists'),
+  technicianApkExists: () => api.get<any, ApiResponse<boolean>>('/v1/app-version-settings/technician-apk-exists'),
   uploadApk: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
     return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-apk', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadTechnicianApk: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-technician-apk', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },

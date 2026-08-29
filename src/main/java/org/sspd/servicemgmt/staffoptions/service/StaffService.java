@@ -26,8 +26,10 @@ public class StaffService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_STAFF_CREATE')")
     @Transactional
     public StaffDTO save(StaffDTO dto) {
-        if (dto.getPhone() != null && repository.existsByPhone(dto.getPhone())) {
-            throw new RuntimeException("Phone number '" + dto.getPhone() + "' is already registered!");
+        String phone = normalizePhone(dto.getPhone());
+        dto.setPhone(phone);
+        if (phone != null && repository.existsByPhone(phone)) {
+            throw new IllegalArgumentException("Phone number '" + phone + "' is already registered!");
         }
         Staff saved = repository.save(mapper.toEntity(dto));
         messagingTemplate.convertAndSend(STAFF_TOPIC, "STAFF_CREATED");
@@ -64,9 +66,11 @@ public class StaffService {
         Staff existing = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
 
-        if (dto.getPhone() != null && !existing.getPhone().equals(dto.getPhone())
-                && repository.existsByPhone(dto.getPhone())) {
-            throw new RuntimeException("Phone number '" + dto.getPhone() + "' is already in use!");
+        String phone = normalizePhone(dto.getPhone());
+        dto.setPhone(phone);
+        if (phone != null && !phone.equals(existing.getPhone())
+                && repository.existsByPhone(phone)) {
+            throw new IllegalArgumentException("Phone number '" + phone + "' is already in use!");
         }
         existing.setActive(dto.isActive());
         mapper.updateEntityFromDto(dto, existing);
@@ -85,5 +89,10 @@ public class StaffService {
         staff.setActive(false);
         repository.save(staff);
         messagingTemplate.convertAndSend(STAFF_TOPIC, "STAFF_DELETED");
+    }
+
+    private static String normalizePhone(String phone) {
+        if (phone == null || phone.isBlank()) return null;
+        return phone.trim();
     }
 }

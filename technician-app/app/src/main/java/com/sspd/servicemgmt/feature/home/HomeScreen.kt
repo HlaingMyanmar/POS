@@ -61,6 +61,7 @@ fun HomeScreen(
     val activeVisit by VisitTracker.visit.collectAsStateWithLifecycle()
     val visitBusy by VisitTracker.busy.collectAsStateWithLifecycle()
     val pendingResume by VisitTracker.pendingResume.collectAsStateWithLifecycle()
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope       = rememberCoroutineScope()
@@ -98,8 +99,29 @@ fun HomeScreen(
         "${days[cal.get(Calendar.DAY_OF_WEEK)-1]}၊ ${cal.get(Calendar.DAY_OF_MONTH)} ${months[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
     }
 
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            icon = { Icon(Icons.Outlined.Logout, contentDescription = null, tint = Danger) },
+            title = { Text("Logout လုပ်မလား?") },
+            text = { Text("ဒီစက်ထဲက Technician account မှ ထွက်ပါမယ်။") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutConfirm = false
+                        vm.logout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) { Text("Logout") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirm = false }) { Text("မလုပ်တော့ပါ") }
+            }
+        )
+    }
     ModalNavigationDrawer(
-        drawerState   = drawerState,
+        drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = Color.White,
@@ -108,7 +130,7 @@ fun HomeScreen(
                 DrawerContent(
                     username     = state.username,
                     displayName  = state.displayName,
-                    isTechnician = state.isTechnician || BuildConfig.TECHNICIAN_ONLY,
+                    isTechnician = state.isTechnician,
                     onNavigate   = { route -> scope.launch { drawerState.close() }; onNavigate(route) },
                     onLogout     = { scope.launch { drawerState.close() }; vm.logout() }
                 )
@@ -127,16 +149,30 @@ fun HomeScreen(
             ) {
                 Column(modifier = Modifier.padding(bottom = 20.dp)) {
 
-                    // Top bar: menu | title | status+refresh
+                    // Top bar: logo | status+refresh
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment     = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, "Menu ဖွင့်ရန်", tint = Color.White, modifier = Modifier.size(26.dp))
+
+Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .shadow(6.dp, RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .padding(4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.logo),
+                                contentDescription = "SSPD Logo",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
 
                         Row(
@@ -146,6 +182,9 @@ fun HomeScreen(
                             ServerStatusChip()
                             IconButton(onClick = { vm.loadStats() }) {
                                 Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White.copy(0.85f))
+                            }
+                            IconButton(onClick = { showLogoutConfirm = true }) {
+                                Icon(Icons.Outlined.Logout, "Logout", tint = Color.White.copy(0.90f))
                             }
                         }
                     }
@@ -202,24 +241,15 @@ fun HomeScreen(
             ) {
                 Spacer(Modifier.height(20.dp))
 
-                if (state.isTechnician || BuildConfig.TECHNICIAN_ONLY) {
-                    TechnicianHomeBody(
-                        pendingJobs = state.stats.pendingServiceJobs ?: 0,
-                        visit = activeVisit,
-                        visitBusy = visitBusy,
-                        pendingResume = pendingResume,
-                        canOutdoorVisit = state.canOutdoorVisit,
-                        onResumeTracking = { vm.resumeVisitTracking() },
-                        onNavigate  = onNavigate
-                    )
-                } else {
-                    FullHomeBody(
-                        state      = state,
-                        onNavigate = onNavigate,
-                        onDismissAlert = { vm.dismissAlert(it) },
-                        onDismissAll   = { vm.dismissAllAlerts() }
-                    )
-                }
+                TechnicianHomeBody(
+                    pendingJobs = state.stats.pendingServiceJobs ?: 0,
+                    visit = activeVisit,
+                    visitBusy = visitBusy,
+                    pendingResume = pendingResume,
+                    canOutdoorVisit = state.canOutdoorVisit,
+                    onResumeTracking = { vm.resumeVisitTracking() },
+                    onNavigate = onNavigate
+                )
 
                 Spacer(Modifier.height(40.dp))
             }
@@ -820,52 +850,13 @@ fun DrawerContent(
                 .verticalScroll(rememberScrollState())
                 .padding(top = 8.dp, bottom = 8.dp)
         ) {
-            if (isTechnician) {
-                DrawerSection("အလုပ်")
-                DrawerMenuItem("Customer History", Icons.Outlined.History, Screen.CustomerHistory.route, onNavigate)
-                DrawerMenuItem("Outdoor Visit", Icons.Outlined.NearMe, Screen.ServiceJobs.route, onNavigate)
-                DrawerMenuItem("ပစ္စည်း",            Icons.Outlined.Inventory2,            Screen.Products.route,     onNavigate)
-                DrawerMenuItem("ပြင်ဆင်",            Icons.Outlined.Build,                 Screen.ServiceJobs.route,  onNavigate)
-                DrawerMenuItem("ဝန်ဆောင်မှုများ", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,  onNavigate)
-                DrawerMenuItem("အဖွဲ့ စကားဝိုင်း",      Icons.Outlined.Chat,                  Screen.Chat.route,         onNavigate)
-                DrawerSection("စနစ်")
-                DrawerMenuItem("အကောင့်သတ်မှတ်ချက်", Icons.Outlined.ManageAccounts, Screen.Account.route, onNavigate)
-                DrawerMenuItem("Software Update", Icons.Outlined.SystemUpdate, Screen.SoftwareUpdate.route, onNavigate)
-                DrawerMenuItem("အကြောင်းအရာ",        Icons.Outlined.Info,           Screen.About.route,   onNavigate)
-            } else {
-                DrawerSection("စီမံခန့်ခွဲမှု")
-                DrawerMenuItem("ကုန်ပစ္စည်း မာစတာ",          Icons.Outlined.Inventory2,             Screen.Products.route,          onNavigate)
-                DrawerMenuItem("Inventory Setup",            Icons.Outlined.AccountTree,            Screen.InventorySetup.route,    onNavigate)
-                DrawerMenuItem("ဝယ်ယူရေး",                    Icons.Outlined.ShoppingCart,           Screen.Purchases.route,         onNavigate)
-                DrawerMenuItem("အဝယ်အော်ဒါ",                   Icons.Outlined.Assignment,             Screen.PurchaseOrders.route,    onNavigate)
-                DrawerMenuItem("Supplier Payment",           Icons.Outlined.Payments,               Screen.SupplierPayments.route,  onNavigate)
-                DrawerMenuItem("ကုန်ပမာဏ ပြင်ဆင်မှု",      Icons.Outlined.Inventory,              Screen.StockAdjustments.route,  onNavigate)
-                DrawerMenuItem("ဝယ်ပြန်ပို့",                    Icons.Outlined.AssignmentReturn,       Screen.PurchaseReturns.route,   onNavigate)
-                DrawerMenuItem("ရောင်းပြန်လက်ခံ",                Icons.Outlined.AssignmentReturn,       Screen.SaleReturns.route,       onNavigate)
-                DrawerMenuItem("Serial Registry",           Icons.Outlined.QrCode2,                Screen.SerialRegistry.route,    onNavigate)
-                DrawerMenuItem("ဖောက်သည်များ",              Icons.Outlined.Groups,                 Screen.Customers.route,         onNavigate)
-                DrawerMenuItem("Credit Operations Desk",     Icons.Outlined.CreditCard,             Screen.CreditDesk.route,        onNavigate)
-                DrawerMenuItem("ဝန်ဆောင်မှုများ",          Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,       onNavigate)
-                DrawerMenuItem("ကန့်တည်နေရာများ",          Icons.Outlined.LocationOn,            Screen.ShelfLocations.route,    onNavigate)
-
-                DrawerSection("ငွေကြေး")
-                DrawerMenuItem("ငွေပြောင်းလဲမှု (Transfer)",   Icons.Outlined.SwapHoriz,              Screen.Transfer.route,      onNavigate)
-                DrawerMenuItem("Opening Balance / Capital", Icons.Outlined.AccountBalance,         Screen.OpeningBalance.route, onNavigate)
-                DrawerMenuItem("ကုန်ကျစရိတ်",              Icons.Outlined.AccountBalanceWallet,  Screen.Expenses.route,      onNavigate)
-                DrawerMenuItem("ဂျာနယ်မှတ်တမ်း",             Icons.Outlined.MenuBook,              Screen.JournalEntries.route, onNavigate)
-                DrawerMenuItem("ကိန်းဂဏာန်း",              Icons.Outlined.BarChart,              Screen.Report.route,        onNavigate)
-                DrawerMenuItem("ဝင်ငွေ / အမြတ် စာရင်း",   Icons.Outlined.TrendingUp,            Screen.IncomeReport.route,  onNavigate)
-
-                DrawerSection("အဖွဲ့")
-                DrawerMenuItem("ဝန်ထမ်းစွမ်းဆောင်ရည်",     Icons.Outlined.BarChart,              Screen.StaffReport.route,   onNavigate)
-                DrawerMenuItem("အဖွဲ့ စကားဝိုင်း",               Icons.Outlined.Chat,                  Screen.Chat.route,          onNavigate)
-
-                DrawerSection("စနစ်")
-                DrawerMenuItem("စစ်ဆေးမှု မှတ်တမ်း",           Icons.Outlined.Security,              Screen.AuditLog.route,      onNavigate)
-                DrawerMenuItem("အကောင့်သတ်မှတ်ချက်",        Icons.Outlined.ManageAccounts,        Screen.Account.route,       onNavigate)
-                DrawerMenuItem("အကြောင်းအရာ",               Icons.Outlined.Info,                  Screen.About.route,         onNavigate)
-                DrawerMenuItem("Software Update",            Icons.Outlined.SystemUpdate,          Screen.SoftwareUpdate.route, onNavigate)
-            }
+            DrawerSection("Technician")
+            DrawerMenuItem("ပင်မ", Icons.Outlined.Home, Screen.Home.route, onNavigate)
+            DrawerMenuItem("Jobs / Outdoor Visit", Icons.Outlined.NearMe, Screen.ServiceJobs.route, onNavigate)
+            DrawerMenuItem("ကုန်ပစ္စည်း", Icons.Outlined.Inventory2, Screen.Products.route, onNavigate)
+            DrawerMenuItem("Customer History", Icons.Outlined.History, Screen.CustomerHistory.route, onNavigate)
+            DrawerMenuItem("ဝန်ဆောင်မှု", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route, onNavigate)
+            DrawerMenuItem("Chat", Icons.Outlined.Chat, Screen.Chat.route, onNavigate)
         }
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -980,7 +971,16 @@ private fun TechnicianDashboardPreview() {
             ) {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Menu, "Menu", tint = Color.White)
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color.White).padding(4.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.logo),
+                                contentDescription = "SSPD Logo",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                         Surface(color = Color.White.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
                             Text("●  Online", Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -989,7 +989,7 @@ private fun TechnicianDashboardPreview() {
                     Text("မင်္ဂလာပါ", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
                     Text("Field Technician", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Computer • Network • On-site Service", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
+                    Text("Outdoor Service Dashboard", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
                 }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
@@ -1009,18 +1009,3 @@ private fun TechnicianDashboardPreview() {
     }
 }
 
-@Preview(name = "Technician Sidebar", showBackground = true, widthDp = 320, heightDp = 844)
-@Composable
-private fun TechnicianSidebarPreview() {
-    AppTheme {
-        Surface(color = Color.White) {
-            DrawerContent(
-                username = "technician",
-                displayName = "Field Technician",
-                isTechnician = true,
-                onNavigate = {},
-                onLogout = {}
-            )
-        }
-    }
-}

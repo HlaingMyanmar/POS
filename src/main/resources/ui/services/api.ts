@@ -16,19 +16,8 @@ const toWsEndpointFromApiBase = (apiBase: string) => {
   return joinUrl(withoutApiSuffix, 'ws-clinic');
 };
 
-const inferBackendOrigin = () => {
-  if (typeof window === 'undefined') return 'http://localhost:8080';
-
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname || 'localhost';
-  const backendPort = (import.meta.env.VITE_BACKEND_PORT || '8080').toString();
-
-  return `${protocol}//${hostname}:${backendPort}`;
-};
-
-const backendOrigin = inferBackendOrigin();
-const defaultApiBase = import.meta.env.DEV ? '/api' : joinUrl(backendOrigin, 'api');
-const defaultWsUrl = import.meta.env.DEV ? '/ws-clinic' : joinUrl(backendOrigin, 'ws-clinic');
+const defaultApiBase = '/api';
+const defaultWsUrl = '/ws-clinic';
 
 export const BASE_URL = (import.meta.env.VITE_API_BASE_URL || defaultApiBase).toString();
 const inferredWsUrlFromApiBase = import.meta.env.VITE_API_BASE_URL
@@ -108,7 +97,17 @@ api.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error.response?.data || { success: false, message: error.message });
+    const responseData = error.response?.data;
+    if (responseData && typeof responseData === 'object') {
+      const validationMessage = !responseData.message
+        ? Object.values(responseData).find(value => typeof value === 'string')
+        : undefined;
+      return Promise.reject({
+        ...responseData,
+        message: responseData.message || validationMessage || error.message || 'Operation failed'
+      });
+    }
+    return Promise.reject({ success: false, message: error.message || 'Operation failed' });
   }
 );
 

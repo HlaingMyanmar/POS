@@ -1,4 +1,4 @@
-﻿
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { staffService } from '../services/staffapiservice';
 import { StaffDTO } from '../types';
@@ -82,7 +82,8 @@ const StaffManagement: React.FC = () => {
       fetchData();
       Swal.fire({ icon: 'success', title: 'Registry Updated', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
     } catch (error: any) {
-      Swal.fire('Error', error.message || 'Operation failed', 'error');
+      const detail = error?.message || error?.error || Object.values(error?.errors || {})[0] || 'Operation failed';
+      Swal.fire('Error', String(detail), 'error');
     } finally {
       setSaving(false);
     }

@@ -1,4 +1,4 @@
-﻿
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { brandService } from '../services/brandapiservice';
 import { BrandDTO } from '../types';
@@ -63,6 +63,8 @@ const BrandManagement: React.FC = () => {
       else await brandService.create(formData);
       setIsModalOpen(false); fetchData();
       Swal.fire({ icon: 'success', title: 'သိမ်းဆည်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+    } catch (error: any) {
+      Swal.fire('Error', error?.message || 'Operation failed', 'error');
     } finally { setSaving(false); }
   };
 

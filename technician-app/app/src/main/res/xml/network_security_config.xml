@@ -23,9 +23,9 @@
           4. Remove the <certificates src="user"/> line (safer for production)
           5. Remove the TrustAll code from ApiClient.kt
     -->
-    <domain-config cleartextTrafficPermitted="false">
+    <domain-config cleartextTrafficPermitted="true">
         <!-- Add every server hostname / IP your app connects to -->
-        <domain includeSubdomains="false">192.168.20.253</domain>
+        <domain includeSubdomains="false">118.27.151.89</domain>
         <trust-anchors>
             <certificates src="system" />
             <!-- user-installed certs — acceptable for internal enterprise app -->

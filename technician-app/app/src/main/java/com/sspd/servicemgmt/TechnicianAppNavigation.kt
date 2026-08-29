@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MiscellaneousServices
 import androidx.compose.material3.HorizontalDivider
@@ -86,9 +87,6 @@ import com.sspd.servicemgmt.feature.service.job.ServiceJobDetailScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobFormScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobListScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobPrintScreen
-import com.sspd.servicemgmt.feature.settings.AboutScreen
-import com.sspd.servicemgmt.feature.settings.AccountSettingsScreen
-import com.sspd.servicemgmt.feature.settings.SoftwareUpdateScreen
 
 private val ExpoOut = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 private const val ANIM_MS = 280
@@ -101,10 +99,12 @@ private data class BottomNavItem(
 )
 
 private val technicianNavItems = listOf(
-    BottomNavItem(Screen.Home.route,        Icons.Default.Home,                  "ပင်မ"),
-    BottomNavItem(Screen.ServiceJobs.route, Icons.Default.Build,                 "ပြင်ဆင်"),
-    BottomNavItem(Screen.Products.route,    Icons.Default.Inventory2,            "ပစ္စည်း"),
-    BottomNavItem(Screen.Chat.route,        Icons.Default.Chat,                  "စကားဝိုင်း")
+    BottomNavItem(Screen.Home.route,            Icons.Default.Home,                  "Home"),
+    BottomNavItem(Screen.ServiceJobs.route,     Icons.Default.Build,                 "Jobs"),
+    BottomNavItem(Screen.Products.route,        Icons.Default.Inventory2,            "Products"),
+    BottomNavItem(Screen.CustomerHistory.route, Icons.Default.History,               "History"),
+    BottomNavItem(Screen.ServiceMgmt.route,     Icons.Default.MiscellaneousServices, "Service"),
+    BottomNavItem(Screen.Chat.route,            Icons.Default.Chat,                  "Chat")
 )
 
 @Composable
@@ -121,7 +121,7 @@ private fun TechnicianBottomNav(
         Column {
             HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
             NavigationBar(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().height(76.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().height(72.dp),
                 containerColor = Color.White,
                 tonalElevation = 0.dp
             ) {
@@ -140,7 +140,7 @@ private fun TechnicianBottomNav(
                     label = {
                         Text(
                             item.label,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
                         )
                     },
@@ -349,7 +349,11 @@ fun TechnicianAppNavigation() {
                         ServiceJobFormScreen(
                             onBack = { nav.popBackStack() },
                             onSuccess = { job ->
-                                nav.navigate(Screen.ServiceJobDetail.createRoute(job.id!!)) {
+                                job.id?.let { jobId ->
+                                    nav.navigate(Screen.ServiceJobDetail.createRoute(jobId)) {
+                                        popUpTo(Screen.NewServiceJob.route) { inclusive = true }
+                                    }
+                                } ?: nav.navigate(Screen.ServiceJobs.route) {
                                     popUpTo(Screen.NewServiceJob.route) { inclusive = true }
                                 }
                             }
@@ -394,9 +398,6 @@ fun TechnicianAppNavigation() {
 
                     screen(Screen.ServiceMgmt.route) { ServiceManagementScreen { nav.popBackStack() } }
                     screen(Screen.Chat.route) { ChatScreen { nav.popBackStack() } }
-                    screen(Screen.Account.route) { AccountSettingsScreen { nav.popBackStack() } }
-                    screen(Screen.SoftwareUpdate.route) { SoftwareUpdateScreen { nav.popBackStack() } }
-                    screen(Screen.About.route) { AboutScreen { nav.popBackStack() } }
                 }
             }
         }

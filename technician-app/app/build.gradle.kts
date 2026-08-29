@@ -22,7 +22,7 @@ android {
         versionName   = "1.0.0"
         vectorDrawables { useSupportLibrary = true }
 
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://192.168.100.120:8080\"")
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"http://118.27.151.89\"")
         buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Technician\"")
         buildConfigField("boolean", "TECHNICIAN_ONLY", "true")
     }

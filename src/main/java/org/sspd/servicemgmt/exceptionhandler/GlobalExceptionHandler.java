@@ -103,7 +103,7 @@ public class GlobalExceptionHandler {
                     HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
-        log.warn("Request rejected: {}", ex.getMessage());
+        log.warn("Request rejected", ex);
         ErrorResponse error = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 ex.getMessage() != null ? ex.getMessage() : "Request failed",

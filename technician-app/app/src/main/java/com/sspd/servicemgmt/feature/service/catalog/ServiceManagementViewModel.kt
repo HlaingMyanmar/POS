@@ -65,7 +65,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                     ApiClient.service.createServiceType(token, dto)
 
                 if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                    val saved = res.body()?.data ?: return@launch
                     _uiState.update { s ->
                         s.copy(
                             types         = if (target?.id != null) s.types.map { if (it.id == target.id) saved else it }
@@ -92,7 +92,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, actionError = null) }
             try {
-                val res = ApiClient.service.deleteServiceType(ApiClient.bearer(prefs.authToken), target.id!!)
+                val res = ApiClient.service.deleteServiceType(ApiClient.bearer(prefs.authToken), target.id ?: return@launch)
                 if (res.isSuccessful) {
                     _uiState.update { it.copy(
                         types            = it.types.filter { t -> t.id != target.id },
@@ -170,7 +170,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                     ApiClient.service.createSubServiceType(token, dto)
 
                 if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                    val saved = res.body()?.data ?: return@launch
                     _uiState.update { s ->
                         s.copy(
                             subTypes      = if (target?.id != null)
@@ -201,7 +201,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, actionError = null) }
             try {
-                val res = ApiClient.service.deleteSubServiceType(ApiClient.bearer(prefs.authToken), target.id!!)
+                val res = ApiClient.service.deleteSubServiceType(ApiClient.bearer(prefs.authToken), target.id ?: return@launch)
                 if (res.isSuccessful) {
                     _uiState.update { it.copy(
                         subTypes       = it.subTypes.filter { s -> s.id != target.id },
@@ -268,7 +268,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                     ApiClient.service.createServiceItem(token, dto)
 
                 if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                    val saved = res.body()?.data ?: return@launch
                     _uiState.update { s ->
                         s.copy(
                             items         = if (target?.id != null) s.items.map { if (it.id == target.id) saved else it }
@@ -296,7 +296,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, actionError = null) }
             try {
-                val res = ApiClient.service.deleteServiceItem(ApiClient.bearer(prefs.authToken), target.id!!)
+                val res = ApiClient.service.deleteServiceItem(ApiClient.bearer(prefs.authToken), target.id ?: return@launch)
                 if (res.isSuccessful) {
                     _uiState.update { it.copy(
                         items            = it.items.filter { i -> i.id != target.id },

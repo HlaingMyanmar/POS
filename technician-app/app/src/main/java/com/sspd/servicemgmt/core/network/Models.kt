@@ -16,6 +16,22 @@ data class AppVersionDTO(
     val downloadUrl: String  = ""
 )
 
+data class VideoDTO(
+    val id: Int = 0,
+    val title: String? = "",
+    val description: String? = null,
+    val provider: String? = null,
+    val providerVideoId: String? = null,
+    val sourceUrl: String? = null,
+    val youtubeUrl: String? = null,
+    val thumbnailUrl: String? = null,
+    val category: String? = null,
+    val targetAudience: String? = null,
+    val sortOrder: Int? = null,
+    val featured: Boolean? = false,
+    val active: Boolean? = true
+)
+
 data class PagedResponse<T>(
     val content: List<T> = emptyList(),
     val currentPage: Int = 0,
@@ -642,6 +658,13 @@ data class VisitEventDTO(
     val occurredAt: String? = null
 )
 
+data class LocationPingDTO(
+    val id: Long? = null,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Double? = null,
+    val recordedAt: String? = null
+)
 data class LocationPingRequest(
     val clientPingId: String,
     val latitude: Double,

@@ -33,7 +33,8 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_BOOKING_UPDATE",
             "CAN_ACCESS_STAFF_READ",
             "CAN_ACCESS_TECHNICIAN_VISIT_START",
-            "CAN_ACCESS_CUSTOMER_LOCATION_UPDATE"
+            "CAN_ACCESS_CUSTOMER_LOCATION_UPDATE",
+            "CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN"
     );
 
     private static final List<String> CASHIER_PERMISSIONS = List.of(
@@ -78,6 +79,13 @@ public class RoleSeeder implements CommandLineRunner {
         fillIfEmpty("CASHIER", CASHIER_PERMISSIONS, allPermissions);
         ensurePermissions("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
         ensurePermissions("CASHIER", List.of("CAN_ACCESS_TECHNICIAN_LOCATION_READ"), allPermissions);
+        ensurePermissions("TECHNICIAN", List.of("CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN"), allPermissions);
+        ensurePermissions("ADMIN", List.of(
+                "CAN_ACCESS_VIDEO_CREATE",
+                "CAN_ACCESS_VIDEO_READ",
+                "CAN_ACCESS_VIDEO_UPDATE",
+                "CAN_ACCESS_VIDEO_DELETE"
+        ), allPermissions);
         stripTechnicianAssignPermission();
         for (Role role : repository.findAll()) {
             String name = role.getName() == null ? "" : role.getName().toUpperCase();

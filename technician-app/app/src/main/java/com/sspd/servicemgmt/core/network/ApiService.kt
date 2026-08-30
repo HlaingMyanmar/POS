@@ -29,6 +29,11 @@ interface ApiService {
     @POST("technician-visits/{id}/cancel")
     suspend fun cancelTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: Map<String, String>): Response<ApiResponse<TechnicianVisitDTO>>
 
+    @GET("technician-visits/{id}/my-pings")
+    suspend fun getMyVisitPings(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Long
+    ): Response<ApiResponse<List<LocationPingDTO>>>
     @POST("technician-visits/{id}/ping")
     suspend fun pingTechnicianVisit(@Header("Authorization") auth: String, @Path("id") id: Long, @Body body: LocationPingRequest): Response<ApiResponse<TechnicianVisitDTO>>
 
@@ -59,6 +64,9 @@ interface ApiService {
 
     @GET("app/technician/version")
     suspend fun getTechnicianAppVersion(): Response<ApiResponse<AppVersionDTO>>
+
+    @GET("videos/catalog")
+    suspend fun getVideoCatalog(@Header("Authorization") auth: String): Response<ApiResponse<List<VideoDTO>>>
 
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthResponse>>

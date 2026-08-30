@@ -156,6 +156,7 @@ const BackupSettings: React.FC = () => {
   const [running, setRunning] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFilePath, setImportFilePath] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -236,7 +237,10 @@ const BackupSettings: React.FC = () => {
     try {
       const res = await backupService.importBackup(importFile);
       Swal.fire(res.success ? 'Restore ပြီးပါပြီ' : 'Restore မအောင်မြင်ပါ', res.message, res.success ? 'success' : 'error');
-      if (res.success) setImportFile(null);
+      if (res.success) {
+        setImportFile(null);
+        setImportFilePath('');
+      }
     } catch {
       Swal.fire('Restore မအောင်မြင်ပါ', 'SQL file, mysql path, database permission တို့ကိုစစ်ဆေးပါ', 'error');
     } finally {
@@ -443,9 +447,30 @@ const BackupSettings: React.FC = () => {
                 <input
                   type="file"
                   accept=".sql.gz,application/gzip"
-                  onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setImportFile(file);
+                    setImportFilePath(file ? event.target.value || file.name : '');
+                  }}
                   className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700"
                 />
+                <div>
+                  <label htmlFor="restore-file-path" className="mb-1.5 block text-sm font-medium text-amber-950">
+                    ရွေးထားသော SQL file path
+                  </label>
+                  <input
+                    id="restore-file-path"
+                    type="text"
+                    value={importFilePath}
+                    readOnly
+                    placeholder="SQL file မရွေးရသေးပါ"
+                    title={importFilePath}
+                    className="block w-full rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                  />
+                  {importFile && importFilePath.includes('fakepath') && (
+                    <p className="mt-1 text-xs text-amber-800">Browser လုံခြုံရေးကြောင့် full local path အစား ရွေးထားသော file name ကိုသာ ပြနိုင်ပါသည်။</p>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={handleImport}

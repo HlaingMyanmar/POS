@@ -65,6 +65,35 @@ export interface BrandDTO {
   isActive: boolean;
 }
 
+export type VideoAudience = 'TECHNICIAN' | 'CLIENT' | 'BOTH';
+export type VideoAppType = 'TECHNICIAN' | 'CLIENT';
+
+export interface VideoPlacementDTO {
+  appType: VideoAppType;
+  sortOrder: number;
+  featured?: boolean;
+  active?: boolean;
+}
+
+export interface VideoDTO {
+  id: number;
+  title: string;
+  description?: string;
+  provider?: string;
+  providerVideoId?: string;
+  sourceUrl?: string;
+  youtubeUrl?: string;
+  thumbnailUrl?: string;
+  category?: string;
+  targetAudience: VideoAudience;
+  sortOrder?: number;
+  featured?: boolean;
+  placements?: VideoPlacementDTO[];
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface UnitDTO {
   id: number;
   unitName: string;
@@ -1184,6 +1213,7 @@ export enum AppRoute {
   APP_VERSION_SETTINGS = '/settings/app-version',
   SHELF_LOCATIONS      = '/services/shelf-locations',
   OUTDOOR_TRACKING     = '/services/outdoor-tracking',
+  VIDEOS               = '/videos',
   OPENING_BALANCE          = '/accounting/opening-balance',
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',

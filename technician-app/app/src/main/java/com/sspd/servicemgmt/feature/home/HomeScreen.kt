@@ -326,7 +326,7 @@ private fun TechnicianHomeBody(
         QuadItem("ပစ္စည်း",           Icons.Outlined.Inventory2,            Color(0xFF0891B2), Screen.Products.route),
         QuadItem("ပြင်ဆင်",           Icons.Outlined.Build,                 Color(0xFF059669), Screen.ServiceJobs.route),
         QuadItem("ဝန်ဆောင်မှုများ",  Icons.Outlined.MiscellaneousServices, Color(0xFFD97706), Screen.ServiceMgmt.route),
-        QuadItem("အဖွဲ့ စကားဝိုင်း",     Icons.Outlined.Chat,                  Color(0xFF4F46E5), Screen.Chat.route),
+        QuadItem("ဗီဒီယို",            Icons.Outlined.VideoLibrary,          Color(0xFFDC2626), Screen.Videos.route),
     )
     ActionGrid(actions, onNavigate)
 }
@@ -856,6 +856,7 @@ fun DrawerContent(
             DrawerMenuItem("ကုန်ပစ္စည်း", Icons.Outlined.Inventory2, Screen.Products.route, onNavigate)
             DrawerMenuItem("Customer History", Icons.Outlined.History, Screen.CustomerHistory.route, onNavigate)
             DrawerMenuItem("ဝန်ဆောင်မှု", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route, onNavigate)
+            DrawerMenuItem("လေ့ကျင့်ရေး ဗီဒီယို", Icons.Outlined.VideoLibrary, Screen.Videos.route, onNavigate)
             DrawerMenuItem("Chat", Icons.Outlined.Chat, Screen.Chat.route, onNavigate)
         }
 

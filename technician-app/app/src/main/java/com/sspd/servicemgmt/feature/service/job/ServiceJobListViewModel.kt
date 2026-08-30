@@ -70,7 +70,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             _uiState.update { it.copy(deleting = true, deleteError = null) }
             try {
-                val res = ApiClient.service.deleteServiceJob(ApiClient.bearer(prefs.authToken), target.id!!)
+                val res = ApiClient.service.deleteServiceJob(ApiClient.bearer(prefs.authToken), target.id ?: return@launch)
                 if (res.isSuccessful) {
                     _uiState.update { it.copy(
                         items         = it.items.filter { j -> j.id != target.id },

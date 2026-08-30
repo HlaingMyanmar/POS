@@ -81,7 +81,7 @@ class ServiceJobDetailViewModel(
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.updateServiceJobStatus(token, jobId, status, holdReason)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
@@ -97,7 +97,7 @@ class ServiceJobDetailViewModel(
             try {
                 val res = ApiClient.service.deliverServiceJob(ApiClient.bearer(prefs.authToken), jobId)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "ပစ္စည်းပြန်အပ်ပြီး") }
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "ပစ္စည်းပြန်အပ်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "ပြန်အပ်မှု မအောင်မြင်ပါ") }
                 }
@@ -142,7 +142,7 @@ class ServiceJobDetailViewModel(
                 if (res.isSuccessful && res.body()?.data != null) {
                     _uiState.update {
                         it.copy(
-                            job             = res.body()!!.data,
+                            job             = res.body()?.data,
                             actionLoading   = false,
                             showSettleDialog = false,
                             actionSuccess   = "ငွေချေပြီး ✓"
@@ -180,7 +180,7 @@ class ServiceJobDetailViewModel(
                 if (res.isSuccessful && res.body()?.data != null) {
                     _uiState.update {
                         it.copy(
-                            job              = res.body()!!.data,
+                            job              = res.body()?.data,
                             actionLoading    = false,
                             showPayDueDialog = false,
                             actionSuccess    = "ကျန်ငွေ ဆပ်ပြီး ✓"
@@ -227,7 +227,7 @@ class ServiceJobDetailViewModel(
                 val res = ApiClient.service.createRework(token, jobId, request)
                 if (res.isSuccessful && res.body()?.data != null) {
                     _uiState.update {
-                        it.copy(actionLoading = false, showReworkDialog = false, actionSuccess = "Rework Job ${res.body()!!.data?.jobNo} ဖန်တီးပြီး")
+                        it.copy(actionLoading = false, showReworkDialog = false, actionSuccess = "Rework Job ${res.body()?.data?.jobNo} ဖန်တီးပြီး")
                     }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Rework မအောင်မြင်ပါ") }
@@ -245,7 +245,7 @@ class ServiceJobDetailViewModel(
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.voidServiceJobSettlement(token, jobId, mapOf("reason" to reason))
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, showVoidDialog = false, actionSuccess = "Settlement ပြန်ဖျက်ပြီး") }
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, showVoidDialog = false, actionSuccess = "Settlement ပြန်ဖျက်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Void မအောင်မြင်ပါ") }
                 }
@@ -291,7 +291,7 @@ class ServiceJobDetailViewModel(
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.approveServiceJobEstimate(token, jobId)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }

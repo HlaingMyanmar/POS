@@ -290,7 +290,19 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             if (!si.serviceTypeName.isNullOrBlank())
                                 Text(si.serviceTypeName, fontSize = 11.sp, color = TextMuted)
                         }
-                        Text("${String.format("%,.0f", si.price)} Ks", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "ပုံမှန် ${String.format("%,.0f", si.price)} Ks",
+                                fontSize = 12.sp,
+                                color = Primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "အနည်းဆုံး ${si.minPrice?.let { String.format("%,.0f", it) } ?: "—"} · အများဆုံး ${si.maxPrice?.let { String.format("%,.0f", it) } ?: "—"}",
+                                fontSize = 10.sp,
+                                color = TextMuted
+                            )
+                        }
                     }
                     HorizontalDivider(color = BorderColor)
                 }
@@ -390,8 +402,8 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
         }
     }
 
-    if (state.serialSelectPartIdx != null && state.serialSelectProduct != null) {
-        val serialProduct = state.serialSelectProduct!!
+    val serialProduct = state.serialSelectProduct
+    if (state.serialSelectPartIdx != null && serialProduct != null) {
         val serialError = state.serialSelectError
         ModalBottomSheet(
             onDismissRequest = { vm.dismissSerialSelector() },
@@ -998,10 +1010,7 @@ private fun ServiceLineDraftCard(
             line.approvedPrice.toDoubleOrNull() != null -> line.approvedPrice.toDouble()
         else -> line.estimatedPrice.toDoubleOrNull() ?: line.catalogPrice.toDoubleOrNull() ?: 0.0
     }
-    val rangeHint = listOfNotNull(
-        line.minPrice?.let { "Min ${String.format("%,.0f", it)}" },
-        line.maxPrice?.let { "Max ${String.format("%,.0f", it)}" }
-    ).joinToString(" · ")
+    val rangeHint = "အနည်းဆုံး ${line.minPrice?.let { String.format("%,.0f", it) } ?: "—"} · အများဆုံး ${line.maxPrice?.let { String.format("%,.0f", it) } ?: "—"}"
     Card(
         shape  = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -1105,7 +1114,7 @@ private fun ServiceLineDraftCard(
                 Text("$rangeHint Ks", fontSize = 10.sp, color = TextMuted)
             }
             if (line.outsideMinMax()) {
-                Text("Min/Max ကျော်နေသည် — Manager approval လိုအပ်သည်", fontSize = 11.sp, color = Danger, fontWeight = FontWeight.Bold)
+                Text("သတ်မှတ်ထားသော Min/Max ဈေးအတွင်း ပြန်ထည့်ပါ", fontSize = 11.sp, color = Danger, fontWeight = FontWeight.Bold)
             }
             if (line.pricesDifferFromCatalog()) {
                 OutlinedTextField(

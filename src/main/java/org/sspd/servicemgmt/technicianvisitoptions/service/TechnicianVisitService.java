@@ -318,19 +318,16 @@ public class TechnicianVisitService {
     }
 
     @Transactional(readOnly = true)
+    public List<LocationPingDTO> myPings(Long id, Authentication auth) {
+        owned(id, auth);
+        return toPingDtos(id);
+    }
+    @Transactional(readOnly = true)
     public List<LocationPingDTO> historyPings(Long id) {
         if (!visits.existsById(id)) {
             throw new IllegalArgumentException("Visit not found");
         }
-        return pings.findByVisit_IdOrderByRecordedAtAscIdAsc(id).stream()
-                .map(ping -> new LocationPingDTO(
-                        ping.getId(),
-                        ping.getLatitude(),
-                        ping.getLongitude(),
-                        ping.getAccuracy(),
-                        ping.getRecordedAt()
-                ))
-                .toList();
+        return toPingDtos(id);
     }
 
     @Transactional
@@ -577,6 +574,14 @@ public class TechnicianVisitService {
         }
     }
 
+    private List<LocationPingDTO> toPingDtos(Long visitId) {
+        return pings.findByVisit_IdOrderByRecordedAtAscIdAsc(visitId).stream()
+                .map(ping -> new LocationPingDTO(
+                        ping.getId(), ping.getLatitude(), ping.getLongitude(),
+                        ping.getAccuracy(), ping.getRecordedAt()
+                ))
+                .toList();
+    }
     private TechnicianVisit owned(Long id, Authentication auth) {
         TechnicianVisit visit = visits.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Visit not found"));

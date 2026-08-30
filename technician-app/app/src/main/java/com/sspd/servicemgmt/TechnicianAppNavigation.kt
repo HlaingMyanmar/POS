@@ -89,9 +89,9 @@ import com.sspd.servicemgmt.feature.service.job.ServiceJobListScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobPrintScreen
 import android.widget.Toast
 import com.sspd.servicemgmt.feature.video.VideoListScreen
-import com.sspd.servicemgmt.feature.video.VideoPlayerScreen
 import com.sspd.servicemgmt.feature.video.extractYoutubeId
 import com.sspd.servicemgmt.feature.video.isValidYoutubeId
+import com.sspd.servicemgmt.feature.video.openInYoutubeApp
 
 private val ExpoOut = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 private const val ANIM_MS = 280
@@ -412,36 +412,10 @@ fun TechnicianAppNavigation() {
                             },
                             onOpenVideo = { video ->
                                 val youtubeId = extractYoutubeId(video)
-                                if (!isValidYoutubeId(youtubeId)) {
-                                    Toast.makeText(context, "Video ID မမှန်ပါ", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    nav.navigate(
-                                        Screen.VideoPlayer.createRoute(
-                                            youtubeId = youtubeId.orEmpty(),
-                                            title = video.title,
-                                            description = video.description,
-                                            category = video.category
-                                        )
-                                    )
+                                if (!isValidYoutubeId(youtubeId) || !openInYoutubeApp(context, youtubeId.orEmpty())) {
+                                    Toast.makeText(context, "Video ဖွင့်မရပါ", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        )
-                    }
-                    composable(
-                        route = Screen.VideoPlayer.route,
-                        arguments = listOf(
-                            navArgument("youtubeId") { type = NavType.StringType },
-                            navArgument("title") { type = NavType.StringType; defaultValue = ""; nullable = true },
-                            navArgument("description") { type = NavType.StringType; defaultValue = ""; nullable = true },
-                            navArgument("category") { type = NavType.StringType; defaultValue = ""; nullable = true }
-                        )
-                    ) { entry ->
-                        VideoPlayerScreen(
-                            youtubeId = android.net.Uri.decode(entry.arguments?.getString("youtubeId").orEmpty()),
-                            title = entry.arguments?.getString("title"),
-                            description = entry.arguments?.getString("description"),
-                            category = entry.arguments?.getString("category"),
-                            onBack = { nav.popBackStack() }
                         )
                     }
                     screen(Screen.Chat.route) { ChatScreen { nav.popBackStack() } }

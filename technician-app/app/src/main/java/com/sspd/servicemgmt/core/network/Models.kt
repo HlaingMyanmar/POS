@@ -293,6 +293,7 @@ data class BookingDTO(
     val bookingDate: String? = null,
     val appointmentDate: String? = null,
     val status: String? = null,
+    val serviceMode: String? = null,
     val totalAmount: Double? = null,
     val depositAmount: Double? = null,
     val signatureData: String? = null,

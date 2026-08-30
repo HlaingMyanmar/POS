@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ fun ExpenseFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     val accentBg = if (vm.isExpense) DangerBg else SuccessBg
     val title = if (vm.isExpense) "ကုန်ကျစရိတ် ထည့်ရန်" else "ဝင်ငွေ ထည့်ရန်"
 
+    var showAccountSheet by rememberSaveable { mutableStateOf(false) }
     var showPmSheet    by rememberSaveable { mutableStateOf(false) }
     var showStaffSheet by rememberSaveable { mutableStateOf(false) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
@@ -70,6 +72,17 @@ fun ExpenseFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
         ) { DatePicker(state = dpState) }
     }
 
+    if (showAccountSheet) {
+        AppPickerSheet(
+            title = if (vm.isExpense) "ကုန်ကျစရိတ် အကောင့် ရွေးပါ" else "ဝင်ငွေ အကောင့် ရွေးပါ",
+            items = state.accounts,
+            label = { it.accountName ?: "—" },
+            subtitle = { it.code },
+            onSelect = { vm.selectAccount(it); showAccountSheet = false },
+            onDismiss = { showAccountSheet = false },
+            key = { i, a -> a.id ?: "acc-$i-${a.code}" }
+        )
+    }
     if (showPmSheet) {
         AppPickerSheet(
             title = "ငွေပေးချေနည်း ရွေးပါ",
@@ -97,6 +110,30 @@ fun ExpenseFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = accent, titleContentColor = Color.White)
             )
+        },
+        bottomBar = {
+            if (!state.loading) {
+                Surface(shadowElevation = 10.dp, color = Color.White, border = BorderStroke(1.dp, BorderColor)) {
+                    Button(
+                        onClick = { vm.save { onSuccess() } },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent),
+                        enabled = !state.saving
+                    ) {
+                        if (state.saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else {
+                            Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (vm.isExpense) "ကုန်ကျစရိတ် သိမ်းမည်" else "ဝင်ငွေ သိမ်းမည်", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         if (state.loading) {
@@ -159,42 +196,28 @@ fun ExpenseFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
                 }
             }
 
-            // ── Account ──────────────────────────────────────────────────────
             EFSection(Icons.Outlined.AccountBalance, if (vm.isExpense) "ကုန်ကျစရိတ် အကောင့် *" else "ဝင်ငွေ အကောင့် *", accent)
-            Column {
-                OutlinedTextField(
-                    value = state.accountQuery, onValueChange = { vm.setAccountQuery(it) },
-                    label = { Text("အကောင့် ရှာပါ *") },
-                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                    trailingIcon = if (state.selectedAccount != null) ({
-                        Icon(Icons.Outlined.CheckCircle, null, tint = accent, modifier = Modifier.size(20.dp))
-                    }) else null,
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                )
-                val suggestions = if (state.accountQuery.length >= 1)
-                    state.accounts.filter { it.accountName?.contains(state.accountQuery, true) == true }.take(6)
-                else emptyList()
-                if (suggestions.isNotEmpty() && state.selectedAccount == null) {
-                    Card(shape = RoundedCornerShape(0.dp, 0.dp, 12.dp, 12.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
-                        suggestions.forEach { acc ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable { vm.selectAccount(acc) }.padding(horizontal = 16.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(acc.accountName ?: "—", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                                    if (!acc.code.isNullOrBlank()) Text(acc.code, fontSize = 10.sp, color = TextMuted)
-                                }
-                                acc.accountType?.let { t ->
-                                    Surface(color = accentBg, shape = RoundedCornerShape(4.dp)) {
-                                        Text(t, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 9.sp, color = accent, fontWeight = FontWeight.Bold)
-                                    }
-                                }
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth().clickable { showAccountSheet = true },
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, if (state.selectedAccount != null) accent.copy(0.5f) else BorderColor)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.AccountBalanceWallet, null, tint = if (state.selectedAccount != null) accent else TextMuted, modifier = Modifier.size(18.dp))
+                        Column {
+                            Text(
+                                state.selectedAccount?.accountName ?: "အကောင့် ရွေးပါ *",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (state.selectedAccount != null) TextMain else TextMuted
+                            )
+                            state.selectedAccount?.code?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, fontSize = 11.sp, color = TextMuted)
                             }
-                            HorizontalDivider(color = BorderColor)
                         }
                     }
+                    Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(16.dp))
                 }
             }
 
@@ -251,22 +274,7 @@ fun ExpenseFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
                 }
             }
 
-            // Save
-            Button(
-                onClick  = { vm.save { onSuccess() } },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape    = RoundedCornerShape(14.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = accent),
-                enabled  = !state.saving
-            ) {
-                if (state.saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                else {
-                    Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                }
-            }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -278,4 +286,69 @@ private fun EFSection(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
         Text(title, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = accent)
         HorizontalDivider(modifier = Modifier.weight(1f), color = BorderColor)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExpenseFormPreviewBody(isExpense: Boolean) {
+    val accent = if (isExpense) Danger else Success
+    val accentBg = if (isExpense) DangerBg else SuccessBg
+    val title = if (isExpense) "ကုန်ကျစရိတ် ထည့်ရန်" else "ဝင်ငွေ ထည့်ရန်"
+    AppTheme {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(title, fontWeight = FontWeight.ExtraBold) },
+                    navigationIcon = { IconButton(onClick = {}) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = accent, titleContentColor = Color.White)
+                )
+            },
+            bottomBar = {
+                Surface(shadowElevation = 10.dp, color = Color.White, border = BorderStroke(1.dp, BorderColor)) {
+                    Button(
+                        onClick = {},
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent)
+                    ) {
+                        Text(if (isExpense) "ကုန်ကျစရိတ် သိမ်းမည်" else "ဝင်ငွေ သိမ်းမည်", fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize().padding(padding).background(ScreenBg).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(color = accentBg, shape = RoundedCornerShape(14.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(if (isExpense) "ကုန်ကျသည့် ပမာဏ" else "ဝင်ငွေ ပမာဏ", fontSize = 12.sp, color = accent)
+                        Text("85,000 Ks", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+                    }
+                }
+                EFSection(Icons.Outlined.CalendarMonth, "ရက်စွဲ", accent)
+                Text("2026-08-31", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                EFSection(Icons.Outlined.AccountBalance, if (isExpense) "ကုန်ကျစရိတ် အကောင့် *" else "ဝင်ငွေ အကောင့် *", accent)
+                Text(if (isExpense) "ရုံးငှားခ" else "အပိုဝင်ငွေ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+                EFSection(Icons.Outlined.Payments, "ငွေပေးချေနည်း *", accent)
+                Text("Cash", fontSize = 13.sp, color = TextMain)
+                EFSection(Icons.Outlined.Badge, "ဝန်ထမ်း *", accent)
+                Text("အောင်အောင်", fontSize = 13.sp, color = TextMain)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "ကုန်ကျစရိတ် ဖောင်", showBackground = true, widthDp = 390, heightDp = 780)
+@Composable
+private fun ExpenseFormPreview() {
+    ExpenseFormPreviewBody(isExpense = true)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "ဝင်ငွေ ဖောင်", showBackground = true, widthDp = 390, heightDp = 780)
+@Composable
+private fun IncomeFormPreview() {
+    ExpenseFormPreviewBody(isExpense = false)
 }

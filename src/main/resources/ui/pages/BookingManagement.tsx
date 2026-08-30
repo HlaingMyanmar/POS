@@ -843,7 +843,12 @@ export default function BookingManagement() {
             return (
               <article key={`mobile-${b.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
-                  <span className="font-mono text-sm font-black text-indigo-700">{b.invoiceNo}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-sm font-black text-indigo-700">{b.invoiceNo}</span>
+                    <span className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-black ${
+                      b.serviceMode === 'OUTDOOR' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                    }`}>{b.serviceMode === 'OUTDOOR' ? 'OUTDOOR' : 'INDOOR'}</span>
+                  </div>
                   <span className={`rounded-full px-2 py-1 text-[10px] font-black ${col}`}>{BOOKING_STATUS_LABEL[b.status] || b.status}</span>
                 </header>
                 <div className="space-y-3 p-4">

@@ -24,7 +24,7 @@ android {
         vectorDrawables { useSupportLibrary = true }
 
         // Default server — override per-buildType below if needed
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://192.168.1.253:8080\"")
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"http://118.27.151.89\"")
         buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Manager\"")
         buildConfigField("boolean", "TECHNICIAN_ONLY", "false")
     }
@@ -108,6 +108,7 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     // CameraX
     implementation("androidx.camera:camera-camera2:1.4.1")

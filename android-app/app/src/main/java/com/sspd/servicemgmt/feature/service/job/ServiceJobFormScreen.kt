@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,12 +29,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.ProductDTO
-import com.sspd.servicemgmt.core.network.ServiceItemDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
+import com.sspd.servicemgmt.feature.service.catalog.ServiceItemPickerContent
+import com.sspd.servicemgmt.feature.service.catalog.rememberFilteredServiceItems
 
 import com.sspd.servicemgmt.core.util.fmtWarranty
 import com.sspd.servicemgmt.core.ui.scanner.BarcodeScannerView
@@ -48,6 +52,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     var showLineItemSheet by rememberSaveable { mutableStateOf(-1) }
     var showPartSheet     by rememberSaveable { mutableStateOf(-1) }
     var convertRowKey     by rememberSaveable { mutableStateOf("") }
+    var serviceSearchQuery by rememberSaveable { mutableStateOf("") }
     var partSearchQuery   by rememberSaveable { mutableStateOf("") }
     // date-time picker for estimatedCompletion (date step → time step)
     var showDatePicker    by rememberSaveable { mutableStateOf(false) }
@@ -211,29 +216,25 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     // Service item picker sheet
     if (showLineItemSheet >= 0) {
         val lineIdx = showLineItemSheet
-        ModalBottomSheet(onDismissRequest = { showLineItemSheet = -1 }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ဝန်ဆောင်မှု ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                state.serviceItems.forEach { si ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            vm.selectServiceItem(lineIdx, si)
-                            showLineItemSheet = -1
-                        }.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(si.item, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            if (!si.serviceTypeName.isNullOrBlank())
-                                Text(si.serviceTypeName, fontSize = 11.sp, color = TextMuted)
-                        }
-                        Text("${String.format("%,.0f", si.price)} Ks", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold)
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+        val filteredServices = rememberFilteredServiceItems(state.serviceItems, serviceSearchQuery)
+        ModalBottomSheet(
+            onDismissRequest = { showLineItemSheet = -1; serviceSearchQuery = "" },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            ServiceItemPickerContent(
+                items = filteredServices,
+                search = serviceSearchQuery,
+                onSearch = { serviceSearchQuery = it },
+                onSelect = { si ->
+                    vm.selectServiceItem(lineIdx, si)
+                    showLineItemSheet = -1
+                    serviceSearchQuery = ""
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
+            )
         }
     }
 
@@ -244,41 +245,25 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                        else state.productList.filter {
                            it.name.contains(partSearchQuery, true) || it.productCode.contains(partSearchQuery, true)
                        }
-        ModalBottomSheet(onDismissRequest = { showPartSheet = -1; partSearchQuery = "" }) {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text("ပစ္စည်း ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = partSearchQuery, onValueChange = { partSearchQuery = it },
-                    label = { Text("ရှာဖွေပါ (အမည် / ကုဒ်)", fontSize = 12.sp) },
-                    leadingIcon = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp)) },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp)
-                )
-                Spacer(Modifier.height(6.dp))
-                filtered.forEach { prod ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            vm.selectPartProduct(partIdx, prod)
-                            showPartSheet = -1; partSearchQuery = ""
-                        }.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(prod.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            Text(prod.productCode, fontSize = 11.sp, color = TextMuted)
-                            if (prod.stockQty > 0)
-                                Text("Stock: ${prod.stockQty}", fontSize = 10.sp, color = Success)
-                        }
-                        Text(
-                            "${String.format("%,.0f", prod.sellingPrice.toDouble())} Ks",
-                            fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold
-                        )
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+        ModalBottomSheet(
+            onDismissRequest = { showPartSheet = -1; partSearchQuery = "" },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            ProductPartPickerContent(
+                title = "ပစ္စည်း ရွေးပါ",
+                items = filtered,
+                search = partSearchQuery,
+                onSearch = { partSearchQuery = it },
+                onSelect = { prod ->
+                    vm.selectPartProduct(partIdx, prod)
+                    showPartSheet = -1
+                    partSearchQuery = ""
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
+            )
         }
     }
 
@@ -289,42 +274,26 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
         else state.productList.filter {
             it.name.contains(partSearchQuery, true) || it.productCode.contains(partSearchQuery, true)
         }.ifEmpty { state.productList }
-        ModalBottomSheet(onDismissRequest = { convertRowKey = ""; partSearchQuery = "" }) {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text("Stock Part အဖြစ်ပြောင်း", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Text(convertRow.label, fontSize = 12.sp, color = TextMuted)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = partSearchQuery, onValueChange = { partSearchQuery = it },
-                    label = { Text("ရှာဖွေပါ (အမည် / ကုဒ်)", fontSize = 12.sp) },
-                    leadingIcon = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp)) },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp)
-                )
-                Spacer(Modifier.height(6.dp))
-                filtered.forEach { prod ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            vm.convertPartRequest(convertRow, prod)
-                            convertRowKey = ""
-                            partSearchQuery = ""
-                        }.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(prod.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            Text(prod.productCode, fontSize = 11.sp, color = TextMuted)
-                            if (prod.stockQty > 0) Text("Stock: ${prod.stockQty}", fontSize = 10.sp, color = Success)
-                        }
-                        Text(
-                            "${String.format("%,.0f", prod.sellingPrice.toDouble())} Ks",
-                            fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold
-                        )
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+        ModalBottomSheet(
+            onDismissRequest = { convertRowKey = ""; partSearchQuery = "" },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            ProductPartPickerContent(
+                title = "Stock Part အဖြစ်ပြောင်း",
+                subtitle = convertRow.label,
+                items = filtered,
+                search = partSearchQuery,
+                onSearch = { partSearchQuery = it },
+                onSelect = { prod ->
+                    vm.convertPartRequest(convertRow, prod)
+                    convertRowKey = ""
+                    partSearchQuery = ""
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
+            )
         }
     }
 
@@ -1235,6 +1204,82 @@ private fun JobFormSection(icon: ImageVector, title: String) {
         Icon(icon, null, tint = Primary, modifier = Modifier.size(18.dp))
         Text(title, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
         HorizontalDivider(modifier = Modifier.weight(1f), color = BorderColor)
+    }
+}
+
+@Composable
+private fun ProductPartPickerContent(
+    title: String,
+    items: List<ProductDTO>,
+    search: String,
+    onSearch: (String) -> Unit,
+    onSelect: (ProductDTO) -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
+) {
+    val listMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.52f).dp
+    Column(modifier.fillMaxWidth()) {
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        if (!subtitle.isNullOrBlank()) {
+            Text(subtitle, fontSize = 12.sp, color = TextMuted)
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = search,
+            onValueChange = onSearch,
+            placeholder = { Text("ရှာဖွေပါ (အမည် / ကုဒ်)", fontSize = 12.sp) },
+            leadingIcon = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (search.isNotBlank()) {
+                    IconButton(onClick = { onSearch("") }) {
+                        Icon(Icons.Outlined.Clear, "ရှင်းရန်", modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        if (items.isEmpty()) {
+            Text(
+                "ပစ္စည်း မတွေ့ပါ",
+                fontSize = 12.sp,
+                color = TextMuted,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = listMaxHeight),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(items, key = { it.id.takeIf { id -> id != 0 } ?: it.productCode }) { prod ->
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { onSelect(prod) }.padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(prod.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                                Text(prod.productCode, fontSize = 11.sp, color = TextMuted)
+                                if (prod.stockQty > 0)
+                                    Text("Stock: ${prod.stockQty}", fontSize = 10.sp, color = Success)
+                            }
+                            Text(
+                                "${String.format("%,.0f", prod.sellingPrice.toDouble())} Ks",
+                                fontSize = 12.sp,
+                                color = Primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        HorizontalDivider(color = BorderColor)
+                    }
+                }
+            }
+        }
     }
 }
 

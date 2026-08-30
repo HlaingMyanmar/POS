@@ -14,4 +14,3 @@ dependencyResolutionManagement {
 }
 rootProject.name = "SSPDManager"
 include(":app")
-include(":technician")

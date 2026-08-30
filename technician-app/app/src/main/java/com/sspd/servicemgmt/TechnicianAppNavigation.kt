@@ -87,6 +87,7 @@ import com.sspd.servicemgmt.feature.service.job.ServiceJobDetailScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobFormScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobListScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobPrintScreen
+import com.sspd.servicemgmt.feature.settings.SoftwareUpdateScreen
 import android.widget.Toast
 import com.sspd.servicemgmt.feature.video.VideoListScreen
 import com.sspd.servicemgmt.feature.video.extractYoutubeId
@@ -403,6 +404,9 @@ fun TechnicianAppNavigation() {
                     }
 
                     screen(Screen.ServiceMgmt.route) { ServiceManagementScreen { nav.popBackStack() } }
+                    screen(Screen.SoftwareUpdate.route) {
+                        SoftwareUpdateScreen(onBack = { nav.popBackStack() })
+                    }
                     screen(Screen.Videos.route) {
                         VideoListScreen(
                             onBack = {

@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +23,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,6 +34,7 @@ import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.sspd.servicemgmt.core.tracking.LocationPermission
 import com.sspd.servicemgmt.core.ui.theme.*
@@ -57,9 +61,10 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
 
     var showStaffSheet    by rememberSaveable { mutableStateOf(false) }
     var showLocationSheet by rememberSaveable { mutableStateOf(false) }
-    var showLineItemSheet by rememberSaveable { mutableStateOf(-1) }
+    var showLineItemSheet by rememberSaveable { mutableIntStateOf(-1) }
     var showPartSheet     by rememberSaveable { mutableStateOf(-1) }
     var convertRowKey     by rememberSaveable { mutableStateOf("") }
+    var serviceSearchQuery by rememberSaveable { mutableStateOf("") }
     var partSearchQuery   by rememberSaveable { mutableStateOf("") }
     // date-time picker for estimatedCompletion (date step → time step)
     var showDatePicker    by rememberSaveable { mutableStateOf(false) }
@@ -273,41 +278,34 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     // Service item picker sheet
     if (showLineItemSheet >= 0) {
         val lineIdx = showLineItemSheet
-        ModalBottomSheet(onDismissRequest = { showLineItemSheet = -1 }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ဝန်ဆောင်မှု ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                state.serviceItems.forEach { si ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            vm.selectServiceItem(lineIdx, si)
-                            showLineItemSheet = -1
-                        }.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(si.item, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            if (!si.serviceTypeName.isNullOrBlank())
-                                Text(si.serviceTypeName, fontSize = 11.sp, color = TextMuted)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                "ပုံမှန် ${String.format("%,.0f", si.price)} Ks",
-                                fontSize = 12.sp,
-                                color = Primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "အနည်းဆုံး ${si.minPrice?.let { String.format("%,.0f", it) } ?: "—"} · အများဆုံး ${si.maxPrice?.let { String.format("%,.0f", it) } ?: "—"}",
-                                fontSize = 10.sp,
-                                color = TextMuted
-                            )
-                        }
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
+        val filteredServices = remember(state.serviceItems, serviceSearchQuery) {
+            val q = serviceSearchQuery.trim()
+            if (q.isBlank()) state.serviceItems
+            else state.serviceItems.filter { si ->
+                si.item.contains(q, true) ||
+                    si.code.orEmpty().contains(q, true) ||
+                    si.serviceTypeName.orEmpty().contains(q, true) ||
+                    si.subServiceTypeName.orEmpty().contains(q, true)
             }
+        }
+        ModalBottomSheet(
+            onDismissRequest = { showLineItemSheet = -1; serviceSearchQuery = "" },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            ServiceItemPickerContent(
+                items = filteredServices,
+                search = serviceSearchQuery,
+                onSearch = { serviceSearchQuery = it },
+                onSelect = { si ->
+                    vm.selectServiceItem(lineIdx, si)
+                    showLineItemSheet = -1
+                    serviceSearchQuery = ""
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
+            )
         }
     }
 
@@ -1324,4 +1322,120 @@ private fun JobTextField(
         modifier = modifier, singleLine = true, shape = RoundedCornerShape(12.dp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
     )
+}
+
+@Composable
+private fun ServiceItemPickerContent(
+    items: List<ServiceItemDTO>,
+    search: String,
+    onSearch: (String) -> Unit,
+    onSelect: (ServiceItemDTO) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.52f).dp
+    Column(modifier.fillMaxWidth()) {
+        Text("ဝန်ဆောင်မှု ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = search,
+            onValueChange = onSearch,
+            placeholder = { Text("ရှာဖွေပါ (အမည် / အမျိုးအစား)", fontSize = 12.sp) },
+            leadingIcon = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (search.isNotBlank()) {
+                    IconButton(onClick = { onSearch("") }) {
+                        Icon(Icons.Outlined.Clear, "ရှင်းရန်", modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        if (items.isEmpty()) {
+            Text(
+                "ဝန်ဆောင်မှု မတွေ့ပါ",
+                fontSize = 12.sp,
+                color = TextMuted,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = listMaxHeight),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(items, key = { it.id ?: it.item }) { si ->
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { onSelect(si) }.padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(si.item, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                                if (!si.serviceTypeName.isNullOrBlank())
+                                    Text(si.serviceTypeName, fontSize = 11.sp, color = TextMuted)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "ပုံမှန် ${String.format("%,.0f", si.price)} Ks",
+                                    fontSize = 12.sp,
+                                    color = Primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "အနည်းဆုံး ${si.minPrice?.let { String.format("%,.0f", it) } ?: "—"} · အများဆုံး ${si.maxPrice?.let { String.format("%,.0f", it) } ?: "—"}",
+                                    fontSize = 10.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = BorderColor)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val previewServiceItems = listOf(
+    ServiceItemDTO(id = 1, item = "Laptop Cleaning", price = 15000.0, minPrice = 10000.0, maxPrice = 25000.0, serviceTypeName = "Maintenance"),
+    ServiceItemDTO(id = 2, item = "CCTV Installation", price = 45000.0, minPrice = 35000.0, maxPrice = 80000.0, serviceTypeName = "Installation"),
+    ServiceItemDTO(id = 3, item = "Network Troubleshooting", price = 20000.0, minPrice = 15000.0, maxPrice = 40000.0, serviceTypeName = "Network"),
+    ServiceItemDTO(id = 4, item = "Printer Repair", price = 18000.0, minPrice = 12000.0, maxPrice = 30000.0, serviceTypeName = "Repair")
+)
+
+@Preview(name = "ဝန်ဆောင်မှု ရွေးပါ", showBackground = true, widthDp = 390, heightDp = 640)
+@Composable
+private fun ServiceItemPickerPreview() {
+    AppTheme {
+        Surface(color = Color.White) {
+            ServiceItemPickerContent(
+                items = previewServiceItems,
+                search = "",
+                onSearch = {},
+                onSelect = {},
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            )
+        }
+    }
+}
+
+@Preview(name = "ရှာဖွေမှု ရလဒ်မရှိ", showBackground = true, widthDp = 390, heightDp = 320)
+@Composable
+private fun ServiceItemPickerEmptyPreview() {
+    AppTheme {
+        Surface(color = Color.White) {
+            ServiceItemPickerContent(
+                items = emptyList(),
+                search = "xyz",
+                onSearch = {},
+                onSelect = {},
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            )
+        }
+    }
 }

@@ -118,12 +118,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
     val filteredTypes = state.types.filter {
         state.search.isBlank() || it.name.contains(state.search, true)
     }
-    val filteredItems = state.items.filter {
-        state.search.isBlank() ||
-        it.item.contains(state.search, true) ||
-        it.serviceTypeName?.contains(state.search, true) == true ||
-        it.code?.contains(state.search, true) == true
-    }
+    val filteredItems = filterServiceItems(state.items, state.search)
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -367,8 +362,13 @@ private fun ItemsList(
                         }
                     }
                     Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 4.dp)) {
-                        Text("${String.format("%,.0f", item.price)} Ks",
+                        Text("ပုံမှန် ${String.format("%,.0f", item.price)} Ks",
                             fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
+                        Text(
+                            "အနည်းဆုံး ${item.minPrice?.let { String.format("%,.0f", it) } ?: "—"} · အများဆုံး ${item.maxPrice?.let { String.format("%,.0f", it) } ?: "—"}",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
                         if ((item.costPrice ?: 0.0) > 0)
                             Text("ကုန်ကျ ${String.format("%,.0f", item.costPrice)}", fontSize = 10.sp, color = TextMuted)
                         Spacer(Modifier.height(4.dp))

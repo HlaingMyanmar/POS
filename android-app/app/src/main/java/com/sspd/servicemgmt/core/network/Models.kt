@@ -16,6 +16,22 @@ data class AppVersionDTO(
     val downloadUrl: String  = ""
 )
 
+data class VideoDTO(
+    val id: Int = 0,
+    val title: String? = "",
+    val description: String? = null,
+    val provider: String? = null,
+    val providerVideoId: String? = null,
+    val sourceUrl: String? = null,
+    val youtubeUrl: String? = null,
+    val thumbnailUrl: String? = null,
+    val category: String? = null,
+    val targetAudience: String? = null,
+    val sortOrder: Int? = null,
+    val featured: Boolean? = false,
+    val active: Boolean? = true
+)
+
 data class PagedResponse<T>(
     val content: List<T> = emptyList(),
     val currentPage: Int = 0,
@@ -521,6 +537,9 @@ data class ServiceJobDTO(
     val customerId: Int? = null,
     val customerName: String? = null,
     val customerPhone: String? = null,
+    val serviceMode: String? = null,
+    val customerLatitude: Double? = null,
+    val customerLongitude: Double? = null,
     val assignedStaffId: Int? = null,
     val assignedStaffName: String? = null,
     val itemName: String? = null,
@@ -609,11 +628,15 @@ data class TechnicianVisitDTO(
     val jobNo: String? = null,
     val customerId: Int? = null,
     val customerName: String? = null,
+    val purpose: String? = null,
+    val outcome: String? = null,
+    val outcomeNote: String? = null,
     val status: String? = null,
     val motionStatus: String? = null,
     val needsReason: Boolean? = null,
     val startedAt: String? = null,
     val arrivedAt: String? = null,
+    val leftCustomerAt: String? = null,
     val endedAt: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
@@ -621,9 +644,27 @@ data class TechnicianVisitDTO(
     val recordedAt: String? = null,
     val customerLatitude: Double? = null,
     val customerLongitude: Double? = null,
-    val distanceMeters: Double? = null
+    val distanceMeters: Double? = null,
+    val events: List<VisitEventDTO>? = null
 )
 
+data class VisitEventDTO(
+    val id: Long? = null,
+    val eventType: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val reasonCode: String? = null,
+    val note: String? = null,
+    val occurredAt: String? = null
+)
+
+data class LocationPingDTO(
+    val id: Long? = null,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Double? = null,
+    val recordedAt: String? = null
+)
 data class LocationPingRequest(
     val clientPingId: String,
     val latitude: Double,
@@ -634,7 +675,8 @@ data class LocationPingRequest(
 
 data class VisitReasonRequest(
     val reasonCode: String,
-    val note: String? = null
+    val note: String? = null,
+    val location: LocationPingRequest
 )
 
 data class CustomerLocationRequest(

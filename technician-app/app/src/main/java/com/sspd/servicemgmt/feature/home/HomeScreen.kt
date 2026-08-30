@@ -183,6 +183,13 @@ Box(
                             IconButton(onClick = { vm.loadStats() }) {
                                 Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White.copy(0.85f))
                             }
+                            IconButton(onClick = { onNavigate(Screen.SoftwareUpdate.route) }) {
+                                Icon(
+                                    Icons.Outlined.SystemUpdate,
+                                    "Software Update",
+                                    tint = Color.White.copy(0.90f)
+                                )
+                            }
                             IconButton(onClick = { showLogoutConfirm = true }) {
                                 Icon(Icons.Outlined.Logout, "Logout", tint = Color.White.copy(0.90f))
                             }

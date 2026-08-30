@@ -27,6 +27,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
+import com.sspd.servicemgmt.feature.service.catalog.ServiceItemPickerContent
+import com.sspd.servicemgmt.feature.service.catalog.rememberFilteredServiceItems
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +40,7 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     var showPaySheet by rememberSaveable { mutableStateOf(false) }
     var showServiceSheet by rememberSaveable { mutableStateOf(false) }
     var showPhotoSheet by rememberSaveable { mutableStateOf(false) }
+    var serviceSearchQuery by rememberSaveable { mutableStateOf("") }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val galleryLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -174,26 +177,25 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     }
 
     if (showServiceSheet) {
-        ModalBottomSheet(onDismissRequest = { showServiceSheet = false }) {
-            Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-                Text("ဝန်ဆောင်မှု ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                state.serviceItems.forEach { item ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { vm.addServiceLine(item); showServiceSheet = false }.padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(item.item, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            if (!item.serviceTypeName.isNullOrBlank())
-                                Text(item.serviceTypeName, fontSize = 11.sp, color = TextMuted)
-                        }
-                        Text("${String.format("%,.0f", item.price)} Ks", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold)
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+        val filteredServices = rememberFilteredServiceItems(state.serviceItems, serviceSearchQuery)
+        ModalBottomSheet(
+            onDismissRequest = { showServiceSheet = false; serviceSearchQuery = "" },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            ServiceItemPickerContent(
+                items = filteredServices,
+                search = serviceSearchQuery,
+                onSearch = { serviceSearchQuery = it },
+                onSelect = { item ->
+                    vm.addServiceLine(item)
+                    showServiceSheet = false
+                    serviceSearchQuery = ""
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
+            )
         }
     }
 

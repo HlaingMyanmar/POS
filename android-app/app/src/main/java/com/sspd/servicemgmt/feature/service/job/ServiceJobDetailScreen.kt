@@ -78,7 +78,8 @@ fun ServiceJobDetailScreen(
     onBack:    () -> Unit,
     onEdit:    () -> Unit = {},
     onPrint:   () -> Unit = {},
-    onDeleted: () -> Unit = {}
+    onDeleted: () -> Unit = {},
+    onOpenActiveVisit: (Int) -> Unit = {}
 ) {
     val vm: ServiceJobDetailViewModel = viewModel()
     val visitVm: TechnicianVisitViewModel = viewModel()
@@ -98,9 +99,14 @@ fun ServiceJobDetailScreen(
             granted[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (!ok) return@rememberLauncherForActivityResult
         when (pendingVisitAction) {
-            "start" -> state.job?.id?.let { visitVm.start(it) }
+            "start:SERVICE", "start:PICKUP", "start:DELIVERY", "start:FOLLOW_UP" ->
+                pendingVisitAction?.let { action -> state.job?.id?.let { visitVm.start(it, action.substringAfter(":")) } }
             "arrive" -> visitVm.arrive()
+            "depart:FIXED_ON_SITE", "depart:BROUGHT_TO_SHOP", "depart:PARTS_REQUIRED",
+            "depart:RESCHEDULED", "depart:CUSTOMER_UNAVAILABLE" ->
+                pendingVisitAction?.let { visitVm.departCustomer(it.substringAfter(":")) }
             "end" -> visitVm.end()
+            "journeyResume" -> visitVm.resumeJourney()
             "resume" -> visitVm.resumeTracking()
         }
         pendingVisitAction = null
@@ -109,9 +115,14 @@ fun ServiceJobDetailScreen(
     fun runVisit(action: String) {
         if (LocationPermission.granted(context)) {
             when (action) {
-                "start" -> state.job?.id?.let { visitVm.start(it) }
+                "start:SERVICE", "start:PICKUP", "start:DELIVERY", "start:FOLLOW_UP" ->
+                    state.job?.id?.let { visitVm.start(it, action.substringAfter(":")) }
                 "arrive" -> visitVm.arrive()
+                "depart:FIXED_ON_SITE", "depart:BROUGHT_TO_SHOP", "depart:PARTS_REQUIRED",
+                "depart:RESCHEDULED", "depart:CUSTOMER_UNAVAILABLE" ->
+                    visitVm.departCustomer(action.substringAfter(":"))
                 "end" -> visitVm.end()
+                "journeyResume" -> visitVm.resumeJourney()
                 "resume" -> visitVm.resumeTracking()
             }
         } else {
@@ -124,7 +135,9 @@ fun ServiceJobDetailScreen(
         visitMessage?.let { snackbar.showSnackbar(it); visitVm.clearMessage() }
     }
     LaunchedEffect(visit?.needsReason, visit?.id) {
-        if (visit?.needsReason == true && visit?.status == "EN_ROUTE") showReasonDialog = true
+        if (visit?.needsReason == true && visit?.status in listOf("EN_ROUTE", "RETURNING")) {
+            showReasonDialog = true
+        }
     }
 
     LaunchedEffect(state.actionSuccess) {
@@ -134,7 +147,7 @@ fun ServiceJobDetailScreen(
         state.actionError?.let { snackbar.showSnackbar(it); vm.clearActionError() }
     }
 
-    if (showReasonDialog && visit?.status == "EN_ROUTE") {
+    if (showReasonDialog && visit?.status in listOf("EN_ROUTE", "RETURNING")) {
         LongStopReasonDialog(
             onDismiss = { showReasonDialog = false },
             onSubmit = { code, note ->
@@ -375,19 +388,50 @@ fun ServiceJobDetailScreen(
                 }
             }
 
-            item {
-                OutdoorVisitCard(
-                    jobId = job.id,
-                    visit = visit,
-                    busy = visitBusy,
-                    pendingResume = pendingResume && visit?.jobId == job.id,
-                    onStart = { runVisit("start") },
-                    onArrive = { runVisit("arrive") },
-                    onEnd = { runVisit("end") },
-                    onResume = { runVisit("resume") },
-                    onCancel = { visitVm.cancel("WRONG_VISIT") },
-                    onReason = { showReasonDialog = true }
-                )
+            if (job.serviceMode == "OUTDOOR") {
+                item {
+                    OutdoorVisitCard(
+                        jobId = job.id,
+                        visit = visit,
+                        busy = visitBusy,
+                        pendingResume = pendingResume && visit?.jobId == job.id,
+                        canStart = visitVm.canStart,
+                        onStart = { purpose -> runVisit("start:$purpose") },
+                        onArrive = { runVisit("arrive") },
+                        onDepartCustomer = { outcome -> runVisit("depart:$outcome") },
+                        onEnd = { runVisit("end") },
+                        onJourneyResume = { runVisit("journeyResume") },
+                        onResume = { runVisit("resume") },
+                        onCancel = { visitVm.cancel("WRONG_VISIT") },
+                        onReason = { showReasonDialog = true },
+                        onOpenActiveVisit = onOpenActiveVisit
+                    )
+                }
+
+                item {
+                    val thisJobVisit = visit?.takeIf { it.jobId == job.id }
+                    CustomerRouteMap(
+                        customerName = job.customerName ?: "Customer",
+                        destinationLatitude = job.customerLatitude ?: thisJobVisit?.customerLatitude,
+                        destinationLongitude = job.customerLongitude ?: thisJobVisit?.customerLongitude,
+                        visit = thisJobVisit
+                    )
+                }
+            } else {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = CardBg),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Text(
+                            "Indoor Service Job — GPS Map နှင့် Outdoor Tracking မလိုအပ်ပါ",
+                            modifier = Modifier.padding(14.dp),
+                            fontSize = 12.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
             }
 
             // ── Info card ─────────────────────────────────────────────────────
@@ -1218,7 +1262,7 @@ private fun JobPayDueDialog(
                         amt == null || amt <= 0 -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ပါ"
                         amt > dueAmount + 0.01  -> error = "ကျန်ငွေထက် မကျော်ရပါ"
                         selectedPm == null      -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
-                        else -> onPay(amt, selectedPm!!.id, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null })
+                        else -> selectedPm?.id?.let { onPay(amt, it, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }) }
                     }
                 },
                 enabled = !loading,
@@ -1375,6 +1419,10 @@ private fun ReworkDialog(
                 enabled = !loading,
                 colors = ButtonDefaults.buttonColors(containerColor = Warning)
             ) {
+                if (loading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                else Text("Rework ဖန်တီးမည်", fontWeight = FontWeight.Bold)
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !loading) { Text("ပယ်ဖျက်") } }
     )
 }
@@ -1385,12 +1433,16 @@ private fun OutdoorVisitCard(
     visit: TechnicianVisitDTO?,
     busy: Boolean,
     pendingResume: Boolean,
-    onStart: () -> Unit,
+    canStart: Boolean,
+    onStart: (String) -> Unit,
     onArrive: () -> Unit,
+    onDepartCustomer: (String) -> Unit,
     onEnd: () -> Unit,
+    onJourneyResume: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
-    onReason: () -> Unit
+    onReason: () -> Unit,
+    onOpenActiveVisit: (Int) -> Unit
 ) {
     val forThisJob = visit != null && visit.jobId == jobId
     Card(
@@ -1399,8 +1451,15 @@ private fun OutdoorVisitCard(
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Outdoor Visit", fontWeight = FontWeight.ExtraBold, color = Violet)
+            Text("အပြင်ထွက် Visit", fontWeight = FontWeight.ExtraBold, color = Violet)
             when {
+                !canStart -> {
+                    Text(
+                        "Admin မှ CAN_ACCESS_TECHNICIAN_VISIT_START ပေးပြီး logout/login ပြန်လုပ်ပါ",
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                }
                 pendingResume && forThisJob -> {
                     Text("Tracking ရပ်နေသည်။ ပြန်စရန် နှိပ်ပါ။", fontSize = 12.sp, color = TextMuted)
                     Button(onClick = onResume, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
@@ -1413,12 +1472,22 @@ private fun OutdoorVisitCard(
                         fontSize = 12.sp,
                         color = TextMuted
                     )
+                    visit.jobId?.let { activeJobId ->
+                        Button(
+                            onClick = { onOpenActiveVisit(activeJobId) },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("လက်ရှိ Job ကိုဖွင့်မည်")
+                        }
+                    }
                 }
                 visit == null -> {
-                    Button(onClick = onStart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
-                        else Text("ထွက်ခွာပြီ")
-                    }
+                    Text("Visit ရည်ရွယ်ချက် ရွေးပါ", fontSize = 12.sp, color = TextMuted)
+                    Button(onClick = { onStart("SERVICE") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("စစ်ဆေး/ပြင်ဆင်ရန် သွားမည်") }
+                    OutlinedButton(onClick = { onStart("PICKUP") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("ပစ္စည်းယူရန် သွားမည်") }
+                    OutlinedButton(onClick = { onStart("DELIVERY") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("ပစ္စည်းပြန်ပို့ရန် သွားမည်") }
+                    OutlinedButton(onClick = { onStart("FOLLOW_UP") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("နောက်ဆက်တွဲ စစ်ဆေးရန်") }
                 }
                 visit.status == "EN_ROUTE" -> {
                     Text(
@@ -1428,18 +1497,50 @@ private fun OutdoorVisitCard(
                         fontSize = 12.sp,
                         color = TextMuted
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(onClick = onArrive, enabled = !busy, modifier = Modifier.weight(1f)) { Text("ရောက်ပြီ") }
-                        OutlinedButton(onClick = onEnd, enabled = !busy, modifier = Modifier.weight(1f)) { Text("ပြန်လာပြီ") }
+                    Button(onClick = onArrive, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text("Customer ဆီရောက်ပြီ")
+                    }
+                    if (visit.motionStatus == "STOPPED" || visit.motionStatus == "LONG_STOP") {
+                        OutlinedButton(
+                            onClick = onJourneyResume,
+                            enabled = !busy && visit.needsReason != true,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                if (visit.needsReason == true) "အကြောင်းပြချက်အရင်သိမ်းပါ"
+                                else "ခရီးဆက်ပြီ"
+                            )
+                        }
                     }
                     TextButton(onClick = onReason, enabled = !busy) { Text("ခဏရပ်သည့်အကြောင်း") }
                     TextButton(onClick = onCancel, enabled = !busy) { Text("Visit ပယ်ဖျက်") }
                 }
                 visit.status == "ON_SITE" -> {
-                    Text("Customer နေရာရောက်ပြီး", fontSize = 12.sp, color = TextMuted)
+                    Text("Customer နေရာက လုပ်ငန်းရလဒ် ရွေးပါ", fontSize = 12.sp, color = TextMuted)
+                    Button(onClick = { onDepartCustomer("FIXED_ON_SITE") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("နေရာတွင် ပြင်ပြီး — ပြန်ထွက်မည်") }
+                    OutlinedButton(onClick = { onDepartCustomer("BROUGHT_TO_SHOP") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("ပစ္စည်းကို ဆိုင်သို့ယူလာမည်") }
+                    OutlinedButton(onClick = { onDepartCustomer("PARTS_REQUIRED") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Parts လိုအပ်သည်") }
+                    OutlinedButton(onClick = { onDepartCustomer("RESCHEDULED") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Customer နှင့် ပြန်ချိန်းထားသည်") }
+                    OutlinedButton(onClick = { onDepartCustomer("CUSTOMER_UNAVAILABLE") }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Customer မရှိ/ဆက်သွယ်မရ") }
+                }
+                visit.status == "RETURNING" -> {
+                    Text("Customer ဆီမှ ပြန်လာနေသည်", fontSize = 12.sp, color = TextMuted)
                     Button(onClick = onEnd, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        Text("ပြန်လာပြီ")
+                        Text("ပြန်ရောက်ပြီ")
                     }
+                    if (visit.motionStatus == "STOPPED" || visit.motionStatus == "LONG_STOP") {
+                        OutlinedButton(
+                            onClick = onJourneyResume,
+                            enabled = !busy && visit.needsReason != true,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                if (visit.needsReason == true) "အကြောင်းပြချက်အရင်သိမ်းပါ"
+                                else "ခရီးဆက်ပြီ"
+                            )
+                        }
+                    }
+                    TextButton(onClick = onReason, enabled = !busy) { Text("ခဏရပ်သည့်အကြောင်း") }
                 }
             }
         }
@@ -1460,7 +1561,8 @@ private fun LongStopReasonDialog(
         "PARTS" to "ပစ္စည်းဝယ်နေသည်",
         "BREAK" to "စားသောက်/ခဏနား",
         "EMERGENCY" to "အခြားအရေးပေါ်ကိစ္စ",
-        "WRONG_VISIT" to "မှားပြီး Visit စခဲ့သည်"
+        "WRONG_VISIT" to "မှားပြီး Visit စခဲ့သည်",
+        "OTHER" to "ကိုယ်တိုင်ရေးမည်"
     )
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1478,13 +1580,29 @@ private fun LongStopReasonDialog(
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
-                    label = { Text("မှတ်ချက်") },
+                    label = {
+                        Text(if (code == "OTHER") "အကြောင်းပြချက် *" else "ထပ်ဆောင်းမှတ်ချက်")
+                    },
+                    placeholder = {
+                        if (code == "OTHER") Text("ဘာကြောင့် ရပ်နားခဲ့သည်ကို ရေးပါ")
+                    },
+                    minLines = 2,
+                    maxLines = 4,
+                    isError = code == "OTHER" && note.isBlank(),
+                    supportingText = {
+                        if (code == "OTHER" && note.isBlank()) {
+                            Text("ကိုယ်တိုင်ရေးမည် ရွေးထားလျှင် အကြောင်းပြချက်ထည့်ပါ")
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
-            Button(onClick = { onSubmit(code, note.ifBlank { null }) }) { Text("သိမ်းမည်") }
+            Button(
+                onClick = { onSubmit(code, note.trim().ifBlank { null }) },
+                enabled = code != "OTHER" || note.isNotBlank()
+            ) { Text("သိမ်းမည်") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("နောက်မှ") } }
     )

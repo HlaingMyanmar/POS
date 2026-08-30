@@ -253,7 +253,25 @@ private fun BookingCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(booking.invoiceNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(booking.invoiceNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
+                        val outdoor = booking.serviceMode.equals("OUTDOOR", ignoreCase = true)
+                        Surface(
+                            color = if (outdoor) Color(0xFFD1FAE5) else BorderColor,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                if (outdoor) "OUTDOOR" else "INDOOR",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (outdoor) Color(0xFF047857) else TextMuted
+                            )
+                        }
+                    }
                     Text(booking.customerName ?: "-", fontSize = 13.sp, color = TextMain)
                     Spacer(Modifier.height(4.dp))
                     val displayBrand = booking.brand?.takeIf { it.isNotBlank() }

@@ -3,13 +3,18 @@ import { useDataEvents } from '../hooks/useDataEvents';
 import {
   ArrowDownUp,
   ArrowLeft,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   Download,
   Loader2,
+  Plus,
   RefreshCw,
   Save,
-  Search
+  Search,
+  TrendingDown,
+  TrendingUp,
+  Wallet
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { coaService } from '../services/coaapiservice';
@@ -314,7 +319,7 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
 
   const openConfirm = () => {
     if (!validForm) {
-      Swal.fire('Validation', 'Please select account/payment/staff and enter a valid amount.', 'warning');
+      Swal.fire('ဖြည့်စွက်ရန်လိုအပ်သည်', 'အကောင့်၊ ငွေပေးချေနည်း၊ ဝန်ထမ်းနှင့် ပမာဏကို မှန်ကန်စွာ ရွေး/ထည့်ပါ။', 'warning');
       return;
     }
     if (!dateIsAllowed()) return;
@@ -354,7 +359,7 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
 
       Swal.fire({
         icon: 'success',
-        title: tab === 'EXPENSE' ? 'Expense saved' : 'Income saved',
+        title: tab === 'EXPENSE' ? 'ကုန်ကျစရိတ် သိမ်းပြီး' : 'ဝင်ငွေ သိမ်းပြီး',
         toast: true,
         position: 'top-end',
         timer: 1500,
@@ -520,7 +525,7 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
 
   const exportCsv = () => {
     if (sortedRows.length === 0) {
-      Swal.fire('Export', 'No rows to export.', 'info');
+      Swal.fire('Export', 'ထုတ်ယူရန် စာရင်းမရှိပါ။', 'info');
       return;
     }
 
@@ -546,6 +551,45 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const localIso = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const applyListRange = (preset: 'TODAY' | 'WEEK' | 'MONTH' | 'ALL') => {
+    const today = new Date();
+    if (preset === 'ALL') {
+      setFilterDateFrom('');
+      setFilterDateTo('');
+      return;
+    }
+    if (preset === 'TODAY') {
+      const t = localIso(today);
+      setFilterDateFrom(t);
+      setFilterDateTo(t);
+      return;
+    }
+    if (preset === 'WEEK') {
+      const start = new Date(today);
+      const day = start.getDay() || 7;
+      start.setDate(start.getDate() - day + 1);
+      setFilterDateFrom(localIso(start));
+      setFilterDateTo(localIso(today));
+      return;
+    }
+    setFilterDateFrom(localIso(new Date(today.getFullYear(), today.getMonth(), 1)));
+    setFilterDateTo(localIso(today));
+  };
+
+  const rangePreset = (() => {
+    const today = localIso(new Date());
+    if (!filterDateFrom && !filterDateTo) return 'ALL';
+    if (filterDateFrom === today && filterDateTo === today) return 'TODAY';
+    return '';
+  })();
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -554,221 +598,228 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
     );
   }
 
+  const fieldCls = 'w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500';
+  const expenseForm = tab === 'EXPENSE';
+
   return (
     <div className="w-full max-w-none space-y-4">
 
       {activeView !== 'list' ? (
         <>
-          {/* Full-page form header */}
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               onClick={() => { clearForm(); setActiveView('list'); }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium"
+              className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 hover:bg-white rounded-xl text-sm font-semibold border border-slate-200"
             >
-              <ArrowLeft size={15} /> Back to Transactions
+              <ArrowLeft size={15} /> စာရင်းသို့ ပြန်မည်
             </button>
-            <h2 className="text-base font-bold text-slate-800">
-              {tab === 'EXPENSE' ? 'New Expense Entry' : 'New Income Entry'}
-            </h2>
-            <div className="w-36" />
+            <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black ${expenseForm ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+              {expenseForm ? <TrendingDown size={14} /> : <TrendingUp size={14} />}
+              {expenseForm ? 'ကုန်ကျစရိတ် အသစ်' : 'ဝင်ငွေ အသစ်'}
+            </div>
           </div>
 
-          {/* Form grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Left: fields */}
-            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
+              <div className={`rounded-2xl border p-4 ${expenseForm ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'}`}>
+                <p className={`text-xs font-bold ${expenseForm ? 'text-rose-600' : 'text-emerald-700'}`}>ပမာဏ (Ks)</p>
+                <input type="number" min="0" step="0.01" value={amountInput} onChange={(e) => setAmountInput(e.target.value)} placeholder="0"
+                  className={`mt-1 w-full bg-transparent text-3xl font-black tracking-tight outline-none ${expenseForm ? 'text-rose-700' : 'text-emerald-800'}`} />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Date</label>
+                <label className="space-y-1.5">
+                  <span className="block text-xs font-bold text-slate-500">ရက်စွဲ</span>
                   <input type="datetime-local" value={entryDate}
                     min={canBackdate ? undefined : `${todayDate}T00:00`}
                     max={canFutureDate ? undefined : `${todayDate}T23:59`}
                     onChange={(e) => setEntryDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Amount</label>
-                  <input type="number" min="0" step="0.01" value={amountInput} onChange={(e) => setAmountInput(e.target.value)} placeholder="0.00"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                    {tab === 'EXPENSE'
-                      ? (isAssetPurchase ? 'Asset Account (DR Fixed Asset)' : 'Expense Account')
-                      : 'Income Account'}
-                  </label>
+                    className={fieldCls} />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="block text-xs font-bold text-slate-500">
+                    {expenseForm ? (isAssetPurchase ? 'ပိုင်ဆိုင်မှု အကောင့် *' : 'ကုန်ကျစရိတ် အကောင့် *') : 'ဝင်ငွေ အကောင့် *'}
+                  </span>
                   <input
                     list="ei-account-options"
                     value={accountSearch}
                     onChange={(e) => onAccountSearch(e.target.value)}
-                    placeholder="Search account..."
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    placeholder="အကောင့် ရှာပါ / ရွေးပါ"
+                    className={fieldCls}
                   />
                   <datalist id="ei-account-options">
                     {accountOptions.map((a) => (
                       <option key={a.id} value={accountLabel(a)} />
                     ))}
                   </datalist>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Payment Method</label>
-                  <select value={paymentMethodId} onChange={(e) => setPaymentMethodId(Number(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
-                    <option value={0}>Select payment method</option>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="block text-xs font-bold text-slate-500">ငွေပေးချေနည်း *</span>
+                  <select value={paymentMethodId} onChange={(e) => setPaymentMethodId(Number(e.target.value) || 0)} className={fieldCls}>
+                    <option value={0}>ရွေးပါ</option>
                     {paymentMethodOptions.map((m) => (
                       <option key={m.id} value={m.id}>{m.methodName}</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Staff</label>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="block text-xs font-bold text-slate-500">ဝန်ထမ်း *</span>
                   <select value={staffId} disabled={!canOverrideStaff}
                     onChange={(e) => setStaffId(Number(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
-                    <option value={0}>Select staff</option>
+                    className={`${fieldCls} disabled:opacity-70`}>
+                    <option value={0}>ရွေးပါ</option>
                     {staffs.map((s) => (
                       <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Description</label>
-                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
-                </div>
+                </label>
+                <label className="space-y-1.5 md:col-span-2">
+                  <span className="block text-xs font-bold text-slate-500">မှတ်ချက်</span>
+                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ဥပမာ — ရုံးငှားခ / အပိုဝင်ငွေ"
+                    className={fieldCls} />
+                </label>
               </div>
-              <div className="flex justify-end pt-2">
-                <button onClick={clearForm} className="px-3 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
-                  Clear
+              <div className="flex justify-end">
+                <button onClick={clearForm} className="px-3 py-2 text-sm font-semibold text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50">
+                  ရှင်းမည်
                 </button>
               </div>
             </div>
 
-            {/* Right: journal summary + save */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sticky top-4 space-y-4">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Journal Entry</h3>
+            <div className={`rounded-2xl border shadow-sm p-5 sticky top-4 space-y-4 ${expenseForm ? 'border-rose-100 bg-white' : 'border-emerald-100 bg-white'}`}>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">စာရင်းသွင်းပုံ</h3>
               <div className="space-y-2">
                 {liveJournal.map((line, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                     <div>
-                      <span className={`text-[10px] font-bold ${line.side === 'DR' ? 'text-emerald-600' : 'text-rose-600'}`}>{line.side}</span>
-                      <p className="text-sm text-slate-700 mt-0.5">{line.account}</p>
+                      <span className={`text-[10px] font-black ${line.side === 'DR' ? 'text-emerald-600' : 'text-rose-600'}`}>{line.side === 'DR' ? 'DR ဝင်' : 'CR ထွက်'}</span>
+                      <p className="text-sm font-semibold text-slate-700 mt-0.5">{line.account}</p>
                     </div>
-                    <p className="text-sm font-bold text-slate-800">{money(line.amount)}</p>
+                    <p className="text-sm font-black text-slate-800">{money(line.amount)}</p>
                   </div>
                 ))}
               </div>
-
-              <div className="border-t border-slate-200 pt-4 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Amount</span>
-                  <span className="font-bold text-slate-800">{money(amount)}</span>
-                </div>
-                {selectedAccount && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">Account</span>
-                    <span className="text-slate-700 text-right max-w-[160px] truncate">{selectedAccount.accountName}</span>
-                  </div>
-                )}
-                {selectedMethod && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">Payment</span>
-                    <span className="text-slate-700">{selectedMethod.methodName}</span>
-                  </div>
-                )}
+              <div className="border-t border-slate-100 pt-4 space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">ပမာဏ</span><span className="font-black">{money(amount)}</span></div>
+                {selectedAccount && <div className="flex justify-between gap-3"><span className="text-slate-500">အကောင့်</span><span className="font-semibold text-right truncate">{selectedAccount.accountName}</span></div>}
+                {selectedMethod && <div className="flex justify-between"><span className="text-slate-500">ငွေပေးချေ</span><span className="font-semibold">{selectedMethod.methodName}</span></div>}
               </div>
-
               <button
                 onClick={openConfirm}
                 disabled={!validForm}
-                className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-colors ${validForm ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black ${
+                  validForm
+                    ? (expenseForm ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-emerald-600 text-white hover:bg-emerald-700')
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
               >
-                <Save size={14} /> Save {tab === 'EXPENSE' ? 'Expense' : 'Income'}
+                <Save size={15} /> {expenseForm ? 'ကုန်ကျစရိတ် သိမ်းမည်' : 'ဝင်ငွေ သိမ်းမည်'}
               </button>
             </div>
           </div>
         </>
       ) : (
         <>
-          {/* List view header + summary */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-base font-semibold text-gray-800">Expense & Income</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Manual cash/bank entries</p>
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <Wallet size={18} />
+                </span>
+                <div>
+                  <h2 className="text-base font-black text-slate-800">ဝင်ငွေ / ကုန်ကျစရိတ်</h2>
+                  <p className="text-xs text-slate-400">လက်ရှိငွေသား / ဘဏ်မှ ကိုယ်တိုင်သွင်းသည့်စာရင်း</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => switchTab('EXPENSE')} className="px-3 py-1.5 rounded border text-xs font-semibold bg-white text-rose-600 border-rose-300 hover:bg-rose-50 transition-colors">
-                  + New Expense
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => switchTab('EXPENSE')} className="inline-flex min-h-10 items-center gap-1.5 px-3 rounded-xl border border-rose-200 bg-rose-50 text-xs font-black text-rose-700 hover:bg-rose-100">
+                  <Plus size={14} /> ကုန်ကျစရိတ်
                 </button>
-                <button onClick={() => switchTab('INCOME')} className="px-3 py-1.5 rounded border text-xs font-semibold bg-white text-emerald-600 border-emerald-300 hover:bg-emerald-50 transition-colors">
-                  + New Income
+                <button onClick={() => switchTab('INCOME')} className="inline-flex min-h-10 items-center gap-1.5 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                  <Plus size={14} /> ဝင်ငွေ
                 </button>
-                <button onClick={() => void loadAll()} className="p-1.5 rounded border border-gray-200 text-gray-400 hover:bg-gray-50" title="Refresh">
-                  <RefreshCw size={13} />
+                <button onClick={() => void loadAll()} className="p-2 rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-50" title="ပြန်ဆွဲရန်">
+                  <RefreshCw size={14} />
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-3 divide-x divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-              <div className="p-3 text-center">
-                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Expenses</p>
-                <p className="text-sm font-bold text-rose-600">{money(summary.expenseTotal)}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
+                <p className="text-[11px] font-bold text-rose-500">ကုန်ကျစုစုပေါင်း</p>
+                <p className="mt-1 text-lg font-black text-rose-700">{money(summary.expenseTotal)} <span className="text-xs font-bold">Ks</span></p>
               </div>
-              <div className="p-3 text-center">
-                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Income</p>
-                <p className="text-sm font-bold text-emerald-600">{money(summary.incomeTotal)}</p>
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <p className="text-[11px] font-bold text-emerald-600">ဝင်ငွေစုစုပေါင်း</p>
+                <p className="mt-1 text-lg font-black text-emerald-700">{money(summary.incomeTotal)} <span className="text-xs font-bold">Ks</span></p>
               </div>
-              <div className="p-3 text-center">
-                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Net</p>
-                <p className={`text-sm font-bold ${summary.net >= 0 ? 'text-sky-600' : 'text-rose-600'}`}>{money(summary.net)}</p>
+              <div className={`rounded-xl border px-4 py-3 ${summary.net >= 0 ? 'border-sky-100 bg-sky-50' : 'border-rose-100 bg-rose-50'}`}>
+                <p className={`text-[11px] font-bold ${summary.net >= 0 ? 'text-sky-600' : 'text-rose-500'}`}>အသားတင်</p>
+                <p className={`mt-1 text-lg font-black ${summary.net >= 0 ? 'text-sky-700' : 'text-rose-700'}`}>{money(summary.net)} <span className="text-xs font-bold">Ks</span></p>
               </div>
             </div>
           </div>
 
-          {/* Filters + Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-40">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded" />
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-44">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ကုဒ်၊ အကောင့်၊ မှတ်ချက် ရှာပါ"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-indigo-400" />
               </div>
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value as 'ALL' | EntryTab)} className="px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-600">
-                <option value="ALL">All Types</option>
-                <option value="EXPENSE">Expense</option>
-                <option value="INCOME">Income</option>
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  ['ALL', 'အားလုံး'],
+                  ['TODAY', 'ယနေ့'],
+                  ['WEEK', 'ဒီအပတ်'],
+                  ['MONTH', 'ဒီလ']
+                ] as const).map(([key, label]) => (
+                  <button key={key} type="button" onClick={() => applyListRange(key)}
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold border ${
+                      rangePreset === key ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                    }`}>
+                    {key !== 'ALL' && <CalendarDays size={11} />}{label}
+                  </button>
+                ))}
+              </div>
+              <select value={filterType} onChange={(e) => setFilterType(e.target.value as 'ALL' | EntryTab)} className="px-2.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 bg-slate-50">
+                <option value="ALL">အမျိုးအစားအားလုံး</option>
+                <option value="EXPENSE">ကုန်ကျစရိတ်</option>
+                <option value="INCOME">ဝင်ငွေ</option>
               </select>
-              <input type="date" title="From" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-600" />
-              <input type="date" title="To" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-600" />
-              <select value={filterAccountId} onChange={(e) => setFilterAccountId(Number(e.target.value) || 0)} className="px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-600">
-                <option value={0}>All Accounts</option>
+              <input type="date" title="မှ" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="px-2.5 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 bg-slate-50" />
+              <input type="date" title="အထိ" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="px-2.5 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 bg-slate-50" />
+              <select value={filterAccountId} onChange={(e) => setFilterAccountId(Number(e.target.value) || 0)} className="px-2.5 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 bg-slate-50">
+                <option value={0}>အကောင့်အားလုံး</option>
                 {allManualAccounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.accountName}</option>
                 ))}
               </select>
-              <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterAccountId(0); setFilterType('ALL'); }} className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded hover:bg-gray-50">Reset</button>
-              <button onClick={exportCsv} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">
+              <button onClick={() => { setSearch(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterAccountId(0); setFilterType('ALL'); }} className="px-3 py-2 text-xs font-semibold text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50">ရှင်းမည်</button>
+              <button onClick={exportCsv} className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">
                 <Download size={12} /> CSV
               </button>
-              <span className="ml-auto text-xs text-gray-400">{sortedRows.length} rows</span>
+              <span className="ml-auto text-xs font-semibold text-slate-400">{sortedRows.length} ကြောင်း</span>
             </div>
             <div className="overflow-auto max-h-[60vh]">
               <table className="w-full min-w-[1000px] text-xs">
-                <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
-                  <tr className="text-gray-500 uppercase tracking-wide">
-                    <th className="w-8 px-3 py-2"></th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:text-gray-700" onClick={() => sortBy('code')}><span className="inline-flex items-center gap-1">Code <ArrowDownUp size={11} /></span></th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:text-gray-700" onClick={() => sortBy('date')}><span className="inline-flex items-center gap-1">Date <ArrowDownUp size={11} /></span></th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:text-gray-700" onClick={() => sortBy('type')}><span className="inline-flex items-center gap-1">Type <ArrowDownUp size={11} /></span></th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:text-gray-700" onClick={() => sortBy('account')}><span className="inline-flex items-center gap-1">Account <ArrowDownUp size={11} /></span></th>
-                    <th className="px-3 py-2 text-right cursor-pointer hover:text-gray-700" onClick={() => sortBy('amount')}><span className="inline-flex items-center gap-1">Amount <ArrowDownUp size={11} /></span></th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:text-gray-700" onClick={() => sortBy('payment')}><span className="inline-flex items-center gap-1">Payment <ArrowDownUp size={11} /></span></th>
-                    <th className="px-3 py-2 text-left">Description</th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:text-gray-700" onClick={() => sortBy('staff')}><span className="inline-flex items-center gap-1">Staff <ArrowDownUp size={11} /></span></th>
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-100 z-10">
+                  <tr className="text-slate-500 font-black">
+                    <th className="w-8 px-3 py-2.5"></th>
+                    <th className="px-3 py-2.5 text-left cursor-pointer" onClick={() => sortBy('code')}><span className="inline-flex items-center gap-1">ကုဒ် <ArrowDownUp size={11} /></span></th>
+                    <th className="px-3 py-2.5 text-left cursor-pointer" onClick={() => sortBy('date')}><span className="inline-flex items-center gap-1">ရက်စွဲ <ArrowDownUp size={11} /></span></th>
+                    <th className="px-3 py-2.5 text-left cursor-pointer" onClick={() => sortBy('type')}><span className="inline-flex items-center gap-1">အမျိုးအစား <ArrowDownUp size={11} /></span></th>
+                    <th className="px-3 py-2.5 text-left cursor-pointer" onClick={() => sortBy('account')}><span className="inline-flex items-center gap-1">အကောင့် <ArrowDownUp size={11} /></span></th>
+                    <th className="px-3 py-2.5 text-right cursor-pointer" onClick={() => sortBy('amount')}><span className="inline-flex items-center gap-1">ပမာဏ <ArrowDownUp size={11} /></span></th>
+                    <th className="px-3 py-2.5 text-left cursor-pointer" onClick={() => sortBy('payment')}><span className="inline-flex items-center gap-1">ငွေပေးချေ <ArrowDownUp size={11} /></span></th>
+                    <th className="px-3 py-2.5 text-left">မှတ်ချက်</th>
+                    <th className="px-3 py-2.5 text-left cursor-pointer" onClick={() => sortBy('staff')}><span className="inline-flex items-center gap-1">ဝန်ထမ်း <ArrowDownUp size={11} /></span></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-slate-50">
                   {sortedRows.length === 0 ? (
-                    <tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">No transactions found.</td></tr>
+                    <tr><td colSpan={9} className="px-3 py-16 text-center text-slate-400">
+                      <p className="font-bold text-slate-600">စာရင်းမရှိသေးပါ</p>
+                      <p className="mt-1 text-xs">ကုန်ကျစရိတ် သို့မဟုတ် ဝင်ငွေ အသစ်ထည့်ပါ။</p>
+                    </td></tr>
                   ) : sortedRows.map((row) => {
                     const open = Boolean(expanded[row.key]);
                     return (
@@ -782,7 +833,7 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
                           <td className="px-3 py-2 font-medium text-gray-800">{row.code}</td>
                           <td className="px-3 py-2 text-gray-500">{row.date ? new Date(row.date).toLocaleString() : '-'}</td>
                           <td className="px-3 py-2">
-                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${row.type === 'EXPENSE' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{row.type}</span>
+                            <span className={`inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-black ${row.type === 'EXPENSE' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>{row.type === 'EXPENSE' ? 'ကုန်ကျ' : 'ဝင်ငွေ'}</span>
                           </td>
                           <td className="px-3 py-2 text-gray-700">{row.accountName || '-'}</td>
                           <td className={`px-3 py-2 text-right font-semibold ${row.type === 'EXPENSE' ? 'text-rose-600' : 'text-emerald-600'}`}>{money(row.amount)}</td>
@@ -821,14 +872,14 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
                 {sortedRows.length > 0 && (
                   <tfoot className="bg-gray-50 border-t border-gray-200 text-xs font-semibold">
                     <tr>
-                      <td colSpan={5} className="px-3 py-2 text-right text-gray-500">Total</td>
+                      <td colSpan={5} className="px-3 py-2 text-right text-slate-500">စုစုပေါင်း</td>
                       <td className="px-3 py-2 text-right">
                         <span className="text-emerald-600">{money(tableTotals.income)}</span>
                         <span className="mx-1 text-gray-300">/</span>
                         <span className="text-rose-600">{money(tableTotals.expense)}</span>
                       </td>
                       <td colSpan={3} className="px-3 py-2 text-gray-500">
-                        Net: <span className={`font-bold ${(tableTotals.income - tableTotals.expense) >= 0 ? 'text-sky-600' : 'text-rose-600'}`}>{money(tableTotals.income - tableTotals.expense)}</span>
+                        အသားတင်: <span className={`font-black ${(tableTotals.income - tableTotals.expense) >= 0 ? 'text-sky-600' : 'text-rose-600'}`}>{money(tableTotals.income - tableTotals.expense)}</span>
                       </td>
                     </tr>
                   </tfoot>
@@ -842,17 +893,17 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
       {/* Confirm Modal */}
       {confirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full overflow-hidden border border-gray-200">
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-800">Confirm {tab === 'EXPENSE' ? 'Expense' : 'Income'}</h3>
-              <button onClick={() => setConfirmOpen(false)} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-800">{tab === 'EXPENSE' ? 'ကုန်ကျစရိတ် အတည်ပြုမည်' : 'ဝင်ငွေ အတည်ပြုမည်'}</h3>
+              <button onClick={() => setConfirmOpen(false)} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
             </div>
-            <div className="p-4 space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-gray-600">
-                <p><span className="text-gray-400">Date: </span>{entryDate || '-'}</p>
-                <p><span className="text-gray-400">Amount: </span><span className="font-semibold">{money(amount)}</span></p>
-                <p><span className="text-gray-400">Account: </span>{selectedAccount?.accountName || '-'}</p>
-                <p><span className="text-gray-400">Payment: </span>{selectedMethod?.methodName || '-'}</p>
+            <div className="p-5 space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-slate-600">
+                <p><span className="text-slate-400">ရက်စွဲ: </span>{entryDate || '-'}</p>
+                <p><span className="text-slate-400">ပမာဏ: </span><span className="font-black">{money(amount)}</span></p>
+                <p><span className="text-slate-400">အကောင့်: </span>{selectedAccount?.accountName || '-'}</p>
+                <p><span className="text-slate-400">ငွေပေးချေ: </span>{selectedMethod?.methodName || '-'}</p>
               </div>
               <table className="w-full border border-gray-200 rounded overflow-hidden">
                 <thead className="bg-gray-50 text-gray-500">
@@ -873,11 +924,11 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-3 border-t border-gray-200 flex justify-end gap-2">
-              <button onClick={() => setConfirmOpen(false)} className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
-              <button onClick={() => void submit()} disabled={saving} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-60">
+            <div className="px-5 py-3.5 border-t border-slate-100 flex justify-end gap-2">
+              <button onClick={() => setConfirmOpen(false)} className="px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">မလုပ်တော့ပါ</button>
+              <button onClick={() => void submit()} disabled={saving} className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-black text-white rounded-xl disabled:opacity-60 ${tab === 'EXPENSE' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
                 {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                Confirm
+                အတည်ပြု သိမ်းမည်
               </button>
             </div>
           </div>

@@ -15,11 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
+import com.sspd.servicemgmt.core.ui.component.AppEmptyState
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.feature.finance.ExpenseViewModel.DateShortcut
@@ -108,12 +110,6 @@ fun ExpenseScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick        = { onNewEntry(if (selectedTab == 0) "EXPENSE" else "INCOME") },
-                containerColor = if (selectedTab == 0) Danger else Success
-            ) { Icon(Icons.Outlined.Add, null, tint = Color.White) }
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
@@ -147,15 +143,42 @@ fun ExpenseScreen(
                 )
             }
 
-            // ── Date filter row ──────────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onNewEntry("EXPENSE") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Danger.copy(0.4f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
+                ) {
+                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("ကုန်ကျစရိတ်", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                }
+                OutlinedButton(
+                    onClick = { onNewEntry("INCOME") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Success.copy(0.4f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Success)
+                ) {
+                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("ဝင်ငွေ", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+
             LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item { DateShortcutChip("Today", state.dateShortcut == DateShortcut.TODAY) { vm.applyDateShortcut(DateShortcut.TODAY) } }
-                item { DateShortcutChip("This Week", state.dateShortcut == DateShortcut.WEEK) { vm.applyDateShortcut(DateShortcut.WEEK) } }
-                item { DateShortcutChip("This Month", state.dateShortcut == DateShortcut.MONTH) { vm.applyDateShortcut(DateShortcut.MONTH) } }
-                item { DateShortcutChip("All", state.dateShortcut == DateShortcut.ALL) { vm.applyDateShortcut(DateShortcut.ALL) } }
+                item { DateShortcutChip("ယနေ့", state.dateShortcut == DateShortcut.TODAY) { vm.applyDateShortcut(DateShortcut.TODAY) } }
+                item { DateShortcutChip("ဒီအပတ်", state.dateShortcut == DateShortcut.WEEK) { vm.applyDateShortcut(DateShortcut.WEEK) } }
+                item { DateShortcutChip("ဒီလ", state.dateShortcut == DateShortcut.MONTH) { vm.applyDateShortcut(DateShortcut.MONTH) } }
+                item { DateShortcutChip("အားလုံး", state.dateShortcut == DateShortcut.ALL) { vm.applyDateShortcut(DateShortcut.ALL) } }
             }
             Row(
                 modifier = Modifier
@@ -229,7 +252,13 @@ fun ExpenseScreen(
                 }
             } else if (selectedTab == 0) {
                 if (expenses.isEmpty()) {
-                    EmptyState("ကုန်ကျစရိတ် မရှိသေးပါ")
+                    AppEmptyState(
+                        title = "ကုန်ကျစရိတ် မရှိသေးပါ",
+                        subtitle = "ဒီကာလအတွင်း မှတ်တမ်းမရှိပါ",
+                        icon = Icons.Outlined.TrendingDown,
+                        actionLabel = "ကုန်ကျစရိတ် ထည့်မည်",
+                        onAction = { onNewEntry("EXPENSE") }
+                    )
                 } else {
                     LazyColumn(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -238,6 +267,7 @@ fun ExpenseScreen(
                         items(expenses) { e ->
                             EntryCard(
                                 code    = e.expenseCode,
+                                typeLabel = "ကုန်ကျ",
                                 account = e.accountName ?: "—",
                                 date    = e.expenseDate?.take(10) ?: "—",
                                 staff   = e.staffName,
@@ -253,7 +283,13 @@ fun ExpenseScreen(
                 }
             } else {
                 if (incomes.isEmpty()) {
-                    EmptyState("ဝင်ငွေ မရှိသေးပါ")
+                    AppEmptyState(
+                        title = "ဝင်ငွေ မရှိသေးပါ",
+                        subtitle = "ဒီကာလအတွင်း မှတ်တမ်းမရှိပါ",
+                        icon = Icons.Outlined.TrendingUp,
+                        actionLabel = "ဝင်ငွေ ထည့်မည်",
+                        onAction = { onNewEntry("INCOME") }
+                    )
                 } else {
                     LazyColumn(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -262,6 +298,7 @@ fun ExpenseScreen(
                         items(incomes) { inc ->
                             EntryCard(
                                 code    = inc.incomeCode,
+                                typeLabel = "ဝင်ငွေ",
                                 account = inc.accountName ?: "—",
                                 date    = inc.incomeDate?.take(10) ?: "—",
                                 staff   = inc.staffName,
@@ -305,23 +342,24 @@ private fun SummaryCard(label: String, amount: Long, color: Color, bg: Color, mo
 
 @Composable
 private fun EntryCard(
-    code: String?, account: String, date: String,
+    code: String?, typeLabel: String, account: String, date: String,
     staff: String?, pm: String?, desc: String?,
     amount: Long, color: Color, bg: Color
 ) {
     Card(
-        shape  = RoundedCornerShape(12.dp),
+        shape  = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg),
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = bg, shape = RoundedCornerShape(6.dp)) {
+                        Text(typeLabel, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 9.sp, color = color, fontWeight = FontWeight.ExtraBold)
+                    }
                     Text(account, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
                     if (code != null) {
-                        Surface(color = bg, shape = RoundedCornerShape(4.dp)) {
-                            Text(code, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp), fontSize = 9.sp, color = color, fontWeight = FontWeight.Bold)
-                        }
+                        Text(code, fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
                     }
                 }
                 if (!desc.isNullOrBlank()) Text(desc, fontSize = 11.sp, color = TextMuted, maxLines = 1)
@@ -339,13 +377,6 @@ private fun EntryCard(
     }
 }
 
-@Composable
-private fun EmptyState(msg: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(msg, color = TextMuted)
-    }
-}
-
 private fun Long.fmt() = String.format("%,d", this)
 
 private fun msToDate(millis: Long): String {
@@ -360,5 +391,94 @@ private fun dateToMs(dateStr: String): Long {
         sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
         sdf.parse(dateStr)?.time ?: 0L
     } catch (_: Exception) { 0L }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "ဝင်ငွေ / ကုန်ကျစရိတ်", showBackground = true, widthDp = 390, heightDp = 780)
+@Composable
+private fun ExpenseListPreview() {
+    AppTheme {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("ဝင်ငွေ / ကုန်ကျစရိတ်", fontWeight = FontWeight.ExtraBold) },
+                    navigationIcon = {
+                        IconButton(onClick = {}) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                )
+            }
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SummaryCard("ကုန်ကျစရိတ်", 85_000, Danger, DangerBg, Modifier.weight(1f))
+                    SummaryCard("ဝင်ငွေ", 120_000, Success, SuccessBg, Modifier.weight(1f))
+                    SummaryCard("အသားတင်", 35_000, Success, SuccessBg, Modifier.weight(1f))
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {},
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Danger.copy(0.4f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
+                    ) {
+                        Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("ကုန်ကျစရိတ်", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    OutlinedButton(
+                        onClick = {},
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Success.copy(0.4f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Success)
+                    ) {
+                        Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("ဝင်ငွေ", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+                Row(
+                    Modifier.padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DateShortcutChip("ယနေ့", true) {}
+                    DateShortcutChip("ဒီအပတ်", false) {}
+                    DateShortcutChip("ဒီလ", false) {}
+                    DateShortcutChip("အားလုံး", false) {}
+                }
+                Column(
+                    Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    EntryCard("EXP-001", "ကုန်ကျ", "ရုံးငှားခ", "2026-08-31", "အောင်အောင်", "Cash", "ဩဂုတ်လ", 85_000, Danger, DangerBg)
+                    EntryCard("INC-001", "ဝင်ငွေ", "အပိုဝင်ငွေ", "2026-08-31", "မောင်မောင်", "KPay", "ဝန်ဆောင်ခ", 120_000, Success, SuccessBg)
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "စာရင်းဗလာ", showBackground = true, widthDp = 390, heightDp = 420)
+@Composable
+private fun ExpenseEmptyPreview() {
+    AppTheme {
+        Box(Modifier.fillMaxSize().background(ScreenBg), contentAlignment = Alignment.Center) {
+            AppEmptyState(
+                title = "ကုန်ကျစရိတ် မရှိသေးပါ",
+                subtitle = "ဒီကာလအတွင်း မှတ်တမ်းမရှိပါ",
+                icon = Icons.Outlined.TrendingDown,
+                actionLabel = "ကုန်ကျစရိတ် ထည့်မည်",
+                onAction = {}
+            )
+        }
+    }
 }
 

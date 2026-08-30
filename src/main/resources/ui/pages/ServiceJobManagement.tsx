@@ -60,6 +60,14 @@ const STATUS_COLOR: Record<JobStatus, string> = {
   CANCELLED:   'bg-red-100 text-red-700',
 };
 
+const serviceModeChip = (mode?: string) => (
+  <span className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-black ${
+    mode === 'OUTDOOR' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+  }`}>
+    {mode === 'OUTDOOR' ? 'OUTDOOR' : 'INDOOR'}
+  </span>
+);
+
 const STATUS_LABEL: Record<JobStatus, string> = {
   RECEIVED:    'လက်ခံပြီး',
   INSPECTING:  'စစ်ဆေးနေ',
@@ -1424,7 +1432,7 @@ export default function ServiceJobManagement() {
             const balance = Number(j.dueAmount || 0);
             const actionTone = needsPayment(j) ? 'border-rose-300 bg-rose-50 text-rose-700' : readyForHandover(j) ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : ACTIVE_STATUSES.includes(j.status) ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-300 bg-slate-50 text-slate-700';
             return <article key={`mobile-${j.id}`} className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${depth > 0 ? 'ml-4 border-amber-300' : 'border-slate-200'}`}>
-              <header className="flex items-center justify-between gap-2 border-b px-4 py-3"><div><span className="font-mono text-sm font-black text-purple-700">{j.jobNo}</span>{depth > 0 && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-800">LINKED REWORK</span>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${STATUS_COLOR[j.status as JobStatus] || 'bg-slate-100 text-slate-700'}`}>{STATUS_LABEL[j.status as JobStatus] || j.status}</span></header>
+              <header className="flex items-center justify-between gap-2 border-b px-4 py-3"><div className="flex flex-wrap items-center gap-1.5"><span className="font-mono text-sm font-black text-purple-700">{j.jobNo}</span>{serviceModeChip(j.serviceMode)}{depth > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-800">LINKED REWORK</span>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${STATUS_COLOR[j.status as JobStatus] || 'bg-slate-100 text-slate-700'}`}>{STATUS_LABEL[j.status as JobStatus] || j.status}</span></header>
               <div className="space-y-3 p-4"><div><p className="font-black text-slate-900">{j.customerName}<span className="ml-2 text-xs font-medium text-slate-400">{j.customerPhone}</span></p><p className="mt-1 font-semibold text-slate-700">{j.itemName || 'ပစ္စည်းအမည်မရှိ'}{j.serialNo ? <span className="ml-2 font-mono text-xs text-slate-400">SN: {j.serialNo}</span> : null}</p><p className="mt-1 line-clamp-2 text-xs text-slate-500">{j.problemDesc || 'ပြဿနာမဖော်ပြထားပါ'}</p></div>
                 <div className={`rounded-xl border px-3 py-2 text-sm font-black ${actionTone}`}>နောက်လုပ်ရန် → {nextActionLabel(j)}</div>
                 <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 text-xs"><div><span className="block text-slate-400">ကျသင့်ငွေ</span><b>{Number(j.netAmount ?? j.finalCost ?? j.estimatedCost ?? 0).toLocaleString()} Ks</b></div><div><span className="block text-slate-400">ကျန်ငွေ</span><b className={balance > 0 ? 'text-rose-700' : 'text-emerald-700'}>{balance.toLocaleString()} Ks</b></div></div>
@@ -1460,6 +1468,7 @@ export default function ServiceJobManagement() {
                           <div className="flex items-center gap-1.5 border-b border-slate-100 px-2.5 py-2">
                             <RotateCcw size={15} strokeWidth={2.5} className={j.reworkType === 'REPLACEMENT' ? 'text-rose-600' : j.reworkType === 'WARRANTY' ? 'text-amber-600' : 'text-blue-600'} />
                             <span className="font-mono text-sm font-black tracking-wide text-slate-900">{j.jobNo}</span>
+                            {serviceModeChip(j.serviceMode)}
                             <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black text-slate-500">STEP {depth}</span>
                           </div>
                           <div className="space-y-1.5 px-2.5 py-2">
@@ -1487,7 +1496,7 @@ export default function ServiceJobManagement() {
                         </div>
                       ) : (
                         <div className="min-w-[260px] space-y-2">
-                          <div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-lg">{j.jobNo}</span><span className="rounded-md bg-purple-600 px-2 py-0.5 text-[9px] font-black text-white">MAIN JOB</span>
+                          <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-lg">{j.jobNo}</span>{serviceModeChip(j.serviceMode)}<span className="rounded-md bg-purple-600 px-2 py-0.5 text-[9px] font-black text-white">MAIN JOB</span>
                           {family.linkedCount > 0 && <button type="button"
                             onClick={() => setExpandedJobFamilies(prev => ({ ...prev, [String(j.id)]: !prev[String(j.id)] }))}
                             title={expandedJobFamilies[String(j.id)] ? 'Linked Jobs ဖျောက်ရန်' : 'Linked Jobs ပြရန်'}

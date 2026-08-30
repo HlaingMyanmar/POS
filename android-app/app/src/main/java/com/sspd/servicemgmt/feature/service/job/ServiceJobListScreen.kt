@@ -290,7 +290,13 @@ fun ServiceJobListScreen(
                             Column(Modifier.padding(14.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(job.jobNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(job.jobNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+                                            ServiceModeChip(job.serviceMode)
+                                        }
                                         Text(job.customerName ?: "-", fontSize = 13.sp, color = TextMain)
                                     }
                                     JobStatusBadge(job.status)
@@ -351,6 +357,23 @@ fun ServiceJobListScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ServiceModeChip(mode: String?) {
+    val outdoor = mode.equals("OUTDOOR", ignoreCase = true)
+    Surface(
+        color = if (outdoor) Color(0xFFD1FAE5) else BorderColor,
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Text(
+            if (outdoor) "OUTDOOR" else "INDOOR",
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (outdoor) Color(0xFF047857) else TextMuted
+        )
     }
 }
 

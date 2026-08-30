@@ -590,6 +590,9 @@ fun AppNavigation() {
                     screen(Screen.OpeningBalance.route) {
                         OpeningBalanceScreen(onBack = { nav.popBackStack() })
                     }
+                    screen(Screen.OpeningStock.route) {
+                        OpeningStockScreen(onBack = { nav.popBackStack() })
+                    }
 
                     // ── Transfer (KBZ / Cash / Bank) ─────────────────────────
                     screen(Screen.Transfer.route) {

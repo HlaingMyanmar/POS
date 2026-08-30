@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -25,7 +26,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.network.SaleDTO
 import com.sspd.servicemgmt.core.ui.theme.*
+import com.sspd.servicemgmt.core.ui.component.AppListRow
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 
 import com.sspd.servicemgmt.feature.salereturn.SaleReturnListViewModel
 import kotlinx.coroutines.delay
@@ -93,7 +97,7 @@ fun SaleListScreen(
                     showFromPicker = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showFromPicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showFromPicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 
@@ -109,7 +113,7 @@ fun SaleListScreen(
                     showToPicker = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showToPicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showToPicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 
@@ -125,7 +129,7 @@ fun SaleListScreen(
                     showReturnFromPicker = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showReturnFromPicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showReturnFromPicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 
@@ -141,7 +145,7 @@ fun SaleListScreen(
                     showReturnToPicker = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showReturnToPicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showReturnToPicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 
@@ -266,27 +270,13 @@ fun SaleListScreen(
                 )
             }
 
-            // ── Search ───────────────────────────────────────────────────────
-            OutlinedTextField(
-                value         = if (selectedTab == 2) returnState.search else state.search,
+            AppSearchField(
+                value = if (selectedTab == 2) returnState.search else state.search,
                 onValueChange = {
                     if (selectedTab == 2) returnVm.setSearch(it) else vm.setSearch(it)
                 },
-                modifier      = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder   = { Text("ရှာဖွေရန်...") },
-                leadingIcon   = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon  = {
-                    val hasText = if (selectedTab == 2) returnState.search.isNotBlank() else state.search.isNotBlank()
-                    if (hasText) {
-                        IconButton(onClick = {
-                            if (selectedTab == 2) returnVm.setSearch("") else vm.setSearch("")
-                        }) {
-                            Icon(Icons.Outlined.Clear, "ရှင်းရန်", tint = TextMuted)
-                        }
-                    }
-                },
-                singleLine = true,
-                shape      = RoundedCornerShape(12.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                placeholder = "ရှာဖွေရန်..."
             )
 
             // ── Date filter row (sales tab only) ────────────────────────────
@@ -406,7 +396,7 @@ fun SaleListScreen(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(returnList, key = { it.id ?: it.returnCode.hashCode() }) { ret ->
+                        itemsIndexed(returnList, key = { index, it -> it.id ?: "ret-$index-${it.returnCode}" }) { _, ret ->
                             Card(
                                 shape    = RoundedCornerShape(12.dp),
                                 colors   = CardDefaults.cardColors(containerColor = CardBg),
@@ -504,7 +494,7 @@ fun SaleListScreen(
                                 }
                             }
 
-                            items(displayList, key = { it.id ?: it.saleCode.hashCode() }) { sale ->
+                            itemsIndexed(displayList, key = { index, it -> it.id ?: "sale-$index-${it.saleCode}" }) { _, sale ->
                                 SaleCard(
                                     sale        = sale,
                                     showDueOnly = selectedTab == 1,
@@ -621,28 +611,14 @@ private fun QuickPayDialog(
     val dueAmount = sale.dueAmount ?: 0.0
 
     if (showSheet) {
-        ModalBottomSheet(onDismissRequest = { showSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ငွေပေးချေမှု နည်းလမ်း", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                paymentMethods.forEach { pm ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selectedPm = pm; showSheet = false }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Text(pm.methodName, fontSize = 14.sp, color = TextMain)
-                        if (selectedPm?.id == pm.id)
-                            Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပေးချေမှု နည်းလမ်း",
+            items = paymentMethods,
+            label = { it.methodName },
+            onSelect = { selectedPm = it; showSheet = false },
+            onDismiss = { showSheet = false },
+            key = { i, pm -> pm.id.takeIf { it != 0 } ?: "pm-$i" }
+        )
     }
 
     AlertDialog(
@@ -777,6 +753,16 @@ private fun millisToDate(millis: Long): String {
     val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     sdf.timeZone = TimeZone.getTimeZone("UTC")
     return sdf.format(Date(millis))
+}
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Sale list row", showBackground = true, widthDp = 390)
+@Composable
+private fun SaleListRowPreview() {
+    AppTheme {
+        Surface(color = ScreenBg, modifier = Modifier.padding(16.dp)) {
+            AppListRow(title = "SL-1001", subtitle = "မောင်မောင်", trailing = "25,000 Ks", onClick = {})
+        }
+    }
 }
 
 private fun dateToMillis(dateStr: String): Long {

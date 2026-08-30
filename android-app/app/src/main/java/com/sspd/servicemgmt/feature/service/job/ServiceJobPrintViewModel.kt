@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.PrintPreviewRequest
 import com.sspd.servicemgmt.core.util.PreferenceManager
@@ -19,7 +20,7 @@ class ServiceJobPrintViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs = PreferenceManager(application)
-    val jobId: Int = checkNotNull(savedStateHandle["jobId"])
+    val jobId: Int = savedStateHandle.optionalId("jobId")
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()

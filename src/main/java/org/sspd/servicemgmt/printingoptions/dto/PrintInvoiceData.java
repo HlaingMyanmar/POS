@@ -40,6 +40,8 @@ public class PrintInvoiceData {
     private String technicianName;
     /** Service job helper technician (အကူပြုပြင်သူ), when assigned. */
     private String helperStaffName;
+    private String warehouseName;
+    private String warehouseCode;
 
     // ── Line items ───────────────────────────────────────────────────────────
     private List<PrintLineItem> lineItems;

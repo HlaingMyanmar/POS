@@ -136,6 +136,10 @@ export interface ProductDTO {
   remark?: string;
   archived?: boolean;
   warehouseName?: string;
+  warehouseId?: number;
+  openingQty?: number;
+  openingBatch?: string;
+  openingExpiry?: string;
   shelfLocation?: string;
   categoryId?: number;
   categoryName?: string;
@@ -220,6 +224,8 @@ export interface StockAdjustmentDTO {
   reason?: string;
   staffId: number;
   staffName?: string;
+  warehouseId?: number;
+  warehouseName?: string;
   createdAt?: string;
 }
 
@@ -444,6 +450,7 @@ export interface SaleDTO {
   quotationId?: number;
   quotationCode?: string;
   warehouseName?: string;
+  warehouseId?: number;
   details: SaleDetailDTO[];
 }
 
@@ -709,6 +716,7 @@ export interface PurchaseDTO {
   otherCharges?: number;
   landedCostAllocationMethod?: 'VALUE' | 'QUANTITY' | 'MANUAL';
   warehouseName?: string;
+  warehouseId?: number;
   currencyCode?: string;
   exchangeRate?: number;
   foreignNetAmount?: number;

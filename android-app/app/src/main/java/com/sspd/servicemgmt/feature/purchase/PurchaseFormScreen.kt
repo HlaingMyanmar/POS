@@ -34,12 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sspd.servicemgmt.core.network.PaymentMethodDTO
-import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.network.PurchaseDTO
-import com.sspd.servicemgmt.core.network.StaffDTO
-import com.sspd.servicemgmt.core.network.SupplierDTO
+import androidx.compose.ui.tooling.preview.Preview
+import com.sspd.servicemgmt.core.ui.component.AppEmptyState
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 import com.sspd.servicemgmt.core.ui.theme.*
 
 import java.time.LocalDate
@@ -56,42 +55,66 @@ fun PurchaseFormScreen(
     val vm: PurchaseFormViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
     var showAdvancedCosts by rememberSaveable { mutableStateOf(false) }
-    var showPaymentDetails by rememberSaveable { mutableStateOf(false) }
+    var showSplitPayment by rememberSaveable { mutableStateOf(false) }
+    val payable = purchasePayable(
+        state.lines, state.discountAmount, state.taxAmount, state.otherCharges,
+        state.taxMode, state.withholdingTaxAmount
+    )
+    val paidNow = state.paidAmount.toDoubleOrNull() ?: 0.0
+    val dueNow = maxOf(0.0, payable - paidNow)
 
     if (state.showSupplierPicker) {
-        SupplierPickerSheet(
-            query     = state.pickerQuery,
-            suppliers = state.suppliers,
-            onQuery   = vm::setPickerQuery,
-            onSelect  = { vm.selectSupplier(it); vm.dismissPicker() },
-            onDismiss = vm::dismissPicker
+        AppPickerSheet(
+            title = "ပေးသွင်းသူ ရွေးရန်",
+            items = state.suppliers,
+            label = { it.name },
+            subtitle = { it.phone },
+            onSelect = { vm.selectSupplier(it); vm.dismissPicker() },
+            onDismiss = vm::dismissPicker,
+            key = { i, s -> s.id.takeIf { it != 0 } ?: "sup-$i-${s.name}" }
         )
     }
     if (state.showStaffPicker) {
-        StaffPickerSheet(
-            query     = state.pickerQuery,
-            staff     = state.staff,
-            onQuery   = vm::setPickerQuery,
-            onSelect  = { vm.selectStaff(it); vm.dismissPicker() },
-            onDismiss = vm::dismissPicker
+        AppPickerSheet(
+            title = "ဝန်ထမ်း ရွေးရန်",
+            items = state.staff,
+            label = { it.name },
+            subtitle = { it.role },
+            onSelect = { vm.selectStaff(it); vm.dismissPicker() },
+            onDismiss = vm::dismissPicker,
+            key = { i, s -> s.id ?: "staff-$i-${s.name}" }
         )
     }
     if (state.showPaymentPicker) {
-        PaymentPickerSheet(
-            query     = state.pickerQuery,
-            methods   = state.paymentMethods,
-            onQuery   = vm::setPickerQuery,
-            onSelect  = { vm.selectPaymentMethod(it); vm.dismissPicker() },
-            onDismiss = vm::dismissPicker
+        AppPickerSheet(
+            title = "ငွေပေးချေနည်း ရွေးရန်",
+            items = state.paymentMethods,
+            label = { it.methodName },
+            onSelect = { vm.selectPaymentMethod(it); vm.dismissPicker() },
+            onDismiss = vm::dismissPicker,
+            key = { i, m -> m.id.takeIf { it != 0 } ?: "pm-$i" }
         )
     }
     if (state.showProductPicker) {
-        PurchaseProductPickerSheet(
-            query     = state.pickerQuery,
-            products  = state.products,
-            onQuery   = vm::setPickerQuery,
-            onSelect  = vm::selectProduct,
-            onDismiss = vm::dismissPicker
+        AppPickerSheet(
+            title = "ပစ္စည်း ရွေးရန်",
+            items = state.products,
+            label = { it.name },
+            subtitle = { "${it.productCode} • လက်ကျန် ${it.stockQty}" },
+            onSelect = vm::selectProduct,
+            onDismiss = vm::dismissPicker,
+            key = { i, p -> p.id ?: "prod-$i-${p.productCode}" }
+        )
+    }
+    if (state.showWarehousePicker) {
+        AppPickerSheet(
+            title = "ဂိုဒေါင် ရွေးရန်",
+            items = state.warehouses,
+            label = { it.name },
+            subtitle = { it.code },
+            onSelect = { vm.selectWarehouse(it); vm.dismissPicker() },
+            onDismiss = vm::dismissPicker,
+            key = { i, w -> w.id ?: "warehouse-$i-${w.code}" }
         )
     }
 
@@ -111,23 +134,37 @@ fun PurchaseFormScreen(
             )
         },
         bottomBar = {
-            Surface(shadowElevation = 8.dp, color = Color.White) {
-                Button(
-                    onClick  = { vm.save(onSuccess) },
-                    modifier = Modifier
+            Surface(shadowElevation = 10.dp, color = Color.White, border = BorderStroke(1.dp, BorderColor)) {
+                Column(
+                    Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .height(52.dp),
-                    shape   = RoundedCornerShape(12.dp),
-                    colors  = ButtonDefaults.buttonColors(containerColor = PurchaseColor),
-                    enabled = !state.saving && !state.loading
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (state.saving) {
-                        CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("ကျသင့်ငွေ", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(money(payable), color = PurchaseColor, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                     }
-                    Text("သိမ်းဆည်းရန်", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                    if (dueNow > 0) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("ပေးရန်ကျန်", color = Danger, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(money(dueNow), color = Danger, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                    Button(
+                        onClick  = { vm.save(onSuccess) },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape   = RoundedCornerShape(12.dp),
+                        colors  = ButtonDefaults.buttonColors(containerColor = PurchaseColor),
+                        enabled = !state.saving && !state.loading
+                    ) {
+                        if (state.saving) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("သိမ်းဆည်းရန်", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                    }
                 }
             }
         }
@@ -171,15 +208,16 @@ fun PurchaseFormScreen(
             }
 
             item {
-                PurchaseSectionTitle(Icons.Outlined.Storefront, "အခြေခံအချက်အလက်", "ပေးသွင်းသူ၊ ရက်စွဲနှင့် ဝန်ထမ်း")
+                PurchaseSectionTitle(Icons.Outlined.Storefront, "ဝယ်ယူမှုအချက်အလက်", "ပေးသွင်းသူ၊ ဂိုဒေါင်နှင့် ရက်စွဲ")
                 Card(
-                    shape  = RoundedCornerShape(12.dp),
+                    shape  = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = CardBg),
                     border = BorderStroke(1.dp, BorderColor)
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PickerField("ပေးသွင်းသူ", state.selectedSupplier?.name ?: "ရွေးရန်", Icons.Outlined.Storefront, vm::openSupplierPicker)
-                        PickerField("ဝန်ထမ်း",    state.selectedStaff?.name    ?: "ရွေးရန်", Icons.Outlined.Person,    vm::openStaffPicker)
+                        PickerField("ပေးသွင်းသူ *", state.selectedSupplier?.name ?: "ရွေးရန်", Icons.Outlined.Storefront, vm::openSupplierPicker)
+                        PickerField("ဂိုဒေါင် *", state.selectedWarehouse?.name ?: "ရွေးရန်", Icons.Outlined.Warehouse, vm::openWarehousePicker)
+                        PickerField("ဝန်ထမ်း", state.selectedStaff?.name ?: "ရွေးရန်", Icons.Outlined.Person, vm::openStaffPicker)
                         DateField("ဝယ်ယူသည့်ရက်", state.purchaseDate, vm::setPurchaseDate)
                         Text("ငွေချေကာလ", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -192,26 +230,20 @@ fun PurchaseFormScreen(
                                 )
                             }
                         }
-                        Text("Supplier default: ${state.selectedSupplier?.defaultCreditDays ?: 30} ရက်", fontSize = 10.sp, color = PurchaseColor)
                         DateField("ပေးရန်ရက်", state.dueDate, vm::setDueDate, optional = true)
-                        TextButton(onClick = { showAdvancedCosts = !showAdvancedCosts }) {
-                            Icon(if (showAdvancedCosts) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (showAdvancedCosts) "အပိုအချက်အလက် ပိတ်မည်" else "Warehouse နှင့် မှတ်ချက် ထည့်မည်")
-                        }
-                        if (showAdvancedCosts) {
-                            OutlinedTextField(
-                                value = state.warehouseName, onValueChange = vm::setWarehouseName,
-                                modifier = Modifier.fillMaxWidth(), label = { Text("Warehouse") },
-                                placeholder = { Text("Main Warehouse") }, singleLine = true,
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            OutlinedTextField(
-                                value = state.remark, onValueChange = vm::setRemark,
-                                modifier = Modifier.fillMaxWidth(), label = { Text("မှတ်ချက်") },
-                                minLines = 2, shape = RoundedCornerShape(10.dp)
-                            )
-                        }
+                        OutlinedTextField(
+                            value         = state.supplierInvoiceNo,
+                            onValueChange = vm::setSupplierInvoiceNo,
+                            modifier      = Modifier.fillMaxWidth(),
+                            label         = { Text("ပေးသွင်းသူ Invoice No.") },
+                            singleLine    = true,
+                            shape         = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value = state.remark, onValueChange = vm::setRemark,
+                            modifier = Modifier.fillMaxWidth(), label = { Text("မှတ်ချက်") },
+                            minLines = 2, shape = RoundedCornerShape(10.dp)
+                        )
                     }
                 }
             }
@@ -241,21 +273,18 @@ fun PurchaseFormScreen(
 
             if (state.lines.isEmpty()) {
                 item {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { vm.openProductPicker() }
-                            .background(PurchaseBg, RoundedCornerShape(12.dp))
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = CardBg),
+                        border = BorderStroke(1.dp, BorderColor)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Outlined.AddShoppingCart, null, tint = PurchaseColor, modifier = Modifier.size(40.dp))
-                            Text("ဝယ်ယူမည့် ပစ္စည်းထည့်ပါ", color = PurchaseColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
+                        AppEmptyState(
+                            title = "ပစ္စည်း မထည့်ရသေးပါ",
+                            subtitle = "ဂိုဒေါင်ရွေးပြီး ဝယ်ယူမည့်ပစ္စည်း ထည့်ပါ",
+                            icon = Icons.Outlined.AddShoppingCart,
+                            actionLabel = "ပစ္စည်းထည့်ရန်",
+                            onAction = vm::openProductPicker
+                        )
                     }
                 }
             } else {
@@ -414,17 +443,14 @@ fun PurchaseFormScreen(
                             }
                         }
                         }
-                        OutlinedTextField(
-                            value         = state.supplierInvoiceNo,
-                            onValueChange = vm::setSupplierInvoiceNo,
-                            modifier      = Modifier.fillMaxWidth(),
-                            label         = { Text("ပေးသွင်းသူ Invoice No.") },
-                            singleLine    = true,
-                            shape         = RoundedCornerShape(10.dp)
-                        )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("ကျသင့်ငွေ", color = PurchaseColor, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                            Text(money(net),   color = PurchaseColor, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        Surface(
+                            color = PurchaseColor,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("ကျသင့်ငွေ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(money(net), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                            }
                         }
                         OutlinedTextField(
                             value           = state.paidAmount,
@@ -442,62 +468,72 @@ fun PurchaseFormScreen(
                                 leadingIcon = { Icon(Icons.Outlined.DoneAll, null, Modifier.size(16.dp)) }
                             )
                             AssistChip(
-                                onClick = { vm.setPaidAmount("0") },
+                                onClick = {
+                                    vm.setPaidAmount("0")
+                                    showSplitPayment = false
+                                },
                                 label = { Text("အကြွေးထားမည်") },
                                 leadingIcon = { Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp)) }
                             )
                         }
-                        TextButton(onClick = { showPaymentDetails = !showPaymentDetails }) {
-                            Icon(if (showPaymentDetails) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (showPaymentDetails) "ငွေပေးချေမှုအသေးစိတ် ပိတ်မည်" else "ငွေပေးချေနည်း / ခွဲပေးငွေ ထည့်မည်")
-                        }
-                        if (showPaymentDetails) {
-                        PickerField(
-                            "ငွေပေးချေနည်း",
-                            state.selectedPaymentMethod?.methodName ?: "ပေးပြီးငွေရှိလျှင် ရွေးရန်",
-                            Icons.Outlined.Payments,
-                            vm::openPaymentPicker
-                        )
-                        OutlinedTextField(
-                            value         = state.paymentTransactionNo,
-                            onValueChange = vm::setPaymentTransactionNo,
-                            modifier      = Modifier.fillMaxWidth(),
-                            label         = { Text("ငွေလွှဲနံပါတ်") },
-                            singleLine    = true,
-                            shape         = RoundedCornerShape(10.dp)
-                        )
-                        Button(
-                            onClick  = vm::addSplitPayment,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors   = ButtonDefaults.buttonColors(containerColor = PurchaseColor),
-                            shape    = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("ခွဲပေးငွေ ထည့်ရန်")
-                        }
-                        state.splitPayments.forEachIndexed { i, payment ->
-                            Surface(
-                                color  = PurchaseBg,
-                                shape  = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFF99F6E4))
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(10.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment     = Alignment.CenterVertically
+                        if (paid > 0) {
+                            PickerField(
+                                "ငွေပေးချေနည်း *",
+                                state.selectedPaymentMethod?.methodName
+                                    ?: if (state.paymentMethods.isEmpty()) "စာရင်းမရှိ" else "ရွေးရန်",
+                                Icons.Outlined.Payments,
+                                vm::openPaymentPicker,
+                                highlight = state.selectedPaymentMethod == null
+                            )
+                            if (state.paymentMethods.isEmpty()) {
+                                Text("Settings တွင် Payment Method ထည့်ပါ", fontSize = 11.sp, color = Danger)
+                            }
+                            OutlinedTextField(
+                                value         = state.paymentTransactionNo,
+                                onValueChange = vm::setPaymentTransactionNo,
+                                modifier      = Modifier.fillMaxWidth(),
+                                label         = { Text("ငွေလွှဲနံပါတ်") },
+                                singleLine    = true,
+                                shape         = RoundedCornerShape(10.dp)
+                            )
+                            TextButton(onClick = { showSplitPayment = !showSplitPayment }) {
+                                Icon(if (showSplitPayment) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (showSplitPayment) "ခွဲပေးငွေ ပိတ်မည်" else "ငွေခွဲပေးမည်")
+                            }
+                            if (showSplitPayment) {
+                                Button(
+                                    onClick  = vm::addSplitPayment,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors   = ButtonDefaults.buttonColors(containerColor = PurchaseColor),
+                                    shape    = RoundedCornerShape(10.dp)
                                 ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(payment.paymentMethodName ?: "ငွေပေးချေနည်း", color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text(money(payment.amount ?: 0.0), color = PurchaseColor, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-                                    }
-                                    IconButton(onClick = { vm.removeSplitPayment(i) }) {
-                                        Icon(Icons.Outlined.Delete, null, tint = Danger)
+                                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("ခွဲပေးငွေ ထည့်ရန်")
+                                }
+                                state.splitPayments.forEachIndexed { i, payment ->
+                                    Surface(
+                                        color  = PurchaseBg,
+                                        shape  = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFF99F6E4))
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(10.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment     = Alignment.CenterVertically
+                                        ) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(payment.paymentMethodName ?: "ငွေပေးချေနည်း", color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                Text(money(payment.amount ?: 0.0), color = PurchaseColor, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                            }
+                                            IconButton(onClick = { vm.removeSplitPayment(i) }) {
+                                                Icon(Icons.Outlined.Delete, null, tint = Danger)
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
                         }
                         Surface(
                             color = if (due > 0) DangerBg else PurchaseBg,
@@ -531,7 +567,7 @@ private fun PurchaseProgressHeader(hasSupplier: Boolean, itemCount: Int, readyTo
         Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             PurchaseStep("1", "ပေးသွင်းသူ", hasSupplier)
             PurchaseStep("2", "ပစ္စည်း", itemCount > 0)
-            PurchaseStep("3", "စစ်ပြီးသိမ်း", readyToSave)
+            PurchaseStep("3", "ငွေရှင်း", readyToSave)
         }
     }
 }
@@ -903,16 +939,17 @@ private fun PurchaseLineCard(
 
 @Composable
 private fun PickerField(
-    label:   String,
-    value:   String,
-    icon:    androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
+    label:     String,
+    value:     String,
+    icon:      androidx.compose.ui.graphics.vector.ImageVector,
+    onClick:   () -> Unit,
+    highlight: Boolean = false
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
         shape    = RoundedCornerShape(10.dp),
         color    = Color.White,
-        border   = BorderStroke(1.dp, BorderColor)
+        border   = BorderStroke(1.dp, if (highlight) Danger else BorderColor)
     ) {
         Row(
             Modifier.padding(12.dp),
@@ -977,112 +1014,76 @@ private fun DateField(
     }
 }
 
-// ─── Bottom sheet pickers ─────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SupplierPickerSheet(
-    query: String, suppliers: List<SupplierDTO>,
-    onQuery: (String) -> Unit, onSelect: (SupplierDTO) -> Unit, onDismiss: () -> Unit
-) {
-    PickerSheet("ပေးသွင်းသူ ရွေးရန်", query, onQuery, onDismiss) {
-        suppliers
-            .filter { it.name.contains(query, true) || (it.phone ?: "").contains(query, true) }
-            .forEach { SheetRow(it.name, it.phone ?: "") { onSelect(it) } }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun StaffPickerSheet(
-    query: String, staff: List<StaffDTO>,
-    onQuery: (String) -> Unit, onSelect: (StaffDTO) -> Unit, onDismiss: () -> Unit
-) {
-    PickerSheet("ဝန်ထမ်း ရွေးရန်", query, onQuery, onDismiss) {
-        staff
-            .filter { it.name.contains(query, true) || it.role.contains(query, true) }
-            .forEach { SheetRow(it.name, it.role) { onSelect(it) } }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PaymentPickerSheet(
-    query: String, methods: List<PaymentMethodDTO>,
-    onQuery: (String) -> Unit, onSelect: (PaymentMethodDTO) -> Unit, onDismiss: () -> Unit
-) {
-    PickerSheet("ငွေပေးချေနည်း ရွေးရန်", query, onQuery, onDismiss) {
-        methods
-            .filter { it.methodName.contains(query, true) }
-            .forEach { SheetRow(it.methodName, "") { onSelect(it) } }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PurchaseProductPickerSheet(
-    query: String, products: List<ProductDTO>,
-    onQuery: (String) -> Unit, onSelect: (ProductDTO) -> Unit, onDismiss: () -> Unit
-) {
-    PickerSheet("ပစ္စည်း ရွေးရန်", query, onQuery, onDismiss) {
-        products
-            .filter { it.name.contains(query, true) || it.productCode.contains(query, true) }
-            .take(30)
-            .forEach { SheetRow(it.name, "${it.productCode} • လက်ကျန် ${it.stockQty}") { onSelect(it) } }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PickerSheet(
-    title:    String,
-    query:    String,
-    onQuery:  (String) -> Unit,
-    onDismiss: () -> Unit,
-    rows:     @Composable ColumnScope.() -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .navigationBarsPadding()
-        ) {
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = TextMain)
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value         = query,
-                onValueChange = onQuery,
-                modifier      = Modifier.fillMaxWidth(),
-                placeholder   = { Text("ရှာပါ...") },
-                leadingIcon   = { Icon(Icons.Outlined.Search, null, tint = TextMuted) },
-                singleLine    = true,
-                shape         = RoundedCornerShape(12.dp)
-            )
-            Spacer(Modifier.height(8.dp))
-            rows()
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun SheetRow(title: String, subtitle: String, onClick: () -> Unit) {
-    Row(
-        modifier              = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
-            if (subtitle.isNotBlank()) Text(subtitle, fontSize = 11.sp, color = TextMuted)
-        }
-        Icon(Icons.Outlined.ChevronRight, null, tint = BorderColor, modifier = Modifier.size(16.dp))
-    }
-    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-}
-
 private fun money(v: Double): String = "%,.0f Ks".format(v)
+
+@Preview(name = "ဝယ်ယူမှု အသစ်", showBackground = true, widthDp = 390, heightDp = 800)
+@Composable
+private fun PurchaseFormPreview() {
+    AppTheme {
+        Column(Modifier.fillMaxSize().background(ScreenBg)) {
+            Surface(color = PurchaseColor) {
+                Text(
+                    "ဝယ်ယူမှု အသစ်",
+                    modifier = Modifier.padding(16.dp),
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp
+                )
+            }
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PurchaseProgressHeader(hasSupplier = true, itemCount = 1, readyToSave = true)
+                PurchaseSectionTitle(Icons.Outlined.Storefront, "ဝယ်ယူမှုအချက်အလက်", "ပေးသွင်းသူ၊ ဂိုဒေါင်နှင့် ရက်စွဲ")
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PickerField("ပေးသွင်းသူ *", "ABC Trading", Icons.Outlined.Storefront, {})
+                        PickerField("ဂိုဒေါင် *", "MAIN", Icons.Outlined.Warehouse, {})
+                        PickerField("ဝန်ထမ်း", "အောင်အောင်", Icons.Outlined.Person, {})
+                    }
+                }
+                PurchaseSectionTitle(Icons.Outlined.ReceiptLong, "ငွေရှင်းခြင်း", "ကျသင့်ငွေနှင့် ပေးချေမှု")
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Surface(color = PurchaseColor, shape = RoundedCornerShape(10.dp)) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("ကျသင့်ငွေ", color = Color.White, fontWeight = FontWeight.ExtraBold)
+                                Text("150,000 Ks", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                            }
+                        }
+                        PickerField("ငွေပေးချေနည်း *", "Cash", Icons.Outlined.Payments, {})
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "ငွေပေးချေနည်း ရွေးပါ", showBackground = true, widthDp = 390, heightDp = 280)
+@Composable
+private fun PurchasePaymentMethodPreview() {
+    AppTheme {
+        Column(Modifier.fillMaxWidth().background(CardBg).padding(vertical = 8.dp)) {
+            Text(
+                "ငွေပေးချေနည်း ရွေးရန်",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextMain,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            listOf("Cash" to "CASH", "KBZ Pay" to "KBZ", "Wave Pay" to "WAVE").forEach { (name, code) ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp)) {
+                    Text(name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+                    Text(code, fontSize = 12.sp, color = TextMuted)
+                }
+                HorizontalDivider(color = BorderColor)
+            }
+        }
+    }
+}

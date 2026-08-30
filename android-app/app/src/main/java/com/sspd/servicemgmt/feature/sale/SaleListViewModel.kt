@@ -89,8 +89,8 @@ class SaleListViewModel(application: Application) : AndroidViewModel(application
                         note            = note?.ifBlank { null }
                     )
                 )
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val updated = res.body()!!.data!!
+                val updated = res.body()?.data
+                if (res.isSuccessful && updated != null) {
                     _uiState.update { state ->
                         state.copy(
                             items         = state.items.map { if (it.id == saleId) updated else it },

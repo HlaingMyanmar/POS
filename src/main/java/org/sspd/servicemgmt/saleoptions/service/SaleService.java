@@ -63,6 +63,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -92,6 +93,8 @@ public class SaleService {
     private final SimpMessagingTemplate messagingTemplate;
     private final CashDrawerService cashDrawerService;
     private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
+    private final org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver warehouseResolver;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.repository.StockLotRepository stockLotRepository;
 
     private static final BigDecimal CASHIER_DISCOUNT_PERCENT = new BigDecimal("5");
     private static final BigDecimal MANAGER_DISCOUNT_PERCENT = new BigDecimal("20");
@@ -155,12 +158,14 @@ public class SaleService {
         validateStaffSelection(staff);
 
         Sale sale = new Sale();
+        sale.setVoided(Boolean.FALSE);
         sale.setCustomer(customer);
         sale.setStaff(staff);
         sale.setSaleDate(resolveSaleDateWithPermission(dto.getSaleDate()));
         sale.setRemark(dto.getRemark());
-        sale.setWarehouseName(dto.getWarehouseName() == null || dto.getWarehouseName().isBlank()
-                ? null : dto.getWarehouseName().trim());
+        var saleWarehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
+        sale.setWarehouse(saleWarehouse);
+        sale.setWarehouseName(saleWarehouse.getName());
         sale.setFoc(Boolean.TRUE.equals(dto.getFoc()));
         sale.setSaleCode("PENDING"); // temporary to satisfy not-null, will overwrite after save
 
@@ -508,6 +513,11 @@ public class SaleService {
                     if (serial.getStatus() != SerialStatus.Available) {
                         throw new RuntimeException("Serial number '" + sn + "' is not available for sale");
                     }
+                    if (parent.getWarehouse() == null || serial.getWarehouse() == null
+                            || !parent.getWarehouse().getId().equals(serial.getWarehouse().getId())) {
+                        throw new RuntimeException("Serial number '" + sn + "' is not available in warehouse "
+                                + (parent.getWarehouse() != null ? parent.getWarehouse().getName() : parent.getWarehouseName()));
+                    }
                     int serialWarrantyMonths = serial.getWarrantyMonths() != null
                             ? serial.getWarrantyMonths()
                             : requestedWarrantyMonths;
@@ -546,9 +556,17 @@ public class SaleService {
                     throw new RuntimeException("Quantity must be greater than zero");
                 }
                 int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
-                int availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty());
+                int availableQty;
+                if (parent.getWarehouse() != null) {
+                    availableQty = Optional.ofNullable(stockLotRepository.sumSellableInWarehouse(
+                            product.getId(), parent.getWarehouse().getId(), java.time.LocalDate.now())).orElse(0L).intValue();
+                } else {
+                    availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty());
+                }
                 if (availableQty < d.getQty()) {
-                    throw new RuntimeException("Insufficient stock for: " + product.getName() + ". Available: " + availableQty);
+                    throw new RuntimeException("Insufficient stock for: " + product.getName()
+                            + (parent.getWarehouse() != null ? " in warehouse " + parent.getWarehouse().getName() : "")
+                            + ". Available: " + availableQty);
                 }
                 product.setStockQty(currentQty - d.getQty());
                 productRepository.save(product);
@@ -770,6 +788,8 @@ public class SaleService {
                     .qty(detail.getQty())
                     .referenceType("Sale")
                     .referenceId(sale.getId())
+                    .warehouse(sale.getWarehouse())
+                    .warehouseName(sale.getWarehouseName())
                     .build());
         }
     }

@@ -55,12 +55,15 @@ public class ProductService {
     private final ProductSerialRepository productSerialRepository;
     private final ManufacturingOrderRepository manufacturingOrderRepository;
     private final PurchaseRepository purchaseRepository;
+    private final org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver warehouseResolver;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.InventoryStockService inventoryStockService;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_CREATE')")
     @Transactional
     public ProductDTO save(ProductDTO dto) {
 
         Product entity = mapper.toEntity(dto);
+        applyNotNullDefaults(entity);
         entity.setProductCode("PENDING"); // temporary to satisfy not-null before ID-based code
         entity.setReorderLevel(sanitizeReorderLevel(dto.getReorderLevel()));
 
@@ -82,6 +85,17 @@ public class ProductService {
             entity.setUnit(unit);
         }
 
+        var warehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
+        entity.setWarehouse(warehouse);
+        entity.setWarehouseName(warehouse.getName());
+        boolean serial = !Boolean.FALSE.equals(dto.getHasSerial());
+        int openingQty = dto.getOpeningQty() != null && dto.getOpeningQty() > 0
+                ? dto.getOpeningQty()
+                : (!serial && dto.getStockQty() != null && dto.getStockQty() > 0 ? dto.getStockQty() : 0);
+        if (!serial) {
+            entity.setStockQty(0);
+        }
+
         // STEP 1: Save first to get auto increment ID
         Product savedEntity = productRepository.save(entity);
 
@@ -91,6 +105,18 @@ public class ProductService {
 
         // STEP 3: Save again with productCode
         productRepository.save(savedEntity);
+
+        if (!serial && openingQty > 0) {
+            inventoryStockService.createOpening(org.sspd.servicemgmt.stockoptions.lotoptions.dto.OpeningStockRequest.builder()
+                    .productId(savedEntity.getId())
+                    .warehouseId(warehouse.getId())
+                    .qty(openingQty)
+                    .batchNumber(dto.getOpeningBatch())
+                    .expiryDate(dto.getOpeningExpiry())
+                    .reason("Product create opening stock")
+                    .build());
+            savedEntity = productRepository.findById(savedEntity.getId()).orElse(savedEntity);
+        }
 
         messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_CREATED");
 
@@ -122,6 +148,7 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
 
         mapper.updateEntityFromDto(dto, existingEntity);
+        applyNotNullDefaults(existingEntity);
         if (dto.getReorderLevel() != null) {
             existingEntity.setReorderLevel(sanitizeReorderLevel(dto.getReorderLevel()));
         }
@@ -142,6 +169,12 @@ public class ProductService {
             Unit unit = unitRepository.findById(dto.getUnitId().longValue())
                     .orElseThrow(() -> new ResourceNotFoundException("Unit not found"));
             existingEntity.setUnit(unit);
+        }
+
+        if (dto.getWarehouseId() != null || (dto.getWarehouseName() != null && !dto.getWarehouseName().isBlank())) {
+            var warehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
+            existingEntity.setWarehouse(warehouse);
+            existingEntity.setWarehouseName(warehouse.getName());
         }
 
         Product savedEntity = productRepository.save(existingEntity);
@@ -332,6 +365,9 @@ public class ProductService {
             productSerialRepository.save(
                     org.sspd.servicemgmt.stockoptions.productserialoptions.model.ProductSerial.builder()
                             .product(product)
+                            .warehouse(product.getWarehouse() != null
+                                    ? product.getWarehouse()
+                                    : warehouseResolver.require(null, product.getWarehouseName()))
                             .serialNumber(sn.trim())
                             .status(org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus.Available)
                             .warrantyMonths(months)
@@ -365,6 +401,27 @@ public class ProductService {
 
     private int sanitizeReorderLevel(Integer reorderLevel) {
         return Math.max(0, reorderLevel != null ? reorderLevel : 0);
+    }
+
+    private void applyNotNullDefaults(Product entity) {
+        if (entity.getArchived() == null) {
+            entity.setArchived(Boolean.FALSE);
+        }
+        if (entity.getQuarantinedQty() == null) {
+            entity.setQuarantinedQty(0);
+        }
+        if (entity.getStockQty() == null) {
+            entity.setStockQty(0);
+        }
+        if (entity.getHasSerial() == null) {
+            entity.setHasSerial(Boolean.TRUE);
+        }
+        if (entity.getReorderLevel() == null) {
+            entity.setReorderLevel(0);
+        }
+        if (entity.getWarrantyMonths() == null) {
+            entity.setWarrantyMonths(0);
+        }
     }
 
     // ── Excel Export ──────────────────────────────────────────────────────────
@@ -599,6 +656,8 @@ public class ProductService {
 
                     Product product = new Product();
                     product.setName(name);
+                    product.setArchived(Boolean.FALSE);
+                    product.setQuarantinedQty(0);
                     product.setProductCode("PENDING");
                     product.setProductType(productType);
                     product.setBrand(brand);
@@ -606,7 +665,16 @@ public class ProductService {
                     product.setUnit(unit);
                     product.setSellingPrice(BigDecimal.valueOf(sellingPriceVal));
                     product.setCostPrice(BigDecimal.valueOf(costPriceVal));
-                    product.setStockQty(stockQty);
+                    if (stockQty < 0) {
+                        throw new IllegalArgumentException("Opening stock cannot be negative");
+                    }
+                    if (hasSerial && stockQty > 0) {
+                        throw new IllegalArgumentException("Serial products require individual serial numbers; opening quantity must be 0");
+                    }
+                    var importWarehouse = warehouseResolver.require(null, "Main");
+                    product.setWarehouse(importWarehouse);
+                    product.setWarehouseName(importWarehouse.getName());
+                    product.setStockQty(0);
                     product.setHasSerial(hasSerial);
                     product.setReorderLevel(sanitizeReorderLevel(reorderLevel));
                     product.setWarrantyMonths(warrantyMonths);
@@ -616,6 +684,17 @@ public class ProductService {
                     Product saved = productRepository.save(product);
                     saved.setProductCode("PRD-" + String.format("%06d", saved.getId()));
                     productRepository.save(saved);
+
+                    if (!hasSerial && stockQty > 0) {
+                        inventoryStockService.createOpening(
+                                org.sspd.servicemgmt.stockoptions.lotoptions.dto.OpeningStockRequest.builder()
+                                        .productId(saved.getId())
+                                        .warehouseId(importWarehouse.getId())
+                                        .qty(stockQty)
+                                        .batchNumber("OPENING-IMPORT-" + saved.getId())
+                                        .reason("Product Excel import opening stock")
+                                        .build());
+                    }
 
                     result.setSuccessCount(result.getSuccessCount() + 1);
 

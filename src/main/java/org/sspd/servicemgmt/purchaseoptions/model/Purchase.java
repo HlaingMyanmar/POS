@@ -93,6 +93,10 @@ public class Purchase {
     @Column(name = "warehouse_name", length = 120)
     private String warehouseName;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse;
+
     @Column(name = "currency_code", length = 3)
     private String currencyCode = "MMK";
 

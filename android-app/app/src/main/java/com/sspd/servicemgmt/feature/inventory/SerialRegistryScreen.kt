@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 
 import com.sspd.servicemgmt.core.util.fmtWarranty
@@ -102,20 +104,11 @@ fun SerialRegistryScreen(
                 .background(ScreenBg)
         ) {
             // ── Search bar ─────────────────────────────────────────────────
-            OutlinedTextField(
-                value         = searchText,
+            AppSearchField(
+                value = searchText,
                 onValueChange = { searchText = it; vm.setSearch(it) },
-                modifier      = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder   = { Text("Serial No / ကုန်ပစ္စည်း ရှာပါ...") },
-                leadingIcon   = { Icon(Icons.Outlined.Search, null, tint = TextMuted) },
-                trailingIcon  = {
-                    if (searchText.isNotBlank())
-                        IconButton(onClick = { searchText = ""; vm.setSearch("") }) {
-                            Icon(Icons.Outlined.Close, null, tint = TextMuted)
-                        }
-                },
-                singleLine = true,
-                shape      = RoundedCornerShape(12.dp)
+                placeholder = "စီးရီး / ကုန်ပစ္စည်း ရှာပါ...",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
 
             // ── Status filter chips ────────────────────────────────────────
@@ -167,7 +160,7 @@ fun SerialRegistryScreen(
                     contentPadding      = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(state.filtered, key = { it.id ?: it.serialNumber }) { serial ->
+                    itemsIndexed(state.filtered, key = { index, it -> it.id ?: "sn-$index-${it.serialNumber}" }) { _, serial ->
                         SerialCard(
                             serial   = serial,
                             onClick  = { editingSerial = serial }
@@ -235,11 +228,14 @@ private fun SerialEditSheet(
                     showDatePicker = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = pickerState) }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxHeight(0.92f)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)

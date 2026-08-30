@@ -10,6 +10,8 @@ import org.sspd.servicemgmt.stockoptions.lotoptions.dto.StockLotDTO;
 import org.sspd.servicemgmt.stockoptions.lotoptions.model.*;
 import org.sspd.servicemgmt.stockoptions.lotoptions.repository.*;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
+import org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse;
+import org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver;
 
 import java.time.*;
 import java.time.temporal.ChronoUnit;
@@ -21,59 +23,76 @@ public class StockLotService {
     private final StockLotRepository lots;
     private final SaleLotAllocationRepository saleAllocations;
     private final SaleReturnLotAllocationRepository returnAllocations;
+    private final WarehouseResolver warehouseResolver;
+    private final InventoryStockService inventoryStockService;
 
     @Transactional
     public void receivePurchase(Purchase purchase) {
+        Warehouse warehouse = purchase.getWarehouse() != null
+                ? purchase.getWarehouse()
+                : warehouseResolver.require(null, purchase.getWarehouseName());
+        LocalDateTime receivedAt = purchase.getPurchaseDate() != null ? purchase.getPurchaseDate() : LocalDateTime.now();
         for (var d : purchase.getDetails()) {
             if (Boolean.TRUE.equals(d.getProduct().getHasSerial()) || lots.findByPurchaseDetailId(d.getId()).isPresent())
                 continue;
             lots.save(StockLot.builder()
-                    .product(d.getProduct()).purchaseDetail(d)
-                    .batchNumber(d.getBatchNumber()).expiryDate(d.getExpiryDate())
-                    .warehouseName(purchase.getWarehouseName())
-                    .receivedQty(d.getQty()).remainingQty(d.getQty())
-                    .receivedAt(purchase.getPurchaseDate() != null ? purchase.getPurchaseDate() : LocalDateTime.now())
+                    .product(d.getProduct())
+                    .purchaseDetail(d)
+                    .batchNumber(d.getBatchNumber())
+                    .expiryDate(d.getExpiryDate())
+                    .warehouse(warehouse)
+                    .warehouseName(warehouse.getName())
+                    .receivedQty(d.getQty())
+                    .remainingQty(d.getQty())
+                    .receivedAt(receivedAt)
+                    .status("AVAILABLE")
+                    .sourceType("PURCHASE")
+                    .sourceId(d.getId())
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
                     .build());
         }
     }
 
     @Transactional
     public void allocateSale(Sale sale) {
-        String warehouse = normalizeWh(sale.getWarehouseName());
-        boolean warehouseScoped = sale.getWarehouseName() != null && !sale.getWarehouseName().isBlank();
+        Warehouse warehouse = sale.getWarehouse() != null
+                ? sale.getWarehouse()
+                : warehouseResolver.require(null, sale.getWarehouseName());
+        LocalDate today = LocalDate.now();
         Map<Integer, Integer> sold = new HashMap<>();
         for (var d : sale.getDetails())
             if (d.getSerialNumber() == null || d.getSerialNumber().isBlank())
                 sold.merge(d.getProduct().getId(), d.getQty() == null ? 0 : d.getQty(), Integer::sum);
         for (var e : sold.entrySet()) {
             var product = sale.getDetails().stream().filter(d -> d.getProduct().getId().equals(e.getKey())).findFirst().orElseThrow().getProduct();
-            List<StockLot> sellableLots = lots.findSellableFefo(e.getKey(), LocalDate.now()).stream()
-                    .filter(l -> !warehouseScoped || warehouse.equalsIgnoreCase(normalizeWh(l.getWarehouseName())))
-                    .toList();
-            long tracked = Optional.ofNullable(lots.sumTrackedRemaining(e.getKey())).orElse(0L);
-            long sellable = sellableLots.stream().mapToLong(StockLot::getRemainingQty).sum();
-            long stockBefore = (product.getStockQty() == null ? 0 : product.getStockQty()) + e.getValue();
-            long legacy = warehouseScoped ? 0 : Math.max(0, stockBefore - tracked);
-            if (e.getValue() > sellable + legacy)
-                throw new RuntimeException("Insufficient non-expired stock for: " + product.getName()
-                        + (warehouseScoped ? " in warehouse " + warehouse : "")
-                        + ". Expired lots cannot be sold.");
+            long sellable = Optional.ofNullable(lots.sumSellableInWarehouse(e.getKey(), warehouse.getId(), today)).orElse(0L);
+            if (e.getValue() > sellable)
+                throw new RuntimeException("Insufficient stock for: " + product.getName()
+                        + " in warehouse " + warehouse.getName() + ". Available: " + sellable);
         }
         for (var d : sale.getDetails()) {
             if (d.getSerialNumber() != null && !d.getSerialNumber().isBlank()) continue;
             int needed = d.getQty() == null ? 0 : d.getQty();
-            for (var lot : lots.findSellableFefo(d.getProduct().getId(), LocalDate.now())) {
-                if (warehouseScoped && !warehouse.equalsIgnoreCase(normalizeWh(lot.getWarehouseName()))) continue;
+            for (var lot : lots.findSellableFefoInWarehouse(d.getProduct().getId(), warehouse.getId(), today)) {
                 if (needed <= 0) break;
-                int take = Math.min(needed, lot.getRemainingQty());
+                int take = Math.min(needed, lot.getRemainingQty() == null ? 0 : lot.getRemainingQty());
                 if (take <= 0) continue;
                 lot.setRemainingQty(lot.getRemainingQty() - take);
                 if (lot.getRemainingQty() == 0) lot.setStatus("DEPLETED");
+                lot.setUpdatedAt(LocalDateTime.now());
                 lots.save(lot);
                 saleAllocations.save(SaleLotAllocation.builder().saleDetail(d).stockLot(lot).allocatedQty(take).returnedQty(0).build());
                 needed -= take;
             }
+            if (needed > 0) {
+                throw new RuntimeException("Insufficient stock for: " + d.getProduct().getName()
+                        + " in warehouse " + warehouse.getName() + ". Short by " + needed);
+            }
         }
+        sold.keySet().stream()
+                .map(id -> sale.getDetails().stream().filter(d -> d.getProduct().getId().equals(id)).findFirst().orElseThrow().getProduct())
+                .forEach(inventoryStockService::reconcileProduct);
     }
 
     @Transactional
@@ -213,12 +232,24 @@ public class StockLotService {
         LocalDate now = LocalDate.now();
         return lots.findExpiring(now.plusDays(Math.max(0, days))).stream().map(l -> {
             long d = ChronoUnit.DAYS.between(now, l.getExpiryDate());
+            Integer purchaseId = null;
+            String purchaseCode = null;
+            if (l.getPurchaseDetail() != null && l.getPurchaseDetail().getPurchase() != null) {
+                purchaseId = l.getPurchaseDetail().getPurchase().getId();
+                purchaseCode = l.getPurchaseDetail().getPurchase().getPurchaseCode();
+            }
+            Warehouse wh = l.getWarehouse();
             return StockLotDTO.builder().id(l.getId()).productId(l.getProduct().getId())
                     .productCode(l.getProduct().getProductCode()).productName(l.getProduct().getName())
-                    .purchaseId(l.getPurchaseDetail().getPurchase().getId())
-                    .purchaseCode(l.getPurchaseDetail().getPurchase().getPurchaseCode())
-                    .batchNumber(l.getBatchNumber()).expiryDate(l.getExpiryDate()).warehouseName(l.getWarehouseName())
-                    .receivedQty(l.getReceivedQty()).remainingQty(l.getRemainingQty()).daysToExpiry(d)
+                    .purchaseId(purchaseId).purchaseCode(purchaseCode)
+                    .batchNumber(l.getBatchNumber()).expiryDate(l.getExpiryDate())
+                    .warehouseName(wh != null ? wh.getName() : l.getWarehouseName())
+                    .warehouseId(wh != null ? wh.getId() : null)
+                    .warehouseCode(wh != null ? wh.getCode() : null)
+                    .sourceType(l.getSourceType()).status(l.getStatus())
+                    .receivedQty(l.getReceivedQty()).remainingQty(l.getRemainingQty())
+                    .soldQty((l.getReceivedQty() == null ? 0 : l.getReceivedQty()) - (l.getRemainingQty() == null ? 0 : l.getRemainingQty()))
+                    .daysToExpiry(d)
                     .alertLevel(d < 0 ? "EXPIRED" : d <= 7 ? "CRITICAL" : d <= 30 ? "WARNING" : "UPCOMING").build();
         }).toList();
     }
@@ -227,7 +258,9 @@ public class StockLotService {
     public List<org.sspd.servicemgmt.stockoptions.lotoptions.dto.WarehouseBalanceDTO> warehouseBalances() {
         Map<String, org.sspd.servicemgmt.stockoptions.lotoptions.dto.WarehouseBalanceDTO> grouped = new LinkedHashMap<>();
         for (var l : lots.findByRemainingQtyGreaterThanAndStatusIn(0, List.of("AVAILABLE", "DEPLETED"))) {
-            String warehouse = l.getWarehouseName() == null || l.getWarehouseName().isBlank() ? "Main" : l.getWarehouseName().trim();
+            String warehouse = l.getWarehouse() != null && l.getWarehouse().getName() != null
+                    ? l.getWarehouse().getName()
+                    : (l.getWarehouseName() == null || l.getWarehouseName().isBlank() ? "Main" : l.getWarehouseName().trim());
             Integer productId = l.getProduct().getId();
             String key = warehouse + "|" + productId;
             var row = grouped.computeIfAbsent(key, k -> org.sspd.servicemgmt.stockoptions.lotoptions.dto.WarehouseBalanceDTO.builder()
@@ -238,9 +271,5 @@ public class StockLotService {
             row.setLotCount(row.getLotCount() + 1);
         }
         return new ArrayList<>(grouped.values());
-    }
-
-    private String normalizeWh(String name) {
-        return name == null || name.isBlank() ? "Main" : name.trim();
     }
 }

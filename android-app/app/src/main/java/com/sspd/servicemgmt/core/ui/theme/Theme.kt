@@ -15,10 +15,10 @@ import androidx.compose.ui.unit.dp
 
 private val AppColorScheme = lightColorScheme(
     primary            = Primary,
-    onPrimary          = Color.White,
+    onPrimary          = OnPrimary,
     primaryContainer   = PrimaryLight,
     onPrimaryContainer = Primary,
-    secondary          = Violet,
+    secondary          = Gold,
     onSecondary        = Color.White,
     background         = ScreenBg,
     onBackground       = TextMain,

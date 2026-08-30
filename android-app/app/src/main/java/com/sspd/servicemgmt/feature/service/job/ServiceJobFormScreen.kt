@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,6 +35,7 @@ import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 import com.sspd.servicemgmt.feature.service.catalog.ServiceItemPickerContent
 import com.sspd.servicemgmt.feature.service.catalog.rememberFilteredServiceItems
 
@@ -129,88 +131,26 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
         )
     }
 
-    // Staff sheet
     if (showStaffSheet) {
-        ModalBottomSheet(onDismissRequest = { showStaffSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("နည်းပညာဆရာ ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { vm.selectStaff(null); showStaffSheet = false }.padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("— မသတ်မှတ်ပါ —", color = TextMuted, fontSize = 14.sp)
-                    if (state.selectedStaff == null) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                }
-                HorizontalDivider(color = BorderColor)
-                state.staffList.forEach { staff ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { vm.selectStaff(staff); showStaffSheet = false }.padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(staff.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            Text(staff.role, fontSize = 11.sp, color = TextMuted)
-                        }
-                        if (state.selectedStaff?.id == staff.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "နည်းပညာဆရာ ရွေးပါ",
+            items = state.staffList,
+            label = { it.name },
+            subtitle = { it.role },
+            onSelect = { vm.selectStaff(it); showStaffSheet = false },
+            onDismiss = { showStaffSheet = false }
+        )
     }
 
-    // Storage location sheet
     if (showLocationSheet) {
-        ModalBottomSheet(onDismissRequest = { showLocationSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ထားမည့်နေရာ ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        vm.selectShelfLocation(null)
-                        showLocationSheet = false
-                    }.padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("— မသတ်မှတ်ပါ —", color = TextMuted, fontSize = 14.sp)
-                    if (state.selectedShelfLocation == null) {
-                        Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                }
-                HorizontalDivider(color = BorderColor)
-                state.shelfLocations.forEach { loc ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            vm.selectShelfLocation(loc)
-                            showLocationSheet = false
-                        }.padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(loc.code, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            if (!loc.label.isNullOrBlank()) Text(loc.label, fontSize = 11.sp, color = TextMuted)
-                        }
-                        if (state.selectedShelfLocation?.id == loc.id) {
-                            Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                if (state.shelfLocations.isEmpty()) {
-                    Text(
-                        "နေရာစာရင်း မရှိသေးပါ။ Shelf Location စာမျက်နှာမှာ အရင်ထည့်ပါ။",
-                        fontSize = 12.sp,
-                        color = TextMuted,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ထားမည့်နေရာ ရွေးပါ",
+            items = state.shelfLocations,
+            label = { it.code },
+            subtitle = { it.label },
+            onSelect = { vm.selectShelfLocation(it); showLocationSheet = false },
+            onDismiss = { showLocationSheet = false }
+        )
     }
 
     // Service item picker sheet
@@ -302,7 +242,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
         val serialError = state.serialSelectError
         ModalBottomSheet(
             onDismissRequest = { vm.dismissSerialSelector() },
-            modifier = Modifier.fillMaxHeight(0.82f)
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 Text("Serial number ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
@@ -1255,7 +1195,7 @@ private fun ProductPartPickerContent(
                     .heightIn(max = listMaxHeight),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                items(items, key = { it.id.takeIf { id -> id != 0 } ?: it.productCode }) { prod ->
+                itemsIndexed(items, key = { index, it -> if (it.id != 0) it.id else "prod-$index-${it.productCode}" }) { _, prod ->
                     Column {
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { onSelect(prod) }.padding(vertical = 10.dp),

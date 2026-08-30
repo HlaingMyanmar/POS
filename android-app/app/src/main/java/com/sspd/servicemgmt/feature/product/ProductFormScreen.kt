@@ -38,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.theme.*
+import com.sspd.servicemgmt.core.util.WarrantyUnit
+import com.sspd.servicemgmt.core.util.toWarrantyMonths
 
 import java.io.ByteArrayOutputStream
 
@@ -216,9 +218,28 @@ fun ProductFormScreen(
                 ProductTextField(state.sellingPrice, vm::setSellingPrice, "ရောင်းဈေး *", Modifier.weight(1f), KeyboardType.Decimal)
                 ProductTextField(state.costPrice, vm::setCostPrice, "ဝယ်ဈေး", Modifier.weight(1f), KeyboardType.Decimal)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProductTextField(state.reorderLevel, vm::setReorderLevel, "Reorder", Modifier.weight(1f), KeyboardType.Number)
-                ProductTextField(state.warrantyMonths, vm::setWarrantyMonths, "အာမခံ (လ)", Modifier.weight(1f), KeyboardType.Number)
+            ProductTextField(state.reorderLevel, vm::setReorderLevel, "Reorder", keyboardType = KeyboardType.Number)
+            Text("အခြေခံ အာမခံ", fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ProductTextField(state.warrantyValue, vm::setWarrantyValue, "ကာလ", Modifier.weight(1f), KeyboardType.Number)
+                WarrantyUnit.entries.forEach { unit ->
+                    FilterChip(
+                        selected = state.warrantyUnit == unit,
+                        onClick = { vm.setWarrantyUnit(unit) },
+                        label = { Text(unit.label, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    )
+                }
+            }
+            val warrantyValue = state.warrantyValue.toIntOrNull() ?: 0
+            if (warrantyValue > 0) {
+                val months = toWarrantyMonths(warrantyValue, state.warrantyUnit)
+                Text(
+                    if (state.warrantyUnit == WarrantyUnit.DAY) "= $warrantyValue ရက်"
+                    else "= $months လ",
+                    fontSize = 11.sp,
+                    color = Primary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
             ProductTextField(state.warrantyTerms, vm::setWarrantyTerms, "အာမခံမှတ်ချက်")
             ProductTextField(state.remark, vm::setRemark, "မှတ်ချက်", minLines = 3)
@@ -316,7 +337,10 @@ private fun <T> PickerSheet(
     val filtered = if (query.isBlank()) items else items.filter { label(it).contains(query, ignoreCase = true) }
     val exactMatch = filtered.any { label(it).trim().equals(query, ignoreCase = true) }
     val canCreate = allowCreate && query.isNotBlank() && !exactMatch
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxHeight(0.85f)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
             OutlinedTextField(

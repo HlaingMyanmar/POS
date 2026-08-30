@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,6 +30,8 @@ import com.sspd.servicemgmt.core.network.ServiceTypeDTO
 import com.sspd.servicemgmt.core.network.SubServiceTypeDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -190,16 +193,11 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                 }
             }
 
-            OutlinedTextField(
-                value = state.search, onValueChange = { vm.setSearch(it) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder = { Text("ရှာဖွေရန်...") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon = {
-                    if (state.search.isNotBlank())
-                        IconButton(onClick = { vm.setSearch("") }) { Icon(Icons.Outlined.Clear, "ရှင်းရန်", tint = TextMuted) }
-                },
-                singleLine = true, shape = RoundedCornerShape(12.dp)
+            AppSearchField(
+                value = state.search,
+                onValueChange = { vm.setSearch(it) },
+                placeholder = "ရှာဖွေရန်...",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
 
             if (state.loading) {
@@ -244,7 +242,7 @@ private fun TypesList(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(types, key = { it.id ?: it.name }) { type ->
+        itemsIndexed(types, key = { index, type -> type.id ?: "type-$index-${type.name}" }) { _, type ->
             Card(
                 shape  = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -324,7 +322,7 @@ private fun ItemsList(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(items, key = { it.id ?: it.item }) { item ->
+        itemsIndexed(items, key = { index, item -> item.id ?: "item-$index-${item.item}" }) { _, item ->
             Card(
                 shape  = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -493,55 +491,35 @@ private fun ServiceItemDialog(
     }
 
     if (showTypeSheet) {
-        ModalBottomSheet(onDismissRequest = { showTypeSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ဝန်ဆောင်မှုအမျိုးအစား ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                types.forEach { t ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            selectedType = t; selectedSub = null
-                            showTypeSheet = false; onTypeSelected(t.id!!)
-                        }.padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Text(t.name, fontSize = 14.sp, color = TextMain)
-                        if (selectedType?.id == t.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ဝန်ဆောင်မှုအမျိုးအစား ရွေးပါ",
+            items = types,
+            label = { it.name },
+            subtitle = { it.description },
+            onSelect = { t ->
+                selectedType = t
+                selectedSub = null
+                showTypeSheet = false
+                t.id?.let(onTypeSelected)
+            },
+            onDismiss = { showTypeSheet = false },
+            key = { index, t -> t.id ?: "type-$index-${t.name}" }
+        )
     }
 
     if (showSubSheet) {
-        ModalBottomSheet(onDismissRequest = { showSubSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ခွဲပိုင်းအမျိုးအစား ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { selectedSub = null; showSubSheet = false }.padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("— မသတ်မှတ်ပါ —", fontSize = 14.sp, color = TextMuted)
-                    if (selectedSub == null) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                }
-                HorizontalDivider(color = BorderColor)
-                subTypes.forEach { sub ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { selectedSub = sub; showSubSheet = false }.padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(sub.name, fontSize = 14.sp, color = TextMain)
-                        if (selectedSub?.id == sub.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ခွဲပိုင်းအမျိုးအစား ရွေးပါ",
+            items = listOf<SubServiceTypeDTO?>(null) + subTypes,
+            label = { it?.name ?: "— မသတ်မှတ်ပါ —" },
+            subtitle = { it?.description },
+            onSelect = { sub ->
+                selectedSub = sub
+                showSubSheet = false
+            },
+            onDismiss = { showSubSheet = false },
+            key = { index, sub -> sub?.id ?: "sub-none-$index" }
+        )
     }
 
     AlertDialog(

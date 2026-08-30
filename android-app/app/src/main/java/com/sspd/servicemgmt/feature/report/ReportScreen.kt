@@ -64,7 +64,7 @@ fun ReportScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = { dpState.selectedDateMillis?.let { vm.setFromDate(msToDate(it)) }; showFromPicker = false }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showFromPicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showFromPicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 
@@ -75,7 +75,7 @@ fun ReportScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = { dpState.selectedDateMillis?.let { vm.setToDate(msToDate(it)) }; showToPicker = false }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showToPicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showToPicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 

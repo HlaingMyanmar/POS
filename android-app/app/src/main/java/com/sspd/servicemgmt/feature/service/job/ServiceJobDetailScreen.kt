@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +41,7 @@ import com.sspd.servicemgmt.core.network.ServiceJobPartDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 
 import com.sspd.servicemgmt.core.util.fmtWarranty
 import org.json.JSONArray
@@ -564,7 +566,7 @@ fun ServiceJobDetailScreen(
                 item {
                     Text("Attachments (${job.attachments.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
                 }
-                items(job.attachments, key = { it.id ?: it.fileName.orEmpty() }) { attachment ->
+                itemsIndexed(job.attachments, key = { index, it -> it.id ?: "att-$index-${it.fileName.orEmpty()}" }) { _, attachment ->
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -902,25 +904,15 @@ private fun SettleDialog(
         ) { DatePicker(state = dpState) }
     }
 
-    // Payment method sheet
     if (showSheet) {
-        ModalBottomSheet(onDismissRequest = { showSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ငွေပေးချေမှု နည်းလမ်း", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                paymentMethods.forEach { pm ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { selectedPm = pm; showSheet = false }.padding(vertical = 13.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(pm.methodName, fontSize = 14.sp, color = TextMain)
-                        if (selectedPm?.id == pm.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပေးချေမှု နည်းလမ်း",
+            items = paymentMethods,
+            label = { it.methodName },
+            onSelect = { selectedPm = it; showSheet = false },
+            onDismiss = { showSheet = false },
+            key = { i, pm -> pm.id.takeIf { it != 0 } ?: "pm-$i" }
+        )
     }
 
     AlertDialog(
@@ -1144,23 +1136,14 @@ private fun JobPayDueDialog(
     var error      by remember { mutableStateOf("") }
 
     if (showSheet) {
-        ModalBottomSheet(onDismissRequest = { showSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ငွေပေးချေမှု နည်းလမ်း", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                paymentMethods.forEach { pm ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { selectedPm = pm; showSheet = false }.padding(vertical = 13.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(pm.methodName, fontSize = 14.sp, color = TextMain)
-                        if (selectedPm?.id == pm.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပေးချေမှု နည်းလမ်း",
+            items = paymentMethods,
+            label = { it.methodName },
+            onSelect = { selectedPm = it; showSheet = false },
+            onDismiss = { showSheet = false },
+            key = { i, pm -> pm.id.takeIf { it != 0 } ?: "pm-$i" }
+        )
     }
 
     AlertDialog(

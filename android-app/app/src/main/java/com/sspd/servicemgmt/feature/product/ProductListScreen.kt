@@ -7,7 +7,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,7 +23,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -35,6 +33,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.scanner.BarcodeScannerView
 import com.sspd.servicemgmt.feature.product.ProductListViewModel.ProductFilter
@@ -188,12 +187,11 @@ fun ProductListContent(
                             }
                         }
                     },
-                    expandedHeight = 48.dp,
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.White,
-                        titleContentColor = Primary,
-                        navigationIconContentColor = Primary,
-                        actionIconContentColor = Primary
+                        containerColor = Primary,
+                        titleContentColor = OnPrimary,
+                        navigationIconContentColor = OnPrimary,
+                        actionIconContentColor = OnPrimary
                     )
                 )
             },
@@ -222,54 +220,11 @@ fun ProductListContent(
                         .padding(horizontal = 16.dp)
                         .padding(top = 8.dp, bottom = 4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, BorderColor, RoundedCornerShape(14.dp))
-                            .background(Color.White)
-                            .padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Outlined.Search,
-                            contentDescription = null,
-                            tint = TextMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        BasicTextField(
-                            value = search,
-                            onValueChange = onSearch,
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            textStyle = TextStyle(fontSize = 13.sp, color = TextMain),
-                            decorationBox = { inner ->
-                                Box {
-                                    if (search.isEmpty()) {
-                                        Text(
-                                            "အမည်၊ ကုဒ်၊ အမျိုးအစား ရှာရန်",
-                                            fontSize = 13.sp,
-                                            color = TextMuted,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    inner()
-                                }
-                            }
-                        )
-                        if (search.isNotBlank()) {
-                            Icon(
-                                Icons.Outlined.Close,
-                                contentDescription = "ရှင်းရန်",
-                                tint = TextMuted,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clickable { onSearch("") }
-                            )
-                        }
-                    }
+                    AppSearchField(
+                        value = search,
+                        onValueChange = onSearch,
+                        placeholder = "အမည်၊ ကုဒ်၊ အမျိုးအစား ရှာရန်"
+                    )
 
                         Spacer(Modifier.height(12.dp))
 
@@ -407,7 +362,7 @@ fun ProductListContent(
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            items(filtered, key = { it.id }) { product ->
+                            items(filtered, key = { if (it.id != 0) it.id else "p-${it.productCode}-${it.name}" }) { product ->
                                 ProductCard(product, onClick = { onProductClick(product.id) })
                             }
                         }

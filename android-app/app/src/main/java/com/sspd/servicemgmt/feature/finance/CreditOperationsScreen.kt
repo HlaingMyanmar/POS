@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -27,6 +28,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.CustomerDTO
 import com.sspd.servicemgmt.core.network.SaleDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppScaffold
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,19 +55,14 @@ fun CreditOperationsScreen(onBack: () -> Unit) {
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Credit Operations Desk", fontWeight = FontWeight.ExtraBold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                actions = { IconButton(onClick = vm::load) { Icon(Icons.Outlined.Refresh, "Refresh", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
-            )
-        }
+    AppScaffold(
+        title = "ခရက်ဒစ် စားပွဲ",
+        onBack = onBack,
+        actions = { IconButton(onClick = vm::load) { Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်ရန်", tint = OnPrimary) } }
     ) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { AppLoading() }
-            return@Scaffold
+            return@AppScaffold
         }
 
         Column(
@@ -72,22 +70,18 @@ fun CreditOperationsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CreditStatCard("Outstanding", money(totalDue), Icons.Outlined.CreditCard, Danger, Modifier.weight(1f))
-                CreditStatCard("Overdue", "$overdueCount ခု", Icons.Outlined.EventBusy, Warning, Modifier.weight(1f))
+                CreditStatCard("ကျန်ငွေ", money(totalDue), Icons.Outlined.CreditCard, Danger, Modifier.weight(1f))
+                CreditStatCard("ရက်ကျော်", "$overdueCount ခု", Icons.Outlined.EventBusy, Warning, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CreditStatCard("Hold", state.customers.count { it.creditHold }.toString(), Icons.Outlined.PauseCircle, Warning, Modifier.weight(1f))
-                CreditStatCard("Blacklist", state.customers.count { it.blacklisted }.toString(), Icons.Outlined.Block, Danger, Modifier.weight(1f))
+                CreditStatCard("ရပ်ဆိုင်း", state.customers.count { it.creditHold }.toString(), Icons.Outlined.PauseCircle, Warning, Modifier.weight(1f))
+                CreditStatCard("ပိတ်စာရင်း", state.customers.count { it.blacklisted }.toString(), Icons.Outlined.Block, Danger, Modifier.weight(1f))
             }
 
-            OutlinedTextField(
+            AppSearchField(
                 value = state.search,
                 onValueChange = vm::setSearch,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("ဖောက်သည် ရှာပါ") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                placeholder = "ဖောက်သည် ရှာပါ"
             )
 
             Text("ဖောက်သည်စာရင်း", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
@@ -95,7 +89,7 @@ fun CreditOperationsScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filtered, key = { it.id ?: it.name }) { customer ->
+                itemsIndexed(filtered, key = { index, customer -> customer.id ?: "c-$index-${customer.name}" }) { _, customer ->
                     CustomerCreditRow(
                         customer = customer,
                         due = dueByCustomer[customer.id] ?: 0.0,
@@ -159,29 +153,29 @@ private fun CreditDetailPanel(vm: CreditOperationsViewModel, state: CreditOperat
                     Text(customer.name, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
                     Text("${customer.phone.orEmpty()}  ${customer.address.orEmpty()}", fontSize = 12.sp, color = TextMuted)
                 }
-                AssistChip(onClick = {}, label = { Text(if (customer.blacklisted) "Blacklist" else if (customer.creditHold) "Hold" else "Normal") })
+                AssistChip(onClick = {}, label = { Text(if (customer.blacklisted) "ပိတ်စာရင်း" else if (customer.creditHold) "ရပ်ဆိုင်း" else "ပုံမှန်") })
             }
 
-            Text("Account Controls", fontWeight = FontWeight.ExtraBold, color = TextMain)
-            ControlSwitch("Credit Hold", state.formCreditHold, vm::setFormCreditHold)
-            if (state.formCreditHold) OutlinedTextField(state.formCreditHoldReason, vm::setFormCreditHoldReason, label = { Text("Hold အကြောင်းရင်း") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-            ControlSwitch("Blacklist", state.formBlacklisted, vm::setFormBlacklisted)
-            if (state.formBlacklisted) OutlinedTextField(state.formBlacklistReason, vm::setFormBlacklistReason, label = { Text("Blacklist အကြောင်းရင်း") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-            Button(onClick = vm::saveControls, enabled = !state.savingControls, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)), modifier = Modifier.fillMaxWidth()) {
+            Text("အကောင့် ထိန်းချုပ်မှု", fontWeight = FontWeight.ExtraBold, color = TextMain)
+            ControlSwitch("ခရက်ဒစ် ရပ်ဆိုင်း", state.formCreditHold, vm::setFormCreditHold)
+            if (state.formCreditHold) OutlinedTextField(state.formCreditHoldReason, vm::setFormCreditHoldReason, label = { Text("ရပ်ဆိုင်း အကြောင်းရင်း") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+            ControlSwitch("ပိတ်စာရင်း", state.formBlacklisted, vm::setFormBlacklisted)
+            if (state.formBlacklisted) OutlinedTextField(state.formBlacklistReason, vm::setFormBlacklistReason, label = { Text("ပိတ်စာရင်း အကြောင်းရင်း") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+            Button(onClick = vm::saveControls, enabled = !state.savingControls, colors = ButtonDefaults.buttonColors(containerColor = Primary), modifier = Modifier.fillMaxWidth()) {
                 if (state.savingControls) CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                else Text("Account Control သိမ်းမည်", fontWeight = FontWeight.Bold)
+                else Text("ထိန်းချုပ်မှု သိမ်းမည်", fontWeight = FontWeight.Bold)
             }
 
             HorizontalDivider(color = BorderColor)
-            Text("Credit Terms", fontWeight = FontWeight.ExtraBold, color = TextMain)
-            ControlSwitch("Credit ခွင့်ပြုမည်", state.formCreditAllowed, vm::setFormCreditAllowed)
+            Text("ခရက်ဒစ် စည်းကမ်း", fontWeight = FontWeight.ExtraBold, color = TextMain)
+            ControlSwitch("ခရက်ဒစ် ခွင့်ပြုမည်", state.formCreditAllowed, vm::setFormCreditAllowed)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(state.formCreditLimit, vm::setFormCreditLimit, label = { Text("Limit") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = state.formCreditAllowed, singleLine = true)
-                OutlinedTextField(state.formCreditDays, vm::setFormCreditDays, label = { Text("Days") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = state.formCreditAllowed, singleLine = true)
+                OutlinedTextField(state.formCreditLimit, vm::setFormCreditLimit, label = { Text("ကန့်သတ်ငွေ") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = state.formCreditAllowed, singleLine = true)
+                OutlinedTextField(state.formCreditDays, vm::setFormCreditDays, label = { Text("ရက်") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = state.formCreditAllowed, singleLine = true)
             }
             Button(onClick = vm::saveTerms, enabled = !state.savingTerms, colors = ButtonDefaults.buttonColors(containerColor = Primary), modifier = Modifier.fillMaxWidth()) {
                 if (state.savingTerms) CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                else Text("Credit Terms သိမ်းမည်", fontWeight = FontWeight.Bold)
+                else Text("စည်းကမ်း သိမ်းမည်", fontWeight = FontWeight.Bold)
             }
 
             HorizontalDivider(color = BorderColor)

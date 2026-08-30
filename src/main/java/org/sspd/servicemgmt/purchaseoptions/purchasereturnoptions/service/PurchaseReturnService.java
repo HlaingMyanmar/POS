@@ -124,6 +124,7 @@ public class PurchaseReturnService {
         }
 
         PurchaseReturn entity = mapper.toEntity(dto);
+        applyNotNullDefaults(entity);
         entity.setReturnNo(generateReturnNo());
         entity.setPurchase(purchase);
         entity.setStatus(STATUS_DRAFT);
@@ -549,6 +550,7 @@ public class PurchaseReturnService {
                     PurchaseDetailWarranty warranty = findPurchaseWarranty(purchase, product.getId(), sn);
                     productSerialRepository.save(ProductSerial.builder()
                             .product(product)
+                            .warehouse(purchase.getWarehouse() != null ? purchase.getWarehouse() : product.getWarehouse())
                             .serialNumber(sn)
                             .status(SerialStatus.Available)
                             .warrantyMonths(warranty != null ? warranty.getWarrantyMonths() : null)
@@ -1080,15 +1082,16 @@ public class PurchaseReturnService {
     }
 
     void configureShipping(PurchaseReturn entity, PurchaseReturnDTO dto) {
+        applyNotNullDefaults(entity);
         BigDecimal totalCost = money(dto.getShippingCostAmount() != null
                 ? dto.getShippingCostAmount() : entity.getShippingCostAmount());
         if (totalCost.signum() < 0) throw new IllegalArgumentException("Shipping cost cannot be negative");
 
-        String payer = normalizeChoice(dto.getShippingPayerResponsibility() != null
-                ? dto.getShippingPayerResponsibility() : entity.getShippingPayerResponsibility(),
+        String payer = normalizeChoice(firstChoice(dto.getShippingPayerResponsibility(),
+                entity.getShippingPayerResponsibility(), "COMPANY"),
                 Set.of("COMPANY", "SUPPLIER", "SHARED"), "Shipping payer responsibility");
-        String method = normalizeChoice(dto.getShippingAllocationMethod() != null
-                ? dto.getShippingAllocationMethod() : entity.getShippingAllocationMethod(),
+        String method = normalizeChoice(firstChoice(dto.getShippingAllocationMethod(),
+                entity.getShippingAllocationMethod(), "VALUE"),
                 Set.of("VALUE", "QUANTITY", "MANUAL"), "Shipping allocation method");
 
         BigDecimal company = dto.getCompanyShippingPortion() == null ? null : money(dto.getCompanyShippingPortion());
@@ -1100,6 +1103,8 @@ public class PurchaseReturnService {
             company = company == null ? BigDecimal.ZERO : company;
             supplier = supplier == null ? BigDecimal.ZERO : supplier;
         }
+        company = money(company);
+        supplier = money(supplier);
         if (company.signum() < 0 || supplier.signum() < 0)
             throw new IllegalArgumentException("Shipping portions cannot be negative");
         if (company.add(supplier).compareTo(totalCost) != 0)
@@ -1217,6 +1222,30 @@ public class PurchaseReturnService {
 
     private BigDecimal money(BigDecimal value) {
         return safe(value).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    void applyNotNullDefaults(PurchaseReturn entity) {
+        if (entity.getShippingCostAmount() == null) {
+            entity.setShippingCostAmount(BigDecimal.ZERO);
+        }
+        if (entity.getShippingPayerResponsibility() == null || entity.getShippingPayerResponsibility().isBlank()) {
+            entity.setShippingPayerResponsibility("COMPANY");
+        }
+        if (entity.getCompanyShippingPortion() == null) {
+            entity.setCompanyShippingPortion(BigDecimal.ZERO);
+        }
+        if (entity.getSupplierShippingPortion() == null) {
+            entity.setSupplierShippingPortion(BigDecimal.ZERO);
+        }
+        if (entity.getShippingAllocationMethod() == null || entity.getShippingAllocationMethod().isBlank()) {
+            entity.setShippingAllocationMethod("VALUE");
+        }
+    }
+
+    private String firstChoice(String dtoValue, String entityValue, String fallback) {
+        if (dtoValue != null && !dtoValue.isBlank()) return dtoValue;
+        if (entityValue != null && !entityValue.isBlank()) return entityValue;
+        return fallback;
     }
 
     private String normalizeChoice(String value, Set<String> allowed, String label) {

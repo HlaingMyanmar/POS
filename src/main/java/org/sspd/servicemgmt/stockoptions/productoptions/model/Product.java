@@ -96,6 +96,10 @@ public class Product {
     @Column(name = "warehouse_name", length = 120)
     private String warehouseName;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse;
+
     @Column(name = "shelf_location", length = 120)
     private String shelfLocation;
 }

@@ -91,6 +91,7 @@ sealed class Screen(val route: String) {
     object NewStockAdj      : Screen("new_stock_adj")
     object SerialRegistry   : Screen("serial_registry")
     object OpeningBalance   : Screen("opening_balance")
+    object OpeningStock     : Screen("opening_stock")
     object Transfer         : Screen("transfer")
     object WebModule        : Screen("web_module/{title}/{endpoint}") {
         fun createRoute(title: String, endpoint: String) = "web_module/${Uri.encode(title)}/${Uri.encode(endpoint)}"

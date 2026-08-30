@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 
 private val AdjColor = Color(0xFF0891B2)
@@ -73,22 +74,11 @@ fun StockAdjListScreen(
                 .padding(padding)
                 .background(ScreenBg)
         ) {
-            OutlinedTextField(
-                value         = searchText,
-                onValueChange = { searchText = it },
-                modifier      = Modifier.fillMaxWidth().padding(12.dp),
-                placeholder   = { Text("Code / အကြောင်းအရင်း ရှာပါ...") },
-                leadingIcon   = { Icon(Icons.Outlined.Search, null, tint = TextMuted) },
-                trailingIcon  = {
-                    if (searchText.isNotBlank())
-                        IconButton(onClick = { searchText = ""; vm.setSearch("") }) {
-                            Icon(Icons.Outlined.Close, null, tint = TextMuted)
-                        }
-                },
-                singleLine      = true,
-                shape           = RoundedCornerShape(12.dp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { vm.setSearch(searchText) })
+            AppSearchField(
+                value = searchText,
+                onValueChange = { searchText = it; vm.setSearch(it) },
+                placeholder = "ကုဒ် / အကြောင်းအရင်း ရှာပါ...",
+                modifier = Modifier.padding(12.dp)
             )
 
             if (state.loading) {

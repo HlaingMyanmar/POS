@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.realtime.onDataEvent
 
 class ProductDetailViewModel(
@@ -22,7 +23,7 @@ class ProductDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs = PreferenceManager(application)
-    private val productId: Int = checkNotNull(savedStateHandle["productId"])
+    private val productId: Int = savedStateHandle.optionalId("productId")
     private val incomingSerial: String? = savedStateHandle["serialNumber"]
 
     private val _uiState = MutableStateFlow(ProductDetailUiState())

@@ -137,9 +137,10 @@ class StockAdjFormViewModel(application: Application) : AndroidViewModel(applica
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.createStockAdjustment(token, dto)
-                if (res.isSuccessful && res.body()?.data != null) {
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { it.copy(saving = false) }
-                    onSuccess(res.body()!!.data!!)
+                    onSuccess(saved)
                 } else {
                     _uiState.update { it.copy(saving = false, saveError = res.body()?.message ?: "မအောင်မြင်ပါ (${res.code()})") }
                 }

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { saleApiService } from '../services/saleapiservice';
 import { saleReturnApiService } from '../services/salereturnapiservice';
+import { stockLotApiService } from '../services/stocklotapiservice';
 import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
 import { customerService } from '../services/customerapiservice';
 import { staffService } from '../services/staffapiservice';
@@ -276,6 +277,7 @@ const SaleManagement: React.FC = () => {
   const [remark, setRemark] = useState('');
   const [warehouseName, setWarehouseName] = useState('Main');
   const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
+  const [warehouseStockByProduct, setWarehouseStockByProduct] = useState<Record<number, number>>({});
   const [viewTimeline, setViewTimeline] = useState<{ type?: string; at?: string; title?: string; detail?: string; refCode?: string; amount?: number }[]>([]);
   const [details, setDetails] = useState<DetailForm[]>([emptyDetail()]);
   const [productSearches, setProductSearches] = useState<string[]>(['']);
@@ -364,6 +366,16 @@ const SaleManagement: React.FC = () => {
   useRefreshOnTabActivate(loadMaster);
 
   useEffect(() => {
+    void stockLotApiService.warehouseBalances().then((rows) => {
+      const map: Record<number, number> = {};
+      rows.filter((r) => !warehouseName || r.warehouseName === warehouseName).forEach((r) => {
+        map[r.productId] = (map[r.productId] || 0) + Number(r.remainingQty || 0);
+      });
+      setWarehouseStockByProduct(map);
+    }).catch(() => setWarehouseStockByProduct({}));
+  }, [warehouseName]);
+
+  useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
       setSalePage(0);
@@ -428,9 +440,10 @@ const SaleManagement: React.FC = () => {
   }, [products]);
 
   const getQtyOnlyStock = useCallback((productId: number) => {
+    if (warehouseStockByProduct[productId] != null) return warehouseStockByProduct[productId];
     const product = products.find((p) => p.id === productId);
     return Number(product?.stockQty ?? product?.currentStock ?? 0);
-  }, [products]);
+  }, [products, warehouseStockByProduct]);
 
   const getSerialPool = useCallback((productId: number) => (
     Array.from(new Set(
@@ -817,6 +830,9 @@ const SaleManagement: React.FC = () => {
           if (usedSerials.has(key)) return 'Duplicate serial number detected.';
           usedSerials.add(key);
         }
+      } else {
+        const available = getQtyOnlyStock(row.productId);
+        if (row.qty > available) return `Insufficient stock in ${warehouseName || 'selected warehouse'} for this product. Available: ${available}.`;
       }
     }
 
@@ -863,6 +879,7 @@ const SaleManagement: React.FC = () => {
         payments: normalizedSalePayments.length > 0 ? normalizedSalePayments : undefined,
         remark: remark.trim() || undefined,
         warehouseName: warehouseName || undefined,
+        warehouseId: warehouses.find((w) => w.name === warehouseName)?.id,
         details: details.map((d) => ({
           productId: d.productId,
           qty: d.qty,
@@ -1210,7 +1227,7 @@ const SaleManagement: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">ဂိုဒေါင်</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">ဂိုဒေါင် <span className="text-rose-500">*</span></label>
               <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
                 {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => (
                   <option key={w.name} value={w.name}>{w.name}</option>
@@ -1724,7 +1741,7 @@ const SaleManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Warehouse</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Warehouse <span className="text-rose-500">*</span></label>
                 <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
                   {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => (
                     <option key={w.name} value={w.name}>{w.name}</option>

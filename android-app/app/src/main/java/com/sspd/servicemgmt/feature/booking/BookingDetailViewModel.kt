@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.realtime.onDataEvent
 
 class BookingDetailViewModel(
@@ -21,7 +22,7 @@ class BookingDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs     = PreferenceManager(application)
-    private val bookingId: Int = checkNotNull(savedStateHandle["bookingId"])
+    private val bookingId: Int = savedStateHandle.optionalId("bookingId")
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -52,8 +53,9 @@ class BookingDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.updateBookingStatus(token, bookingId, status)
-                if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(booking = res.body()!!.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး") }
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(booking = data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
@@ -71,10 +73,11 @@ class BookingDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.convertBookingToJob(token, bookingId)
-                if (res.isSuccessful && res.body()?.data != null) {
+                val jobs = res.body()?.data
+                if (res.isSuccessful && jobs != null) {
                     _uiState.update { it.copy(actionLoading = false, actionSuccess = "Job များ ဖန်တီးပြီး") }
                     load()
-                    onSuccess(res.body()!!.data!!)
+                    onSuccess(jobs)
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }

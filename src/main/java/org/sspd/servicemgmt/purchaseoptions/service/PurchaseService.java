@@ -88,6 +88,7 @@ public class PurchaseService {
     private final org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard periodGuard;
     private final org.sspd.servicemgmt.purchaseoptions.budget.service.PurchaseBudgetService purchaseBudgetService;
     private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
+    private final org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver warehouseResolver;
 
     private static final String PURCHASE_TOPIC = "/topic/purchase";
 
@@ -123,6 +124,9 @@ public class PurchaseService {
         purchase.setStaff(staff);
         purchase.setPurchaseCode("PENDING");
         purchase.setStatus(draft ? PurchaseStatus.DRAFT : PurchaseStatus.CONFIRMED);
+        var purchaseWarehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
+        purchase.setWarehouse(purchaseWarehouse);
+        purchase.setWarehouseName(purchaseWarehouse.getName());
         applyAttachment(purchase, dto);
 
         validateTaxAndCharges(dto);
@@ -189,6 +193,7 @@ public class PurchaseService {
                             ? dDto.getSerialPhotos().get(i) : null;
                     serialRepository.save(ProductSerial.builder()
                             .product(product)
+                            .warehouse(purchaseWarehouse)
                             .serialNumber(sn)
                             .status(SerialStatus.Available)
                             .warrantyMonths(itemWarrantyMonths)
@@ -228,7 +233,7 @@ public class PurchaseService {
 
             stockMovementService.recordMovement(StockMovement.builder()
                     .product(product).movementType(MovementType.IN).qty(dDto.getQty())
-                    .referenceType("Purchase").warehouseName(dto.getWarehouseName()).build());
+                    .referenceType("Purchase").warehouseName(purchaseWarehouse.getName()).warehouse(purchaseWarehouse).build());
         }
 
         if (detailEntities.isEmpty()) {
@@ -254,7 +259,11 @@ public class PurchaseService {
         purchase.setTaxRate(safe(dto.getTaxRate()));
         purchase.setWithholdingTaxAmount(safe(dto.getWithholdingTaxAmount()));
         purchase.setLandedCostAllocationMethod(normalizeAllocationMethod(dto.getLandedCostAllocationMethod()));
-        purchase.setWarehouseName(dto.getWarehouseName());
+        if (purchase.getWarehouse() != null) {
+            purchase.setWarehouseName(purchase.getWarehouse().getName());
+        } else {
+            purchase.setWarehouseName(dto.getWarehouseName());
+        }
         applyCurrencySnapshot(purchase, dto, netAmount);
 
         if (draft) {
@@ -1047,6 +1056,11 @@ public class PurchaseService {
         }
         validateSupplierInvoiceNumber(purchase.getSupplier().getId(), purchase.getSupplierInvoiceNo(), purchase.getId());
         validateStaffSelection(purchase.getStaff());
+        var confirmWarehouse = warehouseResolver.require(
+                overrides != null ? overrides.getWarehouseId() : (purchase.getWarehouse() != null ? purchase.getWarehouse().getId() : null),
+                overrides != null && overrides.getWarehouseName() != null ? overrides.getWarehouseName() : purchase.getWarehouseName());
+        purchase.setWarehouse(confirmWarehouse);
+        purchase.setWarehouseName(confirmWarehouse.getName());
         validateTaxAndCharges(dto);
         java.util.List<String> budgetWarnings = purchaseBudgetService.validate(
                 (purchase.getPurchaseDate()!=null?purchase.getPurchaseDate():LocalDateTime.now()).toLocalDate(),
@@ -1121,6 +1135,9 @@ public class PurchaseService {
                     String photo = photos.size() > i ? photos.get(i) : null;
                     serialRepository.save(ProductSerial.builder()
                             .product(product)
+                            .warehouse(purchase.getWarehouse() != null
+                                    ? purchase.getWarehouse()
+                                    : warehouseResolver.require(null, purchase.getWarehouseName()))
                             .serialNumber(sn)
                             .status(SerialStatus.Available)
                             .warrantyMonths(months)
@@ -1160,7 +1177,10 @@ public class PurchaseService {
 
             stockMovementService.recordMovement(StockMovement.builder()
                     .product(product).movementType(MovementType.IN).qty(qty)
-                    .referenceType("Purchase").warehouseName(dto.getWarehouseName()).build());
+                    .referenceType("Purchase")
+                    .warehouseName(purchase.getWarehouseName())
+                    .warehouse(purchase.getWarehouse())
+                    .build());
         }
 
         purchase.setStatus(PurchaseStatus.CONFIRMED);
@@ -1176,7 +1196,11 @@ public class PurchaseService {
         purchase.setTaxRate(safe(dto.getTaxRate()));
         purchase.setWithholdingTaxAmount(safe(dto.getWithholdingTaxAmount()));
         purchase.setLandedCostAllocationMethod(normalizeAllocationMethod(dto.getLandedCostAllocationMethod()));
-        purchase.setWarehouseName(dto.getWarehouseName());
+        if (purchase.getWarehouse() != null) {
+            purchase.setWarehouseName(purchase.getWarehouse().getName());
+        } else {
+            purchase.setWarehouseName(dto.getWarehouseName());
+        }
         applyCurrencySnapshot(purchase, dto, netAmount);
         purchase.setNetAmount(netAmount);
         purchase.setPaidAmount(paymentTotal(dto.getPayments(), dto.getPaidAmount()));

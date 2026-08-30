@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
 
@@ -38,24 +39,13 @@ fun PurchaseReturnFormScreen(onBack: () -> Unit, onSuccess: (Int) -> Unit) {
     var showPmSheet by rememberSaveable { mutableStateOf(false) }
 
     if (showPmSheet) {
-        ModalBottomSheet(onDismissRequest = { showPmSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Supplier ထံမှ ငွေလက်ခံနည်း ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                state.paymentMethods.forEach { pm ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { vm.selectPm(pm); showPmSheet = false }.padding(vertical = 13.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(pm.methodName, fontSize = 14.sp, color = TextMain)
-                        if (state.selectedPm?.id == pm.id) Icon(Icons.Outlined.Check, null, tint = PurchaseReturnFormColor, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "Supplier ထံမှ ငွေလက်ခံနည်း ရွေးပါ",
+            items = state.paymentMethods,
+            label = { it.methodName },
+            onSelect = { vm.selectPm(it); showPmSheet = false },
+            onDismiss = { showPmSheet = false }
+        )
     }
 
     Scaffold(

@@ -21,6 +21,7 @@ public interface PurchaseMapper {
     @Mapping(source = "staff.name", target = "staffName")
     @Mapping(target = "poCode", ignore = true)
     @Mapping(target = "budgetWarnings", ignore = true)
+    @Mapping(source = "warehouse.id", target = "warehouseId")
     PurchaseDTO toDto(Purchase entity);
 
     @Mapping(source = "product.id", target = "productId")
@@ -30,6 +31,7 @@ public interface PurchaseMapper {
     @Mapping(target = "supplier", ignore = true)
     @Mapping(target = "staff", ignore = true)
     @Mapping(target = "details", ignore = true)
+    @Mapping(target = "warehouse", ignore = true)
     Purchase toEntity(PurchaseDTO dto);
 
     @Mapping(source = "paymentMethod.id", target = "paymentMethodId")

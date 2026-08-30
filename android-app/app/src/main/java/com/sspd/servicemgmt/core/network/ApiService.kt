@@ -77,6 +77,9 @@ interface ApiService {
     @GET("products")
     suspend fun getProducts(@Header("Authorization") auth: String): Response<ApiResponse<List<ProductDTO>>>
 
+    @GET("warehouses")
+    suspend fun getWarehouses(@Header("Authorization") auth: String): Response<ApiResponse<List<WarehouseDTO>>>
+
     @GET("products/low-stock")
     suspend fun getLowStockProducts(@Header("Authorization") auth: String): Response<ApiResponse<List<ProductDTO>>>
 

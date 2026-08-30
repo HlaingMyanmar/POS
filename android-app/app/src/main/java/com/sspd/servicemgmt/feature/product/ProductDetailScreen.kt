@@ -377,7 +377,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                 "Stock Value"     to "${((p.costPrice ?: 0.0) * avail).fmt()} Ks",
                                 "လက်ကျန်"          to "$avail ခု",
                                 "Reorder Level"    to (p.reorderLevel?.let { "$it ခု" } ?: "—"),
-                                "အာမခံ"            to (p.warrantyMonths?.let { fmtWarranty(it).ifEmpty { "—" } } ?: "—"),
+                                "အာမခံ"            to fmtWarranty(p.warrantyTerms, p.warrantyMonths).ifEmpty { "—" },
                             ).forEachIndexed { i, (label, value) ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween) {

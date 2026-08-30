@@ -44,6 +44,7 @@ public class PurchaseDTO {
     private BigDecimal otherCharges;
     private String landedCostAllocationMethod;
     private String warehouseName;
+    private Integer warehouseId;
     private String currencyCode;
     private BigDecimal exchangeRate;
     private BigDecimal foreignNetAmount;

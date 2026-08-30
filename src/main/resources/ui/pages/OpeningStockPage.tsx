@@ -19,8 +19,9 @@ import {
 import Swal from 'sweetalert2';
 import { productService } from '../services/productapiservice';
 import { staffService } from '../services/staffapiservice';
-import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
-import { AdjustmentType, ProductDTO, StaffDTO } from '../types';
+import { stockLotApiService } from '../services/stocklotapiservice';
+import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
+import { ProductDTO, StaffDTO } from '../types';
 
 interface StockRow {
   productId: number;
@@ -82,6 +83,10 @@ const OpeningStockPage: React.FC = () => {
   const [rows, setRows] = useState<StockRow[]>([]);
   const [staffList, setStaffList] = useState<StaffDTO[]>([]);
   const [staffId, setStaffId] = useState<number | null>(null);
+  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [openingBatch, setOpeningBatch] = useState('');
+  const [openingExpiry, setOpeningExpiry] = useState('');
   const [mode, setMode] = useState<EntryMode>('EMPTY_ONLY');
   const [referenceNo, setReferenceNo] = useState(defaultRef);
   const [countDate, setCountDate] = useState(today);
@@ -99,10 +104,13 @@ const OpeningStockPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [products, staff] = await Promise.all([
+      const [products, staff, wh] = await Promise.all([
         productService.getAll(),
         staffService.getAllActive(),
+        warehouseApiService.list(true).catch(() => [] as WarehouseDTO[]),
       ]);
+      setWarehouses(wh);
+      if (wh.length && warehouseId == null) setWarehouseId(wh[0].id ?? null);
 
       let draft = null as any;
       try { draft = JSON.parse(localStorage.getItem('sspd.openingStock.draft.v1') || 'null'); } catch { draft = null; }
@@ -302,7 +310,10 @@ const OpeningStockPage: React.FC = () => {
       confirmButtonText: 'သိမ်းမည်',
       cancelButtonText: 'မလုပ်တော့',
     });
-    if (!confirm.isConfirmed) return;
+    if (!warehouseId) {
+      Swal.fire('ဂိုဒေါင် ရွေးပါ', 'Opening stock အတွက် warehouse မဖြစ်မနေရွေးရပါမည်။', 'warning');
+      return;
+    }
 
     setSaving(true);
     setProgress({ done: 0, total: rowsToSave.length });
@@ -312,14 +323,14 @@ const OpeningStockPage: React.FC = () => {
     for (let i = 0; i < rowsToSave.length; i++) {
       const row = rowsToSave[i];
       const openingQty = Number(parseQty(row.openingQty));
-      const qtyChange = deltaQty(row);
       try {
-        await stockAdjustmentApiService.create({
+        await stockLotApiService.createOpening({
           productId: row.productId,
-          adjustmentType: AdjustmentType.CORRECTION,
-          qtyChange,
-          staffId,
-          reason: ['Opening Stock ' + (referenceNo || ''), 'Count date: ' + (countDate || today()), 'Physical: ' + openingQty, 'Before: ' + row.currentStock, sessionNote.trim() ? 'Note: ' + sessionNote.trim() : ''].filter(Boolean).join(' | '),
+          warehouseId,
+          qty: openingQty,
+          batchNumber: openingBatch.trim() || undefined,
+          expiryDate: openingExpiry || undefined,
+          reason: ['Opening Stock ' + (referenceNo || ''), 'Count date: ' + (countDate || today()), 'Physical: ' + openingQty, sessionNote.trim() ? 'Note: ' + sessionNote.trim() : ''].filter(Boolean).join(' | '),
         });
         setRows((prev) => prev.map((r) =>
           r.productId === row.productId
@@ -368,6 +379,19 @@ const OpeningStockPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <select
+                value={warehouseId ?? ''}
+                onChange={(e) => setWarehouseId(Number(e.target.value) || null)}
+                className="h-10 pl-3 pr-8 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500 appearance-none cursor-pointer"
+              >
+                <option value="">ဂိုဒေါင် ရွေးပါ</option>
+                {warehouses.map((w) => (
+                  <option key={w.id ?? w.name} value={w.id}>{w.name}{w.code ? ` (${w.code})` : ''}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+            <div className="relative">
+              <select
                 value={staffId ?? ''}
                 onChange={(e) => setStaffId(Number(e.target.value) || null)}
                 className="h-10 pl-3 pr-8 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500 appearance-none cursor-pointer"
@@ -407,7 +431,7 @@ const OpeningStockPage: React.FC = () => {
 
             <button
               onClick={saveAll}
-              disabled={saving || rowsToSave.length === 0 || !staffId || summary.invalid > 0}
+              disabled={saving || rowsToSave.length === 0 || !staffId || !warehouseId || summary.invalid > 0}
               className="h-10 px-4 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-black uppercase inline-flex items-center gap-2 disabled:opacity-50 shadow-sm"
             >
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
@@ -444,6 +468,8 @@ const OpeningStockPage: React.FC = () => {
             <option value="TARGET_QTY">Target physical count</option>
           </select>
           <input value={sessionNote} onChange={(e) => setSessionNote(e.target.value)} placeholder="Session note" className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500" />
+          <input value={openingBatch} onChange={(e) => setOpeningBatch(e.target.value)} placeholder="Batch (optional)" className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500" />
+          <input type="date" value={openingExpiry} onChange={(e) => setOpeningExpiry(e.target.value)} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:bg-white focus:border-emerald-500" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
@@ -728,7 +754,7 @@ const OpeningStockPage: React.FC = () => {
             </div>
             <button
               onClick={saveAll}
-              disabled={saving || rowsToSave.length === 0 || !staffId || summary.invalid > 0}
+              disabled={saving || rowsToSave.length === 0 || !staffId || !warehouseId || summary.invalid > 0}
               className="h-10 px-5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-black uppercase inline-flex items-center gap-2 disabled:opacity-50 shadow-sm"
             >
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}

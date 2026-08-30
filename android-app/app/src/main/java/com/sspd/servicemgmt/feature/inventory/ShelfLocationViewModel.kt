@@ -70,8 +70,8 @@ class ShelfLocationViewModel(application: Application) : AndroidViewModel(applic
                 else
                     ApiClient.service.createShelfLocation(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { state ->
                         val updated = if (existing?.id != null)
                             state.items.map { if (it.id == existing.id) saved else it }

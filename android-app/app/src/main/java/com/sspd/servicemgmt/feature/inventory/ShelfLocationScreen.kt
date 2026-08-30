@@ -21,6 +21,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.ShelfLocationDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,17 +76,11 @@ fun ShelfLocationScreen(onBack: () -> Unit) {
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
 
-            OutlinedTextField(
-                value         = state.search,
+            AppSearchField(
+                value = state.search,
                 onValueChange = { vm.setSearch(it) },
-                modifier      = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder   = { Text("ကန့်တည်နေရာ ရှာဖွေရန်...") },
-                leadingIcon   = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon  = {
-                    if (state.search.isNotBlank())
-                        IconButton(onClick = { vm.setSearch("") }) { Icon(Icons.Outlined.Clear, "ရှင်းရန်", tint = TextMuted) }
-                },
-                singleLine = true, shape = RoundedCornerShape(12.dp)
+                placeholder = "ကန့်တည်နေရာ ရှာဖွေရန်...",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
 
             if (state.loading) {

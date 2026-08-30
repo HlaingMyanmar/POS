@@ -1,7 +1,9 @@
 package org.sspd.servicemgmt.saleoptions.mapper;
 
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.mapstruct.factory.Mappers;
 import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
@@ -24,6 +26,7 @@ public interface SaleMapper {
     @Mapping(target = "paymentStatus", expression = "java(entity.getPaymentStatus() != null ? entity.getPaymentStatus().name() : null)")
     @Mapping(target = "creditStatus", expression = "java(entity.getCreditStatus() != null ? entity.getCreditStatus().name() : null)")
     @Mapping(source = "foc", target = "foc")
+    @Mapping(source = "warehouse.id", target = "warehouseId")
     SaleDTO toDto(Sale entity);
 
     @Mapping(source = "product.id", target = "productId")
@@ -40,7 +43,16 @@ public interface SaleMapper {
     @Mapping(target = "details", ignore = true)
     @Mapping(target = "paymentStatus", ignore = true)
     @Mapping(target = "creditStatus", ignore = true)
+    @Mapping(target = "warehouse", ignore = true)
+    @Mapping(target = "voided", expression = "java(dto.getVoided() != null ? dto.getVoided() : Boolean.FALSE)")
     Sale toEntity(SaleDTO dto);
+
+    @AfterMapping
+    default void neverPersistNullRequiredFields(@MappingTarget Sale entity) {
+        if (entity.getVoided() == null) {
+            entity.setVoided(Boolean.FALSE);
+        }
+    }
 
     @Named("serialStringToList")
     default List<String> serialStringToList(String serials) {

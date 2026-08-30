@@ -141,6 +141,9 @@ data class ProductSerialDTO(
     val productId: Int? = null,
     val productCode: String? = null,
     val productName: String? = null,
+    val warehouseId: Int? = null,
+    val warehouseCode: String? = null,
+    val warehouseName: String? = null,
     val warrantyMonths: Int? = null,
     val warrantyStartDate: String? = null,
     val warrantyEndDate: String? = null,
@@ -263,6 +266,8 @@ data class SaleDTO(
     val voidedAt: String? = null,
     val quotationId: Int? = null,
     val quotationCode: String? = null,
+    val warehouseId: Int? = null,
+    val warehouseName: String? = null,
     val managerOverride: Boolean? = null,
     val managerId: Int? = null,
     val overrideNote: String? = null,
@@ -276,6 +281,14 @@ data class SaleDTO(
     val dueDate: String? = null,
     val remark: String? = null,
     val details: List<SaleItemDTO>? = null
+)
+
+data class WarehouseDTO(
+    val id: Int? = null,
+    val code: String = "",
+    val name: String = "",
+    val address: String? = null,
+    val active: Boolean = true
 )
 
 // ─── Bookings ────────────────────────────────────────────────────────────────
@@ -680,8 +693,8 @@ data class VisitReasonRequest(
 )
 
 data class CustomerLocationRequest(
-    val latitude: Double,
-    val longitude: Double,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val accuracy: Double? = null,
     val source: String? = null
 )
@@ -783,6 +796,7 @@ data class PurchaseDTO(
     val poId: Int? = null,
     val poCode: String? = null,
     val supplierInvoiceNo: String? = null,
+    val warehouseId: Int? = null,
     val warehouseName: String? = null,
     val cancelReason: String? = null,
     val cancelledBy: String? = null,
@@ -1131,13 +1145,16 @@ data class StockAdjItemDTO(
 )
 
 data class StockAdjustmentDTO(
-    val id:        Int?                   = null,
-    val adjCode:   String?                = null,
-    val adjDate:   String?                = null,
-    val reason:    String?                = null,
-    val staffId:   Int?                   = null,
-    val staffName: String?                = null,
-    val items:     List<StockAdjItemDTO>? = null
+    val id:              Int?                   = null,
+    val adjCode:         String?                = null,
+    val adjDate:         String?                = null,
+    val productId:       Int?                   = null,
+    val adjustmentType:  String?                = null,
+    val qtyChange:       Int?                   = null,
+    val reason:          String?                = null,
+    val staffId:         Int?                   = null,
+    val staffName:       String?                = null,
+    val items:           List<StockAdjItemDTO>? = null
 )
 
 // ─── Print ───────────────────────────────────────────────────────────────────

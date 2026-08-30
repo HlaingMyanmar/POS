@@ -18,4 +18,8 @@ public class Warehouse {
     @Builder.Default
     @Column(nullable = false)
     private Boolean active = true;
+    @Column(name = "created_at")
+    private java.time.LocalDateTime createdAt;
+    @Column(name = "updated_at")
+    private java.time.LocalDateTime updatedAt;
 }

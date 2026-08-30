@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -155,6 +156,12 @@ fun ServiceJobListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
+            AppSearchField(
+                value = state.search,
+                onValueChange = vm::setSearch,
+                placeholder = "Job နံပါတ် / ဖောက်သည် ရှာပါ",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
 
             // ── Date filter row ───────────────────────────────────────────────
             Row(

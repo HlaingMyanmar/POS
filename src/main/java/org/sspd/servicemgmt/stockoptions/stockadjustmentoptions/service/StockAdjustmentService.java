@@ -48,6 +48,9 @@ public class StockAdjustmentService {
     private final StockAdjustmentMapper mapper;
     private final AccountResolver accounts;
     private final SimpMessagingTemplate messagingTemplate;
+    private final org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver warehouseResolver;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.repository.StockLotRepository stockLotRepository;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.InventoryStockService inventoryStockService;
 
     private static final String STOCK_ADJUSTMENT_TOPIC = "/topic/stock-adjustment";
 
@@ -55,10 +58,15 @@ public class StockAdjustmentService {
     @Transactional
     public StockAdjustmentDTO save(StockAdjustmentDTO dto) {
 
+        if (dto.getReason() == null || dto.getReason().isBlank()) {
+            throw new RuntimeException("Adjustment reason is required.");
+        }
+
         Product product = productRepository.findById(dto.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
         Staff staff = staffRepository.findById(dto.getStaffId())
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
+        var warehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
 
         boolean isSerialProduct = Boolean.TRUE.equals(product.getHasSerial());
         List<String> serials = dto.getSerialNumbers() != null && !dto.getSerialNumbers().trim().isEmpty()
@@ -109,6 +117,7 @@ public class StockAdjustmentService {
                     if (qtyAfter < 0) {
                         throw new RuntimeException("Stock cannot go negative. Current: " + qtyBefore + ", Change: " + qtyChange);
                     }
+                    applyNonSerialLotAdjustment(product, warehouse, qtyChange, dto.getAdjustmentType().name());
                     product.setStockQty(qtyAfter);
                     productRepository.save(product);
                 }
@@ -133,6 +142,7 @@ public class StockAdjustmentService {
                         throw new RuntimeException("FOUND must have positive qty change for non-serial product.");
                     }
                     qtyAfter = qtyBefore + qtyChange;
+                    applyNonSerialLotAdjustment(product, warehouse, qtyChange, dto.getAdjustmentType().name());
                     product.setStockQty(qtyAfter);
                     productRepository.save(product);
                 }
@@ -157,6 +167,7 @@ public class StockAdjustmentService {
                     if (qtyAfter < 0) {
                         throw new RuntimeException("Stock cannot go negative. Current: " + qtyBefore + ", Change: " + qtyChange);
                     }
+                    applyNonSerialLotAdjustment(product, warehouse, qtyChange, dto.getAdjustmentType().name());
                     product.setStockQty(qtyAfter);
                     productRepository.save(product);
                 }
@@ -166,6 +177,7 @@ public class StockAdjustmentService {
         StockAdjustment entity = mapper.toEntity(dto);
         entity.setProduct(product);
         entity.setStaff(staff);
+        entity.setWarehouse(warehouse);
         entity.setQtyBefore(qtyBefore);
         entity.setQtyAfter(qtyAfter);
         entity.setCreatedAt(LocalDateTime.now());
@@ -190,6 +202,8 @@ public class StockAdjustmentService {
                 .qty(movementQty)
                 .referenceType("StockAdjustment")
                 .referenceId(saved.getId())
+                .warehouse(warehouse)
+                .warehouseName(warehouse.getName())
                 .build());
 
         // Journal
@@ -197,7 +211,50 @@ public class StockAdjustmentService {
 
         messagingTemplate.convertAndSend(STOCK_ADJUSTMENT_TOPIC, "STOCK_ADJUSTMENT_CREATED");
 
+        if (!isSerialProduct) {
+            inventoryStockService.reconcileProduct(product);
+        }
+
         return mapper.toDto(saved);
+    }
+
+    private void applyNonSerialLotAdjustment(Product product, org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse, int qtyChange, String reason) {
+        if (Boolean.TRUE.equals(product.getHasSerial()) || qtyChange == 0) return;
+        LocalDateTime now = LocalDateTime.now();
+        if (qtyChange > 0) {
+            stockLotRepository.save(org.sspd.servicemgmt.stockoptions.lotoptions.model.StockLot.builder()
+                    .product(product)
+                    .warehouse(warehouse)
+                    .warehouseName(warehouse.getName())
+                    .batchNumber("ADJ-" + product.getId() + "-" + now.toLocalDate())
+                    .receivedQty(qtyChange)
+                    .remainingQty(qtyChange)
+                    .receivedAt(now)
+                    .status("AVAILABLE")
+                    .sourceType("ADJUSTMENT")
+                    .sourceId(product.getId())
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
+            return;
+        }
+        int need = -qtyChange;
+        java.time.LocalDate today = java.time.LocalDate.now();
+        for (var lot : stockLotRepository.findSellableFefoInWarehouse(product.getId(), warehouse.getId(), today)) {
+            if (need <= 0) break;
+            int rem = lot.getRemainingQty() == null ? 0 : lot.getRemainingQty();
+            if (rem <= 0) continue;
+            int take = Math.min(need, rem);
+            lot.setRemainingQty(rem - take);
+            if (lot.getRemainingQty() == 0) lot.setStatus("DEPLETED");
+            lot.setUpdatedAt(now);
+            stockLotRepository.save(lot);
+            need -= take;
+        }
+        if (need > 0) {
+            throw new RuntimeException("Insufficient warehouse stock to adjust " + product.getName()
+                    + " in " + warehouse.getName() + ". Short by " + need);
+        }
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_STOCK_ADJUSTMENT_READ')")

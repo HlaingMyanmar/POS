@@ -262,8 +262,8 @@ class BookingFormViewModel(
                 else
                     ApiClient.service.createBooking(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     saved.id?.let { id ->
                         s.pendingPhotos.forEachIndexed { index, dataUrl ->
                             runCatching {

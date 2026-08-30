@@ -34,15 +34,13 @@ import com.sspd.servicemgmt.core.navigation.LocalServerStatus
 import com.sspd.servicemgmt.core.navigation.Screen
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.UpdateDialog
+import com.sspd.servicemgmt.core.ui.util.adaptiveContentWidth
 import com.sspd.servicemgmt.core.connectivity.ServerStatus
 import com.sspd.servicemgmt.feature.settings.VersionCheckViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-// ── Hero gradient colours ──────────────────────────────────────────────────────
-private val HeroTop    = Color(0xFF3E237F)
-private val HeroBottom = Color(0xFF6846B5)
 
 @Composable
 fun HomeScreen(
@@ -100,7 +98,7 @@ fun HomeScreen(
         drawerState   = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = Color.White,
+                drawerContainerColor = ScreenBg,
                 modifier = Modifier.fillMaxWidth(0.78f)
             ) {
                 DrawerContent(
@@ -113,7 +111,10 @@ fun HomeScreen(
             }
         }
     ) {
-        Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
+        Column(
+            modifier = Modifier.fillMaxSize().background(ScreenBg),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
 
             // ── Hero Banner ───────────────────────────────────────────────────
             Box(
@@ -195,6 +196,7 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(adaptiveContentWidth())
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
             ) {
@@ -396,27 +398,42 @@ private fun FullHomeBody(
         color        = TextMain
     )
     Spacer(Modifier.height(12.dp))
-    val actions = listOf(
-        QuadItem("ကုန်ပစ္စည်းများ",         Icons.Outlined.Inventory2,            Color(0xFF0891B2), Screen.Products.route),
-        QuadItem("အရောင်းဆိုင်ရာ",           Icons.Outlined.Receipt,               Primary,          Screen.Sales.route),
-        QuadItem("ပစ္စည်းလက်ခံ",                  Icons.Outlined.CalendarMonth,         Color(0xFF0369A1),Screen.Bookings.route),
-        QuadItem("ဝန်ဆောင်မှုအလုပ်",          Icons.Outlined.Build,                 Color(0xFF059669),Screen.ServiceJobs.route),
-        QuadItem("ဖောက်သည်များ",              Icons.Outlined.Groups,                Color(0xFF16A34A),Screen.Customers.route),
-        QuadItem("Credit Desk",              Icons.Outlined.CreditCard,            Color(0xFF7C3AED),Screen.CreditDesk.route),
-        QuadItem("ကုန်ကျစရိတ်",              Icons.Outlined.AccountBalanceWallet,  Color(0xFFB45309),Screen.Expenses.route),
-        QuadItem("ကိန်းဂဏာန်း",              Icons.Outlined.BarChart,              Color(0xFF0891B2),Screen.Report.route),
-        QuadItem("ဝင်ငွေ/အမြတ်",             Icons.Outlined.TrendingUp,            Color(0xFF059669),Screen.IncomeReport.route),
-        QuadItem("ဝန်ဆောင်မှုများ",          Icons.Outlined.MiscellaneousServices, Color(0xFFD97706),Screen.ServiceMgmt.route),
-        QuadItem("ကုန်ပမာဏ ပြင်ဆင်မှု",      Icons.Outlined.Inventory,             Color(0xFF0891B2),Screen.StockAdjustments.route),
-        QuadItem("ဝယ်ယူရေး",                 Icons.Outlined.ShoppingCart,          Color(0xFF0F766E),Screen.Purchases.route),
-        QuadItem("အဝယ်အော်ဒါ",                Icons.Outlined.Assignment,            Color(0xFF0F766E),Screen.PurchaseOrders.route),
-        QuadItem("Supplier Payment",           Icons.Outlined.Payments,              Color(0xFF2563EB),Screen.SupplierPayments.route),
-        QuadItem("ဝယ်ပြန်ပို့",                 Icons.Outlined.AssignmentReturn,     Color(0xFF0F766E),Screen.PurchaseReturns.route),
-        QuadItem("ရောင်းပြန်လက်ခံ",             Icons.Outlined.AssignmentReturn,     Danger,          Screen.SaleReturns.route),
-        QuadItem("Serial Registry",           Icons.Outlined.QrCode2,               Color(0xFF7C3AED),Screen.SerialRegistry.route),
-        QuadItem("Opening Balance",           Icons.Outlined.AccountBalance,         Color(0xFF0369A1),Screen.OpeningBalance.route),
-        QuadItem("ငွေပြောင်းလဲမှု",           Icons.Outlined.SwapHoriz,              Color(0xFF4F46E5),Screen.Transfer.route),
-    )
+    HomeActionSection("ရောင်း", listOf(
+        QuadItem("အရောင်းဆိုင်ရာ", Icons.Outlined.Receipt, Primary, Screen.Sales.route),
+        QuadItem("ရောင်းပြန်လက်ခံ", Icons.Outlined.AssignmentReturn, Danger, Screen.SaleReturns.route),
+        QuadItem("ဖောက်သည်များ", Icons.Outlined.Groups, Success, Screen.Customers.route),
+        QuadItem("ခရက်ဒစ် စားပွဲ", Icons.Outlined.CreditCard, Gold, Screen.CreditDesk.route),
+    ), onNavigate)
+    HomeActionSection("ဝန်ဆောင်မှု", listOf(
+        QuadItem("ပစ္စည်းလက်ခံ", Icons.Outlined.CalendarMonth, Color(0xFFB45309), Screen.Bookings.route),
+        QuadItem("ဝန်ဆောင်မှုအလုပ်", Icons.Outlined.Build, Color(0xFF059669), Screen.ServiceJobs.route),
+        QuadItem("ဝန်ဆောင်မှုများ", Icons.Outlined.MiscellaneousServices, Gold, Screen.ServiceMgmt.route),
+    ), onNavigate)
+    HomeActionSection("ကုန်", listOf(
+        QuadItem("ကုန်ပစ္စည်းများ", Icons.Outlined.Inventory2, Color(0xFFB45309), Screen.Products.route),
+        QuadItem("ဝယ်ယူရေး", Icons.Outlined.ShoppingCart, Color(0xFF9A3412), Screen.Purchases.route),
+        QuadItem("အဝယ်အော်ဒါ", Icons.Outlined.Assignment, Color(0xFF9A3412), Screen.PurchaseOrders.route),
+        QuadItem("ဝယ်ပြန်ပို့", Icons.Outlined.AssignmentReturn, Color(0xFF9A3412), Screen.PurchaseReturns.route),
+        QuadItem("ကုန်ပမာဏ ပြင်ဆင်မှု", Icons.Outlined.Inventory, Color(0xFFB45309), Screen.StockAdjustments.route),
+        QuadItem("ကနဦး ကုန်လက်ကျန်", Icons.Outlined.Inventory2, Color(0xFF047857), Screen.OpeningStock.route),
+        QuadItem("စီးရီး မှတ်တမ်း", Icons.Outlined.QrCode2, Gold, Screen.SerialRegistry.route),
+    ), onNavigate)
+    HomeActionSection("ငွေကြေး", listOf(
+        QuadItem("ကုန်ကျစရိတ်", Icons.Outlined.AccountBalanceWallet, Gold, Screen.Expenses.route),
+        QuadItem("ပေးသွင်းသူ ငွေချေ", Icons.Outlined.Payments, Color(0xFFB45309), Screen.SupplierPayments.route),
+        QuadItem("အစပိုင်း လက်ကျန်", Icons.Outlined.AccountBalance, Color(0xFF9A3412), Screen.OpeningBalance.route),
+        QuadItem("ငွေပြောင်းလဲမှု", Icons.Outlined.SwapHoriz, Gold, Screen.Transfer.route),
+        QuadItem("ကိန်းဂဏာန်း", Icons.Outlined.BarChart, Color(0xFFB45309), Screen.Report.route),
+        QuadItem("ဝင်ငွေ/အမြတ်", Icons.Outlined.TrendingUp, Success, Screen.IncomeReport.route),
+        QuadItem("ရောင်းအား အဆင့်", Icons.Outlined.EmojiEvents, Gold, Screen.SalesRanking.route),
+    ), onNavigate)
+}
+
+@Composable
+private fun HomeActionSection(title: String, actions: List<QuadItem>, onNavigate: (String) -> Unit) {
+    Spacer(Modifier.height(8.dp))
+    Text(title, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+    Spacer(Modifier.height(10.dp))
     ActionGrid(actions, onNavigate)
 }
 
@@ -467,14 +484,14 @@ private fun OperationsPulseCard(
                 }
                 AssistChip(
                     onClick = onCreditClick,
-                    label = { Text("Credit Desk", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                    label = { Text("ခရက်ဒစ် စားပွဲ", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                     leadingIcon = { Icon(Icons.Outlined.CreditCard, null, modifier = Modifier.size(16.dp)) }
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PulseMetric("လက်ကျန်", "${pendingAmount.fmt()} Ks", "$pendingCount invoices", Icons.Outlined.PendingActions, Primary, Modifier.weight(1f))
-                PulseMetric("ကျော်လွန်", "${overdueAmount.fmt()} Ks", "$overdueCount overdue", Icons.Outlined.EventBusy, Danger, Modifier.weight(1f))
+                PulseMetric("လက်ကျန်", "${pendingAmount.fmt()} Ks", "$pendingCount စာရင်း", Icons.Outlined.PendingActions, Primary, Modifier.weight(1f))
+                PulseMetric("ကျော်လွန်", "${overdueAmount.fmt()} Ks", "$overdueCount ရက်ကျော်", Icons.Outlined.EventBusy, Danger, Modifier.weight(1f))
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -790,26 +807,28 @@ fun DrawerContent(
             } else {
                 DrawerSection("စီမံခန့်ခွဲမှု")
                 DrawerMenuItem("ကုန်ပစ္စည်း မာစတာ",          Icons.Outlined.Inventory2,             Screen.Products.route,          onNavigate)
-                DrawerMenuItem("Inventory Setup",            Icons.Outlined.AccountTree,            Screen.InventorySetup.route,    onNavigate)
+                DrawerMenuItem("ကုန်ပစ္စည်း တည်ဆောက်မှု",            Icons.Outlined.AccountTree,            Screen.InventorySetup.route,    onNavigate)
                 DrawerMenuItem("ဝယ်ယူရေး",                    Icons.Outlined.ShoppingCart,           Screen.Purchases.route,         onNavigate)
                 DrawerMenuItem("အဝယ်အော်ဒါ",                   Icons.Outlined.Assignment,             Screen.PurchaseOrders.route,    onNavigate)
-                DrawerMenuItem("Supplier Payment",           Icons.Outlined.Payments,               Screen.SupplierPayments.route,  onNavigate)
+                DrawerMenuItem("ပေးသွင်းသူ ငွေချေမှု",           Icons.Outlined.Payments,               Screen.SupplierPayments.route,  onNavigate)
                 DrawerMenuItem("ကုန်ပမာဏ ပြင်ဆင်မှု",      Icons.Outlined.Inventory,              Screen.StockAdjustments.route,  onNavigate)
+                DrawerMenuItem("ကနဦး ကုန်လက်ကျန်",         Icons.Outlined.Inventory2,             Screen.OpeningStock.route,      onNavigate)
                 DrawerMenuItem("ဝယ်ပြန်ပို့",                    Icons.Outlined.AssignmentReturn,       Screen.PurchaseReturns.route,   onNavigate)
                 DrawerMenuItem("ရောင်းပြန်လက်ခံ",                Icons.Outlined.AssignmentReturn,       Screen.SaleReturns.route,       onNavigate)
-                DrawerMenuItem("Serial Registry",           Icons.Outlined.QrCode2,                Screen.SerialRegistry.route,    onNavigate)
+                DrawerMenuItem("စီးရီး မှတ်တမ်း",           Icons.Outlined.QrCode2,                Screen.SerialRegistry.route,    onNavigate)
                 DrawerMenuItem("ဖောက်သည်များ",              Icons.Outlined.Groups,                 Screen.Customers.route,         onNavigate)
-                DrawerMenuItem("Credit Operations Desk",     Icons.Outlined.CreditCard,             Screen.CreditDesk.route,        onNavigate)
+                DrawerMenuItem("ခရက်ဒစ် စားပွဲ",     Icons.Outlined.CreditCard,             Screen.CreditDesk.route,        onNavigate)
                 DrawerMenuItem("ဝန်ဆောင်မှုများ",          Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,       onNavigate)
                 DrawerMenuItem("ကန့်တည်နေရာများ",          Icons.Outlined.LocationOn,            Screen.ShelfLocations.route,    onNavigate)
 
                 DrawerSection("ငွေကြေး")
                 DrawerMenuItem("ငွေပြောင်းလဲမှု (Transfer)",   Icons.Outlined.SwapHoriz,              Screen.Transfer.route,      onNavigate)
-                DrawerMenuItem("Opening Balance / Capital", Icons.Outlined.AccountBalance,         Screen.OpeningBalance.route, onNavigate)
+                DrawerMenuItem("အစပိုင်း လက်ကျန်", Icons.Outlined.AccountBalance,         Screen.OpeningBalance.route, onNavigate)
                 DrawerMenuItem("ကုန်ကျစရိတ်",              Icons.Outlined.AccountBalanceWallet,  Screen.Expenses.route,      onNavigate)
                 DrawerMenuItem("ဂျာနယ်မှတ်တမ်း",             Icons.Outlined.MenuBook,              Screen.JournalEntries.route, onNavigate)
                 DrawerMenuItem("ကိန်းဂဏာန်း",              Icons.Outlined.BarChart,              Screen.Report.route,        onNavigate)
                 DrawerMenuItem("ဝင်ငွေ / အမြတ် စာရင်း",   Icons.Outlined.TrendingUp,            Screen.IncomeReport.route,  onNavigate)
+                DrawerMenuItem("ရောင်းအား အဆင့်",         Icons.Outlined.EmojiEvents,           Screen.SalesRanking.route,  onNavigate)
 
                 DrawerSection("အဖွဲ့")
                 DrawerMenuItem("ဝန်ထမ်းစွမ်းဆောင်ရည်",     Icons.Outlined.BarChart,              Screen.StaffReport.route,   onNavigate)
@@ -922,3 +941,16 @@ private fun ServerStatusChip() {
 }
 
 private fun Long.fmt() = String.format("%,d", this)
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Home modules", showBackground = true, widthDp = 390, heightDp = 640)
+@Composable
+private fun HomeModulesPreview() {
+    AppTheme {
+        Column(Modifier.fillMaxSize().background(ScreenBg).padding(16.dp)) {
+            HomeActionSection("ရောင်း", listOf(
+                QuadItem("အရောင်းဆိုင်ရာ", Icons.Outlined.Receipt, Primary, "sales"),
+                QuadItem("ဖောက်သည်များ", Icons.Outlined.Groups, Success, "customers"),
+            ), onNavigate = {})
+        }
+    }
+}

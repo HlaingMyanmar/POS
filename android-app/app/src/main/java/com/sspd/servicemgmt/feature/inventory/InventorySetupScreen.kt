@@ -27,6 +27,7 @@ import com.sspd.servicemgmt.core.network.BrandDTO
 import com.sspd.servicemgmt.core.network.CategoryDTO
 import com.sspd.servicemgmt.core.network.UnitDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 
 private enum class InventorySetupTab(val title: String, val icon: ImageVector) {
@@ -42,6 +43,7 @@ fun InventorySetupScreen(onBack: () -> Unit) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var selectedTab by remember { mutableStateOf(InventorySetupTab.BRANDS) }
+    var setupQuery by remember { mutableStateOf("") }
     var brandDialog by remember { mutableStateOf<BrandDTO?>(null) }
     var showNewBrand by remember { mutableStateOf(false) }
     var categoryDialog by remember { mutableStateOf<CategoryDTO?>(null) }
@@ -166,12 +168,20 @@ fun InventorySetupScreen(onBack: () -> Unit) {
                 }
             }
 
+            AppSearchField(
+                value = setupQuery,
+                onValueChange = { setupQuery = it },
+                placeholder = "ရှာဖွေပါ",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+
             if (state.loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AppLoading() }
             } else {
+                val q = setupQuery.trim()
                 when (selectedTab) {
                     InventorySetupTab.BRANDS -> BrandList(
-                        items = state.brands,
+                        items = state.brands.filter { q.isBlank() || it.name.contains(q, true) },
                         onEdit = { brandDialog = it },
                         onDelete = { deleteTarget = DeleteTarget.Brand(it) }
                     )
@@ -181,7 +191,7 @@ fun InventorySetupScreen(onBack: () -> Unit) {
                         onDelete = { deleteTarget = DeleteTarget.Category(it) }
                     )
                     InventorySetupTab.UNITS -> UnitList(
-                        items = state.units,
+                        items = state.units.filter { q.isBlank() || it.name.contains(q, true) || it.symbol.orEmpty().contains(q, true) },
                         onEdit = { unitDialog = it },
                         onDelete = { deleteTarget = DeleteTarget.Unit(it) }
                     )

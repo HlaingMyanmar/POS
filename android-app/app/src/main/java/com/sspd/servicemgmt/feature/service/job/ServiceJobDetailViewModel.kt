@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.realtime.onDataEvent
 
 class ServiceJobDetailViewModel(
@@ -31,7 +32,7 @@ class ServiceJobDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs = PreferenceManager(application)
-    private val jobId: Int = checkNotNull(savedStateHandle["jobId"])
+    private val jobId: Int = savedStateHandle.optionalId("jobId")
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -80,8 +81,9 @@ class ServiceJobDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.updateServiceJobStatus(token, jobId, status, holdReason)
-                if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(job = data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
@@ -96,8 +98,9 @@ class ServiceJobDetailViewModel(
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
                 val res = ApiClient.service.deliverServiceJob(ApiClient.bearer(prefs.authToken), jobId)
-                if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "ပစ္စည်းပြန်အပ်ပြီး") }
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(job = data, actionLoading = false, actionSuccess = "ပစ္စည်းပြန်အပ်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "ပြန်အပ်မှု မအောင်မြင်ပါ") }
                 }
@@ -139,10 +142,11 @@ class ServiceJobDetailViewModel(
                         payments        = payments?.ifEmpty { null }
                     )
                 )
-                if (res.isSuccessful && res.body()?.data != null) {
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
                     _uiState.update {
                         it.copy(
-                            job             = res.body()!!.data,
+                            job             = data,
                             actionLoading   = false,
                             showSettleDialog = false,
                             actionSuccess   = "ငွေချေပြီး ✓"
@@ -177,10 +181,11 @@ class ServiceJobDetailViewModel(
                         payments        = payments?.ifEmpty { null }
                     )
                 )
-                if (res.isSuccessful && res.body()?.data != null) {
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
                     _uiState.update {
                         it.copy(
-                            job              = res.body()!!.data,
+                            job              = data,
                             actionLoading    = false,
                             showPayDueDialog = false,
                             actionSuccess    = "ကျန်ငွေ ဆပ်ပြီး ✓"
@@ -225,9 +230,10 @@ class ServiceJobDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.createRework(token, jobId, request)
-                if (res.isSuccessful && res.body()?.data != null) {
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
                     _uiState.update {
-                        it.copy(actionLoading = false, showReworkDialog = false, actionSuccess = "Rework Job ${res.body()!!.data?.jobNo} ဖန်တီးပြီး")
+                        it.copy(actionLoading = false, showReworkDialog = false, actionSuccess = "Rework Job ${data.jobNo} ဖန်တီးပြီး")
                     }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Rework မအောင်မြင်ပါ") }
@@ -244,8 +250,9 @@ class ServiceJobDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.voidServiceJobSettlement(token, jobId, mapOf("reason" to reason))
-                if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, showVoidDialog = false, actionSuccess = "Settlement ပြန်ဖျက်ပြီး") }
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(job = data, actionLoading = false, showVoidDialog = false, actionSuccess = "Settlement ပြန်ဖျက်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Void မအောင်မြင်ပါ") }
                 }
@@ -290,8 +297,9 @@ class ServiceJobDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.approveServiceJobEstimate(token, jobId)
-                if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()!!.data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(job = data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }

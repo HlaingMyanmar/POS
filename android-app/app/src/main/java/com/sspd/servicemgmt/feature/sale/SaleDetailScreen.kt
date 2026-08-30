@@ -32,6 +32,7 @@ import com.sspd.servicemgmt.core.network.SaleDTO
 import com.sspd.servicemgmt.core.network.SaleItemDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 
 import com.sspd.servicemgmt.core.util.fmtWarranty
 
@@ -81,7 +82,7 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
                     onClick = { vm.voidSale(voidReason) { showVoidDialog = false } }
                 ) { Text(if (state.voiding) "Voiding..." else "Void", color = Danger) }
             },
-            dismissButton = { TextButton(onClick = { showVoidDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showVoidDialog = false }) { Text("ပယ်ဖျက်") } }
         )
     }
 
@@ -479,26 +480,14 @@ private fun PayDueDialog(
     var error      by remember { mutableStateOf("") }
 
     if (showPmPick) {
-        ModalBottomSheet(onDismissRequest = { showPmPick = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ငွေပေးချေမှု နည်းလမ်း", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                paymentMethods.forEach { pm ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { selectedPm = pm; showPmPick = false }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(pm.methodName, fontSize = 14.sp, color = TextMain)
-                        if (selectedPm?.id == pm.id)
-                            Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပေးချေမှု နည်းလမ်း",
+            items = paymentMethods,
+            label = { it.methodName },
+            onSelect = { selectedPm = it; showPmPick = false },
+            onDismiss = { showPmPick = false },
+            key = { i, pm -> pm.id.takeIf { it != 0 } ?: "pm-$i" }
+        )
     }
 
     AlertDialog(

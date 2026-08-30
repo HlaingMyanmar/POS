@@ -166,6 +166,8 @@ public class PaginationService {
                 .cashierName(base.getCashierName())
                 .technicianName(base.getTechnicianName())
                 .helperStaffName(base.getHelperStaffName())
+                .warehouseName(base.getWarehouseName())
+                .warehouseCode(base.getWarehouseCode())
                 // ── All items (for reference) + this page's subset ───────────
                 .lineItems(base.getLineItems())
                 .pageItems(pageItems)

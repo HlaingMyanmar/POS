@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.realtime.onDataEvent
 
 class PurchaseDetailViewModel(
@@ -21,7 +22,7 @@ class PurchaseDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs = PreferenceManager(application)
-    private val purchaseId: Int = checkNotNull(savedStateHandle["purchaseId"])
+    private val purchaseId: Int = savedStateHandle.optionalId("purchaseId")
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()

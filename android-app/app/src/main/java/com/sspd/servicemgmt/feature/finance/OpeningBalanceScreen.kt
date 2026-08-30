@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 
 private val CapColor = Color(0xFF0369A1)
@@ -91,7 +93,13 @@ fun OpeningBalanceScreen(onBack: () -> Unit) {
             return@Scaffold
         }
 
-        val groups  = state.accounts.groupBy { it.accountType }
+        val accountQuery = remember { mutableStateOf("") }
+        val visibleAccounts = state.accounts.filter {
+            accountQuery.value.isBlank() ||
+                it.accountName.contains(accountQuery.value, true) ||
+                it.accountCode.contains(accountQuery.value, true)
+        }
+        val groups  = visibleAccounts.groupBy { it.accountType }
         val summary = vm.capitalSummary(state.accounts)
 
         LazyColumn(
@@ -99,6 +107,14 @@ fun OpeningBalanceScreen(onBack: () -> Unit) {
             contentPadding  = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                AppSearchField(
+                    value = accountQuery.value,
+                    onValueChange = { accountQuery.value = it },
+                    placeholder = "ရှာဖွေပါ (အကောင့် / ကုဒ်)"
+                )
+            }
+
             // ── Error banner ───────────────────────────────────────────────
             state.error?.let { err ->
                 item {
@@ -300,45 +316,22 @@ private fun EditBalanceSheet(
     var showPmSheet    by remember { mutableStateOf(false) }
 
     if (showStaffSheet) {
-        ModalBottomSheet(onDismissRequest = { showStaffSheet = false }) {
-            Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding()) {
-                Text("ဝန်ထမ်း ရွေးပါ", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
-                Spacer(Modifier.height(8.dp))
-                state.staffList.forEach { s ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { vm.selectStaff(s); showStaffSheet = false }.padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(s.name, fontSize = 13.sp, color = TextMain)
-                        if (state.selectedStaff?.id == s.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(16.dp))
-                    }
-                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ဝန်ထမ်း ရွေးပါ",
+            items = state.staffList,
+            label = { it.name },
+            onSelect = { vm.selectStaff(it); showStaffSheet = false },
+            onDismiss = { showStaffSheet = false }
+        )
     }
-
     if (showPmSheet) {
-        ModalBottomSheet(onDismissRequest = { showPmSheet = false }) {
-            Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding()) {
-                Text("ငွေပေးချေနည်း ရွေးပါ", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
-                Spacer(Modifier.height(8.dp))
-                state.paymentMethods.forEach { pm ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { vm.selectPm(pm); showPmSheet = false }.padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(pm.methodName, fontSize = 13.sp, color = TextMain)
-                        if (state.selectedPm?.id == pm.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(16.dp))
-                    }
-                    HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပေးချေနည်း ရွေးပါ",
+            items = state.paymentMethods,
+            label = { it.methodName },
+            onSelect = { vm.selectPm(it); showPmSheet = false },
+            onDismiss = { showPmSheet = false }
+        )
     }
 
     ModalBottomSheet(

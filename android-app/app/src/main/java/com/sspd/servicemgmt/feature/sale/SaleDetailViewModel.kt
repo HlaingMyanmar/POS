@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.realtime.onDataEvent
 
 class SaleDetailViewModel(
@@ -25,7 +26,7 @@ class SaleDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs  = PreferenceManager(application)
-    private val saleId: Int = checkNotNull(savedStateHandle["saleId"])
+    private val saleId: Int = savedStateHandle.optionalId("saleId")
 
     private val _uiState = MutableStateFlow(SaleDetailUiState())
     val uiState: StateFlow<SaleDetailUiState> = _uiState.asStateFlow()
@@ -81,8 +82,9 @@ class SaleDetailViewModel(
             _uiState.update { it.copy(voiding = true, payError = null) }
             try {
                 val response = ApiClient.service.voidSale(ApiClient.bearer(prefs.authToken), saleId, trimmed)
-                if (response.isSuccessful && response.body()?.data != null) {
-                    _uiState.update { it.copy(sale = response.body()!!.data, voiding = false) }
+                val voided = response.body()?.data
+                if (response.isSuccessful && voided != null) {
+                    _uiState.update { it.copy(sale = voided, voiding = false) }
                     onSuccess()
                 } else {
                     _uiState.update { it.copy(voiding = false, payError = response.body()?.message ?: "Sale void failed") }
@@ -107,12 +109,13 @@ class SaleDetailViewModel(
                         note            = note?.ifBlank { null }
                     )
                 )
-                if (res.isSuccessful && res.body()?.data != null) {
+                val paid = res.body()?.data
+                if (res.isSuccessful && paid != null) {
                     // Reload transactions after payment
                     val txRes = ApiClient.service.getPaymentTransactions(token, saleId, "Sale")
                     _uiState.update {
                         it.copy(
-                            sale          = res.body()!!.data,
+                            sale          = paid,
                             transactions  = txRes.body()?.data ?: it.transactions,
                             paying        = false,
                             showPayDialog = false,

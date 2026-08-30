@@ -24,6 +24,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProductController {
     private final ProductService service;
+    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.InventoryStockService inventoryStockService;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
     @GetMapping
@@ -150,6 +151,18 @@ public class ProductController {
             @RequestBody AssignSerialsRequest req) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Serials assigned",
                 service.assignSerials(id, req.getSerialNumbers(), req.getWarrantyMonths())));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @GetMapping("/{id}/warehouse-stocks")
+    public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.stockoptions.lotoptions.dto.WarehouseStockDTO>>> warehouseStocks(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Warehouse stocks", inventoryStockService.warehouseStocks(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
+    @GetMapping("/{id}/lots")
+    public ResponseEntity<ApiResponse<java.util.List<org.sspd.servicemgmt.stockoptions.lotoptions.dto.StockLotDTO>>> productLots(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Product lots", inventoryStockService.lotsForProduct(id)));
     }
 
     static class AssignSerialsRequest {

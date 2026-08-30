@@ -6,10 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -35,6 +34,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.SupplierPayable
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
+import com.sspd.servicemgmt.core.ui.component.AppScaffold
 import com.sspd.servicemgmt.core.ui.theme.*
 
 import com.sspd.servicemgmt.core.util.PreferenceManager
@@ -54,79 +55,51 @@ fun SupplierPaymentScreen(onBack: () -> Unit) {
     var showCreditPurchasePicker by remember { mutableStateOf(false) }
 
     if (showSupplierPicker) {
-        SimplePickerSheet(
-            title = "Supplier ရွေးရန်",
-            onDismiss = { showSupplierPicker = false }
-        ) {
-            state.suppliers.forEach { s ->
-                ListItem(
-                    headlineContent = { Text(s.name, fontWeight = FontWeight.SemiBold) },
-                    supportingContent = { Text(s.phone ?: s.code ?: "", fontSize = 11.sp, color = TextMuted) },
-                    modifier = Modifier.clickable {
-                        vm.selectSupplier(s)
-                        showSupplierPicker = false
-                    }
-                )
-                HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-            }
-        }
+        AppPickerSheet(
+            title = "ပေးသွင်းသူ ရွေးရန်",
+            items = state.suppliers,
+            label = { it.name },
+            subtitle = { it.phone ?: it.code },
+            onSelect = { vm.selectSupplier(it); showSupplierPicker = false },
+            onDismiss = { showSupplierPicker = false },
+            key = { i, s -> s.id.takeIf { it != 0 } ?: "sup-$i-${s.name}" }
+        )
     }
     if (showMethodPicker) {
-        SimplePickerSheet(
+        AppPickerSheet(
             title = "ငွေပေးချေနည်း ရွေးရန်",
-            onDismiss = { showMethodPicker = false }
-        ) {
-            state.paymentMethods.forEach { m ->
-                ListItem(
-                    headlineContent = { Text(m.methodName, fontWeight = FontWeight.SemiBold) },
-                    modifier = Modifier.clickable {
-                        vm.selectPaymentMethod(m)
-                        showMethodPicker = false
-                    }
-                )
-                HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-            }
-        }
+            items = state.paymentMethods,
+            label = { it.methodName },
+            onSelect = { vm.selectPaymentMethod(it); showMethodPicker = false },
+            onDismiss = { showMethodPicker = false },
+            key = { i, m -> m.id.takeIf { it != 0 } ?: "pm-$i" }
+        )
     }
     if (showCreditPurchasePicker) {
-        SimplePickerSheet(
-            title = "Payable ရွေးရန်",
-            onDismiss = { showCreditPurchasePicker = false }
-        ) {
-            state.payables.forEach { p ->
-                ListItem(
-                    headlineContent = { Text(p.purchaseCode ?: "#${p.purchaseId}", fontWeight = FontWeight.SemiBold) },
-                    supportingContent = { Text("Due ${money(p.dueAmount ?: 0.0)}", fontSize = 11.sp, color = TextMuted) },
-                    modifier = Modifier.clickable {
-                        vm.setCreditPurchaseId(p.purchaseId)
-                        showCreditPurchasePicker = false
-                    }
-                )
-                HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-            }
-        }
+        AppPickerSheet(
+            title = "ပေးရန်ကျန် ရွေးရန်",
+            items = state.payables,
+            label = { it.purchaseCode ?: "#${it.purchaseId}" },
+            subtitle = { "ကျန် ${money(it.dueAmount ?: 0.0)}" },
+            onSelect = { vm.setCreditPurchaseId(it.purchaseId); showCreditPurchasePicker = false },
+            onDismiss = { showCreditPurchasePicker = false },
+            key = { i, p -> p.purchaseId ?: "pay-$i" }
+        )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Supplier Payment", fontWeight = FontWeight.ExtraBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        vm.clearMessages()
-                        state.selectedSupplier?.id?.let { vm.loadSupplierData(it) } ?: vm.loadMasters()
-                    }) { Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်ရန်", tint = Color.White) }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PayColor, titleContentColor = Color.White)
-            )
+    AppScaffold(
+        title = "ပေးသွင်းသူ ငွေချေမှု",
+        onBack = onBack,
+        actions = {
+            IconButton(onClick = {
+                vm.clearMessages()
+                state.selectedSupplier?.id?.let { vm.loadSupplierData(it) } ?: vm.loadMasters()
+            }) { Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်ရန်", tint = OnPrimary) }
         }
     ) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { AppLoading() }
-            return@Scaffold
+            return@AppScaffold
         }
 
         LazyColumn(
@@ -149,7 +122,7 @@ fun SupplierPaymentScreen(onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         PickerRow(
-                            label = "Supplier",
+                            label = "ပေးသွင်းသူ",
                             value = state.selectedSupplier?.name ?: "ရွေးရန်",
                             icon = Icons.Outlined.Storefront,
                             onClick = { showSupplierPicker = true }
@@ -274,7 +247,7 @@ fun SupplierPaymentScreen(onBack: () -> Unit) {
                 item {
                     Text("Recent payments", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = TextMain)
                 }
-                items(state.payments.take(8), key = { it.id ?: it.hashCode() }) { payment ->
+                itemsIndexed(state.payments.take(8), key = { index, it -> it.id ?: "pay-$index" }) { _, payment ->
                     Card(
                         shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -350,33 +323,6 @@ private fun PickerRow(
                 Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Icon(Icons.Outlined.KeyboardArrowDown, null, tint = TextMuted)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SimplePickerSheet(
-    title: String,
-    onDismiss: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .navigationBarsPadding()
-                .heightIn(max = 480.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
-            Spacer(Modifier.height(8.dp))
-            content()
-            Spacer(Modifier.height(16.dp))
         }
     }
 }

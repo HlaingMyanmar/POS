@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.realtime.onDataEvent
 
 class StockAdjDetailViewModel(
@@ -20,7 +21,7 @@ class StockAdjDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs = PreferenceManager(application)
-    private val adjId: Int = checkNotNull(savedStateHandle["adjId"])
+    private val adjId: Int = savedStateHandle.optionalId("adjId")
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()

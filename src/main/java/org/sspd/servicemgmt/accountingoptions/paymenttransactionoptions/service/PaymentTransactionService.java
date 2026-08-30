@@ -53,6 +53,7 @@ public class PaymentTransactionService {
     @Transactional
     public PaymentTransactionDTO save(PaymentTransactionDTO dto) {
         PaymentTransaction entity = mapper.toEntity(dto);
+        applyNotNullDefaults(entity);
 
         if (dto.getPaymentMethodId() != null) {
             PaymentMethod method = paymentMethodRepository.findById(dto.getPaymentMethodId())
@@ -76,6 +77,7 @@ public class PaymentTransactionService {
     @Transactional
     public PaymentTransactionDTO saveInternalTransaction(PaymentTransactionDTO dto) {
         PaymentTransaction entity = mapper.toEntity(dto);
+        applyNotNullDefaults(entity);
 
         PaymentMethod method = paymentMethodRepository.findById(dto.getPaymentMethodId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
@@ -93,6 +95,12 @@ public class PaymentTransactionService {
 
         messagingTemplate.convertAndSend("/topic/payment-transaction", "TRANSACTION_CREATED");
         return mapper.toDto(savedEntity);
+    }
+
+    private void applyNotNullDefaults(PaymentTransaction entity) {
+        if (entity.getReversed() == null) {
+            entity.setReversed(Boolean.FALSE);
+        }
     }
 
     private String generateTransactionNo() {

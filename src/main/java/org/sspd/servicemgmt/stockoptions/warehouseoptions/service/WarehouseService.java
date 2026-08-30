@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.stockoptions.lotoptions.model.StockLot;
 import org.sspd.servicemgmt.stockoptions.lotoptions.repository.StockLotRepository;
+import org.sspd.servicemgmt.stockoptions.lotoptions.service.InventoryStockService;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.warehouseoptions.dto.WarehouseDTO;
 import org.sspd.servicemgmt.stockoptions.warehouseoptions.dto.WarehouseTransferDTO;
@@ -15,9 +16,9 @@ import org.sspd.servicemgmt.stockoptions.warehouseoptions.model.WarehouseTransfe
 import org.sspd.servicemgmt.stockoptions.warehouseoptions.repository.WarehouseRepository;
 import org.sspd.servicemgmt.stockoptions.warehouseoptions.repository.WarehouseTransferRepository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +27,7 @@ public class WarehouseService {
     private final WarehouseTransferRepository transferRepository;
     private final StockLotRepository stockLotRepository;
     private final ProductRepository productRepository;
+    private final InventoryStockService inventoryStockService;
 
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_PURCHASE_WAREHOUSE','CAN_ACCESS_STOCK_READ')")
     @Transactional(readOnly = true)
@@ -49,10 +51,12 @@ public class WarehouseService {
         entity.setName(dto.getName().trim());
         entity.setAddress(dto.getAddress());
         entity.setActive(dto.getActive() == null || dto.getActive());
+        LocalDateTime now = LocalDateTime.now();
+        if (entity.getId() == null) entity.setCreatedAt(now);
+        entity.setUpdatedAt(now);
         return toDto(warehouseRepository.save(entity));
     }
 
-    /** Full-lot FEFO transfer between named warehouses (partial only if destination has matching batch/expiry lot). */
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_WAREHOUSE')")
     @Transactional
     public WarehouseTransferDTO transfer(WarehouseTransferDTO dto) {
@@ -63,12 +67,12 @@ public class WarehouseService {
         var product = productRepository.findById(dto.getProductId()).orElseThrow(() -> new ResourceNotFoundException("Product not found"));
         var from = warehouseRepository.findById(dto.getFromWarehouseId()).orElseThrow(() -> new ResourceNotFoundException("From warehouse not found"));
         var to = warehouseRepository.findById(dto.getToWarehouseId()).orElseThrow(() -> new ResourceNotFoundException("To warehouse not found"));
+        if (Boolean.TRUE.equals(product.getHasSerial())) {
+            throw new IllegalArgumentException("Serial products cannot be transferred by quantity. Transfer serials individually.");
+        }
 
-        String fromName = from.getName();
-        String toName = to.getName();
-        List<StockLot> lots = stockLotRepository.findSellableFefo(product.getId(), java.time.LocalDate.now()).stream()
-                .filter(l -> fromName.equalsIgnoreCase(normalizeWh(l.getWarehouseName())))
-                .toList();
+        LocalDate today = LocalDate.now();
+        List<StockLot> lots = stockLotRepository.findSellableFefoInWarehouse(product.getId(), from.getId(), today);
         int need = dto.getQty();
         int available = lots.stream().mapToInt(l -> l.getRemainingQty() == null ? 0 : l.getRemainingQty()).sum();
         if (available < need) throw new IllegalStateException("Insufficient warehouse stock. Available " + available);
@@ -78,26 +82,10 @@ public class WarehouseService {
             int rem = lot.getRemainingQty() == null ? 0 : lot.getRemainingQty();
             if (rem <= 0) continue;
             int take = Math.min(need, rem);
-            if (take == rem) {
-                lot.setWarehouseName(toName);
-                stockLotRepository.save(lot);
-            } else {
-                StockLot dest = stockLotRepository.findSellableFefo(product.getId(), java.time.LocalDate.now()).stream()
-                        .filter(l -> toName.equalsIgnoreCase(normalizeWh(l.getWarehouseName())))
-                        .filter(l -> Objects.equals(l.getBatchNumber(), lot.getBatchNumber()))
-                        .filter(l -> Objects.equals(l.getExpiryDate(), lot.getExpiryDate()))
-                        .findFirst().orElse(null);
-                if (dest == null) {
-                    throw new IllegalStateException("Partial transfer needs a matching destination lot (same batch/expiry). Move full lot qty " + rem + " instead.");
-                }
-                lot.setRemainingQty(rem - take);
-                stockLotRepository.save(lot);
-                dest.setRemainingQty(dest.getRemainingQty() + take);
-                dest.setReceivedQty(dest.getReceivedQty() + take);
-                stockLotRepository.save(dest);
-            }
+            inventoryStockService.moveLotQty(lot, to, take);
             need -= take;
         }
+        if (need > 0) throw new IllegalStateException("Insufficient warehouse stock. Short by " + need);
 
         WarehouseTransfer saved = transferRepository.save(WarehouseTransfer.builder()
                 .transferNo("PENDING").product(product).fromWarehouse(from).toWarehouse(to)
@@ -112,8 +100,6 @@ public class WarehouseService {
     public List<WarehouseTransferDTO> transferHistory() {
         return transferRepository.findAllByOrderByIdDesc().stream().map(this::toTransferDto).toList();
     }
-
-    private String normalizeWh(String name) { return name == null || name.isBlank() ? "Main" : name; }
 
     private WarehouseDTO toDto(Warehouse w) {
         return WarehouseDTO.builder().id(w.getId()).code(w.getCode()).name(w.getName()).address(w.getAddress()).active(w.getActive()).build();

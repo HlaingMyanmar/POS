@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.PurchaseDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.feature.purchase.PurchaseListViewModel.DateShortcut
 import com.sspd.servicemgmt.feature.purchase.PurchaseListViewModel.StatusFilter
@@ -102,8 +103,8 @@ fun PurchaseListScreen(
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.overdueItems.isNotEmpty() || state.reorderSuggestions.isNotEmpty()) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryBox("Overdue", state.overdueItems.size.toString(), Danger, Modifier.weight(1f))
-                        SummaryBox("Reorder", state.reorderSuggestions.size.toString(), Color(0xFFD97706), Modifier.weight(1f))
+                        SummaryBox("ရက်ကျော်", state.overdueItems.size.toString(), Danger, Modifier.weight(1f))
+                        SummaryBox("ပြန်မှာယူ", state.reorderSuggestions.size.toString(), Color(0xFFD97706), Modifier.weight(1f))
                     }
                 }
                 OutlinedTextField(
@@ -124,23 +125,10 @@ fun PurchaseListScreen(
                     keyboardActions = KeyboardActions(onSearch = { vm.findVoucher(voucherText, onPurchaseClick) { searchText = voucherText } })
                 )
 
-                OutlinedTextField(
+                AppSearchField(
                     value = searchText,
-                    onValueChange = { searchText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("ဘောင်ချာ / ပေးသွင်းသူ / ဝယ်ယူသူ ရှာပါ...") },
-                    leadingIcon = { Icon(Icons.Outlined.Search, null, tint = TextMuted) },
-                    trailingIcon = {
-                        if (searchText.isNotBlank()) {
-                            IconButton(onClick = { searchText = ""; vm.setSearch("") }) {
-                                Icon(Icons.Outlined.Close, null, tint = TextMuted)
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { vm.setSearch(searchText) })
+                    onValueChange = { searchText = it; vm.setSearch(it) },
+                    placeholder = "ဘောင်ချာ / ပေးသွင်းသူ / ဝယ်ယူသူ ရှာပါ..."
                 )
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

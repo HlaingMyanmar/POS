@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.BookingDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -152,17 +153,11 @@ fun BookingListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
-            OutlinedTextField(
-                value         = state.search,
+            AppSearchField(
+                value = state.search,
                 onValueChange = { vm.setSearch(it) },
-                modifier      = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder   = { Text("လက်ခံမှု ရှာဖွေရန်...") },
-                leadingIcon   = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon  = {
-                    if (state.search.isNotBlank())
-                        IconButton(onClick = { vm.setSearch("") }) { Icon(Icons.Outlined.Clear, "ရှင်းရန်", tint = TextMuted) }
-                },
-                singleLine = true, shape = RoundedCornerShape(12.dp)
+                placeholder = "လက်ခံမှု ရှာဖွေရန်...",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
 
             // ── Date filter row ───────────────────────────────────────────────

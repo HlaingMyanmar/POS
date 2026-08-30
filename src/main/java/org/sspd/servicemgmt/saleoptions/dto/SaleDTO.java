@@ -36,6 +36,7 @@ public class SaleDTO {
     private Integer quotationId;
     private String quotationCode;
     private String warehouseName;
+    private Integer warehouseId;
     private Boolean managerOverride;
     private Integer managerId;
     private String overrideNote;

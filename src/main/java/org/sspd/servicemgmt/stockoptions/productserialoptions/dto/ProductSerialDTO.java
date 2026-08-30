@@ -18,6 +18,9 @@ public class ProductSerialDTO {
     // Product Info
     private Integer productId;
     private String productName;
+    private Integer warehouseId;
+    private String warehouseCode;
+    private String warehouseName;
     private Integer warrantyMonths;
     private LocalDate warrantyStartDate;
     private LocalDate warrantyEndDate;

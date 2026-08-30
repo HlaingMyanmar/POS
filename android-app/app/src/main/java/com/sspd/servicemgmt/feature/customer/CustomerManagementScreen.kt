@@ -1,11 +1,14 @@
 package com.sspd.servicemgmt.feature.customer
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -25,7 +29,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.CustomerDTO
+import com.sspd.servicemgmt.core.tracking.LocationPermission
+import com.sspd.servicemgmt.core.ui.component.AppEmptyState
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppScaffold
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.core.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,26 +61,21 @@ fun CustomerManagementScreen(onBack: () -> Unit) {
 
     if (state.showEditor) CustomerEditorDialog(vm, state)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("ဖောက်သည်စီမံခန့်ခွဲမှု", fontWeight = FontWeight.ExtraBold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                actions = {
-                    IconButton(onClick = vm::load) { Icon(Icons.Outlined.Refresh, "Refresh", tint = Color.White) }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
-            )
-        },
+    AppScaffold(
+        title = "ဖောက်သည်စီမံခန့်ခွဲမှု",
+        onBack = onBack,
         floatingActionButton = {
             FloatingActionButton(onClick = vm::openCreate, containerColor = Primary) {
                 Icon(Icons.Outlined.PersonAdd, "ဖောက်သည်အသစ်", tint = Color.White)
             }
+        },
+        actions = {
+            IconButton(onClick = vm::load) { Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်ရန်", tint = OnPrimary) }
         }
     ) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { AppLoading() }
-            return@Scaffold
+            return@AppScaffold
         }
 
         Column(
@@ -81,25 +84,21 @@ fun CustomerManagementScreen(onBack: () -> Unit) {
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CustomerStatCard("စုစုပေါင်း", state.customers.size.toString(), Icons.Outlined.Groups, Primary, Modifier.weight(1f))
-                CustomerStatCard("Normal", normal.toString(), Icons.Outlined.CheckCircle, Success, Modifier.weight(1f))
+                CustomerStatCard("ပုံမှန်", normal.toString(), Icons.Outlined.CheckCircle, Success, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CustomerStatCard("Credit Hold", hold.toString(), Icons.Outlined.PauseCircle, Warning, Modifier.weight(1f))
-                CustomerStatCard("Blacklist", blacklist.toString(), Icons.Outlined.Block, Danger, Modifier.weight(1f))
+                CustomerStatCard("ခရက်ဒစ် ရပ်ဆိုင်း", hold.toString(), Icons.Outlined.PauseCircle, Warning, Modifier.weight(1f))
+                CustomerStatCard("ပိတ်စာရင်း", blacklist.toString(), Icons.Outlined.Block, Danger, Modifier.weight(1f))
             }
 
-            OutlinedTextField(
+            AppSearchField(
                 value = state.search,
                 onValueChange = vm::setSearch,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("အမည် / ဖုန်း / လိပ်စာ ရှာပါ") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                placeholder = "အမည် / ဖုန်း / လိပ်စာ ရှာပါ"
             )
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 90.dp)) {
-                items(filtered, key = { it.id ?: it.name }) { customer ->
+                itemsIndexed(filtered, key = { index, customer -> customer.id ?: "c-$index-${customer.name}" }) { _, customer ->
                     val saleCount = state.sales.count { it.customerId == customer.id }
                     CustomerCard(
                         customer = customer,
@@ -111,12 +110,7 @@ fun CustomerManagementScreen(onBack: () -> Unit) {
                 }
                 if (filtered.isEmpty()) {
                     item {
-                        Text(
-                            "ဖောက်သည် မတွေ့ပါ",
-                            modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
-                            color = TextMuted,
-                            fontWeight = FontWeight.Bold
-                        )
+                        AppEmptyState(title = "ဖောက်သည် မတွေ့ပါ", subtitle = "အမည် သို့မဟုတ် ဖုန်းဖြင့် ရှာပါ")
                     }
                 }
             }
@@ -162,6 +156,14 @@ private fun CustomerCard(customer: CustomerDTO, saleCount: Int, deleting: Boolea
                     Text(customer.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
                     Text(customer.phone.orEmpty().ifBlank { "-" }, fontSize = 12.sp, color = TextMuted)
                     if (!customer.address.isNullOrBlank()) Text(customer.address, fontSize = 12.sp, color = TextMuted, maxLines = 2)
+                    if (customer.latitude != null && customer.longitude != null) {
+                        Text(
+                            "တည်နေရာ ${customer.latitude}, ${customer.longitude}",
+                            fontSize = 11.sp,
+                            color = TextMuted,
+                            maxLines = 1
+                        )
+                    }
                 }
                 AssistChip(onClick = {}, label = { Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold) }, colors = AssistChipDefaults.assistChipColors(labelColor = color))
             }
@@ -179,6 +181,16 @@ private fun CustomerCard(customer: CustomerDTO, saleCount: Int, deleting: Boolea
 
 @Composable
 private fun CustomerEditorDialog(vm: CustomerManagementViewModel, state: CustomerManagementViewModel.CustomerManagementUiState) {
+    val context = LocalContext.current
+    val locationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        val ok = granted[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            granted[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (ok) vm.captureLocation()
+    }
+    val hasLocation = state.formLatitude.isNotBlank() && state.formLongitude.isNotBlank()
+
     AlertDialog(
         onDismissRequest = { if (!state.saving) vm.closeEditor() },
         title = { Text(if (state.editingCustomer == null) "ဖောက်သည်အသစ်" else "ဖောက်သည် ပြင်ဆင်ရန်", fontWeight = FontWeight.ExtraBold) },
@@ -187,6 +199,63 @@ private fun CustomerEditorDialog(vm: CustomerManagementViewModel, state: Custome
                 OutlinedTextField(state.formName, vm::setFormName, label = { Text("ဖောက်သည်အမည် *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(state.formPhone, vm::setFormPhone, label = { Text("ဖုန်းနံပါတ် *") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true)
                 OutlinedTextField(state.formAddress, vm::setFormAddress, label = { Text("လိပ်စာ *") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Text("တည်နေရာ", fontWeight = FontWeight.Bold, color = TextMain)
+                Text(
+                    "Google Maps မှ lat,lng ကူးထည့်နိုင်သည် (optional)",
+                    fontSize = 11.sp,
+                    color = TextMuted
+                )
+                OutlinedTextField(
+                    value = state.formLocationPair,
+                    onValueChange = vm::setFormLocationPair,
+                    label = { Text("တည်နေရာ (lat,lng)") },
+                    placeholder = { Text("16.831799,96.184902") },
+                    supportingText = { Text("ဥပမာ 16.831799,96.184902") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    singleLine = true
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.formLatitude,
+                        onValueChange = vm::setFormLatitude,
+                        label = { Text("Latitude") },
+                        placeholder = { Text("16.831799") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = state.formLongitude,
+                        onValueChange = vm::setFormLongitude,
+                        label = { Text("Longitude") },
+                        placeholder = { Text("96.184902") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        if (LocationPermission.granted(context)) vm.captureLocation()
+                        else locationPermission.launch(LocationPermission.required)
+                    },
+                    enabled = !state.capturingLocation && !state.saving,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.capturingLocation) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Outlined.MyLocation, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (hasLocation) "Location ရပြီး (optional)" else "လက်ရှိနေရာယူမယ် (optional)")
+                    }
+                }
+                if (hasLocation) {
+                    TextButton(onClick = vm::clearLocation, enabled = !state.saving) {
+                        Text("GPS location ရှင်းမည်")
+                    }
+                }
                 HorizontalDivider(color = BorderColor)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

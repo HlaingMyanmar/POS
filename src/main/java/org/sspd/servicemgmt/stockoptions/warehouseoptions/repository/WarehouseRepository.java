@@ -10,5 +10,6 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, Integer> {
     List<Warehouse> findAllByOrderByNameAsc();
     List<Warehouse> findByActiveTrueOrderByNameAsc();
     Optional<Warehouse> findByCodeIgnoreCase(String code);
+    Optional<Warehouse> findByNameIgnoreCase(String name);
     boolean existsByCodeIgnoreCase(String code);
 }

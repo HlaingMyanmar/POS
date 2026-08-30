@@ -15,6 +15,7 @@ import org.sspd.servicemgmt.stockoptions.productserialoptions.dto.ProductSerialD
 import org.sspd.servicemgmt.stockoptions.productserialoptions.mapper.ProductSerialMapper;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.model.ProductSerial;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.ProductSerialRepository;
+import org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver;
 
 import java.util.List;
 import java.time.LocalDate;
@@ -28,6 +29,7 @@ public class ProductSerialService {
     private final ProductSerialMapper mapper;
     private final ProductRepository productRepository;
     private final PurchaseDetailWarrantyRepository warrantyRepository;
+    private final WarehouseResolver warehouseResolver;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_SERIAL_CREATE')")
     @Transactional
@@ -38,6 +40,7 @@ public class ProductSerialService {
             );
         }
         ProductSerial entity = mapper.toEntity(dto);
+        applyNotNullDefaults(entity);
         applyWarrantyFields(entity, dto);
 
         if (dto.getProductId() != null) {
@@ -48,6 +51,7 @@ public class ProductSerialService {
         } else {
             throw new RuntimeException("Product ID is required for Product Serial");
         }
+        entity.setWarehouse(warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName()));
 
         ProductSerial savedEntity = productSerialRepository.save(entity);
         messagingTemplate.convertAndSend(PRODUCT_SERIAL_TOPIC, "PRODUCT_SERIAL_CREATED");
@@ -99,6 +103,7 @@ public class ProductSerialService {
             throw new RuntimeException("Product Serial '" + dto.getSerialNumber() + "' is already registered!");
         }
         mapper.updateEntityFromDto(dto, existingEntity);
+        applyNotNullDefaults(existingEntity);
         applyWarrantyFields(existingEntity, dto);
         if (dto.getProductId() != null &&
                 (existingEntity.getProduct() == null || !existingEntity.getProduct().getId().equals(dto.getProductId()))) {
@@ -106,6 +111,9 @@ public class ProductSerialService {
                     .findById(dto.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
             existingEntity.setProduct(product);
+        }
+        if (dto.getWarehouseId() != null || (dto.getWarehouseName() != null && !dto.getWarehouseName().isBlank())) {
+            existingEntity.setWarehouse(warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName()));
         }
         ProductSerial savedEntity = productSerialRepository.save(existingEntity);
         messagingTemplate.convertAndSend(PRODUCT_SERIAL_TOPIC, "PRODUCT_SERIAL_UPDATED");
@@ -152,6 +160,12 @@ public class ProductSerialService {
                 .stream()
                 .map(mapper::toDto)
                 .toList();
+    }
+
+    private void applyNotNullDefaults(ProductSerial entity) {
+        if (entity.getStatus() == null) {
+            entity.setStatus(org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus.Available);
+        }
     }
 
     private void applyWarrantyFields(ProductSerial entity, ProductSerialDTO dto) {

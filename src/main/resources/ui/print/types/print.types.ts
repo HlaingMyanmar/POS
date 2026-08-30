@@ -67,6 +67,8 @@ export interface InvoiceData {
   cashierName?: string;
   technicianName?: string;
   helperStaffName?: string;
+  warehouseName?: string;
+  warehouseCode?: string;
 
   // Lines
   lineItems: PrintLineItem[];

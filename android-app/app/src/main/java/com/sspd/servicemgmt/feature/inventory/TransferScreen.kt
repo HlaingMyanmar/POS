@@ -25,8 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 
-private val Indigo   = Color(0xFF4F46E5)
-private val IndigoBg = Color(0xFFEEF2FF)
+private val Indigo   = Primary
+private val IndigoBg = PrimaryLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,7 +63,12 @@ fun TransferScreen(onBack: () -> Unit) {
                         Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                )
             )
         },
         containerColor = ScreenBg

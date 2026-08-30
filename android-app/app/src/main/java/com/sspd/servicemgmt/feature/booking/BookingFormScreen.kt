@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 import com.sspd.servicemgmt.feature.service.catalog.ServiceItemPickerContent
 import com.sspd.servicemgmt.feature.service.catalog.rememberFilteredServiceItems
 
@@ -115,65 +116,23 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     }
 
     if (showShelfSheet) {
-        ModalBottomSheet(onDismissRequest = { showShelfSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ကန့်တည်နေရာ ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { vm.selectShelf(null); showShelfSheet = false }
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment     = Alignment.CenterVertically
-                ) {
-                    Text("— မသတ်မှတ်ပါ —", fontSize = 14.sp, color = TextMuted)
-                    if (state.selectedShelf == null)
-                        Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                }
-                HorizontalDivider(color = BorderColor)
-                state.shelfLocations.forEach { shelf ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { vm.selectShelf(shelf); showShelfSheet = false }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(shelf.code, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                            if (!shelf.label.isNullOrBlank())
-                                Text(shelf.label, fontSize = 11.sp, color = TextMuted)
-                        }
-                        if (state.selectedShelf?.id == shelf.id)
-                            Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(32.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ကန့်တည်နေရာ ရွေးပါ",
+            items = state.shelfLocations,
+            label = { it.code },
+            subtitle = { it.label },
+            onSelect = { vm.selectShelf(it); showShelfSheet = false },
+            onDismiss = { showShelfSheet = false }
+        )
     }
-
     if (showPaySheet) {
-        ModalBottomSheet(onDismissRequest = { showPaySheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ငွေပေးချေနည်း", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                state.paymentMethods.forEach { m ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { vm.selectPayMethod(m); showPaySheet = false }.padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(m.methodName, fontSize = 14.sp)
-                        if (state.selectedPayMethod?.id == m.id) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပေးချေနည်း",
+            items = state.paymentMethods,
+            label = { it.methodName },
+            onSelect = { vm.selectPayMethod(it); showPaySheet = false },
+            onDismiss = { showPaySheet = false }
+        )
     }
 
     if (showServiceSheet) {

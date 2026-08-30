@@ -388,8 +388,8 @@ class ServiceJobFormViewModel(
                         address = s.newCustomerAddress.ifBlank { null }
                     )
                 )
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val created = res.body()!!.data!!
+                val created = res.body()?.data
+                if (res.isSuccessful && created != null) {
                     _uiState.update {
                         it.copy(
                             customers = it.customers + created,
@@ -511,9 +511,10 @@ class ServiceJobFormViewModel(
                 else
                     ApiClient.service.createServiceJob(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { it.copy(saving = false) }
-                    onSuccess(res.body()!!.data!!)
+                    onSuccess(saved)
                 } else {
                     _uiState.update { it.copy(saving = false, saveError = res.body()?.message ?: "မအောင်မြင်ပါ (${res.code()})") }
                 }

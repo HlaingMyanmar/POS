@@ -17,20 +17,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sspd.servicemgmt.BuildConfig
+import com.sspd.servicemgmt.core.ui.component.AppScaffold
 import com.sspd.servicemgmt.core.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("အကြောင်းအရာ", fontWeight = FontWeight.ExtraBold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
-            )
-        }
-    ) { padding ->
+    AppScaffold(title = "အကြောင်းအရာ", onBack = onBack) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -46,7 +40,7 @@ fun AboutScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(20.dp))
             Text("SSPD Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
-            Text("Version 1.0.0", fontSize = 13.sp, color = TextMuted)
+            Text("Version ${BuildConfig.VERSION_NAME}", fontSize = 13.sp, color = TextMuted)
             Spacer(Modifier.height(8.dp))
             Text("ကုန်ပစ္စည်းနှင့် ရောင်းချမှုစနစ်", fontSize = 14.sp, color = TextMuted)
 

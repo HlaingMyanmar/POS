@@ -46,12 +46,17 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
                 val cd = async { ApiClient.service.getCustomers(token) }
                 val sd = async { ApiClient.service.getActiveStaff(token) }
                 val md = async { ApiClient.service.getActivePaymentMethods(token) }
+                val wd = async { ApiClient.service.getWarehouses(token) }
+                val warehouses = wd.await().body()?.data ?: emptyList()
                 _uiState.update {
                     it.copy(
                         products       = pd.await().body()?.data ?: emptyList(),
                         customers      = cd.await().body()?.data ?: emptyList(),
                         staffList      = sd.await().body()?.data ?: emptyList(),
                         paymentMethods = md.await().body()?.data ?: emptyList(),
+                        warehouses     = warehouses,
+                        selectedWarehouse = warehouses.firstOrNull { w -> w.code.equals("MAIN", true) }
+                            ?: warehouses.firstOrNull(),
                         loading        = false
                     )
                 }
@@ -117,6 +122,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
                     .filter { serial ->
                         val status = serial.status?.uppercase()
                         serial.serialNumber.isNotBlank() &&
+                            serial.warehouseId == _uiState.value.selectedWarehouse?.id &&
                             status != "SOLD" &&
                             status != "USED" &&
                             status != "DAMAGED" &&
@@ -268,6 +274,9 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
     }
     fun setStaff(s: StaffDTO)                = _uiState.update { it.copy(selectedStaff = s) }
     fun setPayMethod(m: PaymentMethodDTO)    = _uiState.update { it.copy(selectedPayMethod = m) }
+    fun setWarehouse(w: WarehouseDTO)         = _uiState.update {
+        it.copy(selectedWarehouse = w, showWarehousePicker = false, cart = emptyList())
+    }
     fun setSaleDate(v: String)               = _uiState.update { it.copy(saleDate = v) }
     fun setPaidAmount(v: String)             = _uiState.update { it.copy(paidAmount = v) }
     fun setPaymentTransactionNo(v: String)   = _uiState.update { it.copy(paymentTransactionNo = v) }
@@ -284,6 +293,8 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
     fun dismissStaffPicker()                 = _uiState.update { it.copy(showStaffPicker = false) }
     fun showPayPicker()                      = _uiState.update { it.copy(showPayPicker = true) }
     fun dismissPayPicker()                   = _uiState.update { it.copy(showPayPicker = false) }
+    fun showWarehousePicker()                = _uiState.update { it.copy(showWarehousePicker = true) }
+    fun dismissWarehousePicker()             = _uiState.update { it.copy(showWarehousePicker = false) }
     fun showProductPicker()                  = _uiState.update { it.copy(showProductPicker = true) }
     fun dismissProductPicker()               = _uiState.update { it.copy(showProductPicker = false) }
     fun clearScanError()                     = _uiState.update { it.copy(scanError = null) }
@@ -334,8 +345,8 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
                         address = address.ifBlank { null }
                     )
                 )
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val newC = res.body()!!.data!!
+                val newC = res.body()?.data
+                if (res.isSuccessful && newC != null) {
                     _uiState.update { it.copy(
                         customers        = it.customers + newC,
                         selectedCustomer = newC
@@ -357,6 +368,9 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val customer = state.selectedCustomer
         if (customer == null)     { onError("Customer ရွေးပါ"); return }
         if (state.cart.isEmpty()) { onError("Item တစ်ခုမျှ မထည့်ရသေးပါ"); return }
+
+        val warehouse = state.selectedWarehouse
+        if (warehouse?.id == null) { onError("Warehouse is required"); return }
 
         val saleLocalDate = try {
             LocalDate.parse(state.saleDate)
@@ -430,6 +444,8 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
             totalAmount     = gross,
             discountAmount  = overallD,
             taxAmount       = tax,
+            warehouseId     = warehouse.id,
+            warehouseName   = warehouse.name,
             netAmount       = net,
             paidAmount      = paid,
             dueAmount       = due,
@@ -458,9 +474,10 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.createSale(token, body)
-                if (res.isSuccessful && res.body()?.data != null) {
+                val created = res.body()?.data
+                if (res.isSuccessful && created != null) {
                     _uiState.update { it.copy(submitting = false) }
-                    onSuccess(res.body()!!.data!!)
+                    onSuccess(created)
                 } else {
                     _uiState.update { it.copy(submitting = false) }
                     onError(res.body()?.message ?: "မအောင်မြင်ပါ (${res.code()})")
@@ -478,10 +495,12 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val customers:         List<CustomerDTO>      = emptyList(),
         val staffList:         List<StaffDTO>         = emptyList(),
         val paymentMethods:    List<PaymentMethodDTO> = emptyList(),
+        val warehouses:        List<WarehouseDTO>     = emptyList(),
         val cart:              List<CartItem>          = emptyList(),
         val selectedCustomer:  CustomerDTO?            = null,
         val selectedStaff:     StaffDTO?               = null,
         val selectedPayMethod: PaymentMethodDTO?       = null,
+        val selectedWarehouse: WarehouseDTO?           = null,
         val splitPayments:    List<PaymentTransactionDTO> = emptyList(),
         val saleDate:          String                  = LocalDate.now().toString(),
         val hasBackdatePermission: Boolean             = false,
@@ -498,6 +517,7 @@ class NewSaleViewModel(application: Application) : AndroidViewModel(application)
         val showCustomerPicker:Boolean              = false,
         val showStaffPicker:   Boolean              = false,
         val showPayPicker:     Boolean              = false,
+        val showWarehousePicker:Boolean             = false,
         val serialScanIdx:     Int?                 = null,
         val serialSelectProduct: ProductDTO?        = null,
         val serialSelectOptions: List<ProductSerialDTO> = emptyList(),

@@ -15,9 +15,12 @@ public interface StockAdjustmentMapper {
     @Mapping(source = "product.name", target = "productName")
     @Mapping(source = "staff.id", target = "staffId")
     @Mapping(source = "staff.name", target = "staffName")
+    @Mapping(source = "warehouse.id", target = "warehouseId")
+    @Mapping(source = "warehouse.name", target = "warehouseName")
     StockAdjustmentDTO toDto(StockAdjustment entity);
 
     @Mapping(target = "product", ignore = true)
     @Mapping(target = "staff", ignore = true)
+    @Mapping(target = "warehouse", ignore = true)
     StockAdjustment toEntity(StockAdjustmentDTO dto);
 }

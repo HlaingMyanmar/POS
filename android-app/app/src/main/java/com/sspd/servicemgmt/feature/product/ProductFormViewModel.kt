@@ -10,6 +10,10 @@ import com.sspd.servicemgmt.core.network.CategoryDTO
 import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.network.UnitDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
+import com.sspd.servicemgmt.core.util.WarrantyUnit
+import com.sspd.servicemgmt.core.util.parseWarrantyDisplay
+import com.sspd.servicemgmt.core.util.toWarrantyMonths
+import com.sspd.servicemgmt.core.util.warrantyTermsDisplay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +53,7 @@ class ProductFormViewModel(
                 val product = productD?.await()?.body()?.data
                 _uiState.update { s ->
                     if (product != null) {
+                        val parsedWarranty = parseWarrantyDisplay(product.warrantyTerms, product.warrantyMonths)
                         s.copy(
                             brands = brands,
                             categories = categories,
@@ -60,8 +65,9 @@ class ProductFormViewModel(
                             sellingPrice = product.sellingPrice.toString(),
                             costPrice = (product.costPrice ?: 0.0).toString(),
                             reorderLevel = (product.reorderLevel ?: 0).toString(),
-                            warrantyMonths = (product.warrantyMonths ?: 0).toString(),
-                            warrantyTerms = product.warrantyTerms.orEmpty(),
+                            warrantyValue = parsedWarranty.value.toString(),
+                            warrantyUnit = parsedWarranty.unit,
+                            warrantyTerms = parsedWarranty.note,
                             remark = product.remark.orEmpty(),
                             selectedBrand = brands.find { it.id == product.brandId || it.name == product.brandName },
                             selectedCategory = categories.find { it.id == product.categoryId || it.name == product.categoryName },
@@ -101,7 +107,8 @@ class ProductFormViewModel(
     fun setSellingPrice(v: String) = _uiState.update { it.copy(sellingPrice = decimalInput(v)) }
     fun setCostPrice(v: String) = _uiState.update { it.copy(costPrice = decimalInput(v)) }
     fun setReorderLevel(v: String) = _uiState.update { it.copy(reorderLevel = v.filter(Char::isDigit)) }
-    fun setWarrantyMonths(v: String) = _uiState.update { it.copy(warrantyMonths = v.filter(Char::isDigit)) }
+    fun setWarrantyValue(v: String) = _uiState.update { it.copy(warrantyValue = v.filter(Char::isDigit)) }
+    fun setWarrantyUnit(v: WarrantyUnit) = _uiState.update { it.copy(warrantyUnit = v) }
     fun setWarrantyTerms(v: String) = _uiState.update { it.copy(warrantyTerms = v) }
     fun setRemark(v: String) = _uiState.update { it.copy(remark = v) }
     fun selectBrand(v: BrandDTO) = _uiState.update { it.copy(selectedBrand = v) }
@@ -194,8 +201,12 @@ class ProductFormViewModel(
                     brandId = s.selectedBrand.id,
                     unitId = s.selectedUnit.id,
                     reorderLevel = reorderLevel,
-                    warrantyMonths = s.warrantyMonths.toIntOrNull() ?: 0,
-                    warrantyTerms = s.warrantyTerms.ifBlank { null },
+                    warrantyMonths = toWarrantyMonths(s.warrantyValue.toIntOrNull() ?: 0, s.warrantyUnit),
+                    warrantyTerms = warrantyTermsDisplay(
+                        s.warrantyValue.toIntOrNull() ?: 0,
+                        s.warrantyUnit,
+                        s.warrantyTerms
+                    ),
                     remark = s.remark.ifBlank { null }
                 )
                 val res = if (productId != null) ApiClient.service.updateProduct(token, productId, body)
@@ -248,7 +259,8 @@ class ProductFormViewModel(
         val sellingPrice: String = "",
         val costPrice: String = "0",
         val reorderLevel: String = "0",
-        val warrantyMonths: String = "0",
+        val warrantyValue: String = "0",
+        val warrantyUnit: WarrantyUnit = WarrantyUnit.MONTH,
         val warrantyTerms: String = "",
         val remark: String = "",
         val selectedBrand: BrandDTO? = null,

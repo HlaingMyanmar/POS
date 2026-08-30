@@ -40,5 +40,9 @@ public class ProductDTO {
     private String photoBase64;
     private Boolean archived;
     private String warehouseName;
+    private Integer warehouseId;
+    private Integer openingQty;
+    private String openingBatch;
+    private java.time.LocalDate openingExpiry;
     private String shelfLocation;
 }

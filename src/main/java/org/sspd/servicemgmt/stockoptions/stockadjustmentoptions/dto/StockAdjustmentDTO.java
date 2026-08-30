@@ -18,5 +18,7 @@ public class StockAdjustmentDTO {
     private String serialNumbers;
     private Integer staffId;
     private String staffName;
+    private Integer warehouseId;
+    private String warehouseName;
     private LocalDateTime createdAt;
 }

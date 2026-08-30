@@ -47,6 +47,10 @@ public class StockAdjustment {
     @JoinColumn(name = "staff_id", nullable = false)
     private Staff staff;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

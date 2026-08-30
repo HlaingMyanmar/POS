@@ -6,6 +6,7 @@ import org.sspd.servicemgmt.stockoptions.lotoptions.model.StockLot;
 import org.sspd.servicemgmt.stockoptions.lotoptions.repository.SaleLotAllocationRepository;
 import org.sspd.servicemgmt.stockoptions.lotoptions.repository.SaleReturnLotAllocationRepository;
 import org.sspd.servicemgmt.stockoptions.lotoptions.repository.StockLotRepository;
+import org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 
 import java.util.List;
@@ -23,7 +24,8 @@ class StockLotServicePurchaseReturnTest {
     void consumePurchaseReturnDepletesOriginalPurchaseLotsFirst() {
         StockLotRepository lots = mock(StockLotRepository.class);
         StockLotService service = new StockLotService(
-                lots, mock(SaleLotAllocationRepository.class), mock(SaleReturnLotAllocationRepository.class));
+                lots, mock(SaleLotAllocationRepository.class), mock(SaleReturnLotAllocationRepository.class),
+                mock(WarehouseResolver.class), mock(InventoryStockService.class));
         Purchase purchase = Purchase.builder().id(10).build();
         Product product = Product.builder().id(20).name("Widget").hasSerial(false).stockQty(2).build();
         StockLot first = StockLot.builder().id(1).product(product).receivedQty(3).remainingQty(3).status("AVAILABLE").build();
@@ -43,7 +45,8 @@ class StockLotServicePurchaseReturnTest {
     void restorePurchaseReturnRestoresOriginalLotCapacity() {
         StockLotRepository lots = mock(StockLotRepository.class);
         StockLotService service = new StockLotService(
-                lots, mock(SaleLotAllocationRepository.class), mock(SaleReturnLotAllocationRepository.class));
+                lots, mock(SaleLotAllocationRepository.class), mock(SaleReturnLotAllocationRepository.class),
+                mock(WarehouseResolver.class), mock(InventoryStockService.class));
         Purchase purchase = Purchase.builder().id(10).build();
         Product product = Product.builder().id(20).name("Widget").hasSerial(false).build();
         StockLot lot = StockLot.builder().id(1).product(product).receivedQty(5).remainingQty(2).status("AVAILABLE").build();
@@ -60,7 +63,8 @@ class StockLotServicePurchaseReturnTest {
     void consumePurchaseReturnNeverBorrowsAnotherPurchaseLot() {
         StockLotRepository lots = mock(StockLotRepository.class);
         StockLotService service = new StockLotService(
-                lots, mock(SaleLotAllocationRepository.class), mock(SaleReturnLotAllocationRepository.class));
+                lots, mock(SaleLotAllocationRepository.class), mock(SaleReturnLotAllocationRepository.class),
+                mock(WarehouseResolver.class), mock(InventoryStockService.class));
         Purchase purchase = Purchase.builder().id(10).build();
         Product product = Product.builder().id(20).name("Widget").hasSerial(false).build();
         StockLot original = StockLot.builder().id(1).product(product).receivedQty(1).remainingQty(1).status("AVAILABLE").build();

@@ -103,6 +103,10 @@ public class Sale {
     @Column(name = "warehouse_name", length = 120)
     private String warehouseName;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id")
+    private org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse;
+
     @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SaleDetail> details = new ArrayList<>();
 }

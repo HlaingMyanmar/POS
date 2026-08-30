@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -90,7 +91,7 @@ fun PurchaseOrderListScreen(onBack: () -> Unit) {
             if (state.items.isEmpty()) {
                 item { Text("အော်ဒါ မရှိသေးပါ", color = TextMuted, modifier = Modifier.padding(24.dp)) }
             }
-            items(state.items, key = { it.id ?: it.hashCode() }) { po ->
+            itemsIndexed(state.items, key = { index, it -> it.id ?: "po-$index" }) { _, po ->
                 PurchaseOrderCard(
                     po = po,
                     late = state.lateItems.any { it.id == po.id },

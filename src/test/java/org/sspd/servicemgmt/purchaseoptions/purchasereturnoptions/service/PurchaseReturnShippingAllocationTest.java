@@ -41,6 +41,26 @@ class PurchaseReturnShippingAllocationTest {
     }
 
     @Test
+    void nullShippingFieldsUseCompanyZeroDefaults() throws Exception {
+        PurchaseReturnService service = construct();
+        PurchaseReturn entity = purchaseReturn("100.00", detail("100.00", 1));
+        entity.setShippingCostAmount(null);
+        entity.setShippingPayerResponsibility(null);
+        entity.setCompanyShippingPortion(null);
+        entity.setSupplierShippingPortion(null);
+        entity.setShippingAllocationMethod(null);
+
+        service.configureShipping(entity, new PurchaseReturnDTO());
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(entity.getShippingCostAmount()));
+        assertEquals("COMPANY", entity.getShippingPayerResponsibility());
+        assertEquals(0, BigDecimal.ZERO.compareTo(entity.getCompanyShippingPortion()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(entity.getSupplierShippingPortion()));
+        assertEquals("VALUE", entity.getShippingAllocationMethod());
+        assertEquals(0, BigDecimal.ZERO.compareTo(entity.getDetails().get(0).getAllocatedShippingCost()));
+    }
+
+    @Test
     void manualAllocationAndPortionTotalsAreValidated() throws Exception {
         PurchaseReturnService service = construct();
         PurchaseReturnDetail first = detail("50.00", 1);

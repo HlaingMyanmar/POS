@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppSearchField
 import com.sspd.servicemgmt.feature.finance.ExpenseViewModel.DateShortcut
 import kotlinx.coroutines.delay
 
@@ -33,6 +34,7 @@ fun ExpenseScreen(
     val vm: ExpenseViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableIntStateOf(0) }
+    var query by remember { mutableStateOf("") }
 
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker   by remember { mutableStateOf(false) }
@@ -77,13 +79,18 @@ fun ExpenseScreen(
     // ── Date-filtered lists ───────────────────────────────────────────────────
     val from = state.fromDate
     val to   = state.toDate
+    val q = query.trim()
     val expenses = state.expenses.filter { e ->
         val d = e.expenseDate?.take(10) ?: ""
-        (from == null || d >= from) && (to == null || d <= to)
+        val dateOk = (from == null || d >= from) && (to == null || d <= to)
+        val textOk = q.isBlank() || listOfNotNull(e.description, e.accountName, e.staffName, e.expenseCode).any { it.contains(q, true) }
+        dateOk && textOk
     }
     val incomes = state.incomes.filter { inc ->
         val d = inc.incomeDate?.take(10) ?: ""
-        (from == null || d >= from) && (to == null || d <= to)
+        val dateOk = (from == null || d >= from) && (to == null || d <= to)
+        val textOk = q.isBlank() || listOfNotNull(inc.description, inc.accountName, inc.staffName, inc.incomeCode).any { it.contains(q, true) }
+        dateOk && textOk
     }
 
     val totalExpense = expenses.sumOf { it.amount }
@@ -181,6 +188,13 @@ fun ExpenseScreen(
                     }
                 }
             }
+
+            AppSearchField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = "ရှာဖွေပါ (အမည် / မှတ်ချက်)",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
 
             // ── Tabs ─────────────────────────────────────────────────────────
             TabRow(selectedTabIndex = selectedTab, containerColor = CardBg, contentColor = Primary) {

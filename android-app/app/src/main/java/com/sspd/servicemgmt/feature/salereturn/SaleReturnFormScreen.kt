@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,23 +38,13 @@ fun SaleReturnFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
 
     // Payment method sheet
     if (showPmSheet) {
-        ModalBottomSheet(onDismissRequest = { showPmSheet = false }) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ငွေပြန်ပေးနည်း ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(8.dp))
-                state.paymentMethods.forEach { pm ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { vm.selectPm(pm); showPmSheet = false }.padding(vertical = 13.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(pm.methodName, fontSize = 14.sp, color = TextMain)
-                        if (state.selectedPm?.id == pm.id) Icon(Icons.Outlined.Check, null, tint = Danger, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor)
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+        AppPickerSheet(
+            title = "ငွေပြန်ပေးနည်း ရွေးပါ",
+            items = state.paymentMethods,
+            label = { it.methodName },
+            onSelect = { vm.selectPm(it); showPmSheet = false },
+            onDismiss = { showPmSheet = false }
+        )
     }
 
     Scaffold(

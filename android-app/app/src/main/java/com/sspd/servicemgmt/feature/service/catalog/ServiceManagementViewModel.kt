@@ -64,8 +64,8 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                 else
                     ApiClient.service.createServiceType(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { s ->
                         s.copy(
                             types         = if (target?.id != null) s.types.map { if (it.id == target.id) saved else it }
@@ -169,8 +169,8 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                 else
                     ApiClient.service.createSubServiceType(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { s ->
                         s.copy(
                             subTypes      = if (target?.id != null)
@@ -267,8 +267,8 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                 else
                     ApiClient.service.createServiceItem(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
-                    val saved = res.body()!!.data!!
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { s ->
                         s.copy(
                             items         = if (target?.id != null) s.items.map { if (it.id == target.id) saved else it }

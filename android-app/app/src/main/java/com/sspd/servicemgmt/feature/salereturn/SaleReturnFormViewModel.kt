@@ -236,9 +236,10 @@ class SaleReturnFormViewModel(
                 else
                     ApiClient.service.createSaleReturn(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
+                val saved = res.body()?.data
+                if (res.isSuccessful && saved != null) {
                     _uiState.update { it.copy(saving = false) }
-                    onSuccess(res.body()!!.data!!)
+                    onSuccess(saved)
                 } else {
                     _uiState.update { it.copy(saving = false, saveError = res.body()?.message ?: "မအောင်မြင်ပါ (${res.code()})") }
                 }

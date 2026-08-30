@@ -768,6 +768,7 @@ const PurchaseManagement: React.FC = () => {
     && effectivePaidAmount <= netAmount
     && !hasDuplicateSerials
     && !!purchaseDate
+    && !!warehouseName.trim()
     && (dueAmount <= 0 || !!dueDate)
     && creditOverrideValid
     && (effectivePaidAmount <= 0 || selectedPaymentMethodId > 0 || normalizedPurchasePayments.length > 0);
@@ -780,6 +781,8 @@ const PurchaseManagement: React.FC = () => {
       ? 'ဝယ်ယူမှုတာဝန်ခံ ရွေးပါ'
       : filledItemCount === 0
         ? 'ပစ္စည်း ထည့်ပါ'
+        : !warehouseName.trim()
+          ? 'ဂိုဒေါင် ရွေးပါ'
         : details.some((d) => d.productId > 0 && d.unitCost <= 0)
           ? 'ဝယ်ဈေး ဖြည့်ပါ'
           : hasDuplicateSerials
@@ -814,6 +817,7 @@ const PurchaseManagement: React.FC = () => {
     otherCharges: safeOtherCharges,
     landedCostAllocationMethod,
     warehouseName: warehouseName.trim() || undefined,
+    warehouseId: activeWarehouses.find((w) => w.name === warehouseName)?.id,
     currencyCode: currencyCode.trim().toUpperCase() || 'MMK',
     exchangeRate: safeExchangeRate,
     foreignNetAmount,
@@ -3293,7 +3297,7 @@ const PurchaseManagement: React.FC = () => {
                     <select value={landedCostAllocationMethod} onChange={(e)=>setLandedCostAllocationMethod(e.target.value as 'VALUE'|'QUANTITY'|'MANUAL')} className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"><option value="VALUE">By Value</option><option value="QUANTITY">By Quantity</option><option value="MANUAL">Manual</option></select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Warehouse / Branch</label>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Warehouse / Branch <span className="text-rose-500">*</span></label>
                     <select
                       value={warehouseName}
                       onChange={(e) => setWarehouseName(e.target.value)}

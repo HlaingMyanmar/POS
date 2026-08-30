@@ -29,8 +29,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(loading = true, error = "") }
             try {
                 val res = ApiClient.service.login(LoginRequest(username.trim(), password.trim()))
-                if (res.isSuccessful && res.body()?.success == true) {
-                    val auth = res.body()!!.data!!
+                val auth = res.body()?.data
+                if (res.isSuccessful && res.body()?.success == true && auth != null) {
                     prefs.authToken      = auth.accessToken
                     prefs.refreshToken   = auth.refreshToken ?: ""
                     prefs.username       = auth.username

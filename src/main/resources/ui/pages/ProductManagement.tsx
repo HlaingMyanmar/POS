@@ -1,6 +1,8 @@
 ﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { warehouseApiService } from '../services/warehouseapiservice';
+import { StockLotDTO } from '../services/stocklotapiservice';
 import { productService } from '../services/productapiservice';
 import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
 import { brandService } from '../services/brandapiservice';
@@ -244,7 +246,10 @@ const ProductManagement: React.FC = () => {
   const [brands, setBrands] = useState<BrandDTO[]>([]);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [units, setUnits] = useState<UnitDTO[]>([]);
+  const [warehouses, setWarehouses] = useState<{ id?: number; name: string; code?: string }[]>([]);
   const [allSerials, setAllSerials] = useState<ProductSerialDTO[]>([]);
+  const [detailLots, setDetailLots] = useState<StockLotDTO[]>([]);
+  const [detailWarehouseStocks, setDetailWarehouseStocks] = useState<{ warehouseName: string; remainingQty: number; lotCount: number }[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -334,6 +339,10 @@ const ProductManagement: React.FC = () => {
     warrantyMonths: 0,
     warrantyTerms: '',
     warehouseName: '',
+    warehouseId: undefined,
+    openingQty: 0,
+    openingBatch: '',
+    openingExpiry: '',
     shelfLocation: '',
     remark: '',
     categoryId: undefined,
@@ -456,13 +465,14 @@ const ProductManagement: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [pData, bData, cTreeData, uData, sData, lowStockData] = await Promise.all([
+      const [pData, bData, cTreeData, uData, sData, lowStockData, whData] = await Promise.all([
         productService.getAll(),
         brandService.getAll(),
         categoryService.getTree(),
         unitService.getAll(),
         productSerialService.getAll(),
-        productService.getLowStock()
+        productService.getLowStock(),
+        warehouseApiService.list(true).catch(() => [])
       ]);
       setProducts(pData);
       setBrands(bData.filter(b => b.isActive));
@@ -470,6 +480,7 @@ const ProductManagement: React.FC = () => {
       setUnits(uData);
       setAllSerials(sData);
       setLowStockProducts(lowStockData);
+      setWarehouses(whData);
     } catch (error) {
       console.error("Failed to load inventory data", error);
     } finally {
@@ -787,6 +798,7 @@ const ProductManagement: React.FC = () => {
             qtyAfter: counted,
             reason: `Physical Stock Count: ${physicalCountReason.trim()}`,
             staffId,
+            warehouseId: product.warehouseId || warehouses[0]?.id,
             createdAt: physicalCountDate || undefined,
           };
         })
@@ -824,6 +836,10 @@ const ProductManagement: React.FC = () => {
         warrantyMonths: product.warrantyMonths ?? 0,
         warrantyTerms: product.warrantyTerms || '',
         warehouseName: product.warehouseName || '',
+        warehouseId: product.warehouseId,
+        openingQty: 0,
+        openingBatch: '',
+        openingExpiry: '',
         shelfLocation: product.shelfLocation || '',
         remark: product.remark || '',
         categoryId: product.categoryId,
@@ -855,6 +871,10 @@ const ProductManagement: React.FC = () => {
         warrantyMonths: 0,
         warrantyTerms: '',
         warehouseName: '',
+        warehouseId: undefined,
+        openingQty: 0,
+        openingBatch: '',
+        openingExpiry: '',
         shelfLocation: '',
         remark: '',
         categoryId: undefined,
@@ -937,6 +957,10 @@ const ProductManagement: React.FC = () => {
   const openProductDetail = async (product: ProductDTO) => {
     setDetailProduct(product);
     setDetailPriceHistory([]);
+    setDetailLots([]);
+    setDetailWarehouseStocks([]);
+    void productService.warehouseStocks(product.id).then(setDetailWarehouseStocks).catch(() => setDetailWarehouseStocks([]));
+    void productService.lots(product.id).then(setDetailLots).catch(() => setDetailLots([]));
     if (!canViewProductPriceHistory) {
       setDetailPriceLoading(false);
       return;
@@ -1161,6 +1185,7 @@ const ProductManagement: React.FC = () => {
     if (!formData.categoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစားတစ်ခု ရွေးပါ။', 'warning'); return; }
     if (!formData.brandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်းတစ်ခု ရွေးပါ။', 'warning'); return; }
     if (!formData.unitId) { Swal.fire('စစ်ဆေးမှု', 'တိုင်းတာမှုယူနစ်တစ်ခု ရွေးပါ။', 'warning'); return; }
+    if (!formData.warehouseId && !formData.warehouseName) { Swal.fire('စစ်ဆေးမှု', 'ဂိုဒေါင် ရွေးပါ။', 'warning'); return; }
     setSaving(true);
     try {
       const warrantyMonthsComputed =
@@ -1466,15 +1491,43 @@ const ProductManagement: React.FC = () => {
 
                 {/* Warehouse location */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ဂိုဒေါင်</label>
-                  <input
-                    type="text"
-                    value={formData.warehouseName ?? ''}
-                    onChange={(e) => setFormData({ ...formData, warehouseName: e.target.value })}
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ဂိုဒေါင် <span className="text-rose-400">*</span></label>
+                  <select
+                    value={formData.warehouseId ?? ''}
+                    onChange={(e) => {
+                      const id = Number(e.target.value) || undefined;
+                      const wh = warehouses.find(w => w.id === id);
+                      setFormData({ ...formData, warehouseId: id, warehouseName: wh?.name || '' });
+                    }}
                     className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all"
-                    placeholder="ဥပမာ: Main Store"
-                  />
+                  >
+                    <option value="">ဂိုဒေါင် ရွေးပါ</option>
+                    {warehouses.map((w) => (
+                      <option key={w.id ?? w.name} value={w.id}>{w.name}{w.code ? ` (${w.code})` : ''}</option>
+                    ))}
+                  </select>
                 </div>
+
+                {!editingProduct && formData.hasSerial === false && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Opening Quantity</label>
+                      <input type="number" min={0} value={formData.openingQty ?? 0}
+                        onChange={(e) => setFormData({ ...formData, openingQty: Math.max(0, Number(e.target.value) || 0) })}
+                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Batch (optional)</label>
+                      <input value={formData.openingBatch ?? ''} onChange={(e) => setFormData({ ...formData, openingBatch: e.target.value })}
+                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Expiry (optional)</label>
+                      <input type="date" value={formData.openingExpiry ?? ''} onChange={(e) => setFormData({ ...formData, openingExpiry: e.target.value })}
+                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">စင် / အကွက်</label>
@@ -3096,6 +3149,33 @@ const ProductManagement: React.FC = () => {
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Location</span><span className="text-right text-xs font-black text-teal-700">{detailProduct.warehouseName || '-'} / {detailProduct.shelfLocation || '-'}</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Warranty</span><span className="text-right text-xs font-black text-slate-800">{detailProduct.warrantyTerms || `${detailProduct.warrantyMonths || 0} months`}</span></div>
               </div>
+              {detailWarehouseStocks.length > 0 && (
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Warehouse stock</p></div>
+                  {detailWarehouseStocks.map((row) => (
+                    <div key={row.warehouseName} className="flex items-center justify-between px-3 py-2 text-xs border-t border-slate-100">
+                      <span className="font-semibold text-slate-600">{row.warehouseName}</span>
+                      <span className="font-black text-slate-800">{row.remainingQty} <span className="text-slate-400 font-semibold">({row.lotCount} lots)</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {detailLots.length > 0 && (
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Lots / Batch / Expiry</p></div>
+                  <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+                    {detailLots.map((lot) => (
+                      <div key={lot.id} className="px-3 py-2 text-[11px]">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-black text-slate-700">{lot.batchNumber || `Lot #${lot.id}`}</span>
+                          <span className={`font-bold ${lot.alertLevel === 'EXPIRED' ? 'text-rose-600' : lot.alertLevel === 'CRITICAL' ? 'text-amber-600' : 'text-slate-700'}`}>{lot.remainingQty} avail.</span>
+                        </div>
+                        <p className="text-slate-400">{lot.warehouseName || '-'} · {lot.expiryDate || 'No expiry'}{lot.alertLevel === 'EXPIRED' ? ' · EXPIRED' : lot.alertLevel === 'CRITICAL' || lot.alertLevel === 'WARNING' ? ' · expiring soon' : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {canViewProductPriceHistory && <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Price History / Weighted Average Cost</p></div>
                 {detailPriceLoading ? <div className="p-5 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-1 animate-spin" size={16} />Loading...</div> : detailPriceHistory.length === 0 ? <p className="p-4 text-xs font-semibold text-slate-400">Purchase price history မရှိသေးပါ။</p> : <div className="max-h-48 divide-y divide-slate-100 overflow-y-auto">{detailPriceHistory.map((row) => <div key={`${row.purchaseId}-${row.purchaseDate}`} className="grid grid-cols-2 gap-2 p-3 text-[11px]"><div><p className="font-black text-slate-700">{row.purchaseCode} · {row.supplierName || '-'}</p><p className="text-slate-400">{row.purchaseDate ? new Date(row.purchaseDate).toLocaleDateString() : '-'}</p></div><div className="text-right"><p className="font-bold text-indigo-700">Unit: {row.unitCost.toLocaleString()} Ks</p><p className="font-black text-emerald-700">WAC: {row.weightedAverageCost.toLocaleString()} Ks</p></div></div>)}</div>}

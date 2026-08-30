@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -26,6 +27,7 @@ import com.sspd.servicemgmt.core.network.CustomerDTO
 import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
+import com.sspd.servicemgmt.core.network.WarehouseDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 
@@ -170,6 +172,17 @@ fun NewSaleScreen(
         )
     }
 
+    if (state.showWarehousePicker) {
+        PickerSheet(
+            title = "Warehouse ရွေးပါ",
+            items = state.warehouses,
+            label = { it.name },
+            subLabel = { it.code },
+            onSelect = vm::setWarehouse,
+            onDismiss = vm::dismissWarehousePicker
+        )
+    }
+
     if (showSaleDatePicker) {
         val dpState = rememberDatePickerState(
             initialSelectedDateMillis = nsDateToMillis(state.saleDate)
@@ -182,7 +195,7 @@ fun NewSaleScreen(
                     showSaleDatePicker = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showSaleDatePicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showSaleDatePicker = false }) { Text("ပယ်ဖျက်") } }
         ) { DatePicker(state = dpState) }
     }
 
@@ -201,7 +214,7 @@ fun NewSaleScreen(
         val serialError = state.serialSelectError
         ModalBottomSheet(
             onDismissRequest = { vm.dismissSerialSelector() },
-            modifier = Modifier.fillMaxHeight(0.82f)
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 Text("Serial number ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
@@ -330,6 +343,11 @@ fun NewSaleScreen(
 
                         HorizontalDivider(color = BorderColor, modifier = Modifier.padding(top = 8.dp))
                         PickerRow("Staff", state.selectedStaff?.name) { vm.showStaffPicker() }
+                        PickerRow(
+                            "Warehouse",
+                            state.selectedWarehouse?.name,
+                            state.selectedWarehouse?.code
+                        ) { vm.showWarehousePicker() }
                         PickerRow(
                             label = "Sale Date",
                             value = state.saleDate,
@@ -799,7 +817,10 @@ private fun <T> PickerSheet(
     var query by remember { mutableStateOf("") }
     val filtered = items.filter { label(it).contains(query, ignoreCase = true) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxHeight(0.85f)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         Column(Modifier.fillMaxSize()) {
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -879,7 +900,7 @@ private fun NewCustomerDialog(onDismiss: () -> Unit, onSave: (String, String, St
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("ပယ်ဖျက်") }
         }
     )
 }
@@ -909,3 +930,70 @@ private data class CreditBanner(
     val icon:  androidx.compose.ui.graphics.vector.ImageVector,
     val msg:   String
 )
+
+private val previewWarehouses = listOf(
+    WarehouseDTO(id = 1, code = "MAIN", name = "MAIN"),
+    WarehouseDTO(id = 2, code = "SHOP-1", name = "ဆိုင် ၁")
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "ရောင်းချမှု အသစ်", showBackground = true, widthDp = 390, heightDp = 720)
+@Composable
+private fun NewSaleFormPreview() {
+    val warehouse = previewWarehouses.first()
+    AppTheme {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("ရောင်းချမှု အသစ်", fontWeight = FontWeight.ExtraBold) },
+                    navigationIcon = {
+                        IconButton(onClick = {}) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                )
+            }
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize().padding(padding).background(ScreenBg).padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SectionCard(title = "SALE INFO") {
+                    PickerRow("Customer", "မောင်မောင်", "09 123 456 789") {}
+                    HorizontalDivider(color = BorderColor, modifier = Modifier.padding(top = 8.dp))
+                    PickerRow("Staff", "အောင်အောင်") {}
+                    PickerRow("Warehouse", warehouse.name, warehouse.code) {}
+                    PickerRow(
+                        label = "Sale Date",
+                        value = "2026-08-31",
+                        sub = "Back date requires permission"
+                    ) {}
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "Warehouse ရွေးပါ", showBackground = true, widthDp = 390, heightDp = 320)
+@Composable
+private fun NewSaleWarehousePickerPreview() {
+    AppTheme {
+        Column(Modifier.fillMaxWidth().background(CardBg).padding(vertical = 8.dp)) {
+            Text(
+                "Warehouse ရွေးပါ",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextMain,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            previewWarehouses.forEach { warehouse ->
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp)
+                ) {
+                    Text(warehouse.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+                    Text(warehouse.code, fontSize = 12.sp, color = TextMuted)
+                }
+                HorizontalDivider(color = BorderColor)
+            }
+        }
+    }
+}

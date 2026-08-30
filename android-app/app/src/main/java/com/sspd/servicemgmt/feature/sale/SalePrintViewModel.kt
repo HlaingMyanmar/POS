@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.sspd.servicemgmt.core.network.ApiClient
+import com.sspd.servicemgmt.core.navigation.optionalId
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,7 @@ class SalePrintViewModel(
 ) : AndroidViewModel(application) {
 
     private val prefs  = PreferenceManager(application)
-    val saleId: Int    = checkNotNull(savedStateHandle["saleId"])
+    val saleId: Int    = savedStateHandle.optionalId("saleId")
 
     private val _uiState = MutableStateFlow(SalePrintUiState())
     val uiState: StateFlow<SalePrintUiState> = _uiState.asStateFlow()

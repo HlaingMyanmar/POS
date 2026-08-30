@@ -170,6 +170,14 @@ public class TechnicianVisitController {
         return ok("Visit detail", service.historyDetail(id));
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_VISIT_START')")
+    @GetMapping("/{id}/my-pings")
+    public ResponseEntity<ApiResponse<List<LocationPingDTO>>> myPings(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        return ok("My visit GPS history", service.myPings(id, authentication));
+    }
     @PreAuthorize("hasAuthority('CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ')")
     @GetMapping("/{id}/history-pings")
     public ResponseEntity<ApiResponse<List<LocationPingDTO>>> historyPings(@PathVariable Long id) {

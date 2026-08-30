@@ -168,6 +168,10 @@ public class ServiceItemService {
             throw new IllegalArgumentException("Minimum and maximum prices cannot be negative.");
         if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0)
             throw new IllegalArgumentException("Minimum price cannot exceed maximum price.");
+        if (minPrice != null && dto.getPrice().compareTo(minPrice) < 0)
+            throw new IllegalArgumentException("ပုံမှန်ဈေးသည် အနည်းဆုံးဈေးထက် မနည်းရပါ။");
+        if (maxPrice != null && dto.getPrice().compareTo(maxPrice) > 0)
+            throw new IllegalArgumentException("ပုံမှန်ဈေးသည် အများဆုံးဈေးထက် မကျော်ရပါ။");
         BigDecimal commission = nz(dto.getCommissionPercent());
         if (commission.compareTo(BigDecimal.ZERO) < 0 || commission.compareTo(new BigDecimal("100")) > 0)
             throw new IllegalArgumentException("Commission percent must be between 0 and 100.");

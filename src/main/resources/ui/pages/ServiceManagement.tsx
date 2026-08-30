@@ -44,7 +44,12 @@ const ServiceItemsTable: React.FC<{
             <td className="px-4 py-3 font-medium">{item.item}</td>
             {showType && <td className="px-4 py-3">{item.serviceTypeName || '-'}</td>}
             <td className="px-4 py-3 text-slate-500">{item.subServiceTypeName || '-'}</td>
-            <td className="px-4 py-3 text-right">{Number(item.price).toLocaleString()}</td>
+            <td className="px-4 py-3 text-right">
+              <div className="font-semibold text-indigo-700">ပုံမှန် {Number(item.price).toLocaleString()} Ks</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Min {item.minPrice == null ? '-' : Number(item.minPrice).toLocaleString()} · Max {item.maxPrice == null ? '-' : Number(item.maxPrice).toLocaleString()}
+              </div>
+            </td>
             <td className="px-4 py-3 text-right text-slate-500">{Number(item.costPrice || 0).toLocaleString()}</td>
             <td className="px-4 py-3 text-slate-500">{item.warrantyMonths ? `${item.warrantyMonths} လ` : '-'}</td>
             <td className="px-4 py-3">

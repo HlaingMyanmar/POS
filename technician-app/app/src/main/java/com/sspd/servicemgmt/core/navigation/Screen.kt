@@ -23,6 +23,21 @@ sealed class Screen(val route: String) {
     object Account      : Screen("account")
     object About          : Screen("about")
     object SoftwareUpdate : Screen("software_update")
+    object Videos         : Screen("videos")
+    object VideoPlayer    : Screen("video_player/{youtubeId}?title={title}&description={description}&category={category}") {
+        fun createRoute(
+            youtubeId: String,
+            title: String? = null,
+            description: String? = null,
+            category: String? = null
+        ): String {
+            val id = Uri.encode(youtubeId)
+            val t = Uri.encode(title.orEmpty().take(200))
+            val d = Uri.encode(description.orEmpty().take(800))
+            val c = Uri.encode(category.orEmpty().take(80))
+            return "video_player/$id?title=$t&description=$d&category=$c"
+        }
+    }
     object ProductDetail  : Screen("product_detail/{productId}?serial={serialNumber}") {
         fun createRoute(id: Int, serial: String? = null) =
             if (serial != null) "product_detail/$id?serial=${Uri.encode(serial)}"

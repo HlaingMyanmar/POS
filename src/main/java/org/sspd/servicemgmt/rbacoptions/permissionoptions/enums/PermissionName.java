@@ -247,7 +247,14 @@ public enum PermissionName {
     CAN_ACCESS_TECHNICIAN_LOCATION_READ("Technician live location ကြည့်ခွင့်"),
     CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_READ("Technician route history ကြည့်ခွင့်"),
     CAN_ACCESS_TECHNICIAN_LOCATION_HISTORY_DELETE("Technician raw GPS history ကို အုပ်ချုပ်သူမှ ဖျက်ခွင့်"),
-    CAN_ACCESS_CUSTOMER_LOCATION_UPDATE("Customer GPS location သီးသန့်ပြင်ခွင့်");
+    CAN_ACCESS_CUSTOMER_LOCATION_UPDATE("Customer GPS location သီးသန့်ပြင်ခွင့်"),
+
+    CAN_ACCESS_VIDEO_CREATE("Video Management တွင် video အသစ်ထည့်ခွင့်"),
+    CAN_ACCESS_VIDEO_READ("Video Management စာရင်းနှင့် အသေးစိတ် ကြည့်ခွင့်"),
+    CAN_ACCESS_VIDEO_UPDATE("Video Management တွင် video ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_VIDEO_DELETE("Video Management တွင် video ဖျက်ခွင့်"),
+    CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN("Technician App video catalog ကြည့်ခွင့်"),
+    CAN_ACCESS_VIDEO_CATALOG_CLIENT("Client App video catalog ကြည့်ခွင့်");
 
 
 

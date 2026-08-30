@@ -39,6 +39,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
 
     var selectedTab by remember { mutableIntStateOf(if (BuildConfig.TECHNICIAN_ONLY) 1 else 0) }
     val catalogReadOnly = BuildConfig.TECHNICIAN_ONLY
+    var viewingItem by remember { mutableStateOf<ServiceItemDTO?>(null) }
 
     LaunchedEffect(state.actionSuccess) {
         state.actionSuccess?.let { snackbar.showSnackbar(it); vm.clearActionSuccess() }
@@ -55,6 +56,10 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
             onDismiss = { vm.closeTypeDialog() },
             onSave   = { name, desc, active -> vm.saveType(name, desc, active) }
         )
+    }
+
+    viewingItem?.let { item ->
+        ServiceItemDetailDialog(item = item, onDismiss = { viewingItem = null })
     }
 
     // ── Service Item dialog ────────────────────────────────────────────────────
@@ -221,6 +226,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                 )
                 else -> ItemsList(
                     items    = filteredItems,
+                    onOpen   = { viewingItem = it },
                     onEdit   = { vm.openEditItemDialog(it) },
                     onDelete = { vm.confirmDeleteItem(it) },
                     onAdd    = { vm.openAddItemDialog() },
@@ -316,6 +322,7 @@ private fun TypesList(
 @Composable
 private fun ItemsList(
     items:     List<ServiceItemDTO>,
+    onOpen:    (ServiceItemDTO) -> Unit,
     onEdit:    (ServiceItemDTO) -> Unit,
     onDelete:  (ServiceItemDTO) -> Unit,
     onAdd:     () -> Unit,
@@ -331,6 +338,7 @@ private fun ItemsList(
     ) {
         items(items, key = { it.id ?: it.item }) { item ->
             Card(
+                modifier = Modifier.clickable { onOpen(item) },
                 shape  = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = CardBg),
                 border = BorderStroke(1.dp, BorderColor)
@@ -367,10 +375,19 @@ private fun ItemsList(
                         }
                     }
                     Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 4.dp)) {
-                        Text("${String.format("%,.0f", item.price)} Ks",
-                            fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
-                        if ((item.costPrice ?: 0.0) > 0)
-                            Text("ကုန်ကျ ${String.format("%,.0f", item.costPrice)}", fontSize = 10.sp, color = TextMuted)
+                        Text(
+                            "ပုံမှန် ${String.format("%,.0f", item.price)} Ks",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Primary
+                        )
+                        val minLabel = item.minPrice?.let { String.format("%,.0f", it) } ?: "မသတ်မှတ်"
+                        val maxLabel = item.maxPrice?.let { String.format("%,.0f", it) } ?: "မသတ်မှတ်"
+                        Text(
+                            "အနည်းဆုံး $minLabel · အများဆုံး $maxLabel",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
                         Spacer(Modifier.height(4.dp))
                         ActiveBadge(item.isActive)
                     }
@@ -386,6 +403,70 @@ private fun ItemsList(
             }
         }
         item { Spacer(Modifier.height(88.dp)) }
+    }
+}
+
+@Composable
+private fun ServiceItemDetailDialog(
+    item: ServiceItemDTO,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(item.item.ifBlank { "ဝန်ဆောင်မှု" }, fontWeight = FontWeight.ExtraBold)
+                if (!item.serviceTypeName.isNullOrBlank()) {
+                    Text(
+                        buildString {
+                            append(item.serviceTypeName)
+                            if (!item.subServiceTypeName.isNullOrBlank()) append(" › ${item.subServiceTypeName}")
+                        },
+                        fontSize = 12.sp,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PriceRow("ပုံမှန်ဈေး", item.price, Primary)
+                PriceRow("အနည်းဆုံး", item.minPrice, TextMain)
+                PriceRow("အများဆုံး", item.maxPrice, TextMain)
+                if (!item.description.isNullOrBlank()) {
+                    Text(item.description, fontSize = 13.sp, color = TextMuted)
+                }
+                val extras = listOfNotNull(
+                    item.warrantyMonths?.takeIf { it > 0 }?.let { "အာမခံ $it လ" },
+                    item.durationMinutes?.takeIf { it > 0 }?.let { "$it မိနစ်" },
+                    if (item.focDefault == true) "FOC" else null
+                )
+                if (extras.isNotEmpty()) {
+                    Text(extras.joinToString(" · "), fontSize = 12.sp, color = TextMuted)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("ပိတ်မည်", fontWeight = FontWeight.Bold) }
+        }
+    )
+}
+
+@Composable
+private fun PriceRow(label: String, value: Double?, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 13.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+        Text(
+            value?.let { "${String.format("%,.0f", it)} Ks" } ?: "မသတ်မှတ်ထား",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (value == null) TextMuted else color
+        )
     }
 }
 
@@ -501,7 +582,7 @@ private fun ServiceItemDialog(
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable {
                             selectedType = t; selectedSub = null
-                            showTypeSheet = false; onTypeSelected(t.id!!)
+                            showTypeSheet = false; t.id?.let(onTypeSelected)
                         }.padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment     = Alignment.CenterVertically
@@ -689,17 +770,18 @@ private fun ServiceItemDialog(
             Button(
                 onClick = {
                     val price = priceStr.toDoubleOrNull()
+                    val typeId = selectedType?.id
                     when {
                         itemName.isBlank()    -> err = "ဝန်ဆောင်မှုအမည် ရိုက်ထည့်ပါ"
                         price == null         -> err = "ဈေးနှုန်း မှန်ကန်စွာ ရိုက်ပါ"
-                        selectedType == null  -> err = "ဝန်ဆောင်မှုအမျိုးအစား ရွေးပါ"
+                        typeId == null        -> err = "ဝန်ဆောင်မှုအမျိုးအစား ရွေးပါ"
                         else -> onSave(
                             itemName, price, costStr.toDoubleOrNull() ?: 0.0,
                             minPriceStr.toDoubleOrNull(), maxPriceStr.toDoubleOrNull(),
                             warrantyStr.toIntOrNull() ?: 0, durationStr.toIntOrNull() ?: 0,
                             desc, focDefault, taxStr.toDoubleOrNull() ?: 0.0, skill,
                             commissionStr.toDoubleOrNull() ?: 0.0, deviceTypes, requiredParts,
-                            selectedType!!.id!!, selectedSub?.id, active
+                            typeId, selectedSub?.id, active
                         )
                     }
                 },

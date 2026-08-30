@@ -100,11 +100,11 @@ fun ServiceJobDetailScreen(
         if (!ok) return@rememberLauncherForActivityResult
         when (pendingVisitAction) {
             "start:SERVICE", "start:PICKUP", "start:DELIVERY", "start:FOLLOW_UP" ->
-                state.job?.id?.let { visitVm.start(it, pendingVisitAction!!.substringAfter(":")) }
+                pendingVisitAction?.let { action -> state.job?.id?.let { visitVm.start(it, action.substringAfter(":")) } }
             "arrive" -> visitVm.arrive()
             "depart:FIXED_ON_SITE", "depart:BROUGHT_TO_SHOP", "depart:PARTS_REQUIRED",
             "depart:RESCHEDULED", "depart:CUSTOMER_UNAVAILABLE" ->
-                visitVm.departCustomer(pendingVisitAction!!.substringAfter(":"))
+                pendingVisitAction?.let { visitVm.departCustomer(it.substringAfter(":")) }
             "end" -> visitVm.end()
             "journeyResume" -> visitVm.resumeJourney()
             "resume" -> visitVm.resumeTracking()
@@ -413,7 +413,8 @@ fun ServiceJobDetailScreen(
                     CustomerRouteMap(
                         customerName = job.customerName ?: "Customer",
                         destinationLatitude = job.customerLatitude ?: thisJobVisit?.customerLatitude,
-                        destinationLongitude = job.customerLongitude ?: thisJobVisit?.customerLongitude
+                        destinationLongitude = job.customerLongitude ?: thisJobVisit?.customerLongitude,
+                        visit = thisJobVisit
                     )
                 }
             } else {
@@ -1261,7 +1262,7 @@ private fun JobPayDueDialog(
                         amt == null || amt <= 0 -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ပါ"
                         amt > dueAmount + 0.01  -> error = "ကျန်ငွေထက် မကျော်ရပါ"
                         selectedPm == null      -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
-                        else -> onPay(amt, selectedPm!!.id, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null })
+                        else -> selectedPm?.id?.let { onPay(amt, it, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }) }
                     }
                 },
                 enabled = !loading,

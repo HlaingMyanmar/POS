@@ -109,7 +109,8 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
     LaunchedEffect(state.uploadSuccess){ state.uploadSuccess?.let{ snackbarHostState.showSnackbar("ပုံ upload အောင်မြင်ပါသည်"); vm.clearUploadSuccess() } }
 
     // Full-screen photo viewer
-    if (viewingPhoto != null) {
+    val selectedPhoto = viewingPhoto
+    if (selectedPhoto != null) {
         Dialog(
             onDismissRequest = { viewingPhoto = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -117,7 +118,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.88f)).clickable { viewingPhoto = null },
                 contentAlignment = Alignment.Center
             ) {
-                val bmp = remember(viewingPhoto) { decodeDataUri(viewingPhoto!!) }
+                val bmp = remember(selectedPhoto) { decodeDataUri(selectedPhoto) }
                 if (bmp != null) {
                     Image(bitmap = bmp.asImageBitmap(), contentDescription = state.product?.name ?: "Product photo",
                         contentScale = ContentScale.Fit,
@@ -586,7 +587,7 @@ private fun SerialCard(
                         }
                         Box(Modifier.weight(1f).fillMaxHeight()
                             .background(Color(0xBF6366F1))
-                            .clickable { onViewPhoto(photoUri!!) },
+                            .clickable { photoUri?.let(onViewPhoto) },
                             contentAlignment = Alignment.Center) {
                             Icon(Icons.Outlined.Visibility, null, tint = Color.White, modifier = Modifier.size(14.dp))
                         }

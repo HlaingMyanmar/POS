@@ -79,8 +79,8 @@ object ApiClient {
 
     val service: ApiService
         get() {
-            if (retrofit == null) retrofit = build()
-            return retrofit!!.create(ApiService::class.java)
+            val client = retrofit ?: build().also { retrofit = it }
+            return client.create(ApiService::class.java)
         }
 
     fun bearer(token: String) = "Bearer $token"

@@ -50,7 +50,8 @@ import {
   ChevronRight,
   ChevronDown,
   Smartphone,
-  CircleHelp
+  CircleHelp,
+  Video
 } from 'lucide-react';
 import { AppLanguage, AppRoute, AppTheme, User } from '../types';
 import { creditAlertService } from '../services/creditalertapiservice';
@@ -229,6 +230,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'Outdoor Tracking', icon: <MapPin size={18} />, path: AppRoute.OUTDOOR_TRACKING, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_TECHNICIAN_LOCATION_READ' },
       { name: 'ကန့်တည်နေရာ', icon: <Package size={18} />, path: AppRoute.SHELF_LOCATIONS, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_SHELF_LOCATION_READ' },
       { name: 'ဝန်ဆောင်မှုစာရင်း', icon: <Scissors size={18} />, path: AppRoute.SERVICES, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_SERVICE_READ' },
+      { name: 'Video Management', icon: <Video size={18} />, path: AppRoute.VIDEOS, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_VIDEO_READ' },
       { name: 'အသုံးပြုနည်းလမ်းညွှန်', icon: <CircleHelp size={18} />, path: AppRoute.SERVICE_HELP, group: 'ဝန်ဆောင်မှု' },
       { name: 'အရန်သိမ်းဆည်း', icon: <Database size={18} />, path: AppRoute.BACKUP, group: 'ဆက်တင်', permission: 'CAN_ACCESS_BACKUP_SETTINGS_READ' },
       { name: 'ကုမ္ပဏီဆက်တင်', icon: <Settings size={18} />, path: AppRoute.COMPANY_SETTINGS, group: 'ဆက်တင်' },

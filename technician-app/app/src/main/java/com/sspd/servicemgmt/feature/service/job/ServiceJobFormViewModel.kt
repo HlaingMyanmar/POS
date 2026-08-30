@@ -199,9 +199,13 @@ class ServiceJobFormViewModel(
 
     // ── Service Lines ─────────────────────────────────────────────────────────
     fun addLine()               = _uiState.update { it.copy(lines = it.lines + LineDraft()) }
-    fun removeLine(index: Int)  = _uiState.update { it.copy(lines = it.lines.toMutableList().also { l -> l.removeAt(index) }) }
-    fun updateLine(index: Int, line: LineDraft) = _uiState.update {
-        it.copy(lines = it.lines.toMutableList().also { l -> l[index] = line })
+    fun removeLine(index: Int) = _uiState.update { state ->
+        if (index !in state.lines.indices) state
+        else state.copy(lines = state.lines.toMutableList().also { it.removeAt(index) })
+    }
+    fun updateLine(index: Int, line: LineDraft) = _uiState.update { state ->
+        if (index !in state.lines.indices) state
+        else state.copy(lines = state.lines.toMutableList().also { it[index] = line })
     }
     fun selectServiceItem(index: Int, item: ServiceItemDTO) {
         if (index !in _uiState.value.lines.indices) return
@@ -236,9 +240,13 @@ class ServiceJobFormViewModel(
 
     // ── Product Parts ─────────────────────────────────────────────────────────
     fun addPart()               = _uiState.update { it.copy(parts = it.parts + PartDraft()) }
-    fun removePart(index: Int)  = _uiState.update { it.copy(parts = it.parts.toMutableList().also { l -> l.removeAt(index) }) }
-    fun updatePart(index: Int, part: PartDraft) = _uiState.update {
-        it.copy(parts = it.parts.toMutableList().also { l -> l[index] = part })
+    fun removePart(index: Int) = _uiState.update { state ->
+        if (index !in state.parts.indices) state
+        else state.copy(parts = state.parts.toMutableList().also { it.removeAt(index) })
+    }
+    fun updatePart(index: Int, part: PartDraft) = _uiState.update { state ->
+        if (index !in state.parts.indices) state
+        else state.copy(parts = state.parts.toMutableList().also { it[index] = part })
     }
 
     fun selectPartProduct(partIdx: Int, product: ProductDTO) {
@@ -448,7 +456,7 @@ class ServiceJobFormViewModel(
                     )
                 )
                 if (res.isSuccessful && res.body()?.data != null) {
-                    val created = res.body()!!.data!!
+                    val created = res.body()?.data ?: return@launch
                     _uiState.update {
                         it.copy(
                             customers = it.customers + created,
@@ -504,6 +512,17 @@ class ServiceJobFormViewModel(
                     _uiState.update { it.copy(saving = false, saveError = "$names — Serial number ထည့်ပါ") }
                     return@launch
                 }
+                val outsideRange = validLines.firstOrNull { it.outsideMinMax() }
+                if (outsideRange != null) {
+                    val serviceName = outsideRange.serviceItem?.item ?: "ဝန်ဆောင်မှု"
+                    _uiState.update {
+                        it.copy(
+                            saving = false,
+                            saveError = "$serviceName ၏ ဈေးနှုန်းကို သတ်မှတ်ထားသော အနည်းဆုံးနှင့် အများဆုံးဈေးအတွင်း ထည့်ပါ"
+                        )
+                    }
+                    return@launch
+                }
                 val missingReason = validLines.filter { it.pricesDifferFromCatalog() && it.priceChangeReason.isBlank() }
                 if (missingReason.isNotEmpty()) {
                     _uiState.update { it.copy(saving = false, saveError = "စျေးပြောင်းရသည့်အကြောင်းပြချက် ဖြည့်ပါ") }
@@ -529,12 +548,13 @@ class ServiceJobFormViewModel(
                     estimatedCompletion = s.estimatedCompletion.ifBlank { null },
                     remark              = s.remark.ifBlank { null },
                     status              = if (jobId == null) "RECEIVED" else null,
-                    lines               = if (validLines.isEmpty()) null else validLines.map { l ->
-                        val catalog = l.catalogPrice.toDoubleOrNull() ?: l.serviceItem!!.price
+                    lines               = if (validLines.isEmpty()) null else validLines.mapNotNull { l ->
+                        val serviceItem = l.serviceItem ?: return@mapNotNull null
+                        val catalog = l.catalogPrice.toDoubleOrNull() ?: serviceItem.price
                         val estimated = l.estimatedPrice.toDoubleOrNull() ?: catalog
                         ServiceJobLineDTO(
-                            serviceItemId      = l.serviceItem!!.id,
-                            serviceItemName    = l.serviceItem.item,
+                            serviceItemId      = serviceItem.id,
+                            serviceItemName    = serviceItem.item,
                             qty                = l.qty.toIntOrNull() ?: 1,
                             catalogPrice       = catalog,
                             estimatedPrice     = estimated,
@@ -549,15 +569,16 @@ class ServiceJobFormViewModel(
                             confirmationStatus = l.confirmationStatus
                         )
                     },
-                    productParts        = if (validParts.isEmpty()) null else validParts.map { p ->
-                        val isSerial   = p.product!!.hasSerial == true
+                    productParts        = if (validParts.isEmpty()) null else validParts.mapNotNull { p ->
+                        val product = p.product ?: return@mapNotNull null
+                        val isSerial   = product.hasSerial == true
                         val qty        = if (isSerial) p.serialNumbers.size else p.qty.toIntOrNull() ?: 1
-                        val unitPrice  = p.unitPrice.toDoubleOrNull() ?: p.product.sellingPrice.toDouble()
+                        val unitPrice  = p.unitPrice.toDoubleOrNull() ?: product.sellingPrice.toDouble()
                         val discount   = p.discount.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
                         ServiceJobPartDTO(
-                            productId      = p.product.id,
-                            productName    = p.product.name,
-                            productCode    = p.product.productCode,
+                            productId      = product.id,
+                            productName    = product.name,
+                            productCode    = product.productCode,
                             qty            = qty,
                             unitPrice      = unitPrice,
                             discountAmount = discount.takeIf { it > 0 },
@@ -570,9 +591,10 @@ class ServiceJobFormViewModel(
                 else
                     ApiClient.service.createServiceJob(token, dto)
 
-                if (res.isSuccessful && res.body()?.data != null) {
+                val savedJob = res.body()?.data
+                if (res.isSuccessful && savedJob != null) {
                     _uiState.update { it.copy(saving = false) }
-                    onSuccess(res.body()!!.data!!)
+                    onSuccess(savedJob)
                 } else {
                     _uiState.update { it.copy(saving = false, saveError = res.body()?.message ?: "မအောင်မြင်ပါ (${res.code()})") }
                 }

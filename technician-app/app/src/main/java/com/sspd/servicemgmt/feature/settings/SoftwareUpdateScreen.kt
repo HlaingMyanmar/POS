@@ -42,7 +42,7 @@ fun SoftwareUpdateScreen(onBack: () -> Unit) {
 
     val update = state.update
     val hasUpdate = update != null
-    val isDownloading = state.downloadProgress != null && state.downloadProgress!! < 1f
+    val isDownloading = state.downloadProgress?.let { it < 1f } ?: false
     val isDone = state.downloadProgress == 1f && state.apkFile != null
 
     Scaffold(

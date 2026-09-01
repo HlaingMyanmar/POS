@@ -11,7 +11,6 @@ import com.sspd.servicemgmt.core.network.PurchaseDTO
 import com.sspd.servicemgmt.core.network.PurchaseItemDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.network.SupplierDTO
-import com.sspd.servicemgmt.core.network.WarehouseDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -41,8 +40,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
                     val staff    = async { ApiClient.service.getActiveStaff(token) }
                     val products = async { ApiClient.service.getProducts(token) }
                     val methods  = async { ApiClient.service.getActivePaymentMethods(token) }
-                    val warehouseResponse = async { ApiClient.service.getWarehouses(token) }
-                    val warehouses = warehouseResponse.await().body()?.data ?: emptyList()
                     val paymentMethods = methods.await().body()?.data ?: emptyList()
                     _uiState.update {
                         it.copy(
@@ -52,9 +49,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
                             paymentMethods = paymentMethods,
                             selectedPaymentMethod = it.selectedPaymentMethod
                                 ?: paymentMethods.firstOrNull(),
-                            warehouses = warehouses,
-                            selectedWarehouse = warehouses.firstOrNull { w -> w.code.equals("MAIN", true) }
-                                ?: warehouses.firstOrNull(),
                             loading = false
                         )
                     }
@@ -104,9 +98,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
     fun setExchangeRate(v: String)                = _uiState.update { it.copy(exchangeRate = v.filterMoney()) }
     fun setOtherCharges(v: String)                = _uiState.update { it.copy(otherCharges = v.filterMoney()) }
     fun setSupplierInvoiceNo(v: String)           = _uiState.update { it.copy(supplierInvoiceNo = v) }
-    fun selectWarehouse(v: WarehouseDTO) = _uiState.update {
-        it.copy(selectedWarehouse = v, showWarehousePicker = false, lines = emptyList())
-    }
     fun setRemark(v: String)                      = _uiState.update { it.copy(remark = v) }
     fun clearError()                              = _uiState.update { it.copy(saveError = null) }
 
@@ -114,12 +105,10 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
     fun openStaffPicker()    = _uiState.update { it.copy(showStaffPicker     = true, pickerQuery = "") }
     fun openPaymentPicker()  = _uiState.update { it.copy(showPaymentPicker   = true, pickerQuery = "") }
     fun openProductPicker()  = _uiState.update { it.copy(showProductPicker   = true, pickerQuery = "") }
-    fun openWarehousePicker()= _uiState.update { it.copy(showWarehousePicker = true, pickerQuery = "") }
     fun dismissPicker() = _uiState.update {
         it.copy(
             showSupplierPicker = false, showStaffPicker   = false,
             showPaymentPicker  = false, showProductPicker = false,
-            showWarehousePicker = false,
             pickerQuery = ""
         )
     }
@@ -207,8 +196,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
 
     fun setLineCost(index: Int, v: String)     = updateLine(index) { it.copy(unitCost = v.filterMoney()) }
     fun setLineWarranty(index: Int, v: String) = updateLine(index) { it.copy(warrantyMonths = v.filterDigits()) }
-    fun setLineBatchNumber(index: Int, v: String) = updateLine(index) { it.copy(batchNumber = v) }
-    fun setLineExpiryDate(index: Int, v: String)  = updateLine(index) { it.copy(expiryDate = v) }
     fun setLineAllocatedLandedCost(index: Int, v: String) = updateLine(index) { it.copy(allocatedLandedCost = v.filterMoney()) }
 
     fun setLineSerial(lineIndex: Int, serialIndex: Int, v: String) = updateLine(lineIndex) { line ->
@@ -294,7 +281,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
 
         if (supplier == null)  return fail("Supplier ရွေးပါ")
         if (staff == null)     return fail("Staff ရွေးပါ")
-        if (s.selectedWarehouse?.id == null) return fail("Warehouse ရွေးပါ")
         if (s.lines.isEmpty()) return fail("ပစ္စည်း အနည်းဆုံးတစ်ခု ထည့်ပါ")
         if (discount < 0)      return fail("Discount မမှန်ပါ")
         if (discount > totalAmount(s.lines)) return fail("Discount သည် စုစုပေါင်းတန်ဖိုးထက် မကျော်ရပါ")
@@ -344,8 +330,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
                 qty              = qty,
                 unitCost         = cost,
                 subtotal         = qty * cost,
-                batchNumber      = line.batchNumber.trim().ifBlank { null },
-                expiryDate       = line.expiryDate.trim().ifBlank { null },
                 warrantyMonths   = if (warrantiesList == null) warranty else null,
                 itemWarranties   = warrantiesList,
                 serialNumbers    = serials.takeIf { it.isNotEmpty() },
@@ -375,8 +359,8 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
             paidAmount      = paid,
             remark          = s.remark.ifBlank { null },
             supplierInvoiceNo = s.supplierInvoiceNo.ifBlank { null },
-            warehouseId     = s.selectedWarehouse?.id,
-            warehouseName   = s.selectedWarehouse?.name,
+            warehouseId     = null,
+            warehouseName   = "Main",
             paymentMethodId = if (paid > 0) (splitPayments.firstOrNull()?.paymentMethodId ?: s.selectedPaymentMethod?.id) else null,
             transactionNo   = s.paymentTransactionNo.ifBlank { null },
             payments        = splitPayments.ifEmpty { null },
@@ -423,8 +407,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val qty            : String       = "1",
         val unitCost       : String       = "0",
         val warrantyMonths : String       = "0",
-        val batchNumber    : String       = "",
-        val expiryDate     : String       = "",
         val serials        : List<String> = emptyList(),
         val conditions     : List<String> = emptyList(),
         val warranties     : List<String> = emptyList(),
@@ -437,11 +419,9 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val staff                 : List<StaffDTO>             = emptyList(),
         val products              : List<ProductDTO>           = emptyList(),
         val paymentMethods        : List<PaymentMethodDTO>     = emptyList(),
-        val warehouses            : List<WarehouseDTO>         = emptyList(),
         val selectedSupplier      : SupplierDTO?               = null,
         val selectedStaff         : StaffDTO?                  = null,
         val selectedPaymentMethod : PaymentMethodDTO?          = null,
-        val selectedWarehouse     : WarehouseDTO?               = null,
         val splitPayments         : List<PaymentTransactionDTO> = emptyList(),
         val purchaseDate          : String = LocalDate.now().toString(),
         val dueDate               : String = "",
@@ -468,7 +448,6 @@ class PurchaseFormViewModel(application: Application) : AndroidViewModel(applica
         val showStaffPicker       : Boolean = false,
         val showPaymentPicker     : Boolean = false,
         val showProductPicker     : Boolean = false,
-        val showWarehousePicker   : Boolean = false,
         val pickerQuery           : String = ""
     )
 }

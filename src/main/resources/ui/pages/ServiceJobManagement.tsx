@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
+import { useWebsocket } from '../hooks/useWebsocket';
 import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw, Plus } from 'lucide-react';
-import { serviceJobService, serviceItemService } from '../services/api';
+import { serviceJobService, serviceItemService, serviceJobTeamService, bookingService, resolveAssetUrl } from '../services/api';
 import { staffService } from '../services/staffapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { productService } from '../services/productapiservice';
@@ -11,6 +12,7 @@ import { customerPaymentService } from '../services/customerpaymentapiservice';
 import { creditTermService } from '../services/credittermapiservice';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
+import TechnicianAssignmentPanel from '../components/TechnicianAssignmentPanel';
 import { PaymentTransactionDTO } from '../types';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
@@ -47,11 +49,12 @@ const servicesForDevice = (items: any[], deviceType: string, showAll: boolean) =
   const filtered = showAll || !deviceType ? ranked : ranked.filter(item => supportedDeviceTokens(item).length === 0 || explicitlySupportsDevice(item, deviceType));
   return (filtered.length ? filtered : ranked).map(item => ({ ...item, _deviceRecommended: explicitlySupportsDevice(item, deviceType) }));
 };
-const STATUS_LIST = ['RECEIVED','INSPECTING','IN_PROGRESS','WAITING_PARTS','COMPLETED','DELIVERED','CANCELLED'] as const;
+const STATUS_LIST = ['RECEIVED','ASSIGNED','INSPECTING','IN_PROGRESS','WAITING_PARTS','COMPLETED','DELIVERED','CANCELLED'] as const;
 type JobStatus = typeof STATUS_LIST[number];
 
 const STATUS_COLOR: Record<JobStatus, string> = {
   RECEIVED:    'bg-orange-100 text-orange-700',
+  ASSIGNED:    'bg-cyan-100 text-cyan-700',
   INSPECTING:  'bg-blue-100 text-blue-700',
   IN_PROGRESS: 'bg-purple-100 text-purple-700',
   WAITING_PARTS: 'bg-amber-100 text-amber-800',
@@ -70,6 +73,7 @@ const serviceModeChip = (mode?: string) => (
 
 const STATUS_LABEL: Record<JobStatus, string> = {
   RECEIVED:    'လက်ခံပြီး',
+  ASSIGNED:    'တာဝန်ပေးပြီး',
   INSPECTING:  'စစ်ဆေးနေ',
   IN_PROGRESS: 'ပြင်ဆင်နေ',
   WAITING_PARTS: 'ပစ္စည်းစောင့်',
@@ -78,17 +82,36 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   CANCELLED:   'ပယ်ဖျက်',
 };
 
-const ACTIVE_STATUSES    = ['RECEIVED', 'INSPECTING', 'IN_PROGRESS', 'WAITING_PARTS'];
+const ACTIVE_STATUSES    = ['RECEIVED', 'ASSIGNED', 'INSPECTING', 'IN_PROGRESS', 'WAITING_PARTS'];
 const DONE_STATUSES      = ['COMPLETED'];
 const ARCHIVED_STATUSES  = ['DELIVERED', 'CANCELLED'];
 const NEXT_STATUS: Record<string, string[]> = {
-  RECEIVED: ['INSPECTING', 'CANCELLED'],
+  RECEIVED: ['ASSIGNED', 'INSPECTING', 'CANCELLED'],
+  ASSIGNED: ['INSPECTING', 'IN_PROGRESS', 'CANCELLED'],
   INSPECTING: ['IN_PROGRESS', 'WAITING_PARTS', 'CANCELLED'],
   WAITING_PARTS: ['IN_PROGRESS', 'CANCELLED'],
   IN_PROGRESS: ['WAITING_PARTS', 'COMPLETED', 'CANCELLED'],
   COMPLETED: ['DELIVERED'], DELIVERED: [], CANCELLED: [],
 };
 const selectableStatuses = (current: string) => [current, ...(NEXT_STATUS[current] || [])];
+const JOB_WORKFLOW = ['RECEIVED', 'ASSIGNED', 'INSPECTING', 'IN_PROGRESS', 'COMPLETED', 'DELIVERED'] as const;
+const formatAppointment = (value?: string | null) => value ? new Date(value).toLocaleString() : 'မသတ်မှတ်ရသေးပါ';
+const priorityStyle: Record<string, string> = {
+  URGENT: 'bg-rose-100 text-rose-800',
+  HIGH: 'bg-orange-100 text-orange-800',
+  NORMAL: 'bg-blue-100 text-blue-800',
+  LOW: 'bg-slate-100 text-slate-600',
+};
+const STATUS_ACTION: Record<string, string> = {
+  RECEIVED: 'Job လက်ခံထားသည် — ပစ္စည်းနှင့် ပြဿနာကို စစ်ဆေးရန်',
+  ASSIGNED: 'Technician တာဝန်ပေးပြီး — လက်ခံပြီး စစ်ဆေးရန်',
+  INSPECTING: 'စစ်ဆေးနေသည် — Service/Parts နှင့် ခန့်မှန်းဈေး ထည့်ရန်',
+  WAITING_PARTS: 'Parts စောင့်နေသည် — ရောက်လာလျှင် ပြင်ဆင်နေ သို့ ပြောင်းရန်',
+  IN_PROGRESS: 'ပြင်ဆင်နေသည် — Customer အတည်ပြုထားသော လုပ်ငန်းများ လုပ်ရန်',
+  COMPLETED: 'ပြင်ဆင်ပြီး — ငွေရှင်းရန်',
+  DELIVERED: 'ငွေရှင်းပြီး ပစ္စည်းပေးအပ်ထားသည်',
+  CANCELLED: 'Job ပယ်ဖျက်ထားသည်',
+};
 const LINE_CONFIRMATION_STATUS = [
   { value: 'RECOMMENDED', label: 'အကြံပြုထားသည်', cls: 'border-amber-200 bg-amber-50 text-amber-800' },
   { value: 'INSPECTING', label: 'စစ်ဆေးဆဲ', cls: 'border-sky-200 bg-sky-50 text-sky-800' },
@@ -98,9 +121,18 @@ const LINE_CONFIRMATION_STATUS = [
   { value: 'COMPLETED', label: 'ပြီးစီး', cls: 'border-slate-200 bg-slate-100 text-slate-700' },
 ] as const;
 const lineConfirmationMeta = (value?: string) => LINE_CONFIRMATION_STATUS.find(item => item.value === value) || LINE_CONFIRMATION_STATUS[0];
+const LINE_CONFIRMATION_HELP: Record<string, string> = {
+  RECOMMENDED: 'Technician အကြံပြုထားဆဲ — Customer ကို မေးရန်',
+  INSPECTING: 'စစ်ဆေးနေဆဲ — ဈေးနှင့် လုပ်ဆောင်ချက် မသတ်မှတ်ရသေး',
+  CUSTOMER_APPROVED: 'Customer သဘောတူပြီး — ပြင်ဆင်မှု စတင်နိုင်သည်',
+  CUSTOMER_REJECTED: 'Customer ငြင်းပယ်ထားသည် — ဒီလိုင်းကို ကောက်ခံမည်မဟုတ်',
+  IN_PROGRESS: 'လက်ရှိ လုပ်ဆောင်နေသည်',
+  COMPLETED: 'ဒီဝန်ဆောင်မှု ပြီးစီးပြီး — ကောက်ခံဈေး အတည်ပြုရန်',
+};
 const emptyServiceLine = () => ({
   serviceItemId: '', serviceItemName: '', qty: 1,
   catalogPrice: 0, estimatedPrice: 0, approvedPrice: '' as number | '', billedPrice: '' as number | '',
+  discountAmount: 0,
   minPrice: null as number | null, maxPrice: null as number | null, priceChangeReason: '',
   warrantyMonths: 0, warrantyCovered: false, confirmationStatus: 'RECOMMENDED',
 });
@@ -112,6 +144,7 @@ const mapLineFromApi = (l: any) => ({
   estimatedPrice: Number(l.estimatedPrice ?? l.price ?? 0),
   approvedPrice: l.approvedPrice != null && l.approvedPrice !== '' ? Number(l.approvedPrice) : '' as number | '',
   billedPrice: l.billedPrice != null && l.billedPrice !== '' ? Number(l.billedPrice) : '' as number | '',
+  discountAmount: Number(l.discountAmount || 0),
   minPrice: l.minPrice != null && l.minPrice !== '' ? Number(l.minPrice) : null,
   maxPrice: l.maxPrice != null && l.maxPrice !== '' ? Number(l.maxPrice) : null,
   priceChangeReason: l.priceChangeReason ?? '',
@@ -128,6 +161,7 @@ const lineToPayload = (l: any) => ({
   approvedPrice: l.approvedPrice === '' || l.approvedPrice == null ? null : Number(l.approvedPrice),
   billedPrice: l.billedPrice === '' || l.billedPrice == null ? null : Number(l.billedPrice),
   priceChangeReason: l.priceChangeReason || null,
+  discountAmount: Number(l.discountAmount || 0),
   priceOverrideApproved: Boolean(l.priceOverrideApproved),
   warrantyMonths: Number(l.warrantyMonths || 0),
   warrantyCovered: Boolean(l.warrantyCovered),
@@ -158,6 +192,50 @@ const displayChargeUnit = (l: any) => {
     return Number(l.approvedPrice);
   }
   return Number(l.estimatedPrice ?? l.price ?? 0);
+};
+const serviceLineGross = (line: any) => {
+  if (line.confirmationStatus === 'CUSTOMER_REJECTED' || line.warrantyCovered) return 0;
+  return Number(line.qty || 1) * displayChargeUnit(line);
+};
+const serviceLineBalance = (line: any) => Math.max(0, serviceLineGross(line) - Number(line.discountAmount || 0));
+const partBalance = (part: any) => {
+  if (part.warrantyCovered) return 0;
+  if (part.subtotal != null && part.subtotal !== '') return Number(part.subtotal);
+  return Math.max(0, Number(part.qty || 1) * Number(part.unitPrice || 0) - Number(part.discountAmount || 0));
+};
+type DiscountAllocationMethod = 'PRO_RATA' | 'LABOR_FIRST' | 'PARTS_FIRST';
+const allocateOverallDiscount = (laborBalance: number, partsBalance: number, discount: number, method: DiscountAllocationMethod) => {
+  const total = laborBalance + partsBalance;
+  if (discount <= 0 || total <= 0) return { laborNet: laborBalance, partsNet: partsBalance };
+  let laborShare = 0;
+  let partsShare = 0;
+  if (method === 'LABOR_FIRST') {
+    laborShare = Math.min(discount, laborBalance);
+    partsShare = discount - laborShare;
+  } else if (method === 'PARTS_FIRST') {
+    partsShare = Math.min(discount, partsBalance);
+    laborShare = discount - partsShare;
+  } else {
+    laborShare = Math.round((discount * laborBalance / total) * 100) / 100;
+    partsShare = discount - laborShare;
+  }
+  return {
+    laborNet: Math.max(0, laborBalance - laborShare),
+    partsNet: Math.max(0, partsBalance - partsShare),
+  };
+};
+const computeSettlementPreview = (job: any, overallDiscount: number, method: DiscountAllocationMethod, foc: boolean) => {
+  const laborBalance = (job?.lines || []).reduce((sum: number, line: any) => sum + serviceLineBalance(line), 0);
+  const partsBalance = (job?.productParts || []).reduce((sum: number, part: any) => sum + partBalance(part), 0);
+  const gross = laborBalance + partsBalance;
+  if (foc) return { laborBalance, partsBalance, gross, laborNet: 0, partsNet: 0, net: 0 };
+  if (gross <= 0) {
+    const fallbackGross = Number(job?.finalCost || job?.estimatedCost || 0);
+    const net = Math.max(0, fallbackGross - overallDiscount);
+    return { laborBalance: 0, partsBalance: 0, gross: fallbackGross, laborNet: net, partsNet: 0, net };
+  }
+  const { laborNet, partsNet } = allocateOverallDiscount(laborBalance, partsBalance, overallDiscount, method);
+  return { laborBalance, partsBalance, gross, laborNet, partsNet, net: laborNet + partsNet };
 };
 const applyServiceItem = (line: any, si: any) => {
   if (!si) return { ...line, serviceItemId: '', serviceItemName: '', catalogPrice: 0, estimatedPrice: 0, minPrice: null, maxPrice: null };
@@ -245,12 +323,13 @@ const emptyForm = {
   itemName: '', deviceType: '', serialNo: '', color: '', accessories: '', itemCondition: '', problemDesc: '', diagnosisNotes: '',
   deviceConditions: '', partRequests: '', estimatedCompletion: '', estimatedCost: '', remark: '',
   status: 'RECEIVED', holdReason: '', priority: 'NORMAL',
+  estimateApproved: false,
   lines: [] as ReturnType<typeof emptyServiceLine>[],
   productParts: [] as { productId: string; productName: string; qty: number; unitPrice: number; discountAmount: number; warrantyCovered: boolean; hasSerial: boolean; serialNumbers: string[]; availableSerials: any[]; convertedFromKey?: string }[],
 };
 
 const emptySettle = {
-  finalCost: '', discountAmount: '0', foc: false,
+  finalCost: '', discountAmount: '0', discountAllocationMethod: 'PRO_RATA' as DiscountAllocationMethod, foc: false,
   paidAmount: '', dueDate: '',
   paymentMethodId: '', paymentAccountId: '', transactionNo: '',
   payments: [] as PaymentTransactionDTO[],
@@ -268,6 +347,7 @@ const normalizePayments = (payments: PaymentTransactionDTO[]) =>
     .map((p) => ({ ...p, paymentMethodId: Number(p.paymentMethodId) || 0, amount: Number(p.amount) || 0, transactionNo: p.transactionNo?.trim() || undefined }))
     .filter((p) => p.paymentMethodId > 0 && p.amount > 0);
 const paymentTotal = (payments: PaymentTransactionDTO[]) => normalizePayments(payments).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+const apiErrorMessage = (e: any) => e?.message || (typeof e === 'string' ? e : 'Operation failed');
 
 /* ── SearchableSelect ─────────────────────────────────────────── */
 const SearchableSelect: React.FC<{
@@ -466,6 +546,179 @@ const PartRequestConvertPanel: React.FC<{
   );
 };
 
+const emptyProductPart = () => ({
+  productId: '', productName: '', qty: 1, unitPrice: 0, discountAmount: 0,
+  warrantyCovered: false, hasSerial: false, serialNumbers: [] as string[], availableSerials: [] as any[],
+});
+
+const ProductPartsEditor: React.FC<{
+  products: any[];
+  productParts: ReturnType<typeof emptyProductPart>[];
+  onChange: (productParts: ReturnType<typeof emptyProductPart>[]) => void;
+}> = ({ products, productParts, onChange }) => {
+  const patch = (fn: (pp: ReturnType<typeof emptyProductPart>[]) => ReturnType<typeof emptyProductPart>[]) =>
+    onChange(fn(productParts));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">📦 အသုံးပြုပစ္စည်းများ</label>
+        <button type="button"
+          onClick={() => onChange([...productParts, emptyProductPart()])}
+          className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
+      </div>
+      {productParts.length > 0 ? (
+        <div className="space-y-2">
+          {productParts.map((part, pi) => (
+            <div key={pi} className="min-w-0 space-y-2 rounded-xl border bg-slate-50 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">ပစ္စည်း #{pi + 1}</span>
+                <button type="button"
+                  onClick={() => onChange(productParts.filter((_, idx) => idx !== pi))}
+                  className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
+              </div>
+              <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${part.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                <input type="checkbox" checked={Boolean(part.warrantyCovered)}
+                  onChange={e => patch(pp => { const next = [...pp]; next[pi] = { ...next[pi], warrantyCovered: e.target.checked }; return next; })} />
+                Warranty အကျုံးဝင် — ပစ္စည်းဖိုးအခမဲ့
+              </label>
+              <div>
+                <label className="block text-[10px] text-slate-500 mb-0.5">ပစ္စည်း</label>
+                <SearchableSelect
+                  items={products}
+                  value={part.productId}
+                  displayField="name"
+                  subField="productCode"
+                  placeholder="ပစ္စည်း ရှာရန်..."
+                  onChange={(prod) => {
+                    if (prod) {
+                      const hs = !!prod.hasSerial;
+                      patch(pp => {
+                        const next = [...pp];
+                        next[pi] = { ...next[pi], productId: String(prod.id), productName: prod.name ?? '', unitPrice: Number(prod.sellingPrice ?? prod.price ?? 0), discountAmount: 0, hasSerial: hs, serialNumbers: [], availableSerials: [] };
+                        return next;
+                      });
+                      if (hs) {
+                        productSerialService.getByProductId(Number(prod.id)).then(serials => {
+                          patch(pp => {
+                            const next = [...pp];
+                            if (next[pi]) next[pi] = { ...next[pi], availableSerials: serials ?? [] };
+                            return next;
+                          });
+                        }).catch(() => {});
+                      }
+                    } else {
+                      patch(pp => {
+                        const next = [...pp];
+                        next[pi] = { ...next[pi], productId: '', productName: '', unitPrice: 0, discountAmount: 0, hasSerial: false, serialNumbers: [], availableSerials: [] };
+                        return next;
+                      });
+                    }
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
+                  <input type="number" min={1} value={part.qty}
+                    onChange={e => {
+                      const newQty = Number(e.target.value);
+                      patch(pp => {
+                        const next = [...pp];
+                        const trimmed = next[pi].hasSerial && next[pi].serialNumbers.length > newQty
+                          ? next[pi].serialNumbers.slice(0, newQty)
+                          : next[pi].serialNumbers;
+                        next[pi] = { ...next[pi], qty: newQty, serialNumbers: trimmed };
+                        return next;
+                      });
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs text-center" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">တစ်ခုဈေး (Ks)</label>
+                  <input type="number" min={0} value={part.unitPrice}
+                    onChange={e => patch(pp => { const next = [...pp]; next[pi] = { ...next[pi], unitPrice: Number(e.target.value) }; return next; })}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5">လျှော့ဈေး (Ks)</label>
+                  <input type="number" min={0} value={part.discountAmount}
+                    onChange={e => patch(pp => { const next = [...pp]; next[pi] = { ...next[pi], discountAmount: Number(e.target.value) }; return next; })}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
+                </div>
+              </div>
+              {part.hasSerial && part.productId && (
+                <div className="mt-1">
+                  <label className="block text-[10px] font-bold text-amber-600 mb-1">
+                    Serial Numbers ({part.serialNumbers.length}/{part.qty})
+                    {part.serialNumbers.length !== part.qty && (
+                      <span className="text-red-500 ml-1">— {part.qty - part.serialNumbers.length} remaining</span>
+                    )}
+                  </label>
+                  {part.serialNumbers.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                      {part.serialNumbers.map((sn, si) => (
+                        <span key={si} className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-mono px-2 py-0.5 rounded-full">
+                          {sn}
+                          <button type="button"
+                            onClick={() => patch(pp => {
+                              const next = [...pp];
+                              next[pi] = { ...next[pi], serialNumbers: next[pi].serialNumbers.filter((_, idx) => idx !== si) };
+                              return next;
+                            })}
+                            className="text-amber-500 hover:text-red-600 font-bold leading-none">x</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {part.serialNumbers.length < part.qty && (
+                    <div className="max-h-28 overflow-y-auto border rounded-lg bg-white">
+                      {(part.availableSerials || []).length === 0 ? (
+                        <div className="px-2 py-2 text-[10px] text-slate-400 italic">Available serial မရှိပါ</div>
+                      ) : (
+                        (part.availableSerials || [])
+                          .filter((s: any) => s.status === 'Available' && !part.serialNumbers.includes(s.serialNumber))
+                          .map((s: any) => (
+                            <div key={s.id}
+                              onClick={() => {
+                                if (part.serialNumbers.length >= part.qty) return;
+                                patch(pp => {
+                                  const next = [...pp];
+                                  next[pi] = { ...next[pi], serialNumbers: [...next[pi].serialNumbers, s.serialNumber] };
+                                  return next;
+                                });
+                              }}
+                              className="px-2.5 py-1.5 text-[11px] font-mono cursor-pointer hover:bg-amber-50 border-b last:border-b-0 flex items-center justify-between">
+                              <span>{s.serialNumber}</span>
+                              <span className="text-[9px] text-emerald-500 font-bold">+ ရွေးပါ</span>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {part.productName && (() => {
+                const gross = Number(part.qty || 1) * Number(part.unitPrice || 0);
+                const disc = Number(part.discountAmount || 0);
+                const sub = part.warrantyCovered ? 0 : Math.max(0, gross - disc);
+                return (
+                  <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                    <span>စုစုပေါင်း: <span className={`font-bold ${part.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{part.warrantyCovered ? 'FREE' : `${sub.toLocaleString()} Ks`}</span></span>
+                    {disc > 0 && <span className="text-red-400 font-medium">(- {disc.toLocaleString()} Ks လျှော့)</span>}
+                  </div>
+                );
+              })()}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400 italic">ပစ္စည်း မရှိသေးပါ</p>
+      )}
+    </div>
+  );
+};
+
 /* ── CustomerPicker ───────────────────────────────────────────── */
 const CustomerPicker: React.FC<{
   customers: any[];
@@ -587,6 +840,8 @@ const ServiceLinePriceFields: React.FC<{
     line.maxPrice != null ? `Max ${Number(line.maxPrice).toLocaleString()}` : null,
   ].filter(Boolean).join(' · ');
   const charge = displayChargeUnit(line);
+  const lineGross = Number(line.qty || 1) * charge;
+  const lineNet = line.confirmationStatus === 'CUSTOMER_REJECTED' ? 0 : line.warrantyCovered ? 0 : Math.max(0, lineGross - Number(line.discountAmount || 0));
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
@@ -621,10 +876,16 @@ const ServiceLinePriceFields: React.FC<{
             placeholder="—"
             className={`w-full border rounded-lg px-2 py-1.5 text-xs text-right ${outsideMinMax(line.billedPrice, line.minPrice, line.maxPrice) ? 'border-rose-400 bg-rose-50' : ''}`} />
         </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 mb-0.5">လိုင်းလျှော့ဈေး (Ks)</label>
+          <input type="number" min={0} value={line.discountAmount ?? 0}
+            onChange={e => onPatch({ discountAmount: Number(e.target.value) })}
+            className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
+        </div>
         <div className="flex items-end">
           <p className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-500">
             ကောက်ခံမည်: <span className={`font-bold ${line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'text-rose-600' : line.warrantyCovered ? 'text-emerald-600' : 'text-slate-700'}`}>
-              {line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'ငြင်းပယ် — 0' : line.warrantyCovered ? 'FREE' : `${(Number(line.qty || 1) * charge).toLocaleString()} Ks`}
+              {line.confirmationStatus === 'CUSTOMER_REJECTED' ? 'ငြင်းပယ် — 0' : line.warrantyCovered ? 'FREE' : `${lineNet.toLocaleString()} Ks`}
             </span>
           </p>
         </div>
@@ -649,12 +910,42 @@ const ServiceLinePriceFields: React.FC<{
 };
 
 /* ── Main Page ─────────────────────────────────────────────────── */
+const AttachmentPreviewLightbox: React.FC<{
+  images: Array<{ dataUrl: string; fileName?: string }>;
+  index: number;
+  onClose: () => void;
+  onChange: (nextIndex: number) => void;
+}> = ({ images, index, onClose, onChange }) => {
+  const photo = images[index];
+  if (!photo?.dataUrl) return null;
+
+  const hasPrev = index > 0;
+  const hasNext = index < images.length - 1;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="flex max-h-[92vh] max-w-[95vw] flex-col items-center gap-3" onClick={e => e.stopPropagation()}>
+        {images.length > 1 && <div className="text-sm font-medium text-white/80">{index + 1} / {images.length}</div>}
+        <img src={photo.dataUrl} alt={photo.fileName || 'Service attachment'} className="max-h-[78vh] max-w-[95vw] rounded-xl object-contain shadow-2xl" />
+        {photo.fileName && <div className="max-w-[95vw] truncate text-xs text-white/70">{photo.fileName}</div>}
+        <div className="flex items-center gap-3">
+          {hasPrev && <button type="button" onClick={() => onChange(index - 1)} className="rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20">ယခင်</button>}
+          <button type="button" onClick={onClose} className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20">ပိတ်ရန်</button>
+          {hasNext && <button type="button" onClick={() => onChange(index + 1)} className="rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20">နောက်</button>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function ServiceJobManagement() {
   const currentUser = useMemo(() => {
     try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; name?: string; username?: string; roles?: string[]; permissions?: string[] }; }
     catch { return {}; }
   }, []);
   const canAssignTechnician = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN');
+  const canUpdatePriority = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_JOB_PRIORITY_UPDATE')
+    || (currentUser.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR');
   const canOverridePrice = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE')
     || (currentUser.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR');
   const myStaffId = currentUser.staffId != null ? String(currentUser.staffId) : '';
@@ -682,6 +973,7 @@ export default function ServiceJobManagement() {
   const [editId, setEditId]       = useState<number | null>(null);
   const [editJobNo, setEditJobNo] = useState('');
   const [origStatus, setOrigStatus] = useState('');
+  const [editStep, setEditStep] = useState(0);
   const [form, setForm]           = useState(emptyForm);
   const [showAllServices, setShowAllServices] = useState(false);
   const [convertedPartKeys, setConvertedPartKeys] = useState<string[]>([]);
@@ -692,6 +984,7 @@ export default function ServiceJobManagement() {
   const recommendedServiceCount = useMemo(() => serviceItems.filter(item => explicitlySupportsDevice(item, serviceFilterDeviceType)).length, [serviceItems, serviceFilterDeviceType]);
   const [showSettle, setShowSettle] = useState(false);
   const [settleJob, setSettleJob]   = useState<any>(null);
+  const [settleJobDetail, setSettleJobDetail] = useState<any>(null);
   const [settleForm, setSettleForm] = useState(emptySettle);
 
   const [showCreditPay, setShowCreditPay] = useState(false);
@@ -700,6 +993,9 @@ export default function ServiceJobManagement() {
 
   const [printId, setPrintId]   = useState<number | null>(null);
   const [logJob, setLogJob]     = useState<any>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<{ images: Array<{ dataUrl: string; fileName?: string }>; index: number } | null>(null);
+  const [bookingContext, setBookingContext] = useState<any>(null);
+  const [teamJob, setTeamJob]   = useState<any>(null);
   const [showRework, setShowRework] = useState(false);
   const [reworkParent, setReworkParent] = useState<any>(null);
   const [reworkForm, setReworkForm] = useState(emptyRework);
@@ -788,6 +1084,20 @@ export default function ServiceJobManagement() {
   });
   useDataEvents(['Service Job', 'Booking', 'Customer', 'Staff', 'Service', 'Product', 'Payment', 'Credit'], () => {
     void load();
+    void loadReferenceData();
+  });
+  useWebsocket('/topic/service-jobs', () => {
+    void load();
+    void loadReferenceData();
+  });
+  useWebsocket('/topic/booking', () => {
+    void load();
+    void loadReferenceData();
+  });
+  useWebsocket('/topic/product', () => {
+    void loadReferenceData();
+  });
+  useWebsocket('/topic/service', () => {
     void loadReferenceData();
   });
 
@@ -893,6 +1203,7 @@ export default function ServiceJobManagement() {
       status:              j.status ?? 'RECEIVED',
       holdReason:          j.holdReason ?? '',
       priority:            j.priority ?? 'NORMAL',
+      estimateApproved:    Boolean(j.estimateApproved),
       lines: (j.lines ?? []).map(mapLineFromApi),
       productParts: (j.productParts ?? []).map((p: any) => {
         const prod = products.find((pr: any) => String(pr.id) === String(p.productId));
@@ -915,6 +1226,7 @@ export default function ServiceJobManagement() {
     setEditId(j.id);
     setEditJobNo(j.jobNo ?? '');
     setOrigStatus(j.status ?? 'RECEIVED');
+    setEditStep(0);
     setShowEdit(true);
     // Fetch available serials for serial-tracked parts
     (j.productParts ?? []).forEach((p: any, idx: number) => {
@@ -1054,13 +1366,24 @@ export default function ServiceJobManagement() {
   };
 
   /* ── Settle handlers ───────────────────────────────────────── */
-  const openSettle = (j: any) => {
-    const estCost = j.finalCost && Number(j.finalCost) > 0 ? j.finalCost : (j.estimatedCost ?? '');
+  const openSettle = async (j: any) => {
+    let detail = j;
+    try {
+      const res = await serviceJobService.getById(j.id);
+      if (res?.success && res.data) detail = res.data;
+    } catch { /* use list row */ }
+    const method = (detail.discountAllocationMethod || 'PRO_RATA') as DiscountAllocationMethod;
+    const discount = Number(detail.discountAmount || 0);
+    const preview = computeSettlementPreview(detail, discount, method, false);
     setSettleJob(j);
+    setSettleJobDetail(detail);
     setSettleForm({
       ...emptySettle,
-      finalCost:  estCost ? String(estCost) : '',
-      paidAmount: estCost ? String(estCost) : '',
+      finalCost: String(preview.gross || detail.estimatedCost || ''),
+      discountAmount: String(discount),
+      discountAllocationMethod: method,
+      paidAmount: preview.net > 0 ? String(preview.net) : '0',
+      payments: [],
     });
     setShowSettle(true);
   };
@@ -1069,26 +1392,42 @@ export default function ServiceJobManagement() {
     if (!settleJob) return;
     const settlePayments = normalizePayments(settleForm.payments || []);
     const paid = settleForm.foc ? 0 : (settlePayments.length > 0 ? paymentTotal(settleForm.payments || []) : Number(settleForm.paidAmount || 0));
-    if (!settleForm.foc && paid > 0 && !settleForm.paymentMethodId && settlePayments.length === 0) {
+    const methodId = settlePayments[0]?.paymentMethodId
+      || (settleForm.paymentMethodId ? Number(settleForm.paymentMethodId) : null)
+      || (settleForm.payments || []).find(p => Number(p.paymentMethodId) > 0)?.paymentMethodId
+      || null;
+    if (!settleForm.foc && paid > 0 && !methodId) {
       Swal.fire('အမှား', 'ငွေပေးချေနည်း ရွေးပါ', 'error'); return;
     }
+    const paymentsPayload = settlePayments.length > 0
+      ? settlePayments
+      : (paid > 0 && methodId
+          ? [{ paymentMethodId: methodId, amount: paid, transactionNo: settleForm.transactionNo?.trim() || undefined }]
+          : undefined);
     const dto = {
-      finalCost:        settleForm.foc ? 0 : Number(settleForm.finalCost || 0),
+      finalCost:        settleForm.foc ? 0 : sFinalCost,
       discountAmount:   Number(settleForm.discountAmount || 0),
+      discountAllocationMethod: settleForm.discountAllocationMethod,
       foc:              settleForm.foc,
       paidAmount:       paid,
       dueDate:          settleForm.dueDate || null,
-      paymentMethodId:  paid > 0 ? (settlePayments[0]?.paymentMethodId || (settleForm.paymentMethodId ? Number(settleForm.paymentMethodId) : null)) : null,
+      paymentMethodId:  paid > 0 ? methodId : null,
       paymentAccountId: settleForm.paymentAccountId ? Number(settleForm.paymentAccountId) : null,
+      warehouseId:      null,
       transactionNo:    settleForm.transactionNo || null,
-      payments:         settlePayments.length > 0 ? settlePayments : undefined,
+      payments:         paymentsPayload,
     };
-    const res = await serviceJobService.settle(settleJob.id, dto);
-    if (res.success) {
-      setShowSettle(false);
-      Swal.fire({ icon: 'success', title: 'Settle လုပ်ပြီး', timer: 1500, showConfirmButton: false });
-      load();
-    } else Swal.fire('အမှား', res.message, 'error');
+    try {
+      const res = await serviceJobService.settle(settleJob.id, dto);
+      if (res.success) {
+        setShowSettle(false);
+        setSettleJobDetail(null);
+        Swal.fire({ icon: 'success', title: 'Settle လုပ်ပြီး', timer: 1500, showConfirmButton: false });
+        load();
+      } else Swal.fire('အမှား', res.message || 'Settle မအောင်မြင်ပါ', 'error');
+    } catch (e: any) {
+      if (!e?.globalAlertShown) Swal.fire('အမှား', apiErrorMessage(e), 'error');
+    }
   };
 
   /* ── Credit Pay handlers ────────────────────────────────────── */
@@ -1104,20 +1443,31 @@ export default function ServiceJobManagement() {
     const creditPayments = normalizePayments(creditPayForm.payments || []);
     const paid = creditPayments.length > 0 ? paymentTotal(creditPayForm.payments || []) : Number(creditPayForm.paidAmount || 0);
     if (paid <= 0) { Swal.fire('အမှား', 'ပေးချေမည့် ပမာဏ ထည့်ပါ', 'error'); return; }
-    if (!creditPayForm.paymentMethodId && creditPayments.length === 0) { Swal.fire('အမှား', 'ငွေပေးချေနည်း ရွေးပါ', 'error'); return; }
+    const methodId = creditPayments[0]?.paymentMethodId
+      || (creditPayForm.paymentMethodId ? Number(creditPayForm.paymentMethodId) : null)
+      || (creditPayForm.payments || []).find(p => Number(p.paymentMethodId) > 0)?.paymentMethodId
+      || null;
+    if (!methodId) { Swal.fire('အမှား', 'ငွေပေးချေနည်း ရွေးပါ', 'error'); return; }
+    const paymentsPayload = creditPayments.length > 0
+      ? creditPayments
+      : [{ paymentMethodId: methodId, amount: paid, transactionNo: creditPayForm.transactionNo?.trim() || undefined }];
     const dto = {
       paidAmount: paid,
-      paymentMethodId: creditPayments[0]?.paymentMethodId || Number(creditPayForm.paymentMethodId),
+      paymentMethodId: methodId,
       paymentAccountId: creditPayForm.paymentAccountId ? Number(creditPayForm.paymentAccountId) : null,
       transactionNo: creditPayForm.transactionNo || null,
-      payments: creditPayments.length > 0 ? creditPayments : undefined,
+      payments: paymentsPayload,
     };
-    const res = await serviceJobService.payDue(creditPayJob.id, dto);
-    if (res.success) {
-      setShowCreditPay(false);
-      Swal.fire({ icon: 'success', title: 'အကြွေးဆပ်ပြီး', timer: 1500, showConfirmButton: false });
-      load();
-    } else Swal.fire('အမှား', res.message, 'error');
+    try {
+      const res = await serviceJobService.payDue(creditPayJob.id, dto);
+      if (res.success) {
+        setShowCreditPay(false);
+        Swal.fire({ icon: 'success', title: 'အကြွေးဆပ်ပြီး', timer: 1500, showConfirmButton: false });
+        load();
+      } else Swal.fire('အမှား', res.message || 'အကြွေးဆပ် မအောင်မြင်ပါ', 'error');
+    } catch (e: any) {
+      if (!e?.globalAlertShown) Swal.fire('အမှား', apiErrorMessage(e), 'error');
+    }
   };
 
   const cpPaid = Number(creditPayForm.paidAmount || 0);
@@ -1193,9 +1543,53 @@ export default function ServiceJobManagement() {
       Swal.fire({ icon: 'success', title: 'Estimate အတည်ပြုပြီး', timer: 1000, showConfirmButton: false }); load();
     } else Swal.fire('အမှား', res.message, 'error');
   };
+  const handleApproveFinal = async (job: any) => {
+    try {
+      const teamResponse = await serviceJobTeamService.getTeam(job.id);
+      const team = teamResponse.data;
+      if (!team?.canComplete) {
+        const message = team?.completionBlockReason === 'A current lead technician is required'
+          ? 'အဓိကပြုပြင်သူ မသတ်မှတ်ရသေးပါ။'
+          : String(team?.completionBlockReason || '').startsWith('Complete all technician assignments first:')
+            ? 'Technician Assignment အားလုံးကို အရင်ပြီးစီးပါ။'
+            : team?.completionBlockReason || 'Technician Assignment မပြီးသေးပါ။';
+        setTeamJob(job);
+        await Swal.fire('Final Check မလုပ်နိုင်သေးပါ', message, 'warning');
+        return;
+      }
+    } catch (error: any) {
+      await Swal.fire('Assignment စစ်ဆေးမရပါ', error?.response?.data?.message || error?.message || 'Technician Assignment အချက်အလက် မရပါ', 'error');
+      return;
+    }
+    const result = await Swal.fire({
+      title: 'Final Check အတည်ပြုမည်လား?',
+      text: 'Technician အားလုံး completed ဖြစ်ပြီးပါပြီ။ Job ကို COMPLETED ပြောင်းပါမည်။',
+      showCancelButton: true,
+      confirmButtonText: 'အတည်ပြုမည်',
+      cancelButtonText: 'မလုပ်တော့ပါ',
+    });
+    if (!result.isConfirmed) return;
+    const response = await serviceJobService.approveFinal(job.id);
+    if (response.success) {
+      Swal.fire({ icon: 'success', title: 'Final Approval ပြီးပါပြီ', timer: 1200, showConfirmButton: false });
+      load();
+    } else Swal.fire('အမှား', response.message, 'error');
+  };
   const openLog = async (job: any) => {
-    const res = await serviceJobService.getById(job.id);
-    setLogJob(res.success ? res.data : job);
+    setBookingContext(null);
+    const [jobRes, bookingRes] = await Promise.allSettled([
+      serviceJobService.getById(job.id),
+      job.bookingId ? bookingService.getById(job.bookingId) : Promise.resolve(null),
+    ]);
+
+    const nextJob = jobRes.status === 'fulfilled' && jobRes.value?.success ? jobRes.value.data : job;
+    setLogJob(nextJob);
+
+    if (job.bookingId && bookingRes.status === 'fulfilled' && bookingRes.value?.success) {
+      setBookingContext(bookingRes.value.data);
+    } else {
+      setBookingContext(null);
+    }
   };
 
   const openRework = (job: any) => {
@@ -1280,7 +1674,7 @@ export default function ServiceJobManagement() {
         load();
       } else Swal.fire('အမှား', res.message, 'error');
     } catch (error: any) {
-      Swal.fire('Linked Job ဖန်တီး၍မရပါ', error?.message || 'Rework အချက်အလက်နှင့် stock/serial ကို ပြန်စစ်ပါ', 'error');
+      if (!error?.globalAlertShown) Swal.fire('Linked Job ဖန်တီး၍မရပါ', error?.message || 'Rework အချက်အလက်နှင့် stock/serial ကို ပြန်စစ်ပါ', 'error');
     }
   };
   /* ── Delete ────────────────────────────────────────────────── */
@@ -1295,10 +1689,28 @@ export default function ServiceJobManagement() {
   };
 
   /* ── Settle calculations ───────────────────────────────────── */
-  const sFinalCost = Number(settleForm.finalCost || 0);
+  const settlePreview = useMemo(() => {
+    if (!settleJobDetail) {
+      const gross = Number(settleForm.finalCost || 0);
+      return computeSettlementPreview(
+        { finalCost: gross, estimatedCost: gross, lines: [], productParts: [] },
+        Number(settleForm.discountAmount || 0),
+        settleForm.discountAllocationMethod,
+        settleForm.foc,
+      );
+    }
+    return computeSettlementPreview(
+      settleJobDetail,
+      Number(settleForm.discountAmount || 0),
+      settleForm.discountAllocationMethod,
+      settleForm.foc,
+    );
+  }, [settleJobDetail, settleForm.discountAmount, settleForm.discountAllocationMethod, settleForm.foc, settleForm.finalCost]);
+  const sFinalCost = settlePreview.gross;
   const sDiscount  = Number(settleForm.discountAmount || 0);
-  const sNetAmt    = settleForm.foc ? 0 : Math.max(0, sFinalCost - sDiscount);
-  const sPaid      = settleForm.foc ? 0 : Number(settleForm.paidAmount || 0);
+  const sNetAmt    = settlePreview.net;
+  const sSettlePayments = normalizePayments(settleForm.payments || []);
+  const sPaid      = settleForm.foc ? 0 : (sSettlePayments.length > 0 ? paymentTotal(settleForm.payments || []) : Number(settleForm.paidAmount || 0));
   const sBalance   = Math.max(0, sNetAmt - sPaid);
   const selectedPM = payMethods.find(m => String(m.id) === settleForm.paymentMethodId);
   const requiresTxn = selectedPM && /bank|kpay|wave|aya|kbz|mpu/i.test(selectedPM.methodName);
@@ -1432,8 +1844,9 @@ export default function ServiceJobManagement() {
             const balance = Number(j.dueAmount || 0);
             const actionTone = needsPayment(j) ? 'border-rose-300 bg-rose-50 text-rose-700' : readyForHandover(j) ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : ACTIVE_STATUSES.includes(j.status) ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-300 bg-slate-50 text-slate-700';
             return <article key={`mobile-${j.id}`} className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${depth > 0 ? 'ml-4 border-amber-300' : 'border-slate-200'}`}>
-              <header className="flex items-center justify-between gap-2 border-b px-4 py-3"><div className="flex flex-wrap items-center gap-1.5"><span className="font-mono text-sm font-black text-purple-700">{j.jobNo}</span>{serviceModeChip(j.serviceMode)}{depth > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-800">LINKED REWORK</span>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${STATUS_COLOR[j.status as JobStatus] || 'bg-slate-100 text-slate-700'}`}>{STATUS_LABEL[j.status as JobStatus] || j.status}</span></header>
+              <header className="flex items-center justify-between gap-2 border-b px-4 py-3"><div className="flex flex-wrap items-center gap-1.5"><span className="font-mono text-sm font-black text-purple-700">{j.jobNo}</span>{serviceModeChip(j.serviceMode)}<span className={`rounded-full px-2 py-1 text-[10px] font-black ${priorityStyle[j.priority || 'NORMAL'] || priorityStyle.NORMAL}`}>{j.priority || 'NORMAL'}</span>{depth > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-800">LINKED REWORK</span>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${STATUS_COLOR[j.status as JobStatus] || 'bg-slate-100 text-slate-700'}`}>{STATUS_LABEL[j.status as JobStatus] || j.status}</span></header>
               <div className="space-y-3 p-4"><div><p className="font-black text-slate-900">{j.customerName}<span className="ml-2 text-xs font-medium text-slate-400">{j.customerPhone}</span></p><p className="mt-1 font-semibold text-slate-700">{j.itemName || 'ပစ္စည်းအမည်မရှိ'}{j.serialNo ? <span className="ml-2 font-mono text-xs text-slate-400">SN: {j.serialNo}</span> : null}</p><p className="mt-1 line-clamp-2 text-xs text-slate-500">{j.problemDesc || 'ပြဿနာမဖော်ပြထားပါ'}</p></div>
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs"><span className="font-bold text-indigo-700">Appointment:</span> <span className={j.appointmentDate ? 'font-semibold text-indigo-900' : 'text-slate-500'}>{formatAppointment(j.appointmentDate)}</span></div>
                 <div className={`rounded-xl border px-3 py-2 text-sm font-black ${actionTone}`}>နောက်လုပ်ရန် → {nextActionLabel(j)}</div>
                 <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 text-xs"><div><span className="block text-slate-400">ကျသင့်ငွေ</span><b>{Number(j.netAmount ?? j.finalCost ?? j.estimatedCost ?? 0).toLocaleString()} Ks</b></div><div><span className="block text-slate-400">ကျန်ငွေ</span><b className={balance > 0 ? 'text-rose-700' : 'text-emerald-700'}>{balance.toLocaleString()} Ks</b></div></div>
                 <div className="flex flex-wrap gap-2"><button onClick={() => setPrintId(j.id)} className="min-h-10 rounded-lg border px-3 text-xs font-bold"><Printer size={14}/></button>{j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && <button onClick={() => openEdit(j)} className="min-h-10 rounded-lg border border-blue-200 px-3 text-xs font-bold text-blue-700">ပြင်ဆင်မည်</button>}{j.status === 'COMPLETED' && !j.paymentStatus && <button onClick={() => openSettle(j)} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white">ငွေရှင်းမည်</button>}{balance > 0 && j.paymentStatus && <button onClick={() => openCreditPay(j)} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white">အကြွေးဆပ်မည်</button>}{readyForHandover(j) && <button onClick={() => handleDeliver(j.id)} className="min-h-10 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white">ပစ္စည်းပေးအပ်မည်</button>}{j.status === 'DELIVERED' && <button onClick={() => openRework(j)} className="min-h-10 rounded-lg bg-amber-500 px-3 text-xs font-bold text-white">Warranty / Rework</button>}</div>
@@ -1446,7 +1859,7 @@ export default function ServiceJobManagement() {
           <table className="w-full text-sm">
             <thead className="bg-purple-600">
               <tr>
-                {['#', 'Job No', 'Intake #', 'ရက်စွဲ', 'ဖောက်သည်', 'ပစ္စည်း', 'ပြုပြင်သူ', 'အခြေအနေ', 'ခန့်မှန်းကုန်ကျ', 'အပြီးသတ်', 'လက်ကျန်', 'လုပ်ဆောင်ချက်'].map(h => (
+                {['#', 'Job No', 'Intake #', 'Appointment', 'ရက်စွဲ', 'ဖောက်သည်', 'ပစ္စည်း', 'ပြုပြင်သူ', 'အခြေအနေ', 'ခန့်မှန်းကုန်ကျ', 'အပြီးသတ်', 'လက်ကျန်', 'လုပ်ဆောင်ချက်'].map(h => (
                   <th key={h} className="text-left px-3 py-3.5 text-[13px] font-extrabold text-white tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1519,6 +1932,9 @@ export default function ServiceJobManagement() {
                         <span className="font-mono text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">{j.bookingNo}</span>
                       )}
                     </td>
+                    <td className="px-3 py-3 text-xs whitespace-nowrap">
+                      <span className={j.appointmentDate ? 'font-semibold text-indigo-700' : 'text-slate-400'}>{formatAppointment(j.appointmentDate)}</span>
+                    </td>
                     <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{j.receivedDate?.slice(0, 10)}</td>
                     <td className="px-3 py-3">
                       <div className="font-semibold text-slate-800">{j.customerName}</div>
@@ -1538,6 +1954,7 @@ export default function ServiceJobManagement() {
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${col}`}>
                         {STATUS_LABEL[j.status as JobStatus] ?? j.status}
                       </span>
+                      <span className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${priorityStyle[j.priority || 'NORMAL'] || priorityStyle.NORMAL}`}>{j.priority || 'NORMAL'}</span>
                       <div className={`mt-1.5 rounded-lg px-2 py-1 text-[10px] font-black ${needsPayment(j) ? 'bg-rose-50 text-rose-700' : readyForHandover(j) ? 'bg-emerald-50 text-emerald-700' : ACTIVE_STATUSES.includes(j.status) ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>နောက်လုပ်ရန် → {nextActionLabel(j)}</div>
                     </td>
                     <td className="px-3 py-3 text-xs text-slate-600">
@@ -1605,6 +2022,10 @@ export default function ServiceJobManagement() {
                         {!j.estimateApproved && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
                           <button onClick={() => handleApproveEstimate(j)} className="px-2 py-1 text-xs border border-slate-200 rounded-lg font-bold">Estimate ✓</button>
                         )}
+                        {canAssignTechnician && !j.finalApprovalStatus && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
+                          <button onClick={() => handleApproveFinal(j)} className="px-2 py-1 text-xs border border-emerald-200 rounded-lg font-bold text-emerald-700">Final Check ✓</button>
+                        )}
+                        <button onClick={() => setTeamJob(j)} className="px-2 py-1 text-xs border border-purple-200 rounded-lg font-bold text-purple-700">Technician Assignment</button>
                         <button onClick={() => openLog(j)} className="px-2 py-1 text-xs border rounded-lg font-bold">မှတ်တမ်း</button>
                       </div>
                     </td>
@@ -1845,6 +2266,7 @@ export default function ServiceJobManagement() {
                             className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>
                             {LINE_CONFIRMATION_STATUS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
                           </select>
+                          <p className="mt-1 rounded-md bg-white/70 px-2 py-1.5 text-[10px] font-semibold text-slate-600">{LINE_CONFIRMATION_HELP[line.confirmationStatus || 'RECOMMENDED']}</p>
                         </div>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
@@ -1875,6 +2297,12 @@ export default function ServiceJobManagement() {
                   <p className="text-xs text-slate-400 italic">ဝန်ဆောင်မှု မရှိသေးပါ</p>
                 )}
               </div>
+
+              <ProductPartsEditor
+                products={products}
+                productParts={form.productParts}
+                onChange={(productParts) => setForm(p => ({ ...p, productParts }))}
+              />
             </div>
 
               <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:rounded-b-2xl">
@@ -1898,55 +2326,93 @@ export default function ServiceJobManagement() {
             </div>
 
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6 [&_input]:text-base [&_textarea]:text-base [&_select]:text-base sm:[&_input]:text-sm sm:[&_textarea]:text-sm sm:[&_select]:text-sm">
-              {/* Status + Technician */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-indigo-900">Job လုပ်ငန်းစဉ် လမ်းညွှန်</h3>
+                    <p className="mt-1 text-xs font-semibold text-indigo-700">လက်ရှိ — {STATUS_ACTION[origStatus] || STATUS_LABEL[origStatus]}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${STATUS_COLOR[origStatus as JobStatus] || 'bg-slate-100 text-slate-700'}`}>{STATUS_LABEL[origStatus as JobStatus] || origStatus}</span>
+                </div>
+                <div className="mt-4 grid grid-cols-5 gap-1">
+                  {JOB_WORKFLOW.map((status, index) => {
+                    const currentIndex = JOB_WORKFLOW.indexOf(origStatus as any);
+                    const waiting = origStatus === 'WAITING_PARTS';
+                    const completed = currentIndex >= 0 && index < currentIndex;
+                    const current = status === origStatus || (waiting && status === 'IN_PROGRESS');
+                    return <div key={status} className="min-w-0 text-center">
+                      <div className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-black ${completed ? 'bg-emerald-500 text-white' : current ? 'bg-indigo-600 text-white ring-4 ring-indigo-100' : 'bg-white text-slate-400 ring-1 ring-slate-200'}`}>{completed ? '✓' : index + 1}</div>
+                      <p className={`mt-1 truncate text-[9px] font-bold ${current ? 'text-indigo-800' : 'text-slate-500'}`}>{STATUS_LABEL[status]}</p>
+                    </div>;
+                  })}
+                </div>
+                <div className="mt-4 rounded-xl bg-white p-3 text-xs text-slate-700 shadow-sm">
+                  <p className="font-black text-slate-900">နောက်လုပ်ရန်</p>
+                  {origStatus === 'RECEIVED' && <p className="mt-1">① စစ်ဆေးနေ သို့ပြောင်းပါ → ② Service/Parts နှင့် ခန့်မှန်းဈေး ထည့်ပါ</p>}
+                  {origStatus === 'INSPECTING' && <p className="mt-1">① Service တစ်ခုချင်း Customer အတည်ပြု/ငြင်းပယ် သတ်မှတ်ပါ → ② Estimate အတည်ပြုပါ → ③ ပြင်ဆင်နေ သို့ပြောင်းပါ</p>}
+                  {origStatus === 'WAITING_PARTS' && <p className="mt-1">Parts ရောက်ပြီး Serial/Qty ဖြည့်ပါ → ပြင်ဆင်နေ သို့ပြောင်းပါ</p>}
+                  {origStatus === 'IN_PROGRESS' && <p className="mt-1">Service များကို ပြီးစီး သတ်မှတ်ပြီး ကောက်ခံဈေးစစ်ပါ → Job ကို ပြီးစီး သို့ပြောင်းပါ</p>}
+                  {origStatus === 'COMPLETED' && <p className="mt-1">Job စာရင်းသို့ပြန်ပြီး ငွေရှင်းပါ → ငွေရှင်းပြီးမှ ပစ္စည်းပေးအပ်ပါ</p>}
+                  {(origStatus === 'DELIVERED' || origStatus === 'CANCELLED') && <p className="mt-1">ဒီ Job ကို ဆက်လက်အဆင့်ပြောင်း၍ မရတော့ပါ။</p>}
+                  {Number(form.estimatedCost || 0) > 0 && !form.estimateApproved && origStatus === 'INSPECTING' && <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 font-bold text-amber-800">⚠ ခန့်မှန်းဈေးရှိသောကြောင့် Customer Estimate အတည်ပြုပြီးမှ ပြင်ဆင်နေ အဆင့်သို့ ဝင်နိုင်ပါမယ်။</p>}
+                </div>
+              </section>
+
+              <nav aria-label="Service Job ပြင်ဆင်ရန် အဆင့်များ" className="grid grid-cols-4 gap-1 rounded-xl border bg-white p-1">
+                {['လက်ခံ/တာဝန်ပေး', 'စစ်ဆေး/ခန့်မှန်း', 'ပြင်ဆင်/Parts', 'ပြီးစီး/သိမ်း'].map((label, index) => (
+                  <button key={label} type="button" onClick={() => setEditStep(index)} className={`min-h-11 rounded-lg px-1 py-2 text-center text-[10px] font-black ${editStep === index ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                    <span className="block truncate">{index + 1}. {label}</span>
+                  </button>
+                ))}
+              </nav>
+
+              {/* Status + dedicated Technician Assignment */}
+              <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 ${editStep === 0 ? '' : 'hidden'}`}>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">အခြေအနေ</label>
                   <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
                     className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white">
-                    {selectableStatuses(origStatus).map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                    {selectableStatuses(origStatus).filter(s => s !== 'COMPLETED' || origStatus === 'COMPLETED').map(s => <option key={s} value={s}>{STATUS_LABEL[s]} — {STATUS_ACTION[s]}</option>)}
                   </select>
-                  <p className="mt-1 text-[11px] text-slate-400">နောက်တစ်ဆင့်သာ ရွေးနိုင်သည်။ ပြီးစီး ရွေးရန် အရင် ပြင်ဆင်နေ ဖြစ်ရမည်။</p>
+                  <p className="mt-1 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] font-semibold text-slate-600">ရွေးထားသည် — {STATUS_ACTION[form.status] || STATUS_LABEL[form.status]}</p>
                   {form.status === 'WAITING_PARTS' && (
                     <input value={form.holdReason} placeholder="ပစ္စည်းစောင့်ရသည့်အကြောင်း" className="mt-2 min-h-11 w-full border rounded-xl px-3 py-2 text-sm"
                       onChange={e => setForm(p => ({ ...p, holdReason: e.target.value }))} />
                   )}
                   <label className="mt-3 block text-xs font-bold text-slate-500 uppercase mb-1">ဦးစားပေး</label>
-                  <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                  <select value={form.priority} disabled={!canUpdatePriority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
                     className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white">
                     {['LOW','NORMAL','HIGH','URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
-                  <label className="mt-3 block text-xs font-bold text-slate-500 uppercase mb-1">အကူပြုပြင်သူ</label>
-                  <select value={form.helperStaffId} disabled={!canAssignTechnician} onChange={e => setForm(p => ({ ...p, helperStaffId: e.target.value }))} className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
-                    <option value="">— မရှိ —</option>
-                    {staffList.filter((staff: any) => String(staff.id) !== form.assignedStaffId).map((staff: any) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
-                  </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ပြုပြင်သူ</label>
-                  <select value={form.assignedStaffId} disabled={technicianFieldDisabled} onChange={e => setForm(p => ({ ...p, assignedStaffId: e.target.value }))}
-                    className="min-h-11 w-full border rounded-xl px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100">
-                    {canAssignTechnician && <option value="">— မရှိ —</option>}
-                    {technicianChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.role ? ` (${s.role})` : ''}</option>)}
-                  </select>
-                  <p className="mt-1 text-[11px] text-slate-400">{canAssignTechnician ? 'CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN ရှိ၍ အခြားပြုပြင်သူကို ရွေးနိုင်သည်။' : 'မိမိ Linked Staff ကိုသာ ရွေးနိုင်သည်။'}</p>
-                </div>
+                <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-indigo-600">Technician Assignment</p>
+                  <h3 className="mt-2 font-black text-indigo-950">{form.assignedStaffId ? (staffList.find((staff: any) => String(staff.id) === form.assignedStaffId)?.name || 'Lead Technician သတ်မှတ်ပြီး') : 'Lead Technician မသတ်မှတ်ရသေးပါ'}</h3>
+                  <p className="mt-1 text-xs text-indigo-700">လူနှင့်လုပ်ငန်းတာဝန်များကို သီးသန့် Assignment screen တွင် စီမံပါ။</p>
+                  <button type="button" onClick={() => {
+                    const selectedJob = jobs.find((item: any) => item.id === editId);
+                    if (selectedJob) { setShowEdit(false); setTeamJob(selectedJob); }
+                  }} className="mt-4 min-h-11 w-full rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-700">
+                    {form.assignedStaffId ? 'Assignment ကြည့်ရန် / ပြင်ရန်' : 'Technician တာဝန်ပေးရန်'}
+                  </button>
+                  {origStatus === 'IN_PROGRESS' && <p className="mt-3 rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-amber-800">Job ပြီးစီးရန် Assignment အားလုံး Complete နှင့် Supervisor Final Check လိုအပ်ပါသည်။</p>}
+                </section>
               </div>
 
               {/* Item Name */}
-              <div>
+              <div className={editStep === 1 ? '' : 'hidden'}>
                 <label className="block text-xs text-slate-500 mb-1">ပစ္စည်း / ကိရိယာ အမည်</label>
                 <input value={form.itemName} onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
                   placeholder="ဥပမာ - Apple iPhone 14 Pro"
                   className="w-full border rounded-xl px-3 py-2 text-sm" />
-              </div>              <div>
+              </div>              <div className={editStep === 1 ? '' : 'hidden'}>
                 <label className="block text-xs text-slate-500 mb-1">ပစ္စည်းအမျိုးအစား</label>
                 <select value={form.deviceType} onChange={e => { setForm(p => ({ ...p, deviceType: e.target.value })); setShowAllServices(false); }} className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
                   <option value="">— ရွေးပါ —</option>
                   {SERVICE_DEVICE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${editStep === 1 ? '' : 'hidden'}`}>
                 <div><label className="block text-xs text-slate-500 mb-1">Serial No.</label><input value={form.serialNo} onChange={e => setForm(p => ({ ...p, serialNo: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
                 <div><label className="block text-xs text-slate-500 mb-1">အရောင်</label><input value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
                 <div><label className="block text-xs text-slate-500 mb-1">ပါပစ္စည်းများ</label><input value={form.accessories} onChange={e => setForm(p => ({ ...p, accessories: e.target.value }))} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
@@ -1954,7 +2420,7 @@ export default function ServiceJobManagement() {
               </div>
 
               {/* Problem + Diagnosis */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${editStep === 1 ? '' : 'hidden'}`}>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">ပြဿနာ ဖော်ပြချက်</label>
                   <textarea value={form.problemDesc} onChange={e => setForm(p => ({ ...p, problemDesc: e.target.value }))}
@@ -1970,12 +2436,13 @@ export default function ServiceJobManagement() {
               </div>
 
               {/* Device Condition */}
-              <div>
+              <div className={editStep === 1 ? '' : 'hidden'}>
                 <label className="block text-xs text-slate-500 mb-1">ပစ္စည်းအခြေအနေ</label>
                 <textarea value={form.deviceConditions} onChange={e => setForm(p => ({ ...p, deviceConditions: e.target.value }))}
                   rows={2} placeholder="ပစ္စည်း၏ လက်ရှိ အခြေအနေ..."
                   className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
               </div>
+              <div className={editStep === 2 ? '' : 'hidden'}>
               <PartRequestConvertPanel
                 partRequests={form.partRequests}
                 products={products}
@@ -1987,9 +2454,10 @@ export default function ServiceJobManagement() {
                 onConvert={handleConvertPartRequest}
                 onPatchConvertedPart={patchConvertedPart}
               />
+              </div>
 
               {/* Est. Completion + Est. Cost */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 ${editStep === 3 ? '' : 'hidden'}`}>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">ခန့်မှန်းပြီးစီးရက်</label>
                   <input type="datetime-local" value={form.estimatedCompletion}
@@ -2005,7 +2473,7 @@ export default function ServiceJobManagement() {
               </div>
 
               {/* Service Lines */}
-              <div>
+              <div className={editStep === 2 ? '' : 'hidden'}>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
                   <button type="button"
@@ -2038,6 +2506,7 @@ export default function ServiceJobManagement() {
                             className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>
                             {LINE_CONFIRMATION_STATUS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
                           </select>
+                          <p className="mt-1 rounded-md bg-white/70 px-2 py-1.5 text-[10px] font-semibold text-slate-600">{LINE_CONFIRMATION_HELP[line.confirmationStatus || 'RECOMMENDED']}</p>
                         </div>
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
@@ -2069,167 +2538,16 @@ export default function ServiceJobManagement() {
                 )}
               </div>
 
-              {/* Product Parts */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">📦 အသုံးပြုပစ္စည်းများ</label>
-                  <button type="button"
-                    onClick={() => setForm(p => ({ ...p, productParts: [...p.productParts, { productId: '', productName: '', qty: 1, unitPrice: 0, discountAmount: 0, warrantyCovered: false, hasSerial: false, serialNumbers: [], availableSerials: [] }] }))}
-                    className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
-                </div>
-                {form.productParts.length > 0 ? (
-                  <div className="space-y-2">
-                    {form.productParts.map((part: any, pi: number) => (
-                      <div key={pi} className="min-w-0 space-y-2 rounded-xl border bg-slate-50 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">ပစ္စည်း #{pi + 1}</span>
-                          <button type="button"
-                            onClick={() => setForm(p => ({ ...p, productParts: p.productParts.filter((_: any, idx: number) => idx !== pi) }))}
-                            className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
-                        </div>
-                        <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${part.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
-                          <input type="checkbox" checked={Boolean(part.warrantyCovered)}
-                            onChange={e => setForm(p => { const pp = [...p.productParts]; pp[pi] = { ...pp[pi], warrantyCovered: e.target.checked }; return { ...p, productParts: pp }; })} />
-                          Warranty အကျုံးဝင် — ပစ္စည်းဖိုးအခမဲ့
-                        </label>
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">ပစ္စည်း</label>
-                          <SearchableSelect
-                            items={products}
-                            value={part.productId}
-                            displayField="name"
-                            subField="productCode"
-                            placeholder="ပစ္စည်း ရှာရန်..."
-                            onChange={(prod) => {
-                              if (prod) {
-                                const hs = !!prod.hasSerial;
-                                setForm(p => {
-                                  const pp = [...p.productParts];
-                                  pp[pi] = { ...pp[pi], productId: String(prod.id), productName: prod.name ?? '', unitPrice: Number(prod.sellingPrice ?? prod.price ?? 0), discountAmount: 0, hasSerial: hs, serialNumbers: [], availableSerials: [] };
-                                  return { ...p, productParts: pp };
-                                });
-                                if (hs) {
-                                  productSerialService.getByProductId(Number(prod.id)).then(serials => {
-                                    setForm(p => {
-                                      const pp = [...p.productParts];
-                                      if (pp[pi]) pp[pi] = { ...pp[pi], availableSerials: serials ?? [] };
-                                      return { ...p, productParts: pp };
-                                    });
-                                  }).catch(() => {});
-                                }
-                              } else {
-                                setForm(p => {
-                                  const pp = [...p.productParts];
-                                  pp[pi] = { ...pp[pi], productId: '', productName: '', unitPrice: 0, discountAmount: 0, hasSerial: false, serialNumbers: [], availableSerials: [] };
-                                  return { ...p, productParts: pp };
-                                });
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">အရေအတွက်</label>
-                            <input type="number" min={1} value={part.qty}
-                              onChange={e => {
-                                const newQty = Number(e.target.value);
-                                setForm(p => {
-                                  const pp = [...p.productParts];
-                                  const trimmed = pp[pi].hasSerial && pp[pi].serialNumbers.length > newQty
-                                    ? pp[pi].serialNumbers.slice(0, newQty)
-                                    : pp[pi].serialNumbers;
-                                  pp[pi] = { ...pp[pi], qty: newQty, serialNumbers: trimmed };
-                                  return { ...p, productParts: pp };
-                                });
-                              }}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-center" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">တစ်ခုဈေး (Ks)</label>
-                            <input type="number" min={0} value={part.unitPrice}
-                              onChange={e => setForm(p => { const pp = [...p.productParts]; pp[pi] = { ...pp[pi], unitPrice: Number(e.target.value) }; return { ...p, productParts: pp }; })}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-0.5">လျှော့ဈေး (Ks)</label>
-                            <input type="number" min={0} value={part.discountAmount}
-                              onChange={e => setForm(p => { const pp = [...p.productParts]; pp[pi] = { ...pp[pi], discountAmount: Number(e.target.value) }; return { ...p, productParts: pp }; })}
-                              className="w-full border rounded-lg px-2 py-1.5 text-xs text-right" />
-                          </div>
-                        </div>
-                        {/* Serial Number Picker */}
-                        {part.hasSerial && part.productId && (
-                          <div className="mt-1">
-                            <label className="block text-[10px] font-bold text-amber-600 mb-1">
-                              Serial Numbers ({part.serialNumbers.length}/{part.qty})
-                              {part.serialNumbers.length !== part.qty && (
-                                <span className="text-red-500 ml-1">— {part.qty - part.serialNumbers.length} remaining</span>
-                              )}
-                            </label>
-                            {part.serialNumbers.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mb-1.5">
-                                {part.serialNumbers.map((sn: string, si: number) => (
-                                  <span key={si} className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-mono px-2 py-0.5 rounded-full">
-                                    {sn}
-                                    <button type="button"
-                                      onClick={() => setForm(p => {
-                                        const pp = [...p.productParts];
-                                        pp[pi] = { ...pp[pi], serialNumbers: pp[pi].serialNumbers.filter((_: string, idx: number) => idx !== si) };
-                                        return { ...p, productParts: pp };
-                                      })}
-                                      className="text-amber-500 hover:text-red-600 font-bold leading-none">x</button>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {part.serialNumbers.length < part.qty && (
-                              <div className="max-h-28 overflow-y-auto border rounded-lg bg-white">
-                                {(part.availableSerials || []).length === 0 ? (
-                                  <div className="px-2 py-2 text-[10px] text-slate-400 italic">Available serial မရှိပါ</div>
-                                ) : (
-                                  (part.availableSerials || [])
-                                    .filter((s: any) => s.status === 'Available' && !part.serialNumbers.includes(s.serialNumber))
-                                    .map((s: any) => (
-                                      <div key={s.id}
-                                        onClick={() => {
-                                          if (part.serialNumbers.length >= part.qty) return;
-                                          setForm(p => {
-                                            const pp = [...p.productParts];
-                                            pp[pi] = { ...pp[pi], serialNumbers: [...pp[pi].serialNumbers, s.serialNumber] };
-                                            return { ...p, productParts: pp };
-                                          });
-                                        }}
-                                        className="px-2.5 py-1.5 text-[11px] font-mono cursor-pointer hover:bg-amber-50 border-b last:border-b-0 flex items-center justify-between">
-                                        <span>{s.serialNumber}</span>
-                                        <span className="text-[9px] text-emerald-500 font-bold">+ ရွေးပါ</span>
-                                      </div>
-                                    ))
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {part.productName && (() => {
-                          const gross = Number(part.qty || 1) * Number(part.unitPrice || 0);
-                          const disc = Number(part.discountAmount || 0);
-                          const sub = part.warrantyCovered ? 0 : Math.max(0, gross - disc);
-                          return (
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
-                              <span>စုစုပေါင်း: <span className={`font-bold ${part.warrantyCovered ? 'text-emerald-600' : 'text-slate-600'}`}>{part.warrantyCovered ? 'FREE' : `${sub.toLocaleString()} Ks`}</span></span>
-                              {disc > 0 && <span className="text-red-400 font-medium">(- {disc.toLocaleString()} Ks လျှော့)</span>}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">ပစ္စည်း မရှိသေးပါ</p>
-                )}
+              <div className={editStep === 2 ? '' : 'hidden'}>
+                <ProductPartsEditor
+                  products={products}
+                  productParts={form.productParts}
+                  onChange={(productParts) => setForm(p => ({ ...p, productParts }))}
+                />
               </div>
 
               {/* Remark */}
-              <div>
+              <div className={editStep === 3 ? '' : 'hidden'}>
                 <label className="block text-xs text-slate-500 mb-1">မှတ်ချက်</label>
                 <input value={form.remark} onChange={e => setForm(p => ({ ...p, remark: e.target.value }))}
                   placeholder="မှတ်ချက်..." className="w-full border rounded-xl px-3 py-2 text-sm" />
@@ -2239,10 +2557,8 @@ export default function ServiceJobManagement() {
             <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:rounded-b-2xl">
               <button onClick={() => setShowEdit(false)}
                 className="min-h-11 w-full rounded-xl border px-5 text-sm font-medium text-slate-600 hover:bg-slate-100 sm:w-auto">မလုပ်တော့</button>
-              <button onClick={handleSave}
-                className="min-h-11 w-full rounded-xl bg-purple-600 px-6 text-sm font-bold text-white shadow hover:bg-purple-700 sm:w-auto">
-                သိမ်းမယ်
-              </button>
+              {editStep > 0 && <button type="button" onClick={() => setEditStep(step => step - 1)} className="min-h-11 w-full rounded-xl border border-indigo-200 px-5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 sm:w-auto">အရင်အဆင့်</button>}
+              {editStep < 3 ? <button type="button" onClick={() => setEditStep(step => step + 1)} className="min-h-11 w-full rounded-xl bg-indigo-600 px-6 text-sm font-bold text-white shadow hover:bg-indigo-700 sm:w-auto">နောက်တစ်ဆင့်</button> : <button type="button" onClick={handleSave} className="min-h-11 w-full rounded-xl bg-purple-600 px-6 text-sm font-bold text-white shadow hover:bg-purple-700 sm:w-auto">သိမ်းမယ်</button>}
             </div>
           </div>
         </div>
@@ -2257,7 +2573,7 @@ export default function ServiceJobManagement() {
                 <h2 className="text-lg font-bold text-white">💰 ငွေရှင်းရန်</h2>
                 <p className="text-xs text-amber-100 mt-0.5">{settleJob.jobNo} · {settleJob.customerName}</p>
               </div>
-              <button onClick={() => setShowSettle(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => { setShowSettle(false); setSettleJobDetail(null); }} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-6">
@@ -2281,20 +2597,36 @@ export default function ServiceJobManagement() {
 
               {!settleForm.foc && (
                 <>
-                  {/* Final Cost + Discount */}
+                  {/* Gross + Overall Discount */}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">အပြီးသတ်ကုန်ကျစရိတ် (Ks)</label>
-                      <input type="number" min={0} value={settleForm.finalCost}
-                        onChange={e => setSettleForm(p => ({ ...p, finalCost: e.target.value }))}
-                        className="w-full border rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-amber-400" />
+                      <label className="block text-xs text-slate-500 mb-1">စုစုပေါင်းကုန်ကျစရိတ် (Line Items)</label>
+                      <input type="text" readOnly value={sFinalCost.toLocaleString()}
+                        className="w-full border rounded-xl px-3 py-2 text-sm font-bold bg-slate-50 text-slate-700" />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">လျှော့ဈေး (Ks)</label>
-                      <input type="number" min={0} value={settleForm.discountAmount}
+                      <label className="block text-xs text-slate-500 mb-1">လျှော့ဈေး စုစုပေါင်း (Ks)</label>
+                      <input type="number" min={0} max={sFinalCost} value={settleForm.discountAmount}
                         onChange={e => setSettleForm(p => ({ ...p, discountAmount: e.target.value }))}
                         className="w-full border rounded-xl px-3 py-2 text-sm" />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">လျှော့ဈေး ခွဲဝေနည်း</label>
+                    <select
+                      value={settleForm.discountAllocationMethod}
+                      onChange={e => setSettleForm(p => ({ ...p, discountAllocationMethod: e.target.value as DiscountAllocationMethod }))}
+                      className="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+                      <option value="PRO_RATA">Pro-rata (အချိုးအစား)</option>
+                      <option value="LABOR_FIRST">Labor First (လုပ်အားခ အရင်)</option>
+                      <option value="PARTS_FIRST">Parts First (ပစ္စည်း အရင်)</option>
+                    </select>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1 text-sm">
+                    <div className="flex justify-between text-slate-600"><span>Labor (Service)</span><span>{settlePreview.laborNet.toLocaleString()} Ks</span></div>
+                    <div className="flex justify-between text-slate-600"><span>Parts (Product Sales)</span><span>{settlePreview.partsNet.toLocaleString()} Ks</span></div>
                   </div>
 
                   {/* Net Amount */}
@@ -2437,7 +2769,7 @@ export default function ServiceJobManagement() {
             </div>
 
             <div className="grid shrink-0 grid-cols-2 gap-3 border-t bg-slate-50 px-4 py-3 sm:flex sm:justify-end sm:rounded-b-2xl sm:px-6 sm:py-4">
-              <button onClick={() => setShowSettle(false)}
+              <button onClick={() => { setShowSettle(false); setSettleJobDetail(null); }}
                 className="px-5 py-2 text-sm border rounded-xl text-slate-600 hover:bg-slate-100 font-medium">မလုပ်တော့</button>
               <button onClick={handleSettle}
                 className="px-6 py-2 text-sm bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 shadow">
@@ -2562,16 +2894,76 @@ export default function ServiceJobManagement() {
         </div>
       )}
 
+      {attachmentPreview && (
+        <AttachmentPreviewLightbox
+          images={attachmentPreview.images}
+          index={attachmentPreview.index}
+          onClose={() => setAttachmentPreview(null)}
+          onChange={nextIndex => setAttachmentPreview(prev => prev ? { ...prev, index: nextIndex } : prev)}
+        />
+      )}
+
       {logJob && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 py-6 px-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between rounded-t-2xl bg-slate-800 px-5 py-3 text-white">
               <h3 className="font-bold">{logJob.jobNo} မှတ်တမ်း</h3>
-              <button onClick={() => setLogJob(null)}>✕</button>
+              <button onClick={() => { setLogJob(null); setBookingContext(null); setAttachmentPreview(null); }}>✕</button>
             </div>
             <div className="space-y-4 p-5 text-sm">
               {logJob.overdue && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700 font-bold">SLA ကျော်နေသည်</p>}
               <p className="text-xs text-slate-500">Priority: {logJob.priority || 'NORMAL'} · Technician time: {logJob.technicianMinutes || 0} min</p>
+
+              {bookingContext && (
+                <section className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3">
+                  <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-indigo-700">Original Booking Details</p>
+                  <div className="space-y-2 text-xs text-slate-700">
+                    <div>
+                      <span className="font-bold text-slate-600">Appointment Date:</span>{' '}
+                      {bookingContext.appointmentDate ? new Date(bookingContext.appointmentDate).toLocaleString() : bookingContext.bookingDate ? new Date(`${bookingContext.bookingDate}T00:00:00`).toLocaleDateString() : '—'}
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-600">Complaint Note:</span>
+                      <p className="mt-1 whitespace-pre-wrap rounded-lg border border-indigo-100 bg-white px-2 py-2 text-slate-600">{bookingContext.complaintNote || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-600">Item List:</span>
+                      {Array.isArray(bookingContext.items) && bookingContext.items.length > 0 ? (
+                        <ul className="mt-2 space-y-1.5">
+                          {bookingContext.items.map((item: any, index: number) => (
+                            <li key={item.id ?? index} className="rounded-lg border border-indigo-100 bg-white px-2 py-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold text-slate-700">{item.itemName || 'Unnamed Item'}</span>
+                                {item.deviceType && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{item.deviceType}</span>}
+                              </div>
+                              <div className="mt-1 text-[10px] text-slate-500">
+                                {item.serialNo && <span className="mr-2">Serial: {item.serialNo}</span>}
+                                {item.color && <span className="mr-2">Color: {item.color}</span>}
+                              </div>
+                              {item.problemDesc && <p className="mt-1 text-[10px] text-slate-600">Problem: {item.problemDesc}</p>}
+                              {Array.isArray(item.photos) && item.photos.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {item.photos.filter((photo: any) => photo?.thumbnailPath || photo?.imagePath || photo?.dataUrl).slice(0, 3).map((photo: any, photoIndex: number) => (
+                                    <img
+                                      key={`${item.id ?? index}-photo-${photoIndex}`}
+                                      src={resolveAssetUrl(photo?.thumbnailPath || photo?.imagePath || photo?.dataUrl)}
+                                      alt={`Booking item photo ${photoIndex + 1}`}
+                                      className="h-16 w-16 rounded-lg border border-slate-200 object-cover"
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-slate-500">No item list available.</p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
+
               <section>
                 <p className="mb-2 text-xs font-black uppercase text-slate-500">ဝန်ဆောင်မှု အတည်ပြုမှု</p>
                 <div className="space-y-1">
@@ -2614,13 +3006,27 @@ export default function ServiceJobManagement() {
                   openLog(logJob);
                 }} />
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {(logJob.attachments || []).map((a: any) => (
-                    <div key={a.id} className="relative">
-                      <img src={a.dataUrl} alt="" className="h-20 w-20 rounded-lg border object-cover" />
-                      <button className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-rose-500 text-[10px] text-white"
-                        onClick={async () => { await serviceJobService.removeAttachment(logJob.id, a.id); openLog(logJob); }}>×</button>
-                    </div>
-                  ))}
+                  {(logJob.attachments || []).map((a: any, index: number) => {
+                    const isImage = !!(a?.dataUrl && (String(a?.contentType || '').startsWith('image/') || String(a?.dataUrl).startsWith('data:image')));
+                    const imageList = (logJob.attachments || []).filter((item: any) => !!item?.dataUrl).map((item: any) => ({ dataUrl: item.dataUrl, fileName: item.fileName || item.name }));
+                    const previewIndex = imageList.findIndex((item: any) => (a.id != null ? item.dataUrl === a.dataUrl : item.fileName === a.fileName && item.dataUrl === a.dataUrl));
+                    return (
+                      <div key={a.id ?? `${a.fileName ?? 'file'}-${index}`} className="relative">
+                        {isImage ? (
+                          <button type="button" onClick={() => {
+                            if (previewIndex >= 0) setAttachmentPreview({ images: imageList, index: previewIndex });
+                          }} className="group relative block overflow-hidden rounded-lg border border-slate-200" title="ပုံကြီးကြည့်ရန်">
+                            <img src={a.dataUrl} alt="" className="h-20 w-20 rounded-lg border object-cover transition group-hover:opacity-90" />
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-2xl transition group-hover:bg-black/30">🔍</span>
+                          </button>
+                        ) : (
+                          <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[10px] font-bold text-slate-500">FILE</div>
+                        )}
+                        <button className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-rose-500 text-[10px] text-white"
+                          onClick={async () => { await serviceJobService.removeAttachment(logJob.id, a.id); openLog(logJob); }}>×</button>
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
               <section>
@@ -2649,6 +3055,9 @@ export default function ServiceJobManagement() {
           </div>
         </div>
       )}
+
+      {teamJob && <TechnicianAssignmentPanel job={teamJob} staff={technicianChoices}
+        canAssign={canAssignTechnician} onClose={() => setTeamJob(null)} onChanged={() => void load()} />}
 
       {/* Print Preview */}
       {printId && (

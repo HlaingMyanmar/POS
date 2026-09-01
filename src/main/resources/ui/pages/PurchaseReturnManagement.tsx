@@ -949,7 +949,7 @@ const PurchaseReturnManagement: React.FC = () => {
                           id: purchase.id!,
                           label: `${purchase.purchaseCode || `#${purchase.id}`}${purchase.supplierInvoiceNo ? ` · ${purchase.supplierInvoiceNo}` : ''}`,
                           sub: `${purchase.purchaseDate ? new Date(purchase.purchaseDate).toLocaleDateString() : '-'} · Total ${money(purchase.totalAmount)} · ပြန်ပို့နိုင် ${money(returnable)} · Due ${money(purchase.dueAmount)}${fullyReturned ? ' · Fully Returned' : ''}`,
-                          searchText: `${purchaseLabel(purchase)} ${purchase.supplierInvoiceNo || ''} ${purchase.warehouseName || ''}`,
+                          searchText: `${purchaseLabel(purchase)} ${purchase.supplierInvoiceNo || ''}`,
                           disabled: fullyReturned,
                         };
                       })}
@@ -980,7 +980,6 @@ const PurchaseReturnManagement: React.FC = () => {
                     <p className="mt-2 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
                       {selectedPurchase.purchaseDate ? new Date(selectedPurchase.purchaseDate).toLocaleDateString() : '-'}
                       {' · '}{selectedPurchase.supplierInvoiceNo ? `Invoice ${selectedPurchase.supplierInvoiceNo}` : 'Invoice မရှိ'}
-                      {' · '}{selectedPurchase.warehouseName || 'Main Warehouse'}
                     </p>
                   )}
                 </div>

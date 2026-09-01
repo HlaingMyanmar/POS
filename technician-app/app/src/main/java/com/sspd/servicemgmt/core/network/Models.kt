@@ -621,6 +621,91 @@ data class ServiceJobDTO(
     val notifications: List<ServiceJobNotificationDTO>? = null
 )
 
+data class TeamSnapshotDTO(
+    val serviceJobId: Int? = null,
+    val jobNo: String? = null,
+    val canComplete: Boolean = false,
+    val completionBlockReason: String? = null,
+    val assignments: List<AssignmentDTO>? = null,
+    val handovers: List<HandoverDTO>? = null
+)
+
+data class AssignmentDTO(
+    val id: Int? = null,
+    val serviceJobId: Int? = null,
+    val jobNo: String? = null,
+    val staffId: Int? = null,
+    val staffName: String? = null,
+    val role: String? = null,
+    val status: String? = null,
+    val taskDescription: String? = null,
+    val completionNote: String? = null,
+    val assignedBy: String? = null,
+    val assignedAt: String? = null,
+    val acceptedAt: String? = null,
+    val workStartedAt: String? = null,
+    val lastActionAt: String? = null,
+    val completedAt: String? = null,
+    val endedAt: String? = null,
+    val accumulatedMinutes: Long? = null,
+    val mine: Boolean = false,
+    val logs: List<AssignmentLogDTO>? = null
+)
+
+data class AssignmentLogDTO(
+    val id: Int? = null,
+    val action: String? = null,
+    val note: String? = null,
+    val actor: String? = null,
+    val occurredAt: String? = null
+)
+
+data class AssignmentRequest(
+    val staffId: Int? = null,
+    val role: String? = null,
+    val taskDescription: String? = null
+)
+
+data class AssignmentActionRequest(
+    val action: String,
+    val note: String? = null
+)
+
+data class AssignmentDecisionRequest(
+    val reason: String? = null
+)
+
+data class HandoverDTO(
+    val id: Int? = null,
+    val serviceJobId: Int? = null,
+    val jobNo: String? = null,
+    val fromAssignmentId: Int? = null,
+    val fromStaffId: Int? = null,
+    val fromStaffName: String? = null,
+    val toStaffId: Int? = null,
+    val toStaffName: String? = null,
+    val role: String? = null,
+    val completedWork: String? = null,
+    val remainingWork: String? = null,
+    val diagnosisNote: String? = null,
+    val status: String? = null,
+    val requestedBy: String? = null,
+    val requestedAt: String? = null,
+    val actedBy: String? = null,
+    val actedAt: String? = null,
+    val rejectionReason: String? = null,
+    val successorAssignmentId: Int? = null,
+    val targetMine: Boolean = false
+)
+
+data class HandoverRequest(
+    val fromAssignmentId: Int,
+    val toStaffId: Int,
+    val completedWork: String? = null,
+    val remainingWork: String,
+    val diagnosisNote: String? = null
+)
+
 data class TechnicianVisitDTO(
     val id: Long? = null,
     val staffId: Int? = null,

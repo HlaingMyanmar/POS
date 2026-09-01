@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.serviceoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -11,7 +12,6 @@ import org.sspd.servicemgmt.serviceoptions.model.ServiceItem;
 import org.sspd.servicemgmt.serviceoptions.model.ServiceItemPriceHistory;
 import org.sspd.servicemgmt.serviceoptions.model.ServiceType;
 import org.sspd.servicemgmt.serviceoptions.model.SubServiceType;
-import org.sspd.servicemgmt.bookingoptions.repository.BookingDetailRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobLineRepository;
 import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemRepository;
 import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemPriceHistoryRepository;
@@ -27,12 +27,14 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ServiceItemService {
 
+    private static final String SERVICE_TOPIC = "/topic/service";
+
     private final ServiceItemRepository repository;
     private final ServiceTypeRepository serviceTypeRepository;
     private final SubServiceTypeRepository subServiceTypeRepository;
     private final ServiceJobLineRepository serviceJobLineRepository;
-    private final BookingDetailRepository bookingDetailRepository;
     private final ServiceItemPriceHistoryRepository priceHistoryRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional(readOnly = true)
     public List<ServiceItemDTO> findAll() {
@@ -90,7 +92,9 @@ public class ServiceItemService {
             .serviceType(type)
             .subServiceType(subType)
             .build();
-        return toDto(repository.save(e));
+        ServiceItemDTO saved = toDto(repository.save(e));
+        broadcast("SERVICE_ITEM_CREATED");
+        return saved;
     }
 
     @Transactional
@@ -125,25 +129,31 @@ public class ServiceItemService {
         e.setActive(dto.isActive());
         e.setServiceType(type);
         e.setSubServiceType(subType);
-        ServiceItem saved = repository.save(e);
+        ServiceItem savedEntity = repository.save(e);
         if (!sameAmount(oldPrice, newPrice) || !sameAmount(oldCost, newCost)) {
             priceHistoryRepository.save(ServiceItemPriceHistory.builder()
-                .serviceItem(saved).oldPrice(oldPrice).newPrice(newPrice)
+                .serviceItem(savedEntity).oldPrice(oldPrice).newPrice(newPrice)
                 .oldCost(oldCost).newCost(newCost)
                 .changedBy(currentUsername()).changedAt(LocalDateTime.now()).build());
         }
-        return toDto(saved);
+        broadcast("SERVICE_ITEM_UPDATED");
+        return toDto(savedEntity);
     }
 
     @Transactional
     public void delete(Integer id) {
         ServiceItem e = repository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service not found: " + id));
-        if (serviceJobLineRepository.existsByServiceItem_Id(id) || bookingDetailRepository.existsByServiceItem_Id(id)) {
-            throw new IllegalStateException("ဤဝန်ဆောင်မှုကို Job/Booking တွင် သုံးထားသဖြင့် ဖျက်မရပါ။ Inactive အဖြစ်ပြောင်းပါ။");
+        if (serviceJobLineRepository.existsByServiceItem_Id(id)) {
+            throw new IllegalStateException("ဤဝန်ဆောင်မှုကို Job တွင် သုံးထားသဖြင့် ဖျက်မရပါ။ Inactive အဖြစ်ပြောင်းပါ။");
         }
         e.setActive(false);
         repository.save(e);
+        broadcast("SERVICE_ITEM_UPDATED");
+    }
+
+    private void broadcast(String event) {
+        messagingTemplate.convertAndSend(SERVICE_TOPIC, event);
     }
 
     private void validate(ServiceItemDTO dto, Integer editingId) {

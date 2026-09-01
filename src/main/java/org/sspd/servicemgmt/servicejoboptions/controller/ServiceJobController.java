@@ -41,15 +41,15 @@ public class ServiceJobController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
-    @GetMapping("/{id}")
-    ResponseEntity<ApiResponse<ServiceJobDTO>> getById(@PathVariable Integer id) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Service Job", service.findById(id)));
+    @GetMapping("/by-booking/{bookingId}")
+    ResponseEntity<ApiResponse<List<ServiceJobDTO>>> getByBooking(@PathVariable Integer bookingId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Booking service jobs", service.findByBookingId(bookingId)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
-    @GetMapping("/by-booking/{bookingId}")
-    ResponseEntity<ApiResponse<List<ServiceJobDTO>>> getByBooking(@PathVariable Integer bookingId) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Service Jobs", service.findByBookingId(bookingId)));
+    @GetMapping("/{id}")
+    ResponseEntity<ApiResponse<ServiceJobDTO>> getById(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Service Job", service.findById(id)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
@@ -141,6 +141,12 @@ public class ServiceJobController {
     @PostMapping("/{id}/approve-estimate")
     ResponseEntity<ApiResponse<ServiceJobDTO>> approveEstimate(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Estimate approved", service.approveEstimate(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PostMapping("/{id}/approve-final")
+    public ResponseEntity<ApiResponse<ServiceJobDTO>> approveFinal(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Final approval completed", service.approveFinalCompletion(id)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")

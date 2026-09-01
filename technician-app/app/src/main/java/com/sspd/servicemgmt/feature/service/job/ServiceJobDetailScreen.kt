@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import com.sspd.servicemgmt.core.network.TeamSnapshotDTO
 import com.sspd.servicemgmt.core.network.TechnicianVisitDTO
 import com.sspd.servicemgmt.core.tracking.LocationPermission
 import com.sspd.servicemgmt.core.tracking.VisitTracker
@@ -70,6 +71,174 @@ private fun formatPartRequests(value: String?): String {
         }.joinToString("\n")
     } catch (_: Exception) {
         value
+    }
+}
+
+private val TECHNICIAN_JOB_STEPS = listOf("RECEIVED", "INSPECTING", "IN_PROGRESS", "COMPLETED", "DELIVERED")
+
+private fun allowedNextJobStatuses(current: String): Set<String> = when (current) {
+    "RECEIVED" -> setOf("INSPECTING")
+    "INSPECTING" -> setOf("IN_PROGRESS", "WAITING_PARTS")
+    "WAITING_PARTS" -> setOf("IN_PROGRESS")
+    "IN_PROGRESS" -> setOf("WAITING_PARTS", "COMPLETED")
+    "COMPLETED" -> setOf("DELIVERED")
+    else -> emptySet()
+}
+
+private fun technicianNextAction(job: ServiceJobDTO): String = when (job.status?.uppercase()) {
+    "RECEIVED" -> "ပစ္စည်းနှင့် ပြဿနာကို စစ်ဆေးပြီး ‘စစ်ဆေးဆဲ’ သို့ ပြောင်းပါ"
+    "INSPECTING" -> if ((job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true)
+        "Service/Parts နှင့် ခန့်မှန်းဈေးစစ်ပါ။ Customer Estimate အတည်ပြုပြီးမှ ပြင်ဆင်မှုစတင်ပါ"
+        else "Customer အတည်ပြုထားသော Service များစစ်ပြီး ‘လုပ်ဆောင်ဆဲ’ သို့ ပြောင်းပါ"
+    "WAITING_PARTS" -> "Parts ရောက်ပါက Qty/Serial ဖြည့်ပြီး ‘လုပ်ဆောင်ဆဲ’ သို့ ပြောင်းပါ"
+    "IN_PROGRESS" -> "Service များပြီးစီးကြောင်းနှင့် ကောက်ခံဈေးစစ်ပြီး ‘ပြီးဆုံး’ သို့ ပြောင်းပါ"
+    "COMPLETED" -> "ရုံး/ကောင်တာမှ ငွေရှင်းပြီးမှ ပစ္စည်းပြန်ပေးနိုင်ပါမယ်"
+    "DELIVERED" -> "Job ပြီးဆုံးပြီး ပစ္စည်းပြန်ပေးထားပါပြီ"
+    "CANCELLED" -> "Job ပယ်ဖျက်ထားပါသည်"
+    else -> "Job အချက်အလက်ကို စစ်ဆေးပါ"
+}
+
+@Composable
+private fun TechnicianTeamSection(
+    team: TeamSnapshotDTO?,
+    loading: Boolean,
+    onAccept: (Int) -> Unit,
+    onWork: (Int, String) -> Unit
+) {
+    val assignments = team?.assignments.orEmpty()
+    if (assignments.isEmpty()) return
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+        border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Technician Team", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF14532D))
+            team?.completionBlockReason?.takeIf { it.isNotBlank() }?.let {
+                Text(it, fontSize = 12.sp, color = Warning)
+            }
+            assignments.forEach { assignment ->
+                val roleLabel = when (assignment.role?.uppercase()) {
+                    "LEAD" -> "Lead"
+                    "MEMBER" -> "Member"
+                    "HELPER" -> "Helper"
+                    else -> assignment.role.orEmpty()
+                }
+                val statusLabel = when (assignment.status?.uppercase()) {
+                    "PENDING" -> "စောင့်ဆိုင်း"
+                    "ACTIVE" -> "လုပ်ဆောင်"
+                    "PAUSED" -> "ရပ်နား"
+                    "COMPLETED" -> "ပြီးစီး"
+                    else -> assignment.status.orEmpty()
+                }
+                Column(
+                    Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(assignment.staffName.orEmpty(), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("$roleLabel · $statusLabel", fontSize = 11.sp, color = TextMuted)
+                    }
+                    assignment.taskDescription?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, fontSize = 12.sp, color = TextMuted)
+                    }
+                    Text("အချိန်: ${assignment.accumulatedMinutes ?: 0} မိနစ်", fontSize = 11.sp, color = TextMuted)
+                    if (assignment.mine && !loading) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            when (assignment.status?.uppercase()) {
+                                "PENDING" -> Button(
+                                    onClick = { assignment.id?.let(onAccept) },
+                                    modifier = Modifier.height(32.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp)
+                                ) { Text("လက်ခံ", fontSize = 11.sp) }
+                                "ACTIVE" -> {
+                                    if (assignment.workStartedAt.isNullOrBlank()) {
+                                        OutlinedButton(
+                                            onClick = { assignment.id?.let { onWork(it, "START") } },
+                                            modifier = Modifier.height(32.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp)
+                                        ) { Text("စတင်", fontSize = 11.sp) }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = { assignment.id?.let { onWork(it, "PAUSE") } },
+                                            modifier = Modifier.height(32.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp)
+                                        ) { Text("ရပ်", fontSize = 11.sp) }
+                                    }
+                                    Button(
+                                        onClick = { assignment.id?.let { onWork(it, "COMPLETE") } },
+                                        modifier = Modifier.height(32.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp)
+                                    ) { Text("ပြီးစီး", fontSize = 11.sp) }
+                                }
+                                "PAUSED" -> {
+                                    OutlinedButton(
+                                        onClick = { assignment.id?.let { onWork(it, "RESUME") } },
+                                        modifier = Modifier.height(32.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp)
+                                    ) { Text("ဆက်", fontSize = 11.sp) }
+                                    Button(
+                                        onClick = { assignment.id?.let { onWork(it, "COMPLETE") } },
+                                        modifier = Modifier.height(32.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp)
+                                    ) { Text("ပြီးစီး", fontSize = 11.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TechnicianJobWorkflowGuide(job: ServiceJobDTO, loading: Boolean, onApproveEstimate: () -> Unit) {
+    val current = job.status?.uppercase().orEmpty()
+    val currentIndex = TECHNICIAN_JOB_STEPS.indexOf(current)
+    val displayIndex = if (current == "WAITING_PARTS") TECHNICIAN_JOB_STEPS.indexOf("IN_PROGRESS") else currentIndex
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF)),
+        border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Job လုပ်ငန်းစဉ်", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF312E81))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TECHNICIAN_JOB_STEPS.forEachIndexed { index, status ->
+                    val done = displayIndex >= 0 && index < displayIndex
+                    val active = status == current || (current == "WAITING_PARTS" && status == "IN_PROGRESS")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (done) Success else if (active) Primary else Color.White,
+                            border = if (!done && !active) BorderStroke(1.dp, BorderColor) else null,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(if (done) "✓" else "${index + 1}", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = if (done || active) Color.White else TextMuted)
+                            }
+                        }
+                        Text(
+                            when (status) { "RECEIVED" -> "လက်ခံ"; "INSPECTING" -> "စစ်ဆေး"; "IN_PROGRESS" -> "ပြင်ဆင်"; "COMPLETED" -> "ပြီးစီး"; else -> "ပြန်ပေး" },
+                            fontSize = 9.sp, fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
+                            color = if (active) Primary else TextMuted
+                        )
+                    }
+                }
+            }
+            Surface(color = Color.White, shape = RoundedCornerShape(10.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("နောက်လုပ်ရန်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                    Text(technicianNextAction(job), fontSize = 12.sp, color = TextMain)
+                    if ((job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true && current == "INSPECTING") {
+                        Button(onClick = onApproveEstimate, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                            Text("Customer Estimate အတည်ပြုမည်", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 @OptIn(ExperimentalMaterial3Api::class)
@@ -493,6 +662,21 @@ fun ServiceJobDetailScreen(
 
             // ── Status chips ──────────────────────────────────────────────────
             item {
+                TechnicianJobWorkflowGuide(
+                    job = job,
+                    loading = state.actionLoading,
+                    onApproveEstimate = { vm.approveEstimate() }
+                )
+            }
+            item {
+                TechnicianTeamSection(
+                    team = state.team,
+                    loading = state.actionLoading,
+                    onAccept = vm::acceptAssignment,
+                    onWork = { id, action -> vm.recordWork(id, action) }
+                )
+            }
+            item {
                 Text("အဆင့် ပြောင်းရန်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
             }
             item {
@@ -505,12 +689,16 @@ fun ServiceJobDetailScreen(
                     "DELIVERED"     to "ပြန်ပေးပြီး"
                 )
                 val canChange = job.status?.uppercase() !in listOf("DELIVERED", "CANCELLED")
+                val currentStatus = job.status?.uppercase().orEmpty()
+                val allowedStatuses = allowedNextJobStatuses(currentStatus)
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    statuses.forEach { (key, label) ->
-                        val isCurrent = job.status?.uppercase() == key
+                    statuses.filter { (key, _) -> key == currentStatus || key in allowedStatuses }.forEach { (key, label) ->
+                        val isCurrent = currentStatus == key
+                        val blockedByEstimate = key == "IN_PROGRESS" && (job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true
+                        val blockedByPayment = key == "DELIVERED" && job.foc != true && ((job.dueAmount ?: 0.0) > 0 || job.paymentStatus?.uppercase() != "PAID")
                         FilterChip(
                             selected = isCurrent,
                             onClick  = {
@@ -522,6 +710,7 @@ fun ServiceJobDetailScreen(
                                     }
                                 }
                             },
+                            enabled = canChange && !state.actionLoading && ((!blockedByEstimate && !blockedByPayment) || isCurrent),
                             label    = { Text(label, fontSize = 10.sp) },
                             colors   = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = when (key) {
@@ -541,6 +730,12 @@ fun ServiceJobDetailScreen(
                             )
                         )
                     }
+                }
+                if (allowedStatuses.contains("IN_PROGRESS") && (job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true) {
+                    Text("Estimate အတည်ပြုပြီးမှ ‘လုပ်ဆောင်ဆဲ’ ကို ရွေးနိုင်ပါမယ်", fontSize = 11.sp, color = Warning, fontWeight = FontWeight.Bold)
+                }
+                if (allowedStatuses.contains("DELIVERED") && job.foc != true && ((job.dueAmount ?: 0.0) > 0 || job.paymentStatus?.uppercase() != "PAID")) {
+                    Text("ငွေရှင်းပြီးမှ ‘ပြန်ပေးပြီး’ ကို ရွေးနိုင်ပါမယ်", fontSize = 11.sp, color = Warning, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -730,17 +925,6 @@ fun ServiceJobDetailScreen(
                     ) {
                         Text("Settlement ပြန်ဖျက် (Void)", fontWeight = FontWeight.Bold)
                     }
-                }
-            }
-
-            if ((job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true && job.status?.uppercase() !in listOf("DELIVERED", "CANCELLED")) {
-                item {
-                    OutlinedButton(
-                        onClick = { vm.approveEstimate() },
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = !state.actionLoading
-                    ) { Text("Estimate အတည်ပြုမည်", fontWeight = FontWeight.Bold) }
                 }
             }
 

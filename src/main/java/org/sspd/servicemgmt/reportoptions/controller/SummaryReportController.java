@@ -285,7 +285,9 @@ public class SummaryReportController {
 
         BigDecimal saleReturnAmount = coalesce(saleReturnRepo.sumInRange(fromDt, toDt));
 
-        BigDecimal serviceRevenue = coalesce(serviceJobRepo.sumNetAmountInRange(fromDt, toDt));
+        BigDecimal serviceRevenue = coalesce(serviceJobRepo.sumLaborNetInRange(fromDt, toDt));
+        BigDecimal servicePartsRevenue = coalesce(serviceJobRepo.sumPartsNetInRange(fromDt, toDt));
+        BigDecimal serviceJobNet = coalesce(serviceJobRepo.sumNetAmountInRange(fromDt, toDt));
 
         BigDecimal otherIncome = coalesce(incomeRepo.sumInRange(fromDt, toDt));
 
@@ -302,8 +304,9 @@ public class SummaryReportController {
 
         BigDecimal netSaleRevenue  = saleRevenue.subtract(saleReturnAmount);
         BigDecimal netPurchaseCost = purchaseAmount.subtract(purchaseReturnAmount);
-        BigDecimal totalIncome     = netSaleRevenue.add(serviceRevenue).add(otherIncome);
-        BigDecimal grossProfit     = saleProfit.add(serviceRevenue).add(otherIncome);
+        BigDecimal totalServiceRevenue = serviceRevenue.add(servicePartsRevenue);
+        BigDecimal totalIncome     = netSaleRevenue.add(totalServiceRevenue).add(otherIncome);
+        BigDecimal grossProfit     = saleProfit.add(totalServiceRevenue).add(otherIncome);
         BigDecimal netProfit       = grossProfit.subtract(saleReturnAmount)
                                                 .subtract(stockAdjLoss)
                                                 .subtract(totalExpenses);
@@ -315,6 +318,8 @@ public class SummaryReportController {
         r.put("netSaleRevenue",       netSaleRevenue);
         r.put("saleProfit",           saleProfit);
         r.put("serviceRevenue",       serviceRevenue);
+        r.put("servicePartsRevenue",  servicePartsRevenue);
+        r.put("serviceJobNet",        serviceJobNet);
         r.put("otherIncome",          otherIncome);
         r.put("totalIncome",          totalIncome);
         r.put("purchaseAmount",       purchaseAmount);

@@ -55,8 +55,6 @@ export const buildPurchaseVoucherHtml = ({
         <td>
           <div>${name}</div>
           ${d.serialNumbers?.length ? `<div class="item-sn">SN: ${escapeHtml(serials)}</div>` : ''}
-          ${d.batchNumber ? `<div class="item-sn">Batch: ${escapeHtml(d.batchNumber)}</div>` : ''}
-          ${d.expiryDate ? `<div class="item-sn">Exp: ${escapeHtml(d.expiryDate)}</div>` : ''}
           ${(() => {
             const terms = String(d.warrantyTerms || '').trim();
             if (terms) return `<div class="item-sn">Warranty: ${escapeHtml(terms)}</div>`;

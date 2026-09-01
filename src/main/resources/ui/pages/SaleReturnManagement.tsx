@@ -4,7 +4,6 @@ import { ArrowLeft, CreditCard, Download, Eye, FileText, List, PackageCheck, Plu
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { saleReturnApiService, saleReturnReasonApiService } from '../services/salereturnapiservice';
-import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
 import { AppRoute, CustomerDTO, PaymentMethodDTO, PaymentTransactionDTO, ProductDTO, ProductStockHistoryMovementDTO, SaleDTO, SaleReturnDTO, SaleReturnDetailDTO, SaleReturnReasonDTO } from '../types';
 import { saleApiService } from '../services/saleapiservice';
 import { productService } from '../services/productapiservice';
@@ -96,8 +95,6 @@ const SaleReturnManagement: React.FC = () => {
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDTO[]>([]);
   const [reasons, setReasons] = useState<SaleReturnReasonDTO[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
-  const [warehouseName, setWarehouseName] = useState('Main');
   const [selectedSale, setSelectedSale] = useState<SaleDTO | null>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -174,21 +171,18 @@ const SaleReturnManagement: React.FC = () => {
   const loadMaster = useCallback(async () => {
     setMasterLoading(true);
     try {
-      const [cus, sal, pro, pm, rs, wh] = await Promise.all([
+      const [cus, sal, pro, pm, rs] = await Promise.all([
         customerService.getAll(),
         saleApiService.getAll(),
         productService.getAll(),
         paymentMethodService.getAllActive(),
-        saleReturnReasonApiService.getAll(true).catch(() => []),
-        warehouseApiService.list(true).catch(() => [])
+        saleReturnReasonApiService.getAll(true).catch(() => [])
       ]);
       setCustomers(cus);
       setSales(sal);
       setProducts(pro);
       setPaymentMethods(pm);
       setReasons(rs || []);
-      setWarehouses(wh || []);
-      if (wh?.length) setWarehouseName(wh[0].name || 'Main');
     } catch (e) {
       console.error('Failed to load master data', e);
     } finally {
@@ -228,7 +222,6 @@ const SaleReturnManagement: React.FC = () => {
       .then((data) => {
         if (!active) return;
         setSelectedSale(data);
-        if (data.warehouseName) setWarehouseName(data.warehouseName);
         if (data.customerId) {
           setCustomerId(data.customerId);
           setCustomerSearch(customerLabelById(data.customerId));
@@ -513,7 +506,7 @@ const SaleReturnManagement: React.FC = () => {
         staffId: selectedSale?.staffId || undefined,
         returnDate: returnDate || undefined,
         reason: reason.trim() || undefined,
-        warehouseName: warehouseName || selectedSale?.warehouseName || undefined,
+        warehouseName: selectedSale?.warehouseName || 'Main',
         totalReturnAmount: total,
         refundAmount: normalizedRefundPayments.length > 0 ? effectiveRefund : (refundAmount.trim() === '' ? undefined : Number(refundAmount)),
         paymentMethodId: paymentRequired ? (normalizedRefundPayments[0]?.paymentMethodId || paymentMethodId) : undefined,
@@ -620,17 +613,9 @@ const SaleReturnManagement: React.FC = () => {
                   <datalist id="sr-sales">{filteredSales.map((s) => <option key={s.id} value={saleLabel(s)} />)}</datalist>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return ရက်စွဲ</label>
-                  <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ဂိုဒေါင်</label>
-                  <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm">
-                    {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
-                  </select>
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return ရက်စွဲ</label>
+                <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ပြန်လက်ခံရသည့်အကြောင်းရင်း</label>
@@ -896,7 +881,6 @@ const SaleReturnManagement: React.FC = () => {
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Return Date:</span> {viewRow.returnDate ? new Date(viewRow.returnDate).toLocaleString() : '-'}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Return စုစုပေါင်း:</span> {money(viewRow.totalReturnAmount || 0)}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">Refund:</span> {money(viewRow.refundAmount ?? viewRow.totalReturnAmount ?? 0)}</p>
-                <p className="text-slate-600"><span className="font-medium text-slate-500">ဂိုဒေါင်:</span> {viewRow.warehouseName || '-'}</p>
                 <p className="text-slate-600"><span className="font-medium text-slate-500">အခြေအနေ:</span> {viewRow.status || 'COMPLETED'}{viewRow.creditNoteNo ? ` · CN ${viewRow.creditNoteNo}` : ''}</p>
               </div>
               {viewRow.voidReason && <p className="text-sm text-rose-600"><span className="font-medium">ပယ်ဖျက်:</span> {viewRow.voidReason}</p>}

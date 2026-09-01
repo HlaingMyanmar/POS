@@ -34,13 +34,6 @@ public class StockMovement {
     @Column(name = "reference_type")
     private String referenceType; // 'Purchase', 'Sale', 'Return'
 
-    @Column(name = "warehouse_name", length = 120)
-    private String warehouseName;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id")
-    private org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse;
-
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

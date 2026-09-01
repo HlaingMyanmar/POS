@@ -6,7 +6,6 @@ import { quotationApiService } from '../services/quotationapiservice';
 import { customerService } from '../services/customerapiservice';
 import { productService } from '../services/productapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
-import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { AppRoute, CustomerDTO, PaymentMethodDTO, ProductDTO, ProductSerialDTO, QuotationDTO, SaleDetailDTO, SerialStatus } from '../types';
 import { getFromSession } from '../utils/storageHelper';
@@ -47,7 +46,6 @@ const QuotationManagement: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerDTO[]>([]);
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [methods, setMethods] = useState<PaymentMethodDTO[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -64,7 +62,6 @@ const QuotationManagement: React.FC = () => {
 
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState(0);
-  const [warehouseName, setWarehouseName] = useState('Main');
   const [convertSerials, setConvertSerials] = useState<Record<number, string>>({});
   const [availableSerials,setAvailableSerials]=useState<ProductSerialDTO[]>([]);
 
@@ -73,25 +70,22 @@ const QuotationManagement: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [quotes, cus, prods, pay, wh] = await Promise.all([
+      const [quotes, cus, prods, pay] = await Promise.all([
         quotationApiService.getAll(),
         customerService.getAll(),
         productService.getAll(),
-        paymentMethodService.getAllActive(),
-        warehouseApiService.list(true).catch(() => [])
+        paymentMethodService.getAllActive()
       ]);
       setRows(quotes || []);
       setCustomers(cus || []);
       setProducts(prods || []);
       setMethods(pay || []);
-      setWarehouses(wh || []);
-      if (wh?.length && !warehouseName) setWarehouseName(wh[0].name);
     } catch (e: any) {
       Swal.fire('Error', e?.message || 'Failed to load quotations', 'error');
     } finally {
       setLoading(false);
     }
-  }, [warehouseName]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -194,7 +188,7 @@ const QuotationManagement: React.FC = () => {
         staffId: currentStaffId() || 0,
         paidAmount: paid,
         paymentMethodId: paid > 0 ? paymentMethodId : undefined,
-        warehouseName: warehouseName || undefined,
+        warehouseName: 'Main',
         details: serialDetails
       });
       setConvertRow(null);
@@ -334,12 +328,6 @@ const QuotationManagement: React.FC = () => {
               <button onClick={() => setConvertRow(null)}><X size={16} /></button>
             </div>
             <div className="space-y-3 text-sm">
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Warehouse</label>
-                <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
-                </select>
-              </div>
               <div className="grid grid-cols-2 gap-2">
                 <input type="number" min="0" step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder="Paid amount" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" />
                 <select value={paymentMethodId} onChange={(e) => setPaymentMethodId(Number(e.target.value) || 0)} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

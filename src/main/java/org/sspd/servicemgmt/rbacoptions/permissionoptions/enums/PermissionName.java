@@ -197,6 +197,13 @@ public enum PermissionName {
     CAN_ACCESS_PERMISSION_UPDATE("ရှိပြီးသား လုပ်ပိုင်ခွင့် (Permission) များကို ပြင်ဆင်ခွင့်ပြုသည်"),
     CAN_ACCESS_PERMISSION_DELETE("လုပ်ပိုင်ခွင့် (Permission) များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
 
+    // Booking Module Permissions
+    CAN_ACCESS_BOOKING_CREATE("Create bookings"),
+    CAN_ACCESS_BOOKING_READ("View bookings"),
+    CAN_ACCESS_BOOKING_UPDATE("Edit bookings, receive items, and cancel"),
+    CAN_ACCESS_BOOKING_DELETE("Delete eligible bookings"),
+    CAN_ACCESS_BOOKING_CONVERT_JOB("Convert bookings to service jobs"),
+
     // Service Module Permissions
     CAN_ACCESS_SERVICE_CREATE("Service, Service Type, Sub Service Type အသစ်များ ဖန်တီးခွင့်"),
     CAN_ACCESS_SERVICE_READ("Service, Service Type, Sub Service Type များကို ကြည့်ရှုခွင့်"),
@@ -206,6 +213,7 @@ public enum PermissionName {
     CAN_ACCESS_SERVICE_JOB_CREATE("Service Job အသစ်များ ဖန်တီးခွင့်"),
     CAN_ACCESS_SERVICE_JOB_READ("Service Job အချက်အလက်များကို ကြည့်ရှုခွင့်"),
     CAN_ACCESS_SERVICE_JOB_UPDATE("Service Job အချက်အလက်များနှင့် status များကို ပြင်ဆင်ခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_PRIORITY_UPDATE("Service Job ဦးစားပေးအဆင့် ပြင်ဆင်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_DELETE("Service Job များကို ဖျက်သိမ်းခွင့်"),
     CAN_ACCESS_SERVICE_JOB_SETTLE("Service Job settlement ပြုလုပ်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_VOID("Service Job settlement ပြန်ဖျက်ခွင့်"),
@@ -213,13 +221,8 @@ public enum PermissionName {
     CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE("Min/Max ကျော်သော ဝန်ဆောင်မှုစျေး Manager အတည်ပြုခွင့်"),
     CAN_ACCESS_SERVICE_JOB_REWORK("Service Job rework ဖန်တီးခွင့်"),
     CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN("ပြုပြင်သူ အားလုံးကို ရွေးခွင့် (မရှိရင် မိမိ Staff သာ)"),
-
-    CAN_ACCESS_BOOKING_CREATE("Booking အသစ်များ ဖန်တီးခွင့်"),
-    CAN_ACCESS_BOOKING_READ("Booking အချက်အလက်များကို ကြည့်ရှုခွင့်"),
-    CAN_ACCESS_BOOKING_UPDATE("Booking အချက်အလက်များနှင့် status များကို ပြင်ဆင်ခွင့်"),
-    CAN_ACCESS_BOOKING_DELETE("Booking များကို ဖျက်သိမ်းခွင့်"),
-    CAN_ACCESS_BOOKING_CONVERT_JOB("Booking ကို Service Job သို့ပြောင်းလဲခွင့်"),
-    CAN_ACCESS_BOOKING_STAFF_OVERRIDE("ပစ္စည်းလက်ခံမှုအတွက် အခြား Staff ရွေးခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_WORK_LOG("Technician assignment လက်ခံ၊ ငြင်းပယ်ပြီး work log တင်ခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_HANDOVER("မိမိ Service Job assignment ကို အခြား Technician ထံ Hand Over လွှဲခွင့်"),
 
     CAN_ACCESS_BACKUP_SETTINGS_READ("Backup settings ကြည့်ရှုခွင့်"),
     CAN_ACCESS_BACKUP_SETTINGS_UPDATE("Backup settings ပြင်ဆင်ခွင့်"),

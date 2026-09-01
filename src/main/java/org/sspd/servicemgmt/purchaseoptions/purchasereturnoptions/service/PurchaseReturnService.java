@@ -77,7 +77,6 @@ public class PurchaseReturnService {
     private final ProductSerialRepository productSerialRepository;
     private final org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService companySettingsService;
     private final org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard periodGuard;
-    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
     private final CashDrawerService cashDrawerService;
     private final PurchaseReturnReasonRepository returnReasonRepository;
     private final PurchaseReturnActivityRepository activityRepository;
@@ -352,7 +351,6 @@ public class PurchaseReturnService {
                 product.setStockQty(current - qty);
                 product.setQuarantinedQty(Math.max(0, (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty()) - qty));
                 productRepository.save(product);
-                stockLotService.consumePurchaseReturn(purchase, product, qty);
             } else {
                 for (String sn : serials) {
                     ProductSerial serial = productSerialRepository.findBySerialNumber(sn)
@@ -550,7 +548,6 @@ public class PurchaseReturnService {
                     PurchaseDetailWarranty warranty = findPurchaseWarranty(purchase, product.getId(), sn);
                     productSerialRepository.save(ProductSerial.builder()
                             .product(product)
-                            .warehouse(purchase.getWarehouse() != null ? purchase.getWarehouse() : product.getWarehouse())
                             .serialNumber(sn)
                             .status(SerialStatus.Available)
                             .warrantyMonths(warranty != null ? warranty.getWarrantyMonths() : null)
@@ -562,7 +559,6 @@ public class PurchaseReturnService {
                 int current = product.getStockQty() != null ? product.getStockQty() : 0;
                 product.setStockQty(current + qty);
                 productRepository.save(product);
-                if (purchase != null) stockLotService.restorePurchaseReturn(purchase, product, qty);
             }
 
             stockMovementService.recordMovement(StockMovement.builder()

@@ -8,6 +8,7 @@ import com.sspd.servicemgmt.core.network.CustomerCreditTermDTO
 import com.sspd.servicemgmt.core.network.CustomerDTO
 import com.sspd.servicemgmt.core.network.CustomerLocationRequest
 import com.sspd.servicemgmt.core.network.SaleDTO
+import com.sspd.servicemgmt.core.realtime.onDataEvent
 import com.sspd.servicemgmt.core.tracking.LocationClient
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.async
@@ -24,7 +25,10 @@ class CustomerManagementViewModel(application: Application) : AndroidViewModel(a
     private val _uiState = MutableStateFlow(CustomerManagementUiState())
     val uiState: StateFlow<CustomerManagementUiState> = _uiState.asStateFlow()
 
-    init { load() }
+    init {
+        load()
+        onDataEvent("Customer", "Sale", "Customer Payment") { load() }
+    }
 
     fun load() {
         viewModelScope.launch {

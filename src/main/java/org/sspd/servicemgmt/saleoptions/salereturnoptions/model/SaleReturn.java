@@ -75,9 +75,6 @@ public class SaleReturn {
     @Column(name = "voided_by", length = 120)
     private String voidedBy;
 
-    @Column(name = "warehouse_name", length = 120)
-    private String warehouseName;
-
     @Column(name = "settlement_type", length = 30)
     private String settlementType;
 

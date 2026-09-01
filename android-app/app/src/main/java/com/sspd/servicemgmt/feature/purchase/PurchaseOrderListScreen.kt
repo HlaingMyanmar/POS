@@ -162,22 +162,6 @@ fun PurchaseOrderListScreen(onBack: () -> Unit) {
                         draft.lines.forEach { line ->
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("${line.productName} × ${line.qty}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(
-                                        value = line.batchNumber,
-                                        onValueChange = { vm.setReceiveLine(line.detailId, batchNumber = it) },
-                                        label = { Text("Batch") },
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = line.expiryDate,
-                                        onValueChange = { vm.setReceiveLine(line.detailId, expiryDate = it) },
-                                        label = { Text("Expiry yyyy-MM-dd") },
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                }
                                 if (line.hasSerial) {
                                     OutlinedTextField(
                                         value = line.serialText,

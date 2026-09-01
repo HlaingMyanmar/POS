@@ -92,9 +92,6 @@ public class SaleService {
     private final CompanySettingsService companySettingsService;
     private final SimpMessagingTemplate messagingTemplate;
     private final CashDrawerService cashDrawerService;
-    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
-    private final org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver warehouseResolver;
-    private final org.sspd.servicemgmt.stockoptions.lotoptions.repository.StockLotRepository stockLotRepository;
 
     private static final BigDecimal CASHIER_DISCOUNT_PERCENT = new BigDecimal("5");
     private static final BigDecimal MANAGER_DISCOUNT_PERCENT = new BigDecimal("20");
@@ -163,9 +160,6 @@ public class SaleService {
         sale.setStaff(staff);
         sale.setSaleDate(resolveSaleDateWithPermission(dto.getSaleDate()));
         sale.setRemark(dto.getRemark());
-        var saleWarehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
-        sale.setWarehouse(saleWarehouse);
-        sale.setWarehouseName(saleWarehouse.getName());
         sale.setFoc(Boolean.TRUE.equals(dto.getFoc()));
         sale.setSaleCode("PENDING"); // temporary to satisfy not-null, will overwrite after save
 
@@ -209,7 +203,6 @@ public class SaleService {
         Sale saved = saleRepository.save(sale);
         saved.setSaleCode(generateSaleCode(saved.getId()));
         saved = saleRepository.save(saved);
-        stockLotService.allocateSale(saved);
         recordStockMovements(saved); // always: reduce inventory stock
         createInventoryValuationJournal(saved); // perpetual inventory: DR COGS / CR Inventory
 
@@ -392,7 +385,6 @@ public class SaleService {
             throw new RuntimeException("Void reason is required");
         }
 
-        stockLotService.restoreSaleVoid(existing);
         reverseStock(existing);
         recordVoidedCashRefund(existing);
         paymentTransactionRepository.deleteByReferenceIdAndReferenceType(existing.getId(), ReferenceType.Sale);
@@ -461,7 +453,7 @@ public class SaleService {
             Product product = productRepository.findById(d.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
 
-            if (product.getSellingPrice() == null || product.getSellingPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            if (!isServiceJobSale && (product.getSellingPrice() == null || product.getSellingPrice().compareTo(BigDecimal.ZERO) <= 0)) {
                 throw new RuntimeException("Product '" + product.getName() + "' တွင် selling price မသတ်မှတ်ရသေးပါ။ ရောင်းချမည့်အချိန် selling price သတ်မှတ်ထားရပါမည်။");
             }
 
@@ -513,11 +505,6 @@ public class SaleService {
                     if (serial.getStatus() != SerialStatus.Available) {
                         throw new RuntimeException("Serial number '" + sn + "' is not available for sale");
                     }
-                    if (parent.getWarehouse() == null || serial.getWarehouse() == null
-                            || !parent.getWarehouse().getId().equals(serial.getWarehouse().getId())) {
-                        throw new RuntimeException("Serial number '" + sn + "' is not available in warehouse "
-                                + (parent.getWarehouse() != null ? parent.getWarehouse().getName() : parent.getWarehouseName()));
-                    }
                     int serialWarrantyMonths = serial.getWarrantyMonths() != null
                             ? serial.getWarrantyMonths()
                             : requestedWarrantyMonths;
@@ -556,16 +543,9 @@ public class SaleService {
                     throw new RuntimeException("Quantity must be greater than zero");
                 }
                 int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
-                int availableQty;
-                if (parent.getWarehouse() != null) {
-                    availableQty = Optional.ofNullable(stockLotRepository.sumSellableInWarehouse(
-                            product.getId(), parent.getWarehouse().getId(), java.time.LocalDate.now())).orElse(0L).intValue();
-                } else {
-                    availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty());
-                }
+                int availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty());
                 if (availableQty < d.getQty()) {
                     throw new RuntimeException("Insufficient stock for: " + product.getName()
-                            + (parent.getWarehouse() != null ? " in warehouse " + parent.getWarehouse().getName() : "")
                             + ". Available: " + availableQty);
                 }
                 product.setStockQty(currentQty - d.getQty());
@@ -788,8 +768,6 @@ public class SaleService {
                     .qty(detail.getQty())
                     .referenceType("Sale")
                     .referenceId(sale.getId())
-                    .warehouse(sale.getWarehouse())
-                    .warehouseName(sale.getWarehouseName())
                     .build());
         }
     }

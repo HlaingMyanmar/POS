@@ -159,8 +159,6 @@ type ReceiveLineForm = {
   invoiceUnitCost: number;
   hasSerial: boolean;
   serialNumbers: string[];
-  batchNumber: string;
-  expiryDate: string;
 };
 const dateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -543,9 +541,7 @@ const PurchaseOrderManagement: React.FC = () => {
           unitCost: d.unitCost,
           invoiceUnitCost: d.unitCost,
           hasSerial: d.hasSerial ?? prod?.hasSerial ?? false,
-          serialNumbers: Array(Math.max(0, d.qty - (d.receivedQty || 0))).fill(''),
-          batchNumber: '',
-          expiryDate: ''
+          serialNumbers: Array(Math.max(0, d.qty - (d.receivedQty || 0))).fill('')
         };
       }).filter((l) => l.pending > 0);
       if (lines.length === 0) {
@@ -591,9 +587,7 @@ const PurchaseOrderManagement: React.FC = () => {
       damagedQty: Math.floor(Number(l.damagedQty)),
       rejectedQty: Math.floor(Number(l.rejectedQty)),
       invoiceUnitCost: Number(l.invoiceUnitCost),
-      serialNumbers: l.hasSerial ? (l.serialNumbers || []).map((s) => s.trim()).filter(Boolean) : undefined,
-      batchNumber: l.batchNumber.trim() || undefined,
-      expiryDate: l.expiryDate || undefined
+      serialNumbers: l.hasSerial ? (l.serialNumbers || []).map((s) => s.trim()).filter(Boolean) : undefined
     }));
     if (lines.length === 0) {
       Swal.fire({ icon: 'warning', title: 'Quantities ထည့်ပါ', text: 'လက်ခံရရှိမည့် အရေအတွက်ကို ထည့်ပါ။' });
@@ -1029,10 +1023,6 @@ const PurchaseOrderManagement: React.FC = () => {
                             <span className="ml-1.5 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-black text-violet-700">SERIAL</span>
                           )}
                         </p>
-                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                          <input value={line.batchNumber} onChange={(e) => setReceiveLines((prev) => prev.map((l, i) => i === idx ? { ...l, batchNumber: e.target.value } : l))} placeholder="Batch" className="rounded border border-slate-200 px-2 py-1 text-[11px]" />
-                          <input type="date" value={line.expiryDate} onChange={(e) => setReceiveLines((prev) => prev.map((l, i) => i === idx ? { ...l, expiryDate: e.target.value } : l))} className="rounded border border-slate-200 px-2 py-1 text-[11px]" />
-                        </div>
                         {line.hasSerial && line.qty > 0 && (
                           <div className="mt-2 space-y-1">
                             <div className="flex items-center justify-between">

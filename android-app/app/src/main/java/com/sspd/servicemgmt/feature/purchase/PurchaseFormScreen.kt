@@ -106,17 +106,6 @@ fun PurchaseFormScreen(
             key = { i, p -> p.id ?: "prod-$i-${p.productCode}" }
         )
     }
-    if (state.showWarehousePicker) {
-        AppPickerSheet(
-            title = "ဂိုဒေါင် ရွေးရန်",
-            items = state.warehouses,
-            label = { it.name },
-            subtitle = { it.code },
-            onSelect = { vm.selectWarehouse(it); vm.dismissPicker() },
-            onDismiss = vm::dismissPicker,
-            key = { i, w -> w.id ?: "warehouse-$i-${w.code}" }
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -208,7 +197,7 @@ fun PurchaseFormScreen(
             }
 
             item {
-                PurchaseSectionTitle(Icons.Outlined.Storefront, "ဝယ်ယူမှုအချက်အလက်", "ပေးသွင်းသူ၊ ဂိုဒေါင်နှင့် ရက်စွဲ")
+                PurchaseSectionTitle(Icons.Outlined.Storefront, "ဝယ်ယူမှုအချက်အလက်", "ပေးသွင်းသူနှင့် ရက်စွဲ")
                 Card(
                     shape  = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -216,7 +205,6 @@ fun PurchaseFormScreen(
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         PickerField("ပေးသွင်းသူ *", state.selectedSupplier?.name ?: "ရွေးရန်", Icons.Outlined.Storefront, vm::openSupplierPicker)
-                        PickerField("ဂိုဒေါင် *", state.selectedWarehouse?.name ?: "ရွေးရန်", Icons.Outlined.Warehouse, vm::openWarehousePicker)
                         PickerField("ဝန်ထမ်း", state.selectedStaff?.name ?: "ရွေးရန်", Icons.Outlined.Person, vm::openStaffPicker)
                         DateField("ဝယ်ယူသည့်ရက်", state.purchaseDate, vm::setPurchaseDate)
                         Text("ငွေချေကာလ", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
@@ -280,7 +268,7 @@ fun PurchaseFormScreen(
                     ) {
                         AppEmptyState(
                             title = "ပစ္စည်း မထည့်ရသေးပါ",
-                            subtitle = "ဂိုဒေါင်ရွေးပြီး ဝယ်ယူမည့်ပစ္စည်း ထည့်ပါ",
+                            subtitle = "ဝယ်ယူမည့်ပစ္စည်း ထည့်ပါ",
                             icon = Icons.Outlined.AddShoppingCart,
                             actionLabel = "ပစ္စည်းထည့်ရန်",
                             onAction = vm::openProductPicker
@@ -296,8 +284,6 @@ fun PurchaseFormScreen(
                         onQty                 = { vm.setLineQty(index, it) },
                         onCost                = { vm.setLineCost(index, it) },
                         onWarranty            = { vm.setLineWarranty(index, it) },
-                        onBatchNumber         = { vm.setLineBatchNumber(index, it) },
-                        onExpiryDate          = { vm.setLineExpiryDate(index, it) },
                         onAllocatedLanded     = { vm.setLineAllocatedLandedCost(index, it) },
                         showManualLanded      = state.landedCostAllocationMethod == "MANUAL",
                         onSerialChange        = { sIdx, v -> vm.setLineSerial(index, sIdx, v) },
@@ -611,8 +597,6 @@ private fun PurchaseLineCard(
     onQty:                 (String) -> Unit,
     onCost:                (String) -> Unit,
     onWarranty:            (String) -> Unit,
-    onBatchNumber:         (String) -> Unit,
-    onExpiryDate:          (String) -> Unit,
     onAllocatedLanded:     (String) -> Unit,
     showManualLanded:      Boolean,
     onSerialChange:        (Int, String) -> Unit,
@@ -697,25 +681,6 @@ private fun PurchaseLineCard(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine      = true,
                     shape           = RoundedCornerShape(10.dp)
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value         = line.batchNumber,
-                    onValueChange = onBatchNumber,
-                    modifier      = Modifier.weight(1f),
-                    label         = { Text("Batch") },
-                    singleLine    = true,
-                    shape         = RoundedCornerShape(10.dp)
-                )
-                OutlinedTextField(
-                    value         = line.expiryDate,
-                    onValueChange = onExpiryDate,
-                    modifier      = Modifier.weight(1f),
-                    label         = { Text("Expiry yyyy-MM-dd") },
-                    singleLine    = true,
-                    shape         = RoundedCornerShape(10.dp)
                 )
             }
 
@@ -1032,7 +997,7 @@ private fun PurchaseFormPreview() {
             }
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PurchaseProgressHeader(hasSupplier = true, itemCount = 1, readyToSave = true)
-                PurchaseSectionTitle(Icons.Outlined.Storefront, "ဝယ်ယူမှုအချက်အလက်", "ပေးသွင်းသူ၊ ဂိုဒေါင်နှင့် ရက်စွဲ")
+                PurchaseSectionTitle(Icons.Outlined.Storefront, "ဝယ်ယူမှုအချက်အလက်", "ပေးသွင်းသူနှင့် ရက်စွဲ")
                 Card(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = CardBg),
@@ -1040,7 +1005,6 @@ private fun PurchaseFormPreview() {
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         PickerField("ပေးသွင်းသူ *", "ABC Trading", Icons.Outlined.Storefront, {})
-                        PickerField("ဂိုဒေါင် *", "MAIN", Icons.Outlined.Warehouse, {})
                         PickerField("ဝန်ထမ်း", "အောင်အောင်", Icons.Outlined.Person, {})
                     }
                 }

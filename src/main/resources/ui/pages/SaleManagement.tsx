@@ -29,8 +29,6 @@ import {
 } from 'lucide-react';
 import { saleApiService } from '../services/saleapiservice';
 import { saleReturnApiService } from '../services/salereturnapiservice';
-import { stockLotApiService } from '../services/stocklotapiservice';
-import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
 import { customerService } from '../services/customerapiservice';
 import { staffService } from '../services/staffapiservice';
 import { productService } from '../services/productapiservice';
@@ -83,7 +81,6 @@ type HeldSale = {
   dueDate: string;
   paymentMethodId: number;
   remark: string;
-  warehouseName: string;
   details: DetailForm[];
   productSearches: string[];
 };
@@ -275,9 +272,6 @@ const SaleManagement: React.FC = () => {
   const [dueDate, setDueDate] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState(0);
   const [remark, setRemark] = useState('');
-  const [warehouseName, setWarehouseName] = useState('Main');
-  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
-  const [warehouseStockByProduct, setWarehouseStockByProduct] = useState<Record<number, number>>({});
   const [viewTimeline, setViewTimeline] = useState<{ type?: string; at?: string; title?: string; detail?: string; refCode?: string; amount?: number }[]>([]);
   const [details, setDetails] = useState<DetailForm[]>([emptyDetail()]);
   const [productSearches, setProductSearches] = useState<string[]>(['']);
@@ -333,14 +327,13 @@ const SaleManagement: React.FC = () => {
 
   const loadMaster = useCallback(async () => {
     try {
-      const [customerRes, termRes, staffRes, productRes, methodRes, serialRes, warehouseRes] = await Promise.all([
+      const [customerRes, termRes, staffRes, productRes, methodRes, serialRes] = await Promise.all([
         customerService.getAll(),
         creditTermService.getAll(),
         staffService.getAll(),
         productService.getAll(),
         paymentMethodService.getAllActive(),
-        productSerialService.getAll(),
-        warehouseApiService.list(true).catch(() => [])
+        productSerialService.getAll()
       ]);
       setCustomers(customerRes || []);
       setTerms(termRes || []);
@@ -350,8 +343,6 @@ const SaleManagement: React.FC = () => {
       setProducts(productRes || []);
       setMethods(methodRes || []);
       setSerials(serialRes || []);
-      setWarehouses(warehouseRes || []);
-      if (warehouseRes?.length) setWarehouseName((prev) => prev || warehouseRes[0].name || 'Main');
       if (methodRes.length > 0) {
         setPaymentMethodId((prev) => prev || methodRes[0].id);
       }
@@ -364,16 +355,6 @@ const SaleManagement: React.FC = () => {
     loadMaster();
   }, [loadMaster]);
   useRefreshOnTabActivate(loadMaster);
-
-  useEffect(() => {
-    void stockLotApiService.warehouseBalances().then((rows) => {
-      const map: Record<number, number> = {};
-      rows.filter((r) => !warehouseName || r.warehouseName === warehouseName).forEach((r) => {
-        map[r.productId] = (map[r.productId] || 0) + Number(r.remainingQty || 0);
-      });
-      setWarehouseStockByProduct(map);
-    }).catch(() => setWarehouseStockByProduct({}));
-  }, [warehouseName]);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -440,10 +421,9 @@ const SaleManagement: React.FC = () => {
   }, [products]);
 
   const getQtyOnlyStock = useCallback((productId: number) => {
-    if (warehouseStockByProduct[productId] != null) return warehouseStockByProduct[productId];
     const product = products.find((p) => p.id === productId);
     return Number(product?.stockQty ?? product?.currentStock ?? 0);
-  }, [products, warehouseStockByProduct]);
+  }, [products]);
 
   const getSerialPool = useCallback((productId: number) => (
     Array.from(new Set(
@@ -741,7 +721,6 @@ const SaleManagement: React.FC = () => {
     setSalePayments([]);
     setDueDate('');
     setRemark('');
-    setWarehouseName(warehouses[0]?.name || 'Main');
     setDetails([emptyDetail()]);
     setProductSearches(['']);
     setPaymentMethodId(methods[0]?.id || 0);
@@ -762,7 +741,6 @@ const SaleManagement: React.FC = () => {
       dueDate,
       paymentMethodId,
       remark,
-      warehouseName,
       details,
       productSearches,
     };
@@ -784,7 +762,6 @@ const SaleManagement: React.FC = () => {
     setDueDate(held.dueDate);
     setPaymentMethodId(held.paymentMethodId);
     setRemark(held.remark);
-    setWarehouseName(held.warehouseName || warehouses[0]?.name || 'Main');
     setDetails(held.details?.length ? held.details : [emptyDetail()]);
     setProductSearches(held.productSearches?.length ? held.productSearches : ['']);
     setHeldSales((previous) => previous.filter((item) => item.id !== held.id));
@@ -832,7 +809,7 @@ const SaleManagement: React.FC = () => {
         }
       } else {
         const available = getQtyOnlyStock(row.productId);
-        if (row.qty > available) return `Insufficient stock in ${warehouseName || 'selected warehouse'} for this product. Available: ${available}.`;
+        if (row.qty > available) return `Insufficient stock for this product. Available: ${available}.`;
       }
     }
 
@@ -878,8 +855,6 @@ const SaleManagement: React.FC = () => {
         paymentMethodId: effectivePaid > 0 ? (normalizedSalePayments[0]?.paymentMethodId || paymentMethodId) : undefined,
         payments: normalizedSalePayments.length > 0 ? normalizedSalePayments : undefined,
         remark: remark.trim() || undefined,
-        warehouseName: warehouseName || undefined,
-        warehouseId: warehouses.find((w) => w.name === warehouseName)?.id,
         details: details.map((d) => ({
           productId: d.productId,
           qty: d.qty,
@@ -1226,14 +1201,6 @@ const SaleManagement: React.FC = () => {
               {(!canBackdateSale || !canFutureDateSale) && <p className="text-[10px] text-slate-400 mt-1">အတိတ်/အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် ခွင့်ပြုချက်လိုအပ်သည်။</p>}
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">ဂိုဒေါင် <span className="text-rose-500">*</span></label>
-              <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
-                {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => (
-                  <option key={w.name} value={w.name}>{w.name}</option>
-                ))}
-              </select>
-            </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">မှတ်ချက်</label>
               <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="လိုအပ်ပါကမှတ်ချက်ရေးပါ" className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400" />
@@ -1740,14 +1707,6 @@ const SaleManagement: React.FC = () => {
                 {(!canBackdateSale || !canFutureDateSale) && <p className="text-[10px] text-slate-400 mt-1">အတိတ်/အနာဂတ်ရက်စွဲဖြင့် ထည့်သွင်းရန် ခွင့်ပြုချက်လိုအပ်သည်။</p>}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Warehouse <span className="text-rose-500">*</span></label>
-                <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400">
-                  {(warehouses.length ? warehouses : [{ name: 'Main' } as WarehouseDTO]).map((w) => (
-                    <option key={w.name} value={w.name}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Remark</label>
                 <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Optional note" className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400" />
@@ -2355,7 +2314,6 @@ const SaleManagement: React.FC = () => {
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-xs text-slate-500 font-medium">Due Date</p>
                     <p className="text-base font-bold text-slate-800 mt-1">{viewSale.dueDate || '—'}</p>
-                    {viewSale.warehouseName && <p className="text-[11px] text-slate-500 mt-1">WH: {viewSale.warehouseName}</p>}
                   </div>
                   <div className="rounded-lg border border-violet-100 bg-violet-50 p-3">
                     <p className="text-xs text-violet-600 font-medium">Commission</p>

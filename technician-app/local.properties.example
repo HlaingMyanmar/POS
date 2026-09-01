@@ -1,0 +1,5 @@
+sdk.dir=C\:\\path\\to\\Android\\Sdk
+KEYSTORE_PATH=../sspd-release.keystore
+KEYSTORE_PASSWORD=
+KEY_ALIAS=sspd
+KEY_PASSWORD=

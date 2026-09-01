@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, MapPin, Navigation, RefreshCw } from 'lucide-react';
 import { useWebsocket } from '../hooks/useWebsocket';
+import { addCartoBaseLayers, addCartoTileLayer } from '../config/mapTiles';
 import {
   LocationPingDTO,
   TechnicianVisitDTO,
@@ -14,14 +15,6 @@ declare global {
     L?: any;
   }
 }
-
-const STREET_TILE =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
-const STREET_ATTR =
-  'Tiles &copy; Esri — Source: Esri, HERE, Garmin, OpenStreetMap contributors';
-const OSM_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OSM_ATTR =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const OSRM_URL = (
   import.meta.env.VITE_OSRM_URL || 'https://router.project-osrm.org'
 ).replace(/\/+$/, '');
@@ -256,37 +249,7 @@ const OutdoorTracking: React.FC = () => {
     const map = L.map(mapRef.current).setView([16.8409, 96.1735], 12);
     mapApi.current = map;
 
-    const street = L.tileLayer(STREET_TILE, {
-      attribution: STREET_ATTR,
-      maxZoom: 19
-    });
-    const osm = L.tileLayer(OSM_TILE, {
-      attribution: OSM_ATTR,
-      maxZoom: 19
-    });
-
-    let failedTiles = 0;
-    street.on('tileload', () => {
-      failedTiles = 0;
-      setMapMessage('');
-    });
-    street.on('tileerror', () => {
-      failedTiles += 1;
-      if (failedTiles < 3 || !map.hasLayer(street)) return;
-      map.removeLayer(street);
-      osm.addTo(map);
-      setMapMessage('Street Map မရသဖြင့် OpenStreetMap သို့ အလိုအလျောက်ပြောင်းထားသည်။');
-    });
-    osm.on('tileerror', () => {
-      setMapMessage('Map tile internet မရပါ။ Network/Firewall ကို စစ်ပါ။ Live list ဆက်သုံးနိုင်သည်။');
-    });
-
-    street.addTo(map);
-    L.control.layers(
-      { 'Street Map': street, OpenStreetMap: osm },
-      undefined,
-      { position: 'topright' }
-    ).addTo(map);
+    addCartoBaseLayers(L, map, setMapMessage);
 
     return () => {
       markers.current.clear();
@@ -490,15 +453,7 @@ const OutdoorTracking: React.FC = () => {
     if (replayLoading || !replayVisit || !replayMapRef.current || !window.L) return;
     const L = window.L;
     const map = L.map(replayMapRef.current).setView([16.8409, 96.1735], 12);
-    const street = L.tileLayer(STREET_TILE, {
-      attribution: STREET_ATTR,
-      maxZoom: 19
-    }).addTo(map);
-    street.on('tileerror', () => {
-      if (!map.hasLayer(street)) return;
-      map.removeLayer(street);
-      L.tileLayer(OSM_TILE, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map);
-    });
+    addCartoTileLayer(L, map);
 
     const points = replayPings
       .filter((ping) => Number.isFinite(ping.latitude) && Number.isFinite(ping.longitude))

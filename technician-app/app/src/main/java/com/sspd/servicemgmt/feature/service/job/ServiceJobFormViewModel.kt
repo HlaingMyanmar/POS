@@ -15,6 +15,7 @@ import com.sspd.servicemgmt.core.network.ServiceJobLineDTO
 import com.sspd.servicemgmt.core.network.ServiceJobPartDTO
 import com.sspd.servicemgmt.core.network.ShelfLocationDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
+import com.sspd.servicemgmt.core.realtime.onDataEvent
 import com.sspd.servicemgmt.core.tracking.LocationClient
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.async
@@ -37,7 +38,23 @@ class ServiceJobFormViewModel(
 
     val isEdit get() = jobId != null
 
-    init { loadDependencies() }
+    init {
+        loadDependencies()
+        onDataEvent("Customer") { loadCustomers() }
+    }
+
+    fun loadCustomers() {
+        viewModelScope.launch {
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val customers = ApiClient.service.getCustomers(token).body()?.data ?: emptyList()
+                _uiState.update { s ->
+                    val selected = s.selectedCustomer?.id?.let { id -> customers.find { it.id == id } } ?: s.selectedCustomer
+                    s.copy(customers = customers, selectedCustomer = selected)
+                }
+            } catch (_: Exception) { }
+        }
+    }
 
     private fun loadDependencies() {
         viewModelScope.launch {
@@ -459,7 +476,7 @@ class ServiceJobFormViewModel(
                     val created = res.body()?.data ?: return@launch
                     _uiState.update {
                         it.copy(
-                            customers = it.customers + created,
+                            customers = if (it.customers.any { c -> c.id == created.id }) it.customers else it.customers + created,
                             selectedCustomer = created,
                             customerQuery = created.name,
                             showNewCustomerDialog = false,

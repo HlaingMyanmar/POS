@@ -406,8 +406,6 @@ public class PurchaseOrderService {
                     .serialNumbers(line != null && line.getSerialNumbers() != null ? line.getSerialNumbers() : null)
                     .serialConditions(line != null && line.getSerialConditions() != null ? line.getSerialConditions() : null)
                     .serialPhotos(line != null && line.getSerialPhotos() != null ? line.getSerialPhotos() : null)
-                    .batchNumber(line != null ? line.getBatchNumber() : null)
-                    .expiryDate(line != null ? line.getExpiryDate() : null)
                     .build());
         }
         if (hasVariance && (receive.getVarianceReason() == null || receive.getVarianceReason().isBlank()))

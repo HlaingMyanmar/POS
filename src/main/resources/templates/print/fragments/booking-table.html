@@ -5,32 +5,22 @@
 
 <div th:fragment="render(inv)" style="margin-bottom:16px;">
 
-  <!-- Fast-scan summary: the two facts staff need most often. -->
-  <table th:if="${false}" style="width:100%; border-collapse:separate; border-spacing:0; margin-bottom:10px;">
-    <tr>
-      <td style="width:50%; background:#1e3a5f; color:#ffffff; padding:9px 12px; border-radius:5px 0 0 5px;">
-        <div style="font-size:8px; font-weight:700; letter-spacing:1.5px; opacity:.78; text-transform:uppercase;">Intake Number</div>
-        <div style="font-size:16px; font-weight:800; letter-spacing:.5px; margin-top:2px;" th:text="${inv.invoiceNo ?: '—'}">—</div>
-      </td>
-      <td style="width:50%; background:#e0f2fe; color:#0c4a6e; padding:9px 12px; border:1px solid #7dd3fc; border-left:0; border-radius:0 5px 5px 0;">
-        <div style="font-size:8px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;">Storage Location</div>
-        <div style="font-size:14px; font-weight:800; margin-top:2px;" th:text="${not #strings.isEmpty(inv.shelfLocation) ? inv.shelfLocation : 'NOT ASSIGNED'}">NOT ASSIGNED</div>
-      </td>
-    </tr>
-  </table>
-
-  <div style="font-size:10px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:#1e3a5f; border-bottom:3px solid #1e3a5f; padding-bottom:4px; margin-bottom:7px;">
-    Device Details
+  <div th:if="${not #strings.isEmpty(inv.problemDesc)}"
+       style="margin-bottom:10px; border:1px solid #fed7aa; background:#fff7ed; border-radius:5px; padding:8px 10px;">
+    <div style="font-size:8px; font-weight:800; color:#9a3412; letter-spacing:1px; text-transform:uppercase;">Booking Complaint</div>
+    <div style="font-size:11px; line-height:1.45; font-weight:700; color:#7c2d12; margin-top:2px;" th:text="${inv.problemDesc}">—</div>
   </div>
 
-  <!-- A card per device keeps the complaint and condition readable at a glance. -->
+  <div style="font-size:10px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:#1e3a5f; border-bottom:3px solid #1e3a5f; padding-bottom:4px; margin-bottom:7px;">
+    Received Items
+  </div>
+
   <div th:each="dev, stat : ${inv.deviceRows}"
        style="border:1.5px solid #94a3b8; border-radius:5px; margin-bottom:8px; page-break-inside:avoid; overflow:hidden;">
     <div style="background:#f1f5f9; border-bottom:1px solid #cbd5e1; padding:6px 9px;">
       <span style="display:inline-block; background:#1e3a5f; color:white; border-radius:10px; padding:2px 7px; font-size:9px; font-weight:800; margin-right:6px;"
-            th:text="${'DEVICE ' + stat.count}">DEVICE 1</span>
-      <span style="font-size:13px; font-weight:800; color:#0f172a;"
-            th:text="${(#strings.isEmpty(dev.brand) ? '' : dev.brand) + (#strings.isEmpty(dev.model) ? '' : ' ' + dev.model)}">Device</span>
+            th:text="${'ITEM ' + stat.count}">ITEM 1</span>
+      <span style="font-size:13px; font-weight:800; color:#0f172a;" th:text="${dev.brand ?: '—'}">Item</span>
       <span th:if="${not #strings.isEmpty(dev.deviceType)}" style="font-size:9px; color:#64748b; margin-left:5px;"
             th:text="${'(' + dev.deviceType + ')'}"></span>
     </div>
@@ -59,22 +49,10 @@
           <div style="font-size:11px; line-height:1.45; font-weight:700; color:#14532d; margin-top:2px; white-space:pre-line;" th:text="${dev.deviceConditions}">—</div>
         </td>
       </tr>
-      <tr th:if="${not #strings.isEmpty(dev.conditionChecklist)}">
-        <td colspan="2" style="padding:6px 9px; background:#f8fafc;">
-          <div style="font-size:8px; font-weight:800; color:#475569; letter-spacing:.8px; text-transform:uppercase;">Condition Checklist</div>
-          <div style="font-size:9.5px; color:#334155; white-space:pre-line;" th:text="${dev.conditionChecklist}"></div>
-        </td>
-      </tr>
-      <tr th:if="${not #strings.isEmpty(dev.serviceSummary)}">
-        <td colspan="2" style="padding:6px 9px; background:#eff6ff;">
-          <div style="font-size:8px; font-weight:800; color:#1e40af; letter-spacing:.8px; text-transform:uppercase;">Requested Services</div>
-          <div style="font-size:9.5px; color:#1e3a5f; white-space:pre-line;" th:text="${dev.serviceSummary}"></div>
-        </td>
-      </tr>
-      <tr th:if="${not #strings.isEmpty(dev.partRequests)}">
-        <td colspan="2" style="padding:6px 9px; background:#fff7ed;">
-          <div style="font-size:8px; font-weight:800; color:#9a3412; letter-spacing:.8px; text-transform:uppercase;">Possible Parts / Actions</div>
-          <div style="font-size:9.5px; color:#7c2d12; white-space:pre-line;" th:text="${dev.partRequests}"></div>
+      <tr th:if="${not #strings.isEmpty(dev.noticed)}">
+        <td colspan="2" style="padding:7px 9px; background:#fefce8; border-bottom:1px solid #fde047;">
+          <div style="font-size:8px; font-weight:800; color:#854d0e; letter-spacing:1px; text-transform:uppercase;">Noticed</div>
+          <div style="font-size:11px; line-height:1.45; font-weight:700; color:#713f12; margin-top:2px; white-space:pre-line;" th:text="${dev.noticed}">—</div>
         </td>
       </tr>
     </table>
@@ -82,22 +60,14 @@
 
   <div th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
        style="border:1px dashed #94a3b8; padding:14px; color:#64748b; text-align:center; font-size:10px; margin-bottom:8px;">
-    No device information recorded
+    No received items recorded
   </div>
 
-  <table style="width:100%; border-collapse:collapse; margin-top:8px;" th:if="${not #strings.isEmpty(inv.remark) or (inv.estimatedCost != null and inv.estimatedCost != '0') or (inv.paid != null and inv.paid != '0')}">
+  <table style="width:100%; border-collapse:collapse; margin-top:8px;" th:if="${not #strings.isEmpty(inv.remark)}">
     <tr>
-      <td th:if="${not #strings.isEmpty(inv.remark)}" style="padding:7px 9px; border:1px solid #cbd5e1; background:#f8fafc;">
+      <td style="padding:7px 9px; border:1px solid #cbd5e1; background:#f8fafc;">
         <div style="font-size:8px; font-weight:800; color:#475569; letter-spacing:1px; text-transform:uppercase;">Remark</div>
         <div style="font-size:10px; font-weight:600; color:#0f172a; margin-top:2px;" th:text="${inv.remark}"></div>
-      </td>
-      <td th:if="${inv.estimatedCost != null and inv.estimatedCost != '0'}" style="width:34%; padding:7px 9px; border:1px solid #86efac; background:#f0fdf4; text-align:right;">
-        <div style="font-size:8px; font-weight:800; color:#166534; letter-spacing:1px; text-transform:uppercase;">Estimated Cost</div>
-        <div style="font-size:13px; font-weight:800; color:#14532d; margin-top:2px;" th:text="${inv.estimatedCost + ' Ks'}">0 Ks</div>
-      </td>
-      <td th:if="${inv.paid != null and inv.paid != '0'}" style="width:28%; padding:7px 9px; border:1px solid #93c5fd; background:#eff6ff; text-align:right;">
-        <div style="font-size:8px; font-weight:800; color:#1e40af; letter-spacing:1px; text-transform:uppercase;">Deposit</div>
-        <div style="font-size:13px; font-weight:800; color:#1e3a8a; margin-top:2px;" th:text="${inv.paid + ' Ks'}">0 Ks</div>
       </td>
     </tr>
   </table>

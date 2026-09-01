@@ -63,6 +63,12 @@ public class BackupService {
     @Value("${spring.datasource.password}")
     private String dbPassword;
 
+    @Value("${app.booking-photo.storage-dir:./booking-photo-storage}")
+    private String bookingPhotoStorageDir;
+
+    @Value("${app.product-photo.storage-dir:./product-photo-storage}")
+    private String productPhotoStorageDir;
+
     @Transactional(readOnly = true)
     public BackupSettingsDTO getSettings() {
         return toDto(getOrCreate());
@@ -141,6 +147,7 @@ public class BackupService {
             errorOutput = new String(process.getErrorStream().readAllBytes());
             int exit = process.waitFor();
             if (exit == 0 && Files.exists(outFile) && Files.size(outFile) > 0 && isReadableGzip(outFile)) {
+                copyPhotoStorages(dir.resolve("photos"));
                 history.setFileName(fileName);
                 history.setFilePath(outFile.toAbsolutePath().toString());
                 history.setFileSize(Files.size(outFile));
@@ -216,6 +223,7 @@ public class BackupService {
         if (safety == null) throw new IllegalStateException("Safety backup failed; restore cancelled");
         try (InputStream in = Files.newInputStream(Paths.get(history.getFilePath()))) {
             restoreGzip(in);
+            restorePhotoStorages(Paths.get(history.getFilePath()).getParent().resolve("photos"));
         } catch (Exception e) {
             log.error("Restore failed for backup {}", id, e);
             throw new IllegalStateException("Restore failed: " + e.getMessage(), e);
@@ -386,6 +394,30 @@ public class BackupService {
         for (Path file : filesToDelete(files, keep)) {
             if (Files.deleteIfExists(file)) markFileDeleted(file);
         }
+    }
+
+    private void copyPhotoStorages(Path target) throws Exception {
+        copyPhotoStorage(Paths.get(bookingPhotoStorageDir), target);
+        copyPhotoStorage(Paths.get(productPhotoStorageDir), target.resolve("product-photos"));
+    }
+
+    private void copyPhotoStorage(Path source, Path target) throws Exception {
+        if (!Files.isDirectory(source)) return;
+        Files.createDirectories(target);
+        try (var stream = Files.walk(source)) {
+            for (Path path : stream.toList()) {
+                Path relative = source.relativize(path);
+                Path destination = target.resolve(relative).normalize();
+                if (!destination.startsWith(target)) throw new IllegalStateException("Invalid photo backup path");
+                if (Files.isDirectory(path)) Files.createDirectories(destination);
+                else Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    private void restorePhotoStorages(Path source) throws Exception {
+        copyPhotoStorage(source.resolve("booking-items"), Paths.get(bookingPhotoStorageDir).resolve("booking-items"));
+        copyPhotoStorage(source.resolve("product-photos"), Paths.get(productPhotoStorageDir));
     }
 
     static List<Path> filesToDelete(List<Path> files, int keep) {

@@ -94,17 +94,6 @@ public class InvoicePrintController {
         return pdfResponse(data, req);
     }
 
-    @GetMapping("/pdf/booking/{id}")
-    public ResponseEntity<byte[]> bookingPdf(
-            @PathVariable Integer id,
-            @RequestParam(required = false) String paper) {
-
-        VoucherSetting s = voucherSettings.findEntity(PrintRequest.DocumentType.BOOKING).orElse(null);
-        PrintRequest req = buildReqFromSetting(PrintRequest.DocumentType.BOOKING, id, paper, s);
-        PrintInvoiceData data = assembler.assemble(req, s);
-        return pdfResponse(data, req);
-    }
-
     @GetMapping("/preview/sale/{id}")
     public ResponseEntity<String> salePreview(
             @PathVariable Integer id,
@@ -123,6 +112,28 @@ public class InvoicePrintController {
 
         VoucherSetting s = voucherSettings.findEntity(PrintRequest.DocumentType.SERVICE_JOB).orElse(null);
         PrintRequest req = buildReqFromSetting(PrintRequest.DocumentType.SERVICE_JOB, id, paper, s);
+        PrintInvoiceData data = assembler.assemble(req, s);
+        return previewResponse(data, req);
+    }
+
+    @GetMapping("/pdf/booking/{id}")
+    public ResponseEntity<byte[]> bookingPdf(
+            @PathVariable Integer id,
+            @RequestParam(required = false) String paper) {
+
+        VoucherSetting s = voucherSettings.findEntity(PrintRequest.DocumentType.BOOKING).orElse(null);
+        PrintRequest req = buildReqFromSetting(PrintRequest.DocumentType.BOOKING, id, paper, s);
+        PrintInvoiceData data = assembler.assemble(req, s);
+        return pdfResponse(data, req);
+    }
+
+    @GetMapping("/preview/booking/{id}")
+    public ResponseEntity<String> bookingPreview(
+            @PathVariable Integer id,
+            @RequestParam(required = false) String paper) {
+
+        VoucherSetting s = voucherSettings.findEntity(PrintRequest.DocumentType.BOOKING).orElse(null);
+        PrintRequest req = buildReqFromSetting(PrintRequest.DocumentType.BOOKING, id, paper, s);
         PrintInvoiceData data = assembler.assemble(req, s);
         return previewResponse(data, req);
     }

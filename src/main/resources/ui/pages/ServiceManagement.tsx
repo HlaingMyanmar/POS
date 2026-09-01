@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
+import { useWebsocket } from '../hooks/useWebsocket';
 import { serviceTypeService, serviceItemService, subServiceTypeService, exportService } from '../services/api';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
@@ -100,11 +101,11 @@ const ServiceManagement: React.FC = () => {
   const [savingSub, setSavingSub]     = useState(false);
   const [savingItem, setSavingItem]   = useState(false);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     const [t, s] = await Promise.all([serviceTypeService.getAll(), serviceItemService.getAll()]);
     if (t.success) setTypes(t.data ?? []);
     if (s.success) setItems(s.data ?? []);
-  };
+  }, []);
 
   const filteredItems = useMemo(() => {
     const query = itemSearch.trim().toLowerCase();
@@ -125,9 +126,10 @@ const ServiceManagement: React.FC = () => {
     return Array.from(groups.entries()).map(([name, groupItems]) => ({ name, items: groupItems }));
   }, [filteredItems]);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { void loadAll(); }, [loadAll]);
   useRefreshOnTabActivate(loadAll);
-  useDataEvents(['Service'], loadAll);
+  useDataEvents(['Service', 'Service Job', 'Booking', 'Product'], loadAll);
+  useWebsocket('/topic/service', loadAll);
 
   // ── Service Types ──────────────────────────────────────
   const openTypeModal = (row?: any) => {

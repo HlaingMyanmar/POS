@@ -7,9 +7,9 @@ import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.api.PagedResponse;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemDTO;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.service.BookingService;
-import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 
 import java.util.List;
 
@@ -18,12 +18,11 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class BookingController {
-
     private final BookingService service;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")
     @GetMapping
-    ResponseEntity<ApiResponse<PagedResponse<BookingDTO>>> getAll(
+    public ResponseEntity<ApiResponse<PagedResponse<BookingDTO>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String search,
@@ -35,73 +34,61 @@ public class BookingController {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")
     @GetMapping("/{id}")
-    ResponseEntity<ApiResponse<BookingDTO>> getById(@PathVariable Integer id) {
+    public ResponseEntity<ApiResponse<BookingDTO>> detail(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Booking", service.findById(id)));
-    }
-
-    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")
-    @GetMapping("/status/{status}")
-    ResponseEntity<ApiResponse<List<BookingDTO>>> getByStatus(@PathVariable BookingStatus status) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Bookings", service.findByStatus(status)));
-    }
-
-    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")
-    @GetMapping("/scan/{invoiceNo}")
-    ResponseEntity<ApiResponse<BookingDTO>> getByInvoiceNo(@PathVariable String invoiceNo) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Booking", service.findByInvoiceNo(invoiceNo)));
-    }
-
-    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")
-    @GetMapping("/upcoming")
-    ResponseEntity<ApiResponse<List<BookingDTO>>> getUpcoming(
-            @RequestParam(defaultValue = "60") int minutesAhead) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Upcoming", service.findUpcoming(minutesAhead)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_CREATE')")
     @PostMapping
-    ResponseEntity<ApiResponse<BookingDTO>> create(@RequestBody BookingDTO dto) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Created", service.save(dto)));
+    public ResponseEntity<ApiResponse<BookingDTO>> create(@RequestBody BookingDTO dto) {
+        return ResponseEntity.status(201).body(new ApiResponse<>(true, "Booking created", service.create(dto)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
     @PutMapping("/{id}")
-    ResponseEntity<ApiResponse<BookingDTO>> update(@PathVariable Integer id, @RequestBody BookingDTO dto) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Updated", service.update(id, dto)));
+    public ResponseEntity<ApiResponse<BookingDTO>> update(@PathVariable Integer id, @RequestBody BookingDTO dto) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Booking updated", service.update(id, dto)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
     @PatchMapping("/{id}/status")
-    ResponseEntity<ApiResponse<BookingDTO>> updateStatus(
+    public ResponseEntity<ApiResponse<BookingDTO>> updateStatus(
             @PathVariable Integer id, @RequestParam BookingStatus status) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Status updated", service.updateStatus(id, status)));
+        if (status != BookingStatus.CANCELED)
+            throw new IllegalArgumentException("Only CANCELED status can be set manually");
+        return ResponseEntity.ok(new ApiResponse<>(true, "Booking canceled", service.cancel(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
+    @PostMapping("/{id}/items")
+    public ResponseEntity<ApiResponse<BookingDTO>> addItems(
+            @PathVariable Integer id, @RequestBody List<BookingItemDTO> items) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Items received", service.addItems(id, items)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
+    @DeleteMapping("/{id}/items/{itemId}")
+    public ResponseEntity<ApiResponse<BookingDTO>> removeItem(
+            @PathVariable Integer id, @PathVariable Integer itemId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Item removed", service.removeItem(id, itemId)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_CONVERT_JOB')")
-    @PostMapping("/{id}/convert-to-job")
-    ResponseEntity<ApiResponse<List<ServiceJobDTO>>> convertToJob(@PathVariable Integer id) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Converted to Service Job(s)", service.convertToJob(id)));
+    @PostMapping("/{id}/convert-outdoor")
+    public ResponseEntity<ApiResponse<BookingDTO>> convertOutdoor(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Outdoor service job created", service.convertOutdoor(id)));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
-    @PostMapping("/{id}/attachments")
-    ResponseEntity<ApiResponse<org.sspd.servicemgmt.bookingoptions.dto.BookingAttachmentDTO>> addAttachment(
-            @PathVariable Integer id,
-            @RequestBody org.sspd.servicemgmt.bookingoptions.dto.BookingAttachmentDTO dto) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Attached", service.addAttachment(id, dto)));
-    }
-
-    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
-    @DeleteMapping("/{id}/attachments/{attachmentId}")
-    ResponseEntity<ApiResponse<Void>> deleteAttachment(@PathVariable Integer id, @PathVariable Integer attachmentId) {
-        service.deleteAttachment(id, attachmentId);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Attachment deleted", null));
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_CONVERT_JOB')")
+    @PostMapping("/{id}/convert-indoor")
+    public ResponseEntity<ApiResponse<BookingDTO>> convertIndoor(@PathVariable Integer id) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Indoor service jobs created", service.convertIndoor(id)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_DELETE')")
     @DeleteMapping("/{id}")
-    ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         service.delete(id);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Deleted", null));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Booking deleted", null));
     }
 }

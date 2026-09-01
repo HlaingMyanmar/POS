@@ -7,6 +7,7 @@ import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.LoginRequest
 import com.sspd.servicemgmt.core.util.PreferenceManager
+import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,14 +72,19 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     prefs.rememberedUsername = if (rememberMe) username.trim() else ""
                     _uiState.update { it.copy(loading = false, loginSuccess = true) }
                 } else {
+                    val serverMessage = runCatching {
+                        response.errorBody()?.string()?.let { body ->
+                            Gson().fromJson(body, LoginErrorResponse::class.java)?.message
+                        }
+                    }.getOrNull()?.takeIf { it.isNotBlank() }
                     _uiState.update {
                         it.copy(
                             loading = false,
                             error = when (response.code()) {
-                                401 -> "အသုံးပြုသူအမည် သို့မဟုတ် စကားဝှက် မှားနေပါသည်"
-                                403 -> "ဤအကောင့်ဖြင့် ဝင်ရောက်ခွင့်မရှိပါ"
-                                in 500..599 -> "ဆာဗာတွင် ခေတ္တပြဿနာရှိနေပါသည်။ ခဏနောက် ပြန်ကြိုးစားပါ"
-                                else -> "ဝင်ရောက်မှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ"
+                                400, 401 -> serverMessage ?: "Username or password is incorrect"
+                                403 -> serverMessage ?: "This account is not allowed to sign in"
+                                in 500..599 -> "Server error. Please try again shortly"
+                                else -> serverMessage ?: "Login failed (HTTP ${response.code()})"
                             }
                         )
                     }
@@ -116,4 +122,6 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         val error: String = "",
         val loginSuccess: Boolean = false
     )
+
+    private data class LoginErrorResponse(val message: String? = null)
 }

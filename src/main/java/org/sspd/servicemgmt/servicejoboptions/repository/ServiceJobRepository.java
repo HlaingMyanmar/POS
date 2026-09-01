@@ -1,6 +1,8 @@
 package org.sspd.servicemgmt.servicejoboptions.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +16,9 @@ import java.util.Optional;
 
 @Repository
 public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select j from ServiceJob j where j.id = :id")
+    Optional<ServiceJob> findByIdForUpdate(@Param("id") Integer id);
     @Query("""
         SELECT CASE WHEN COUNT(j) > 0 THEN true ELSE false END
         FROM ServiceJob j
@@ -59,6 +64,7 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     long countReworkInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     List<ServiceJob> findAllByBookingIdOrderByIdAsc(Integer bookingId);
+    boolean existsByBookingIdAndServiceMode(Integer bookingId, org.sspd.servicemgmt.servicejoboptions.model.ServiceMode serviceMode);
 
     @Query("""
         SELECT j FROM ServiceJob j
@@ -68,6 +74,15 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
                OR LOWER(j.itemName) LIKE LOWER(CONCAT('%',:search,'%')))
           AND (:dateFrom IS NULL OR j.receivedDate >= :dateFrom)
           AND (:dateTo   IS NULL OR j.receivedDate <  :dateTo)
+        ORDER BY CASE
+                   WHEN j.priority = 'URGENT' THEN 0
+                   WHEN j.priority = 'HIGH' THEN 1
+                   WHEN j.priority = 'NORMAL' THEN 2
+                   WHEN j.priority = 'LOW' THEN 3
+                   ELSE 4
+                 END ASC,
+                 j.receivedDate ASC,
+                 j.id ASC
         """)
     org.springframework.data.domain.Page<ServiceJob> findBySearchAndDate(
             @Param("search")   String search,
@@ -117,6 +132,22 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
           AND (:to   IS NULL OR sj.receivedDate <= :to)
         """)
     BigDecimal sumNetAmountInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("""
+        SELECT COALESCE(SUM(sj.laborNetAmount), 0)
+        FROM ServiceJob sj
+        WHERE (:from IS NULL OR sj.receivedDate >= :from)
+          AND (:to   IS NULL OR sj.receivedDate <= :to)
+        """)
+    BigDecimal sumLaborNetInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("""
+        SELECT COALESCE(SUM(sj.partsNetAmount), 0)
+        FROM ServiceJob sj
+        WHERE (:from IS NULL OR sj.receivedDate >= :from)
+          AND (:to   IS NULL OR sj.receivedDate <= :to)
+        """)
+    BigDecimal sumPartsNetInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     List<ServiceJob> findByDueAmountGreaterThan(BigDecimal amount);
 

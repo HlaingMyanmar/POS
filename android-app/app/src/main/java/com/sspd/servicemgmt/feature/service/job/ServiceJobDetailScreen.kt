@@ -202,8 +202,8 @@ fun ServiceJobDetailScreen(
             paymentMethods = state.paymentMethods,
             loading        = state.actionLoading,
             onDismiss      = { vm.dismissSettleDialog() },
-            onSettle       = { cost, disc, foc, paid, mid, txn, due, payments ->
-                vm.settle(cost, disc, foc, paid, mid, txn, due, payments)
+            onSettle       = { cost, disc, foc, paid, mid, _, txn, due, payments ->
+                vm.settle(cost, disc, foc, paid, mid, null, txn, due, payments)
             }
         )
     }
@@ -865,7 +865,7 @@ private fun SettleDialog(
     paymentMethods: List<PaymentMethodDTO>,
     loading:        Boolean,
     onDismiss:      () -> Unit,
-    onSettle:       (finalCost: Double, discount: Double, foc: Boolean, paid: Double, methodId: Int?, txnNo: String?, dueDate: String?, payments: List<PaymentTransactionDTO>?) -> Unit
+    onSettle:       (finalCost: Double, discount: Double, foc: Boolean, paid: Double, methodId: Int?, warehouseId: Int?, txnNo: String?, dueDate: String?, payments: List<PaymentTransactionDTO>?) -> Unit
 ) {
     val defaultCost = job?.estimatedCost ?: job?.netAmount ?: 0.0
     var costStr     by remember { mutableStateOf(String.format("%.0f", defaultCost)) }
@@ -1099,6 +1099,7 @@ private fun SettleDialog(
                             cost, disc, foc,
                             paidVal ?: 0.0,
                             selectedPm?.id,
+                            null,
                             txnNo.ifBlank { null },
                             dueDate.ifBlank { null },
                             splitPayments.ifEmpty { null }

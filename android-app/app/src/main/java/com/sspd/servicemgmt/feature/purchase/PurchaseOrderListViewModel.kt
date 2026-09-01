@@ -131,16 +131,12 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
         s.copy(receiveDraft = s.receiveDraft?.copy(invoiceNo = v))
     }
 
-    fun setReceiveLine(detailId: Int, serialText: String? = null, batchNumber: String? = null, expiryDate: String? = null) {
+    fun setReceiveLine(detailId: Int, serialText: String? = null) {
         _uiState.update { s ->
             val draft = s.receiveDraft ?: return@update s
             s.copy(receiveDraft = draft.copy(lines = draft.lines.map { line ->
                 if (line.detailId != detailId) line
-                else line.copy(
-                    serialText = serialText ?: line.serialText,
-                    batchNumber = batchNumber ?: line.batchNumber,
-                    expiryDate = expiryDate ?: line.expiryDate
-                )
+                else line.copy(serialText = serialText ?: line.serialText)
             }))
         }
     }
@@ -165,9 +161,7 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
                     PurchaseOrderReceiveLineDTO(
                         detailId = line.detailId,
                         qty = line.qty,
-                        serialNumbers = if (line.hasSerial) serials else null,
-                        batchNumber = line.batchNumber.trim().ifBlank { null },
-                        expiryDate = line.expiryDate.trim().ifBlank { null }
+                        serialNumbers = if (line.hasSerial) serials else null
                     )
                 }
                 val res = ApiClient.service.receivePurchaseOrder(
@@ -203,9 +197,7 @@ class PurchaseOrderListViewModel(application: Application) : AndroidViewModel(ap
         val productName: String,
         val qty: Int,
         val hasSerial: Boolean,
-        val serialText: String = "",
-        val batchNumber: String = "",
-        val expiryDate: String = ""
+        val serialText: String = ""
     )
 
     data class ReceiveDraft(

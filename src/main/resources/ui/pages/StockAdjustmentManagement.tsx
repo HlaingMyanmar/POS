@@ -19,7 +19,6 @@ import { productService } from '../services/productapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { staffService } from '../services/staffapiservice';
 import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
-import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
 import { AdjustmentType, ProductDTO, ProductSerialDTO, StaffDTO, StockAdjustmentDTO } from '../types';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
@@ -117,8 +116,6 @@ const StockAdjustmentManagement: React.FC = () => {
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [productSerials, setProductSerials] = useState<ProductSerialDTO[]>([]);
   const [staffs, setStaffs] = useState<StaffDTO[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
-  const [warehouseId, setWarehouseId] = useState(0);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -157,15 +154,12 @@ const StockAdjustmentManagement: React.FC = () => {
   const loadMaster = useCallback(async () => {
     setMasterLoading(true);
     try {
-      const [productRows, staffRows, warehouseRows] = await Promise.all([
+      const [productRows, staffRows] = await Promise.all([
         productService.getAll(),
-        staffService.getAll(),
-        warehouseApiService.list(true).catch(() => [] as WarehouseDTO[])
+        staffService.getAll()
       ]);
       setProducts(productRows || []);
       setStaffs(staffRows || []);
-      setWarehouses(warehouseRows || []);
-      if (warehouseRows?.length) setWarehouseId((prev) => prev || warehouseRows[0].id || 0);
     } catch (e: any) {
       Swal.fire('Error', e?.message || 'Failed to load stock adjustment master data', 'error');
     } finally {
@@ -250,7 +244,6 @@ const StockAdjustmentManagement: React.FC = () => {
 
     if (productId <= 0) errors.push('Product is required.');
     if (staffId <= 0) errors.push('Staff is required.');
-    if (warehouseId <= 0) errors.push('Warehouse is required.');
     if (!reason.trim()) errors.push('Reason is required.');
     if (!adjustmentType) errors.push('Adjustment type is required.');
 
@@ -278,7 +271,7 @@ const StockAdjustmentManagement: React.FC = () => {
     if (expectedAfter < 0) errors.push('Qty after cannot be negative.');
 
     return errors;
-  }, [adjustmentType, expectedAfter, normalizedSerials, productId, qtyChange, reason, serialLookup, serialProduct, staffId, warehouseId]);
+  }, [adjustmentType, expectedAfter, normalizedSerials, productId, qtyChange, reason, serialLookup, serialProduct, staffId]);
 
   const validForm = validationErrors.length === 0;
 
@@ -400,7 +393,6 @@ const StockAdjustmentManagement: React.FC = () => {
         serialNumbers: serialProduct ? normalizedSerials.join(',') : undefined,
         reason: reason.trim(),
         staffId,
-        warehouseId: warehouseId || undefined,
         createdAt: adjustmentDate || undefined
       };
 
@@ -579,20 +571,6 @@ const StockAdjustmentManagement: React.FC = () => {
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Warehouse</label>
-                    <select
-                      value={warehouseId}
-                      onChange={(e) => setWarehouseId(Number(e.target.value) || 0)}
-                      className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm ${warehouseId > 0 ? 'border-slate-200' : 'border-rose-200'}`}
-                    >
-                      <option value={0}>ဂိုဒေါင် ရွေးပါ</option>
-                      {warehouses.map((w) => (
-                        <option key={w.id} value={w.id}>{w.name}{w.code ? ` (${w.code})` : ''}</option>
-                      ))}
-                    </select>
                   </div>
                 </div>
 

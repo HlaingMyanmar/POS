@@ -27,7 +27,6 @@ import com.sspd.servicemgmt.core.network.CustomerDTO
 import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
-import com.sspd.servicemgmt.core.network.WarehouseDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 
@@ -169,17 +168,6 @@ fun NewSaleScreen(
             label    = { it.methodName },
             onSelect = { vm.setPayMethod(it); vm.dismissPayPicker() },
             onDismiss = { vm.dismissPayPicker() }
-        )
-    }
-
-    if (state.showWarehousePicker) {
-        PickerSheet(
-            title = "Warehouse ရွေးပါ",
-            items = state.warehouses,
-            label = { it.name },
-            subLabel = { it.code },
-            onSelect = vm::setWarehouse,
-            onDismiss = vm::dismissWarehousePicker
         )
     }
 
@@ -343,11 +331,6 @@ fun NewSaleScreen(
 
                         HorizontalDivider(color = BorderColor, modifier = Modifier.padding(top = 8.dp))
                         PickerRow("Staff", state.selectedStaff?.name) { vm.showStaffPicker() }
-                        PickerRow(
-                            "Warehouse",
-                            state.selectedWarehouse?.name,
-                            state.selectedWarehouse?.code
-                        ) { vm.showWarehousePicker() }
                         PickerRow(
                             label = "Sale Date",
                             value = state.saleDate,
@@ -931,16 +914,10 @@ private data class CreditBanner(
     val msg:   String
 )
 
-private val previewWarehouses = listOf(
-    WarehouseDTO(id = 1, code = "MAIN", name = "MAIN"),
-    WarehouseDTO(id = 2, code = "SHOP-1", name = "ဆိုင် ၁")
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "ရောင်းချမှု အသစ်", showBackground = true, widthDp = 390, heightDp = 720)
 @Composable
 private fun NewSaleFormPreview() {
-    val warehouse = previewWarehouses.first()
     AppTheme {
         Scaffold(
             topBar = {
@@ -961,38 +938,12 @@ private fun NewSaleFormPreview() {
                     PickerRow("Customer", "မောင်မောင်", "09 123 456 789") {}
                     HorizontalDivider(color = BorderColor, modifier = Modifier.padding(top = 8.dp))
                     PickerRow("Staff", "အောင်အောင်") {}
-                    PickerRow("Warehouse", warehouse.name, warehouse.code) {}
                     PickerRow(
                         label = "Sale Date",
                         value = "2026-08-31",
                         sub = "Back date requires permission"
                     ) {}
                 }
-            }
-        }
-    }
-}
-
-@Preview(name = "Warehouse ရွေးပါ", showBackground = true, widthDp = 390, heightDp = 320)
-@Composable
-private fun NewSaleWarehousePickerPreview() {
-    AppTheme {
-        Column(Modifier.fillMaxWidth().background(CardBg).padding(vertical = 8.dp)) {
-            Text(
-                "Warehouse ရွေးပါ",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextMain,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-            previewWarehouses.forEach { warehouse ->
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp)
-                ) {
-                    Text(warehouse.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
-                    Text(warehouse.code, fontSize = 12.sp, color = TextMuted)
-                }
-                HorizontalDivider(color = BorderColor)
             }
         }
     }

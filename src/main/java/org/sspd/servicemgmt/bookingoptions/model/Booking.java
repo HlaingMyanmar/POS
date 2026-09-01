@@ -2,121 +2,70 @@ package org.sspd.servicemgmt.bookingoptions.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
-import org.sspd.servicemgmt.staffoptions.model.Staff;
-import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 
-import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "bookings", indexes = {
-    @Index(name = "idx_booking_date",     columnList = "booking_date"),
-    @Index(name = "idx_booking_status",   columnList = "status"),
-    @Index(name = "idx_booking_customer", columnList = "customer_id")
-})
-@Getter @Setter
-@NoArgsConstructor @AllArgsConstructor @Builder
+@Table(name = "bookings")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Booking {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(name = "invoice_no", nullable = false, unique = true, length = 20)
-    private String invoiceNo;
+    @Column(name = "booking_no", nullable = false, unique = true, length = 20)
+    private String bookingNo;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "staff_id")
-    private Staff staff;
+    @Column(name = "booking_date", nullable = false)
+    private LocalDate bookingDate;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "payment_method_id")
-    private PaymentMethod paymentMethod;
-
-    @Column(name = "booking_date")
-    private LocalDateTime bookingDate;
-
-    @Column(name = "appointment_date")
+    @Column(name = "booking_datetime")
     private LocalDateTime appointmentDate;
 
-    @Column(name = "total_amount", precision = 10, scale = 2)
-    private BigDecimal totalAmount = BigDecimal.ZERO;
-
-    @Builder.Default
-    @Column(name = "deposit_amount", precision = 15, scale = 2)
-    private BigDecimal depositAmount = BigDecimal.ZERO;
-
-    @Column(name = "advance_payment_id")
-    private Integer advancePaymentId;
-
-    @Lob
-    @Column(name = "signature_data", columnDefinition = "LONGTEXT")
-    private String signatureData;
-
-    @Column(name = "invoice_file_path", length = 255)
-    private String invoiceFilePath;
+    @Column(name = "complaint_note", columnDefinition = "TEXT")
+    private String complaintNote;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 20)
-    private BookingStatus status = BookingStatus.Pending;
-
-    @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(name = "service_mode", length = 20)
-    private ServiceMode serviceMode = ServiceMode.INDOOR;
+    @Column(nullable = false, length = 20)
+    private BookingStatus status;
 
     @Column(columnDefinition = "TEXT")
     private String remark;
 
-    // Device information fields
-    @Column(name = "device_type", length = 50)
-    private String deviceType;
-
-    @Column(name = "brand", length = 100)
-    private String brand;
-
-    @Column(name = "model", length = 100)
-    private String model;
-
-    @Column(name = "serial_number", length = 100)
-    private String serialNumber;
-
-    @Column(name = "color", length = 50)
-    private String color;
-
-    @Column(name = "accessories", columnDefinition = "TEXT")
-    private String accessories;
-
-    @Column(name = "shelf_location", length = 100)
-    private String shelfLocation;
-
     @Builder.Default
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BookingDetail> details = new ArrayList<>();
+    @OrderBy("id ASC")
+    private List<BookingItem> items = new ArrayList<>();
 
-    @Builder.Default
-    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BookingDeviceInfo> deviceInfos = new ArrayList<>();
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
 
-    @Builder.Default
-    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BookingDevice> devices = new ArrayList<>();
-
-    @Builder.Default
-    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BookingAttachment> attachments = new ArrayList<>();
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 
     @PrePersist
-    protected void onCreate() {
-        if (bookingDate == null) bookingDate = LocalDateTime.now();
-        if (serviceMode == null) serviceMode = ServiceMode.INDOOR;
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        if (bookingDate == null) bookingDate = LocalDate.now();
+        if (status == null) status = BookingStatus.CONFIRMED;
+        if (createdAt == null) createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

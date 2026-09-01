@@ -623,7 +623,8 @@ interface ApiService {
         @Query("size")     size:     Int    = 100,
         @Query("search")   search:   String = "",
         @Query("dateFrom") dateFrom: String = "",
-        @Query("dateTo")   dateTo:   String = ""
+        @Query("dateTo")   dateTo:   String = "",
+        @Query("staffId")  staffId:  Int?   = null
     ): Response<ApiResponse<PagedResponse<ServiceJobDTO>>>
 
     @POST("service-jobs")

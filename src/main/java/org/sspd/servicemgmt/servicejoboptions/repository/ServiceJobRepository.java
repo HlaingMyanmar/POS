@@ -9,8 +9,13 @@ import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -89,6 +94,126 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
             @Param("dateFrom") LocalDateTime dateFrom,
             @Param("dateTo")   LocalDateTime dateTo,
             org.springframework.data.domain.Pageable pageable);
+
+    @Query("""
+        SELECT DISTINCT j FROM ServiceJob j
+        WHERE (:search IS NULL OR :search = ''
+               OR LOWER(j.jobNo) LIKE LOWER(CONCAT('%',:search,'%'))
+               OR LOWER(j.customer.name) LIKE LOWER(CONCAT('%',:search,'%'))
+               OR LOWER(j.itemName) LIKE LOWER(CONCAT('%',:search,'%')))
+          AND (:dateFrom IS NULL OR j.receivedDate >= :dateFrom)
+          AND (:dateTo   IS NULL OR j.receivedDate <  :dateTo)
+          AND (
+               j.assignedStaff.id = :staffId
+            OR j.helperStaff.id = :staffId
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobAssignment a
+                 WHERE a.serviceJob.id = j.id
+                   AND a.staff.id = :staffId
+                   AND a.status IN :assignmentStatuses
+               )
+          )
+        ORDER BY CASE
+                   WHEN j.priority = 'URGENT' THEN 0
+                   WHEN j.priority = 'HIGH' THEN 1
+                   WHEN j.priority = 'NORMAL' THEN 2
+                   WHEN j.priority = 'LOW' THEN 3
+                   ELSE 4
+                 END ASC,
+                 j.receivedDate ASC,
+                 j.id ASC
+        """)
+    Page<ServiceJob> findBySearchAndDateForStaff(
+            @Param("search") String search,
+            @Param("dateFrom") LocalDateTime dateFrom,
+            @Param("dateTo") LocalDateTime dateTo,
+            @Param("staffId") Integer staffId,
+            @Param("assignmentStatuses") Collection<AssignmentStatus> assignmentStatuses,
+            Pageable pageable);
+
+    @Query("""
+        SELECT DISTINCT j FROM ServiceJob j
+        WHERE j.status = :status
+          AND (
+               j.assignedStaff.id = :staffId
+            OR j.helperStaff.id = :staffId
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobAssignment a
+                 WHERE a.serviceJob.id = j.id
+                   AND a.staff.id = :staffId
+                   AND a.status IN :assignmentStatuses
+               )
+          )
+        ORDER BY j.id DESC
+        """)
+    List<ServiceJob> findByStatusForStaff(
+            @Param("status") ServiceJobStatus status,
+            @Param("staffId") Integer staffId,
+            @Param("assignmentStatuses") Collection<AssignmentStatus> assignmentStatuses);
+
+    @Query("""
+        SELECT DISTINCT j FROM ServiceJob j
+        WHERE j.status = org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.COMPLETED
+          AND j.paymentStatus IS NULL
+          AND (
+               j.assignedStaff.id = :staffId
+            OR j.helperStaff.id = :staffId
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobAssignment a
+                 WHERE a.serviceJob.id = j.id
+                   AND a.staff.id = :staffId
+                   AND a.status IN :assignmentStatuses
+               )
+          )
+        ORDER BY j.receivedDate DESC
+        """)
+    List<ServiceJob> findUnpaidForStaff(
+            @Param("staffId") Integer staffId,
+            @Param("assignmentStatuses") Collection<AssignmentStatus> assignmentStatuses);
+
+    @Query("""
+        SELECT DISTINCT j FROM ServiceJob j
+        WHERE j.estimatedCompletion IS NOT NULL
+          AND j.estimatedCompletion < :now
+          AND j.status NOT IN (
+                org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.COMPLETED,
+                org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.DELIVERED,
+                org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED)
+          AND (
+               j.assignedStaff.id = :staffId
+            OR j.helperStaff.id = :staffId
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobAssignment a
+                 WHERE a.serviceJob.id = j.id
+                   AND a.staff.id = :staffId
+                   AND a.status IN :assignmentStatuses
+               )
+          )
+        ORDER BY j.estimatedCompletion ASC
+        """)
+    List<ServiceJob> findOverdueForStaff(
+            @Param("now") LocalDateTime now,
+            @Param("staffId") Integer staffId,
+            @Param("assignmentStatuses") Collection<AssignmentStatus> assignmentStatuses);
+
+    @Query("""
+        SELECT COUNT(DISTINCT j) FROM ServiceJob j
+        WHERE j.status = :status
+          AND (
+               j.assignedStaff.id = :staffId
+            OR j.helperStaff.id = :staffId
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobAssignment a
+                 WHERE a.serviceJob.id = j.id
+                   AND a.staff.id = :staffId
+                   AND a.status IN :assignmentStatuses
+               )
+          )
+        """)
+    long countByStatusForStaff(
+            @Param("status") ServiceJobStatus status,
+            @Param("staffId") Integer staffId,
+            @Param("assignmentStatuses") Collection<AssignmentStatus> assignmentStatuses);
 
     @Query("""
         SELECT sj.assignedStaff.id, sj.assignedStaff.name, sj.assignedStaff.role,

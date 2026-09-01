@@ -21,7 +21,12 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
 
     private val prefs = PreferenceManager(application)
 
-    private val _uiState = MutableStateFlow(UiState(fromDate = today(), toDate = today()))
+    private val _uiState = MutableStateFlow(
+        UiState(
+            fromDate = if (PreferenceManager(application).shouldScopeToOwnStaff()) null else today(),
+            toDate = if (PreferenceManager(application).shouldScopeToOwnStaff()) null else today(),
+        )
+    )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     init {
@@ -39,14 +44,20 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
             _uiState.update { it.copy(loading = true) }
             try {
                 val s   = _uiState.value
+                val scoped = prefs.shouldScopeToOwnStaff()
                 val res = ApiClient.service.getServiceJobs(
                     auth     = ApiClient.bearer(prefs.authToken),
                     search   = s.search,
                     dateFrom = s.fromDate ?: "",
-                    dateTo   = s.toDate   ?: ""
+                    dateTo   = s.toDate   ?: "",
+                    staffId  = if (scoped) prefs.staffId else null,
                 )
-                if (res.isSuccessful)
-                    _uiState.update { it.copy(items = res.body()?.data?.content ?: emptyList()) }
+                if (res.isSuccessful) {
+                    val items = res.body()?.data?.content ?: emptyList()
+                    _uiState.update {
+                        it.copy(items = if (scoped) items.filterOwnStaff(prefs.staffId) else items)
+                    }
+                }
             } catch (_: Exception) {}
             _uiState.update { it.copy(loading = false) }
         }
@@ -109,3 +120,8 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
 
 private fun today(): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+private fun List<ServiceJobDTO>.filterOwnStaff(staffId: Int): List<ServiceJobDTO> =
+    filter { job ->
+        job.assignedStaffId == staffId || job.helperStaffId == staffId
+    }

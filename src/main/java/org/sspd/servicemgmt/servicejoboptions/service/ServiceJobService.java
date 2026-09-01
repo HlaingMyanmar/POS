@@ -33,6 +33,8 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobLineDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobPartDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.SettleDTO;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobAssignmentRepository;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.service.ServiceJobTeamService;
 import org.sspd.servicemgmt.servicejoboptions.model.DiscountAllocationMethod;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
@@ -83,6 +85,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.data.domain.Page;
@@ -117,16 +121,29 @@ public class ServiceJobService {
     private final ServiceJobNotificationRepository notificationRepo;
     private final CashDrawerService cashDrawerService;
     private final ServiceJobTeamService teamService;
+    private final ServiceJobAssignmentRepository assignmentRepository;
+
+    private static final Collection<AssignmentStatus> VISIBLE_ASSIGNMENT_STATUSES = EnumSet.of(
+            AssignmentStatus.PENDING,
+            AssignmentStatus.ACTIVE,
+            AssignmentStatus.PAUSED,
+            AssignmentStatus.COMPLETED,
+            AssignmentStatus.HANDED_OVER
+    );
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     @Transactional(readOnly = true)
-    public Page<ServiceJobDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
+    public Page<ServiceJobDTO> findAll(String search, String dateFrom, String dateTo, int page, int size, Integer staffId) {
         LocalDateTime from = parseDateStart(dateFrom);
         LocalDateTime to   = parseDateEnd(dateTo);
-        return repo.findBySearchAndDate(search, from, to,
-                        PageRequest.of(page, size, Sort.by("id").descending()))
-                .map(this::toDto);
+        Integer scopedStaffId = resolveStaffScope(staffId);
+        PageRequest pageable = PageRequest.of(page, size, Sort.by("id").descending());
+        if (scopedStaffId != null) {
+            return repo.findBySearchAndDateForStaff(search, from, to, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES, pageable)
+                    .map(this::toDto);
+        }
+        return repo.findBySearchAndDate(search, from, to, pageable).map(this::toDto);
     }
 
     private LocalDateTime parseDateStart(String s) {
@@ -143,14 +160,17 @@ public class ServiceJobService {
     public List<ServiceJobDTO> findByCustomerId(Integer customerId) {
         return repo.findByCustomerId(customerId).stream()
                 .sorted(java.util.Comparator.comparing(ServiceJob::getId).reversed())
+                .filter(this::canReadJob)
                 .map(this::toDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public ServiceJobDTO findById(Integer id) {
-        return toDto(repo.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id)), true);
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        assertCanRead(job);
+        return toDto(job, true);
     }
 
     @Transactional(readOnly = true)
@@ -169,11 +189,21 @@ public class ServiceJobService {
 
     @Transactional(readOnly = true)
     public List<ServiceJobDTO> findByStatus(ServiceJobStatus status) {
+        Integer scopedStaffId = resolveStaffScope(null);
+        if (scopedStaffId != null) {
+            return repo.findByStatusForStaff(status, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES).stream()
+                    .map(this::toDto).toList();
+        }
         return repo.findByStatus(status).stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public List<ServiceJobDTO> findUnpaid() {
+        Integer scopedStaffId = resolveStaffScope(null);
+        if (scopedStaffId != null) {
+            return repo.findUnpaidForStaff(scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES).stream()
+                    .map(this::toDto).toList();
+        }
         return repo.findByStatusAndPaymentStatusIsNullOrderByReceivedDateDesc(ServiceJobStatus.COMPLETED)
                    .stream().map(this::toDto).toList();
     }
@@ -229,7 +259,10 @@ public class ServiceJobService {
 
     @Transactional(readOnly = true)
     public List<ServiceJobDTO> findByBookingId(Integer bookingId) {
-        return repo.findAllByBookingIdOrderByIdAsc(bookingId).stream().map(this::toDto).toList();
+        return repo.findAllByBookingIdOrderByIdAsc(bookingId).stream()
+                .filter(this::canReadJob)
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional
@@ -416,6 +449,35 @@ public class ServiceJobService {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null && authentication.getAuthorities().stream()
                 .anyMatch(granted -> authority.equals(granted.getAuthority()));
+    }
+
+    private Integer resolveStaffScope(Integer requestedStaffId) {
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) {
+            return requestedStaffId;
+        }
+        Staff mine = currentUserStaff();
+        return mine != null ? mine.getId() : -1;
+    }
+
+    private void assertCanRead(ServiceJob job) {
+        if (!canReadJob(job)) {
+            throw new AccessDeniedException("You can only view service jobs assigned to your staff account");
+        }
+    }
+
+    private boolean canReadJob(ServiceJob job) {
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) return true;
+        Staff mine = currentUserStaff();
+        if (mine == null || job == null || job.getId() == null) return false;
+        return isJobVisibleToStaff(job, mine.getId());
+    }
+
+    private boolean isJobVisibleToStaff(ServiceJob job, Integer staffId) {
+        if (staffId == null || staffId <= 0) return false;
+        if (job.getAssignedStaff() != null && staffId.equals(job.getAssignedStaff().getId())) return true;
+        if (job.getHelperStaff() != null && staffId.equals(job.getHelperStaff().getId())) return true;
+        return assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(
+                job.getId(), staffId, VISIBLE_ASSIGNMENT_STATUSES);
     }
 
     @Transactional
@@ -1009,6 +1071,11 @@ public class ServiceJobService {
 
     @Transactional(readOnly = true)
     public List<ServiceJobDTO> findOverdue() {
+        Integer scopedStaffId = resolveStaffScope(null);
+        if (scopedStaffId != null) {
+            return repo.findOverdueForStaff(LocalDateTime.now(), scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES).stream()
+                    .map(this::toDto).toList();
+        }
         return repo.findOverdue(LocalDateTime.now()).stream().map(this::toDto).toList();
     }
 

@@ -104,5 +104,8 @@ class PreferenceManager(context: Context) {
             ))
     }
 
+    fun shouldScopeToOwnStaff(): Boolean =
+        staffId > 0 && !hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+
     fun clear() = p.edit().clear().apply()
 }

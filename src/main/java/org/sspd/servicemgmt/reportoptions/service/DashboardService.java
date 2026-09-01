@@ -1,14 +1,18 @@
 package org.sspd.servicemgmt.reportoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.journaloption.detail.repository.JournalDetailRepository;
 import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.reportoptions.dto.DashboardStatsDTO;
 import org.sspd.servicemgmt.reportoptions.dto.RecentSaleDTO;
 import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ReworkPartResolutionRepository;
@@ -18,7 +22,9 @@ import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductReposi
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +38,15 @@ public class DashboardService {
     private final JournalDetailRepository journalDetailRepository;
         private final SaleReturnRepository saleReturnRepository;
         private final ReworkPartResolutionRepository reworkPartResolutionRepository;
+        private final UserRepository userRepository;
+
+    private static final Set<AssignmentStatus> VISIBLE_ASSIGNMENT_STATUSES = EnumSet.of(
+            AssignmentStatus.PENDING,
+            AssignmentStatus.ACTIVE,
+            AssignmentStatus.PAUSED,
+            AssignmentStatus.COMPLETED,
+            AssignmentStatus.HANDED_OVER
+    );
 
     private static final int LOW_STOCK_THRESHOLD = 5;
 
@@ -66,12 +81,26 @@ public class DashboardService {
         long pendingARCount       = saleRepository.countAllPendingAR();
 
         // ── Operations ─────────────────────────────────
-        long pendingServiceJobs = serviceJobRepository.countByStatus(ServiceJobStatus.RECEIVED)
-                + serviceJobRepository.countByStatus(ServiceJobStatus.INSPECTING)
-                + serviceJobRepository.countByStatus(ServiceJobStatus.IN_PROGRESS);
-        long receivedJobCount = serviceJobRepository.countByStatus(ServiceJobStatus.RECEIVED);
-        long inProgressJobCount = serviceJobRepository.countByStatus(ServiceJobStatus.IN_PROGRESS);
-        long completedJobCount = serviceJobRepository.countByStatus(ServiceJobStatus.COMPLETED);
+        Integer scopedStaffId = resolveStaffScope();
+        long pendingServiceJobs;
+        long receivedJobCount;
+        long inProgressJobCount;
+        long completedJobCount;
+        if (scopedStaffId != null) {
+            pendingServiceJobs = serviceJobRepository.countByStatusForStaff(ServiceJobStatus.RECEIVED, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES)
+                    + serviceJobRepository.countByStatusForStaff(ServiceJobStatus.INSPECTING, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES)
+                    + serviceJobRepository.countByStatusForStaff(ServiceJobStatus.IN_PROGRESS, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES);
+            receivedJobCount = serviceJobRepository.countByStatusForStaff(ServiceJobStatus.RECEIVED, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES);
+            inProgressJobCount = serviceJobRepository.countByStatusForStaff(ServiceJobStatus.IN_PROGRESS, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES);
+            completedJobCount = serviceJobRepository.countByStatusForStaff(ServiceJobStatus.COMPLETED, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES);
+        } else {
+            pendingServiceJobs = serviceJobRepository.countByStatus(ServiceJobStatus.RECEIVED)
+                    + serviceJobRepository.countByStatus(ServiceJobStatus.INSPECTING)
+                    + serviceJobRepository.countByStatus(ServiceJobStatus.IN_PROGRESS);
+            receivedJobCount = serviceJobRepository.countByStatus(ServiceJobStatus.RECEIVED);
+            inProgressJobCount = serviceJobRepository.countByStatus(ServiceJobStatus.IN_PROGRESS);
+            completedJobCount = serviceJobRepository.countByStatus(ServiceJobStatus.COMPLETED);
+        }
 
         long lowStockCount          = productRepository.countLowStock(LOW_STOCK_THRESHOLD);
         List<String> lowStockNames  = productRepository.findLowStockNames(LOW_STOCK_THRESHOLD)
@@ -130,5 +159,21 @@ public class DashboardService {
 
     private BigDecimal safe(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
+    }
+
+    private Integer resolveStaffScope() {
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) return null;
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) return null;
+        User user = userRepository.findWithStaffByUsernameOrEmail(authentication.getName())
+                .orElse(null);
+        if (user == null || user.getStaff() == null) return -1;
+        return user.getStaff().getId();
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
     }
 }

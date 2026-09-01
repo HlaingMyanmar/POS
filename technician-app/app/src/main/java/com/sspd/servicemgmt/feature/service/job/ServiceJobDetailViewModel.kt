@@ -12,6 +12,7 @@ import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.network.ReworkRequestDTO
 import com.sspd.servicemgmt.core.network.AssignmentActionRequest
 import com.sspd.servicemgmt.core.network.AssignmentDTO
+import com.sspd.servicemgmt.core.network.ServiceJobAttachmentDTO
 import com.sspd.servicemgmt.core.network.TeamSnapshotDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.ServiceJobNotificationDTO
@@ -365,7 +366,12 @@ class ServiceJobDetailViewModel(
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.addServiceJobAttachment(
                     token, jobId,
-                    ServiceJobAttachmentDTO(attachmentType = type, fileName = "job-photo.jpg", contentType = "image/jpeg", dataUrl = dataUrl)
+                    ServiceJobAttachmentDTO(
+                        attachmentType = type,
+                        fileName = "job-photo.jpg",
+                        contentType = "image/jpeg",
+                        dataUrl = dataUrl
+                    )
                 )
                 if (res.isSuccessful) {
                     load()

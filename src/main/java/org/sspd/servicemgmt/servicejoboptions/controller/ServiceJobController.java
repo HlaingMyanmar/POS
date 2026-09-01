@@ -29,9 +29,10 @@ public class ServiceJobController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "") String dateFrom,
-            @RequestParam(defaultValue = "") String dateTo) {
+            @RequestParam(defaultValue = "") String dateTo,
+            @RequestParam(required = false) Integer staffId) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Service Jobs",
-                new PagedResponse<>(service.findAll(search, dateFrom, dateTo, page, size))));
+                new PagedResponse<>(service.findAll(search, dateFrom, dateTo, page, size, staffId))));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")

@@ -1,62 +1,43 @@
 package org.sspd.servicemgmt.bookingoptions.repository;
 
 import jakarta.persistence.LockModeType;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
-import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 
-import java.time.LocalDateTime;
-import java.util.List;
+import java.time.LocalDate;
 import java.util.Optional;
 
-@Repository
 public interface BookingRepository extends JpaRepository<Booking, Integer> {
-    Optional<Booking> findTopByOrderByIdDesc();
-    Optional<Booking> findByInvoiceNo(String invoiceNo);
+    @Query("""
+        select b from Booking b
+        where (:search is null or :search = ''
+            or lower(b.bookingNo) like lower(concat('%', :search, '%'))
+            or lower(b.customer.name) like lower(concat('%', :search, '%'))
+            or lower(b.customer.phone) like lower(concat('%', :search, '%'))
+            or lower(coalesce(b.complaintNote, '')) like lower(concat('%', :search, '%')))
+          and (:dateFrom is null or b.bookingDate >= :dateFrom)
+          and (:dateTo is null or b.bookingDate <= :dateTo)
+        """)
+    Page<Booking> search(
+            @Param("search") String search,
+            @Param("dateFrom") LocalDate dateFrom,
+            @Param("dateTo") LocalDate dateTo,
+            Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT b FROM Booking b WHERE b.id = :id")
+    @Query("select b from Booking b where b.id = :id")
     Optional<Booking> findByIdForUpdate(@Param("id") Integer id);
-    List<Booking> findByStatus(BookingStatus status);
-    List<Booking> findByCustomerId(Integer customerId);
-
-    @Query("SELECT b FROM Booking b WHERE b.appointmentDate BETWEEN :from AND :to AND b.status IN ('Pending','Confirmed')")
-    List<Booking> findUpcomingAppointments(LocalDateTime from, LocalDateTime to);
-
-    @Query("SELECT b FROM Booking b LEFT JOIN FETCH b.devices WHERE b.id = :id")
-    Optional<Booking> findByIdWithDevices(@Param("id") Integer id);
 
     @Query("""
-        SELECT CASE WHEN COUNT(d) > 0 THEN true ELSE false END
-        FROM BookingDevice d
-        JOIN d.booking b
-        WHERE LOWER(d.serialNumber) = LOWER(:serial)
-          AND b.status NOT IN (org.sspd.servicemgmt.bookingoptions.model.BookingStatus.Converted,
-                               org.sspd.servicemgmt.bookingoptions.model.BookingStatus.Cancelled,
-                               org.sspd.servicemgmt.bookingoptions.model.BookingStatus.Completed)
-          AND (:excludeId IS NULL OR b.id <> :excludeId)
+        select distinct b from Booking b
+        left join fetch b.customer
+        left join fetch b.items
+        where b.id = :id
         """)
-    boolean existsOpenSerial(@Param("serial") String serial, @Param("excludeId") Integer excludeId);
-
-    @Query("""
-        SELECT b FROM Booking b
-        WHERE (:search IS NULL OR :search = ''
-               OR LOWER(b.customer.name) LIKE LOWER(CONCAT('%',:search,'%'))
-               OR LOWER(b.invoiceNo) LIKE LOWER(CONCAT('%',:search,'%'))
-               OR LOWER(b.brand) LIKE LOWER(CONCAT('%',:search,'%'))
-               OR LOWER(b.model) LIKE LOWER(CONCAT('%',:search,'%')))
-          AND (:dateFrom IS NULL OR b.bookingDate >= :dateFrom)
-          AND (:dateTo   IS NULL OR b.bookingDate <  :dateTo)
-        """)
-    Page<Booking> findBySearchAndDate(@Param("search")   String search,
-                                      @Param("dateFrom") LocalDateTime dateFrom,
-                                      @Param("dateTo")   LocalDateTime dateTo,
-                                      Pageable pageable);
+    Optional<Booking> findByIdWithItems(@Param("id") Integer id);
 }

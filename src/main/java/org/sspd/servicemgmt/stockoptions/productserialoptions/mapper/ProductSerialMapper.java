@@ -21,21 +21,16 @@ public interface ProductSerialMapper {
     // Entity -> DTO
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.name", target = "productName")
-    @Mapping(source = "warehouse.id", target = "warehouseId")
-    @Mapping(source = "warehouse.code", target = "warehouseCode")
-    @Mapping(source = "warehouse.name", target = "warehouseName")
     ProductSerialDTO toDto(ProductSerial entity);
 
     // DTO -> Entity
     @Mapping(target = "product", ignore = true) // Manual mapping in service layer
-    @Mapping(target = "warehouse", ignore = true)
     @Mapping(target = "status", expression = "java(dto.getStatus() != null ? dto.getStatus() : org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus.Available)")
     ProductSerial toEntity(ProductSerialDTO dto);
 
     // Update
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "product", ignore = true)
-    @Mapping(target = "warehouse", ignore = true)
     void updateEntityFromDto(ProductSerialDTO dto, @MappingTarget ProductSerial entity);
 
     @AfterMapping

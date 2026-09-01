@@ -1,8 +1,7 @@
 ﻿
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { warehouseApiService } from '../services/warehouseapiservice';
-import { StockLotDTO } from '../services/stocklotapiservice';
+import { resolveAssetUrl } from '../services/api';
 import { productService } from '../services/productapiservice';
 import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
 import { brandService } from '../services/brandapiservice';
@@ -22,6 +21,7 @@ import {
   Download, Upload, FileSpreadsheet, FileDown, CheckCheck, Printer
 } from 'lucide-react';
 import { useDataEvents } from '../hooks/useDataEvents';
+import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
 import BarcodeLabel from '../components/BarcodeLabel';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
@@ -246,10 +246,7 @@ const ProductManagement: React.FC = () => {
   const [brands, setBrands] = useState<BrandDTO[]>([]);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [units, setUnits] = useState<UnitDTO[]>([]);
-  const [warehouses, setWarehouses] = useState<{ id?: number; name: string; code?: string }[]>([]);
   const [allSerials, setAllSerials] = useState<ProductSerialDTO[]>([]);
-  const [detailLots, setDetailLots] = useState<StockLotDTO[]>([]);
-  const [detailWarehouseStocks, setDetailWarehouseStocks] = useState<{ warehouseName: string; remainingQty: number; lotCount: number }[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -338,11 +335,7 @@ const ProductManagement: React.FC = () => {
     reorderLevel: 0,
     warrantyMonths: 0,
     warrantyTerms: '',
-    warehouseName: '',
-    warehouseId: undefined,
     openingQty: 0,
-    openingBatch: '',
-    openingExpiry: '',
     shelfLocation: '',
     remark: '',
     categoryId: undefined,
@@ -362,7 +355,10 @@ const ProductManagement: React.FC = () => {
   const [photoChanged, setPhotoChanged] = useState(false);
   const [viewFormPhoto, setViewFormPhoto] = useState<string | null>(null);
 
-  const compressImage = (file: File, maxDim = 320, quality = 0.75): Promise<string> =>
+  const productPhotoUrl = (product?: Partial<ProductDTO> | null) =>
+    resolveAssetUrl(product?.thumbnailPath || product?.imagePath || product?.photoBase64);
+
+  const compressImage = (file: File, maxDim = 320, quality = 0.85): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -376,7 +372,7 @@ const ProductManagement: React.FC = () => {
           }
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', quality));
+          resolve(canvas.toDataURL('image/webp', quality));
         };
         img.onerror = reject;
         img.src = e.target!.result as string;
@@ -465,14 +461,13 @@ const ProductManagement: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [pData, bData, cTreeData, uData, sData, lowStockData, whData] = await Promise.all([
+      const [pData, bData, cTreeData, uData, sData, lowStockData] = await Promise.all([
         productService.getAll(),
         brandService.getAll(),
         categoryService.getTree(),
         unitService.getAll(),
         productSerialService.getAll(),
-        productService.getLowStock(),
-        warehouseApiService.list(true).catch(() => [])
+        productService.getLowStock()
       ]);
       setProducts(pData);
       setBrands(bData.filter(b => b.isActive));
@@ -480,7 +475,6 @@ const ProductManagement: React.FC = () => {
       setUnits(uData);
       setAllSerials(sData);
       setLowStockProducts(lowStockData);
-      setWarehouses(whData);
     } catch (error) {
       console.error("Failed to load inventory data", error);
     } finally {
@@ -493,7 +487,10 @@ const ProductManagement: React.FC = () => {
   }, [fetchData]);
   useRefreshOnTabActivate(fetchData);
 
-  useDataEvents(['Product', 'Stock', 'Sale'], fetchData);
+  useDataEvents(['Product', 'Stock', 'Sale', 'Service Job', 'Booking'], fetchData);
+  useWebsocket('/topic/product', fetchData);
+  useWebsocket('/topic/booking', fetchData);
+  useWebsocket('/topic/service-jobs', fetchData);
 
   const handleExportExcel = async () => {
     setExportLoading(true);
@@ -798,7 +795,6 @@ const ProductManagement: React.FC = () => {
             qtyAfter: counted,
             reason: `Physical Stock Count: ${physicalCountReason.trim()}`,
             staffId,
-            warehouseId: product.warehouseId || warehouses[0]?.id,
             createdAt: physicalCountDate || undefined,
           };
         })
@@ -835,18 +831,14 @@ const ProductManagement: React.FC = () => {
         reorderLevel: product.reorderLevel ?? 0,
         warrantyMonths: product.warrantyMonths ?? 0,
         warrantyTerms: product.warrantyTerms || '',
-        warehouseName: product.warehouseName || '',
-        warehouseId: product.warehouseId,
         openingQty: 0,
-        openingBatch: '',
-        openingExpiry: '',
         shelfLocation: product.shelfLocation || '',
         remark: product.remark || '',
         categoryId: product.categoryId,
         brandId: product.brandId,
         unitId: product.unitId
       });
-      setFormPhoto(product.photoBase64 || undefined);
+      setFormPhoto(productPhotoUrl(product) || undefined);
       // Initialize warranty display state from existing data
       const wm = product.warrantyMonths ?? 0;
       if (wm > 0 && wm % 12 === 0) {
@@ -870,11 +862,7 @@ const ProductManagement: React.FC = () => {
         reorderLevel: 0,
         warrantyMonths: 0,
         warrantyTerms: '',
-        warehouseName: '',
-        warehouseId: undefined,
         openingQty: 0,
-        openingBatch: '',
-        openingExpiry: '',
         shelfLocation: '',
         remark: '',
         categoryId: undefined,
@@ -957,10 +945,6 @@ const ProductManagement: React.FC = () => {
   const openProductDetail = async (product: ProductDTO) => {
     setDetailProduct(product);
     setDetailPriceHistory([]);
-    setDetailLots([]);
-    setDetailWarehouseStocks([]);
-    void productService.warehouseStocks(product.id).then(setDetailWarehouseStocks).catch(() => setDetailWarehouseStocks([]));
-    void productService.lots(product.id).then(setDetailLots).catch(() => setDetailLots([]));
     if (!canViewProductPriceHistory) {
       setDetailPriceLoading(false);
       return;
@@ -1185,7 +1169,6 @@ const ProductManagement: React.FC = () => {
     if (!formData.categoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစားတစ်ခု ရွေးပါ။', 'warning'); return; }
     if (!formData.brandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်းတစ်ခု ရွေးပါ။', 'warning'); return; }
     if (!formData.unitId) { Swal.fire('စစ်ဆေးမှု', 'တိုင်းတာမှုယူနစ်တစ်ခု ရွေးပါ။', 'warning'); return; }
-    if (!formData.warehouseId && !formData.warehouseName) { Swal.fire('စစ်ဆေးမှု', 'ဂိုဒေါင် ရွေးပါ။', 'warning'); return; }
     setSaving(true);
     try {
       const warrantyMonthsComputed =
@@ -1194,6 +1177,7 @@ const ProductManagement: React.FC = () => {
         formWarrantyValue;
       const payload: any = {
         ...formData,
+        warehouseId: undefined,
         warrantyMonths: warrantyMonthsComputed,
         hasSerial: formData.hasSerial !== false,
         stockQty: editingProduct ? Number(formData.stockQty ?? editingProduct.stockQty ?? editingProduct.currentStock ?? 0) : 0,
@@ -1489,44 +1473,13 @@ const ProductManagement: React.FC = () => {
                   )}
                 </div>
 
-                {/* Warehouse location */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ဂိုဒေါင် <span className="text-rose-400">*</span></label>
-                  <select
-                    value={formData.warehouseId ?? ''}
-                    onChange={(e) => {
-                      const id = Number(e.target.value) || undefined;
-                      const wh = warehouses.find(w => w.id === id);
-                      setFormData({ ...formData, warehouseId: id, warehouseName: wh?.name || '' });
-                    }}
-                    className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all"
-                  >
-                    <option value="">ဂိုဒေါင် ရွေးပါ</option>
-                    {warehouses.map((w) => (
-                      <option key={w.id ?? w.name} value={w.id}>{w.name}{w.code ? ` (${w.code})` : ''}</option>
-                    ))}
-                  </select>
-                </div>
-
                 {!editingProduct && formData.hasSerial === false && (
-                  <>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Opening Quantity</label>
-                      <input type="number" min={0} value={formData.openingQty ?? 0}
-                        onChange={(e) => setFormData({ ...formData, openingQty: Math.max(0, Number(e.target.value) || 0) })}
-                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Batch (optional)</label>
-                      <input value={formData.openingBatch ?? ''} onChange={(e) => setFormData({ ...formData, openingBatch: e.target.value })}
-                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Expiry (optional)</label>
-                      <input type="date" value={formData.openingExpiry ?? ''} onChange={(e) => setFormData({ ...formData, openingExpiry: e.target.value })}
-                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
-                    </div>
-                  </>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Opening Quantity</label>
+                    <input type="number" min={0} value={formData.openingQty ?? 0}
+                      onChange={(e) => setFormData({ ...formData, openingQty: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                  </div>
                 )}
 
                 <div className="space-y-1.5">
@@ -2272,7 +2225,7 @@ const ProductManagement: React.FC = () => {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           {(() => {
-                            const anyPhoto = group.products.find(p => p.photoBase64)?.photoBase64;
+                            const anyPhoto = group.products.find(p => productPhotoUrl(p)) ? productPhotoUrl(group.products.find(p => productPhotoUrl(p))) : undefined;
                             return anyPhoto
                               ? <img src={anyPhoto} alt="" className="w-9 h-9 rounded-md object-contain border border-slate-200 bg-slate-50 shrink-0" />
                               : <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${isExpanded ? 'bg-indigo-600 text-white' : hasLowStock ? 'bg-amber-100 text-amber-600 border border-amber-200' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`}><Package size={18} /></div>;
@@ -2458,8 +2411,8 @@ const ProductManagement: React.FC = () => {
                                       <tr key={p.id} className="hover:bg-slate-50 group/row">
                                         <td className="px-4 py-3">
                                           <div className="flex items-center gap-2">
-                                            {p.photoBase64
-                                              ? <img src={p.photoBase64} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
+                                            {productPhotoUrl(p)
+                                              ? <img src={productPhotoUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
                                               : <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={13} className="text-slate-400" /></div>}
                                             <span className="font-bold text-indigo-700 text-xs">{p.productCode}</span>
                                           </div>
@@ -2516,8 +2469,8 @@ const ProductManagement: React.FC = () => {
                                       <tr key={p.id} className="hover:bg-slate-50 group/row">
                                         <td className="px-4 py-3">
                                           <div className="flex items-center gap-2">
-                                            {p.photoBase64
-                                              ? <img src={p.photoBase64} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
+                                            {productPhotoUrl(p)
+                                              ? <img src={productPhotoUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
                                               : <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={13} className="text-slate-400" /></div>}
                                             <span className="font-bold text-indigo-700 text-xs">{p.productCode}</span>
                                           </div>
@@ -2562,8 +2515,8 @@ const ProductManagement: React.FC = () => {
                                       <td className="px-4 py-3">
                                         {idx === 0 ? (
                                           <div className="flex items-center gap-2">
-                                            {p.photoBase64
-                                              ? <img src={p.photoBase64} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
+                                            {productPhotoUrl(p)
+                                              ? <img src={productPhotoUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
                                               : <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={13} className="text-slate-400" /></div>}
                                             <span className="font-black text-indigo-600 text-[11px]">{p.productCode}</span>
                                           </div>
@@ -2766,8 +2719,8 @@ const ProductManagement: React.FC = () => {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
-                                {product.photoBase64
-                                  ? <img src={product.photoBase64} alt="" className="w-7 h-7 rounded object-contain border border-slate-100 bg-slate-50 shrink-0" />
+                                {productPhotoUrl(product)
+                                  ? <img src={productPhotoUrl(product)} alt="" className="w-7 h-7 rounded object-contain border border-slate-100 bg-slate-50 shrink-0" />
                                   : <div className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={12} className="text-slate-400" /></div>}
                                 <div>
                                   <p className="font-bold text-indigo-700">{product.productCode}</p>
@@ -3128,7 +3081,7 @@ const ProductManagement: React.FC = () => {
           <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50 p-5">
               <div className="flex min-w-0 items-center gap-3">
-                {detailProduct.photoBase64 ? <img src={detailProduct.photoBase64} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain" /> : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500"><Package size={24} /></div>}
+                {productPhotoUrl(detailProduct) ? <img src={productPhotoUrl(detailProduct)} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain" /> : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500"><Package size={24} /></div>}
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-black text-slate-800">{detailProduct.name}</h3>
                   <p className="truncate text-xs font-bold text-slate-400">{detailProduct.productCode}</p>
@@ -3146,36 +3099,9 @@ const ProductManagement: React.FC = () => {
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Selling price</span><span className="text-xs font-black text-indigo-700">{(detailProduct.sellingPrice || 0).toLocaleString()} Ks</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Cost price</span><span className="text-xs font-black text-slate-800">{(detailProduct.costPrice || 0).toLocaleString()} Ks</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Tracking</span><span className="text-xs font-black text-slate-800">{detailProduct.hasSerial === false ? 'Quantity' : 'Serial'}</span></div>
-                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Location</span><span className="text-right text-xs font-black text-teal-700">{detailProduct.warehouseName || '-'} / {detailProduct.shelfLocation || '-'}</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Shelf location</span><span className="text-right text-xs font-black text-teal-700">{detailProduct.shelfLocation || '-'}</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Warranty</span><span className="text-right text-xs font-black text-slate-800">{detailProduct.warrantyTerms || `${detailProduct.warrantyMonths || 0} months`}</span></div>
               </div>
-              {detailWarehouseStocks.length > 0 && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Warehouse stock</p></div>
-                  {detailWarehouseStocks.map((row) => (
-                    <div key={row.warehouseName} className="flex items-center justify-between px-3 py-2 text-xs border-t border-slate-100">
-                      <span className="font-semibold text-slate-600">{row.warehouseName}</span>
-                      <span className="font-black text-slate-800">{row.remainingQty} <span className="text-slate-400 font-semibold">({row.lotCount} lots)</span></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {detailLots.length > 0 && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Lots / Batch / Expiry</p></div>
-                  <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
-                    {detailLots.map((lot) => (
-                      <div key={lot.id} className="px-3 py-2 text-[11px]">
-                        <div className="flex justify-between gap-2">
-                          <span className="font-black text-slate-700">{lot.batchNumber || `Lot #${lot.id}`}</span>
-                          <span className={`font-bold ${lot.alertLevel === 'EXPIRED' ? 'text-rose-600' : lot.alertLevel === 'CRITICAL' ? 'text-amber-600' : 'text-slate-700'}`}>{lot.remainingQty} avail.</span>
-                        </div>
-                        <p className="text-slate-400">{lot.warehouseName || '-'} · {lot.expiryDate || 'No expiry'}{lot.alertLevel === 'EXPIRED' ? ' · EXPIRED' : lot.alertLevel === 'CRITICAL' || lot.alertLevel === 'WARNING' ? ' · expiring soon' : ''}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               {canViewProductPriceHistory && <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Price History / Weighted Average Cost</p></div>
                 {detailPriceLoading ? <div className="p-5 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-1 animate-spin" size={16} />Loading...</div> : detailPriceHistory.length === 0 ? <p className="p-4 text-xs font-semibold text-slate-400">Purchase price history မရှိသေးပါ။</p> : <div className="max-h-48 divide-y divide-slate-100 overflow-y-auto">{detailPriceHistory.map((row) => <div key={`${row.purchaseId}-${row.purchaseDate}`} className="grid grid-cols-2 gap-2 p-3 text-[11px]"><div><p className="font-black text-slate-700">{row.purchaseCode} · {row.supplierName || '-'}</p><p className="text-slate-400">{row.purchaseDate ? new Date(row.purchaseDate).toLocaleDateString() : '-'}</p></div><div className="text-right"><p className="font-bold text-indigo-700">Unit: {row.unitCost.toLocaleString()} Ks</p><p className="font-black text-emerald-700">WAC: {row.weightedAverageCost.toLocaleString()} Ks</p></div></div>)}</div>}

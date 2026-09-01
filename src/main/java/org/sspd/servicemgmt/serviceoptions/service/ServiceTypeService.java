@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.serviceoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -14,7 +15,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ServiceTypeService {
 
+    private static final String SERVICE_TOPIC = "/topic/service";
+
     private final ServiceTypeRepository repository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional(readOnly = true)
     public List<ServiceTypeDTO> findAll() {
@@ -32,7 +36,9 @@ public class ServiceTypeService {
         e.setName(dto.getName());
         e.setDescription(dto.getDescription());
         e.setActive(true);
-        return toDto(repository.save(e));
+        ServiceTypeDTO saved = toDto(repository.save(e));
+        broadcast("SERVICE_TYPE_UPDATED");
+        return saved;
     }
 
     @Transactional
@@ -42,7 +48,9 @@ public class ServiceTypeService {
         e.setName(dto.getName());
         e.setDescription(dto.getDescription());
         e.setActive(dto.isActive());
-        return toDto(repository.save(e));
+        ServiceTypeDTO saved = toDto(repository.save(e));
+        broadcast("SERVICE_TYPE_UPDATED");
+        return saved;
     }
 
     @Transactional
@@ -51,6 +59,11 @@ public class ServiceTypeService {
             .orElseThrow(() -> new ResourceNotFoundException("ServiceType not found: " + id));
         e.setActive(false);
         repository.save(e);
+        broadcast("SERVICE_TYPE_UPDATED");
+    }
+
+    private void broadcast(String event) {
+        messagingTemplate.convertAndSend(SERVICE_TOPIC, event);
     }
 
     private ServiceTypeDTO toDto(ServiceType e) {

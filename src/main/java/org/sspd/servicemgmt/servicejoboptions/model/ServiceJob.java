@@ -143,6 +143,16 @@ public class ServiceJob {
     @Column(name = "net_amount", precision = 15, scale = 2)
     private BigDecimal netAmount = BigDecimal.ZERO;
 
+    @Column(name = "labor_net_amount", precision = 15, scale = 2)
+    private BigDecimal laborNetAmount;
+
+    @Column(name = "parts_net_amount", precision = 15, scale = 2)
+    private BigDecimal partsNetAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_allocation_method", length = 20)
+    private DiscountAllocationMethod discountAllocationMethod;
+
     @Builder.Default
     @Column(name = "paid_amount", precision = 15, scale = 2)
     private BigDecimal paidAmount = BigDecimal.ZERO;
@@ -188,6 +198,16 @@ public class ServiceJob {
 
     @Column(name = "estimate_approved_by", length = 120)
     private String estimateApprovedBy;
+
+    @Builder.Default
+    @Column(name = "final_approval_status", nullable = false)
+    private Boolean finalApprovalStatus = Boolean.FALSE;
+
+    @Column(name = "final_approved_by", length = 120)
+    private String finalApprovedBy;
+
+    @Column(name = "final_approved_at")
+    private LocalDateTime finalApprovedAt;
 
     @Builder.Default
     @Column(name = "priority", length = 20)

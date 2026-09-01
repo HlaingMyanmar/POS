@@ -45,6 +45,10 @@ public class ServiceJobLine {
     @Column(name = "subtotal", precision = 15, scale = 2)
     private BigDecimal subtotal;
 
+    @Builder.Default
+    @Column(name = "discount_amount", precision = 15, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     @Column(name = "min_price", precision = 15, scale = 2)
     private BigDecimal minPrice;
 
@@ -98,9 +102,19 @@ public class ServiceJobLine {
     }
 
     public void refreshCharge() {
+        if (!isBillable() || Boolean.TRUE.equals(warrantyCovered)) {
+            this.price = BigDecimal.ZERO;
+            this.subtotal = BigDecimal.ZERO;
+            return;
+        }
         BigDecimal unit = chargeUnitPrice();
         this.price = unit;
         int q = qty != null ? qty : 1;
-        this.subtotal = unit.multiply(BigDecimal.valueOf(q));
+        BigDecimal gross = unit.multiply(BigDecimal.valueOf(q));
+        BigDecimal discount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+        if (discount.compareTo(gross) > 0) {
+            throw new IllegalArgumentException("Line discount cannot exceed line gross amount.");
+        }
+        this.subtotal = gross.subtract(discount).max(BigDecimal.ZERO);
     }
 }

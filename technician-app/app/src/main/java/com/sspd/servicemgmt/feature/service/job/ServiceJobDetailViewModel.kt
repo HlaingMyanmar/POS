@@ -10,7 +10,9 @@ import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.network.PaymentTransactionDTO
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.network.ReworkRequestDTO
-import com.sspd.servicemgmt.core.network.ServiceJobAttachmentDTO
+import com.sspd.servicemgmt.core.network.AssignmentActionRequest
+import com.sspd.servicemgmt.core.network.AssignmentDTO
+import com.sspd.servicemgmt.core.network.TeamSnapshotDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.ServiceJobNotificationDTO
 import com.sspd.servicemgmt.core.network.ServiceJobPayDueRequest
@@ -47,6 +49,7 @@ class ServiceJobDetailViewModel(
             try {
                 val token   = ApiClient.bearer(prefs.authToken)
                 val jobD    = async { ApiClient.service.getServiceJobById(token, jobId) }
+                val teamD   = async { ApiClient.service.getServiceJobTeam(token, jobId) }
                 val pmD     = async { ApiClient.service.getActivePaymentMethods(token) }
                 val staffD  = async { ApiClient.service.getActiveStaff(token) }
                 val jobData = jobD.await().body()?.data
@@ -60,6 +63,7 @@ class ServiceJobDetailViewModel(
                 _uiState.update {
                     it.copy(
                         job               = jobData,
+                        team              = teamD.await().body()?.data,
                         paymentMethods    = pmD.await().body()?.data ?: emptyList(),
                         staff             = staffD.await().body()?.data ?: emptyList(),
                         serialWarrantyMap = snMap,
@@ -81,7 +85,40 @@ class ServiceJobDetailViewModel(
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.updateServiceJobStatus(token, jobId, status, holdReason)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, actionSuccess = "အဆင့် ပြောင်းလဲပြီး", showHoldDialog = false) }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun acceptAssignment(assignmentId: Int) {
+        runTeamAction {
+            ApiClient.service.acceptServiceJobAssignment(it, jobId, assignmentId)
+        }
+    }
+
+    fun recordWork(assignmentId: Int, action: String, note: String? = null) {
+        runTeamAction {
+            ApiClient.service.recordServiceJobWork(
+                it, jobId, assignmentId, AssignmentActionRequest(action = action, note = note)
+            )
+        }
+    }
+
+    private fun runTeamAction(call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<AssignmentDTO>>) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = call(token)
+                if (res.isSuccessful && res.body()?.data != null) {
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, actionSuccess = "မှတ်တမ်း သိမ်းပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
@@ -393,6 +430,7 @@ class ServiceJobDetailViewModel(
 
     data class UiState(
         val job:               ServiceJobDTO?               = null,
+        val team:              TeamSnapshotDTO?             = null,
         val paymentMethods:    List<PaymentMethodDTO>        = emptyList(),
         val staff:             List<StaffDTO>                = emptyList(),
         val serialWarrantyMap: Map<String, ProductSerialDTO> = emptyMap(),

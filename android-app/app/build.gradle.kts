@@ -19,8 +19,8 @@ android {
         applicationId = "com.sspd.servicemgmt"
         minSdk        = 26
         targetSdk     = 35
-        versionCode   = 17                // increment every release
-        versionName   = "1.3.1"
+        versionCode   = 18                // increment every release
+        versionName   = "1.3.2"
         vectorDrawables { useSupportLibrary = true }
 
         // Default server — override per-buildType below if needed

@@ -88,12 +88,6 @@ export const InvoiceInfoBlocks: React.FC<InvoiceInfoBlocksProps> = ({ data }) =>
           <span className="inv-block__value">{data.cashierName || '—'}</span>
         </div>
       )}
-      {(data.warehouseName || data.warehouseCode) && (
-        <div className="inv-block__row">
-          <span className="inv-block__label">Warehouse</span>
-          <span className="inv-block__value">{[data.warehouseCode, data.warehouseName].filter(Boolean).join(' · ')}</span>
-        </div>
-      )}
       <div className="inv-block__row">
         <span className="inv-block__label">Date</span>
         <span className="inv-block__value">{data.invoiceDate}</span>

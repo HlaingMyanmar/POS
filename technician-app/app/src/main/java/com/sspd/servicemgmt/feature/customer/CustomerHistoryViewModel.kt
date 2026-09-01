@@ -7,6 +7,7 @@ import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.CustomerDTO
 import com.sspd.servicemgmt.core.network.SaleDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
+import com.sspd.servicemgmt.core.realtime.onDataEvent
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +21,10 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
     private val _state = MutableStateFlow(State(canViewSales = canViewSales))
     val state: StateFlow<State> = _state.asStateFlow()
 
-    init { loadCustomers() }
+    init {
+        loadCustomers()
+        onDataEvent("Customer") { loadCustomers() }
+    }
 
     fun setSearch(value: String) = _state.update { it.copy(search = value) }
 

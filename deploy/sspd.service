@@ -1,0 +1,18 @@
+[Unit]
+Description=SSPD Service Management
+After=network.target mysql.service mariadb.service
+
+[Service]
+Type=simple
+User=sspd
+Group=sspd
+WorkingDirectory=/opt/sspd
+EnvironmentFile=/opt/sspd/.env
+ExecStart=/usr/bin/java -Dspring.profiles.active=prod -jar /opt/sspd/pos-0.0.1-SNAPSHOT.war
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import javax.sql.DataSource;
 import java.util.Locale;
 
-/** Idempotent schema upgrades for bookings, service jobs, and the service catalog. */
+/** Idempotent schema upgrades for service jobs and the service catalog. */
 @Component
 @ConditionalOnProperty(name = "app.schema.java-migrations.enabled", havingValue = "true")
 @Order(5)
@@ -59,12 +59,6 @@ public class ServiceSchemaMigration implements CommandLineRunner {
             )
             """);
 
-        addColumnIfMissing("bookings", "deposit_amount", "DECIMAL(15,2) NOT NULL DEFAULT 0");
-        addColumnIfMissing("bookings", "advance_payment_id", "INT NULL");
-        addColumnIfMissing("bookings", "signature_data", "LONGTEXT NULL");
-        addColumnIfMissing("booking_devices", "condition_checklist", "TEXT NULL");
-        addColumnIfMissing("booking_devices", "part_requests", "TEXT NULL");
-        addColumnIfMissing("booking_details", "device_index", "INT NULL");
 
         addColumnIfMissing("service_jobs", "part_requests", "TEXT NULL");
         addColumnIfMissing("service_jobs", "device_type", "VARCHAR(80) NULL");
@@ -101,20 +95,6 @@ public class ServiceSchemaMigration implements CommandLineRunner {
             log.warn("Could not backfill service_job_lines price columns: {}", e.getMessage());
         }
 
-        jdbcTemplate.execute("""
-            CREATE TABLE IF NOT EXISTS booking_attachments (
-              id INT NOT NULL AUTO_INCREMENT,
-              booking_id INT NOT NULL,
-              attachment_type VARCHAR(40) NULL,
-              file_name VARCHAR(255) NULL,
-              content_type VARCHAR(120) NULL,
-              data_url LONGTEXT NULL,
-              uploaded_by VARCHAR(120) NULL,
-              uploaded_at DATETIME(6) NULL,
-              PRIMARY KEY (id),
-              KEY idx_booking_att_booking (booking_id)
-            )
-            """);
         jdbcTemplate.execute("""
             CREATE TABLE IF NOT EXISTS service_job_attachments (
               id INT NOT NULL AUTO_INCREMENT,

@@ -22,8 +22,8 @@ import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.ProductSerialRepository;
-import org.sspd.servicemgmt.stockoptions.manufacturingoptions.enums.ManufacturingStatus;
-import org.sspd.servicemgmt.stockoptions.manufacturingoptions.repository.ManufacturingOrderRepository;
+import org.sspd.servicemgmt.stockoptions.opening.dto.OpeningStockRequest;
+import org.sspd.servicemgmt.stockoptions.opening.service.OpeningStockService;
 import org.sspd.servicemgmt.unitsoptions.model.Unit;
 import org.sspd.servicemgmt.unitsoptions.repository.UnitRepository;
 import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
@@ -53,10 +53,9 @@ public class ProductService {
     private final BrandRepository brandRepository;
     private final UnitRepository unitRepository;
     private final ProductSerialRepository productSerialRepository;
-    private final ManufacturingOrderRepository manufacturingOrderRepository;
     private final PurchaseRepository purchaseRepository;
-    private final org.sspd.servicemgmt.stockoptions.warehouseoptions.service.WarehouseResolver warehouseResolver;
-    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.InventoryStockService inventoryStockService;
+    private final OpeningStockService openingStockService;
+    private final ProductPhotoStorageService productPhotoStorageService;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_CREATE')")
     @Transactional
@@ -85,9 +84,6 @@ public class ProductService {
             entity.setUnit(unit);
         }
 
-        var warehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
-        entity.setWarehouse(warehouse);
-        entity.setWarehouseName(warehouse.getName());
         boolean serial = !Boolean.FALSE.equals(dto.getHasSerial());
         int openingQty = dto.getOpeningQty() != null && dto.getOpeningQty() > 0
                 ? dto.getOpeningQty()
@@ -107,12 +103,9 @@ public class ProductService {
         productRepository.save(savedEntity);
 
         if (!serial && openingQty > 0) {
-            inventoryStockService.createOpening(org.sspd.servicemgmt.stockoptions.lotoptions.dto.OpeningStockRequest.builder()
+            openingStockService.createOpening(OpeningStockRequest.builder()
                     .productId(savedEntity.getId())
-                    .warehouseId(warehouse.getId())
                     .qty(openingQty)
-                    .batchNumber(dto.getOpeningBatch())
-                    .expiryDate(dto.getOpeningExpiry())
                     .reason("Product create opening stock")
                     .build());
             savedEntity = productRepository.findById(savedEntity.getId()).orElse(savedEntity);
@@ -171,12 +164,6 @@ public class ProductService {
             existingEntity.setUnit(unit);
         }
 
-        if (dto.getWarehouseId() != null || (dto.getWarehouseName() != null && !dto.getWarehouseName().isBlank())) {
-            var warehouse = warehouseResolver.require(dto.getWarehouseId(), dto.getWarehouseName());
-            existingEntity.setWarehouse(warehouse);
-            existingEntity.setWarehouseName(warehouse.getName());
-        }
-
         Product savedEntity = productRepository.save(existingEntity);
 
         messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_UPDATE");
@@ -195,9 +182,6 @@ public class ProductService {
     public void archive(Integer id){
         Product existingEntity = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
-        if (manufacturingOrderRepository.existsByFinishedProductIdAndStatus(id, ManufacturingStatus.COMPLETED)) {
-            throw new IllegalStateException("ထုတ်လုပ်ရေးမှ ဖန်တီးထားသော ကုန်ပစ္စည်းကို archive မလုပ်ရပါ။ ထုတ်လုပ်ရေး မှတ်တမ်းကို ဦးစွာ စစ်ဆေးပါ။");
-        }
         existingEntity.setArchived(Boolean.TRUE);
         productRepository.save(existingEntity);
         messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_ARCHIVED");
@@ -308,6 +292,9 @@ public class ProductService {
 
 
     private ProductDTO toDtoWithAvailability(Product entity) {
+        if (entity != null && shouldMigrateLegacyPhoto(entity)) {
+            migrateLegacyPhoto(entity);
+        }
         ProductDTO dto = mapper.toDto(entity);
         if (Boolean.TRUE.equals(entity.getHasSerial())) {
             Long count = productSerialRepository.countByProductIdAndStatus(entity.getId(), SerialStatus.Available);
@@ -330,6 +317,25 @@ public class ProductService {
         int stock = dto.getStockQty() != null ? dto.getStockQty() : 0;
         dto.setShortageQty(Math.max(0, reorderLevel - stock));
         return dto;
+    }
+
+    private boolean shouldMigrateLegacyPhoto(Product entity) {
+        return entity != null && entity.getId() != null
+                && (entity.getImagePath() == null || entity.getThumbnailPath() == null)
+                && entity.getPhotoBase64() != null && !entity.getPhotoBase64().isBlank();
+    }
+
+    private void migrateLegacyPhoto(Product entity) {
+        ProductPhotoStorageService.StoredPhoto stored = productPhotoStorageService.store(entity.getPhotoBase64(), entity.getId());
+        productPhotoStorageService.deleteExisting(entity.getImagePath(), entity.getThumbnailPath());
+        entity.setImagePath(stored.imagePath());
+        entity.setThumbnailPath(stored.thumbnailPath());
+        entity.setImageMimeType("image/webp");
+        entity.setOriginalFileName("product-" + entity.getId() + ".webp");
+        entity.setImageWidth(stored.width());
+        entity.setImageHeight(stored.height());
+        entity.setPhotoBase64(null);
+        productRepository.save(entity);
     }
 
     /**
@@ -365,9 +371,6 @@ public class ProductService {
             productSerialRepository.save(
                     org.sspd.servicemgmt.stockoptions.productserialoptions.model.ProductSerial.builder()
                             .product(product)
-                            .warehouse(product.getWarehouse() != null
-                                    ? product.getWarehouse()
-                                    : warehouseResolver.require(null, product.getWarehouseName()))
                             .serialNumber(sn.trim())
                             .status(org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus.Available)
                             .warrantyMonths(months)
@@ -394,7 +397,30 @@ public class ProductService {
     public void updatePhoto(Integer id, String photoBase64) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
-        product.setPhotoBase64(photoBase64);
+
+        if (photoBase64 == null || photoBase64.isBlank()) {
+            productPhotoStorageService.deleteExisting(product.getImagePath(), product.getThumbnailPath());
+            product.setPhotoBase64(null);
+            product.setImagePath(null);
+            product.setThumbnailPath(null);
+            product.setImageMimeType(null);
+            product.setOriginalFileName(null);
+            product.setImageWidth(null);
+            product.setImageHeight(null);
+            productRepository.save(product);
+            messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_UPDATE");
+            return;
+        }
+
+        ProductPhotoStorageService.StoredPhoto stored = productPhotoStorageService.store(photoBase64, product.getId());
+        productPhotoStorageService.deleteExisting(product.getImagePath(), product.getThumbnailPath());
+        product.setPhotoBase64(null);
+        product.setImagePath(stored.imagePath());
+        product.setThumbnailPath(stored.thumbnailPath());
+        product.setImageMimeType("image/webp");
+        product.setOriginalFileName("product-" + product.getId() + ".webp");
+        product.setImageWidth(stored.width());
+        product.setImageHeight(stored.height());
         productRepository.save(product);
         messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_UPDATE");
     }
@@ -671,14 +697,10 @@ public class ProductService {
                     if (hasSerial && stockQty > 0) {
                         throw new IllegalArgumentException("Serial products require individual serial numbers; opening quantity must be 0");
                     }
-                    var importWarehouse = warehouseResolver.require(null, "Main");
-                    product.setWarehouse(importWarehouse);
-                    product.setWarehouseName(importWarehouse.getName());
                     product.setStockQty(0);
                     product.setHasSerial(hasSerial);
                     product.setReorderLevel(sanitizeReorderLevel(reorderLevel));
                     product.setWarrantyMonths(warrantyMonths);
-                    product.setWarrantyTerms(warrantyTerms.isBlank() ? null : warrantyTerms);
                     product.setRemark(remark.isBlank() ? null : remark);
 
                     Product saved = productRepository.save(product);
@@ -686,12 +708,10 @@ public class ProductService {
                     productRepository.save(saved);
 
                     if (!hasSerial && stockQty > 0) {
-                        inventoryStockService.createOpening(
-                                org.sspd.servicemgmt.stockoptions.lotoptions.dto.OpeningStockRequest.builder()
+                        openingStockService.createOpening(
+                                OpeningStockRequest.builder()
                                         .productId(saved.getId())
-                                        .warehouseId(importWarehouse.getId())
                                         .qty(stockQty)
-                                        .batchNumber("OPENING-IMPORT-" + saved.getId())
                                         .reason("Product Excel import opening stock")
                                         .build());
                     }

@@ -92,6 +92,7 @@ public class PrintInvoiceData {
         private String accessories;
         private String problemDesc;
         private String deviceConditions;
+        private String noticed;
         private String serviceSummary;
         private String conditionChecklist;
         private String partRequests;

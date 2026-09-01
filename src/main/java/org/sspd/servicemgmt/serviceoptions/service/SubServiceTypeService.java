@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.serviceoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -16,8 +17,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SubServiceTypeService {
 
+    private static final String SERVICE_TOPIC = "/topic/service";
+
     private final SubServiceTypeRepository repository;
     private final ServiceTypeRepository serviceTypeRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional(readOnly = true)
     public List<SubServiceTypeDTO> findByServiceType(Integer serviceTypeId) {
@@ -38,7 +42,9 @@ public class SubServiceTypeService {
         e.setDescription(dto.getDescription());
         e.setActive(true);
         e.setServiceType(serviceType);
-        return toDto(repository.save(e));
+        SubServiceTypeDTO saved = toDto(repository.save(e));
+        broadcast("SUB_SERVICE_TYPE_UPDATED");
+        return saved;
     }
 
     @Transactional
@@ -48,7 +54,9 @@ public class SubServiceTypeService {
         e.setName(dto.getName());
         e.setDescription(dto.getDescription());
         e.setActive(dto.isActive());
-        return toDto(repository.save(e));
+        SubServiceTypeDTO saved = toDto(repository.save(e));
+        broadcast("SUB_SERVICE_TYPE_UPDATED");
+        return saved;
     }
 
     @Transactional
@@ -57,6 +65,11 @@ public class SubServiceTypeService {
             .orElseThrow(() -> new ResourceNotFoundException("SubServiceType not found: " + id));
         e.setActive(false);
         repository.save(e);
+        broadcast("SUB_SERVICE_TYPE_UPDATED");
+    }
+
+    private void broadcast(String event) {
+        messagingTemplate.convertAndSend(SERVICE_TOPIC, event);
     }
 
     private SubServiceTypeDTO toDto(SubServiceType e) {

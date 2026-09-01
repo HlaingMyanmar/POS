@@ -37,6 +37,8 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     val vm: BookingFormViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
 
+    LaunchedEffect(Unit) { vm.loadCustomers() }
+
     var showShelfSheet by rememberSaveable { mutableStateOf(false) }
     var showPaySheet by rememberSaveable { mutableStateOf(false) }
     var showServiceSheet by rememberSaveable { mutableStateOf(false) }
@@ -66,45 +68,60 @@ fun BookingFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
     if (state.showNewCustomerDialog) {
         AlertDialog(
             onDismissRequest = { vm.dismissNewCustomerDialog() },
-            icon  = { Icon(Icons.Outlined.PersonAdd, null, tint = Primary) },
-            title = { Text("ဖောက်သည်အသစ် ထည့်ရန်", fontWeight = FontWeight.ExtraBold) },
+            title = { Text("New Customer", fontWeight = FontWeight.ExtraBold) },
             text  = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value         = state.newCustomerName,
                         onValueChange = { vm.setNewCustomerName(it) },
-                        label         = { Text("အမည် *") },
-                        leadingIcon   = { Icon(Icons.Outlined.Person, null) },
+                        label         = { Text("Name *") },
                         singleLine    = true,
                         shape         = RoundedCornerShape(10.dp),
                         modifier      = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        isError = state.newCustomerName.isBlank() && state.newCustomerError != null
                     )
                     OutlinedTextField(
                         value         = state.newCustomerPhone,
                         onValueChange = { vm.setNewCustomerPhone(it) },
-                        label         = { Text("ဖုန်းနံပါတ်") },
-                        leadingIcon   = { Icon(Icons.Outlined.Phone, null) },
+                        label         = { Text("Phone") },
                         singleLine    = true,
                         shape         = RoundedCornerShape(10.dp),
                         modifier      = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Phone,
-                            imeAction    = ImeAction.Done
+                            imeAction    = ImeAction.Next
                         )
                     )
+                    OutlinedTextField(
+                        value = state.newCustomerAddress,
+                        onValueChange = { vm.setNewCustomerAddress(it) },
+                        label = { Text("Address") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 2,
+                        shape = RoundedCornerShape(10.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+                    )
+                    state.newCustomerError?.let {
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick  = { vm.createCustomer() },
-                    enabled  = state.newCustomerName.isNotBlank() && !state.creatingCustomer,
+                    enabled  = !state.creatingCustomer,
                     colors   = ButtonDefaults.buttonColors(containerColor = Primary)
                 ) {
                     if (state.creatingCustomer)
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     else
-                        Text("သိမ်းဆည်းမည်", fontWeight = FontWeight.Bold)
+                        Text("Save", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

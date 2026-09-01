@@ -766,6 +766,79 @@ interface ApiService {
         @Body body: ServiceJobPayDueRequest
     ): Response<ApiResponse<ServiceJobDTO>>
 
+    @GET("service-jobs/{id}/team")
+    suspend fun getServiceJobTeam(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int
+    ): Response<ApiResponse<TeamSnapshotDTO>>
+
+    @POST("service-jobs/{id}/team/assignments")
+    suspend fun assignServiceJobTechnician(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: AssignmentRequest
+    ): Response<ApiResponse<AssignmentDTO>>
+
+    @PUT("service-jobs/{id}/team/assignments/{assignmentId}")
+    suspend fun updateServiceJobAssignment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("assignmentId") assignmentId: Int,
+        @Body body: AssignmentRequest
+    ): Response<ApiResponse<AssignmentDTO>>
+
+    @DELETE("service-jobs/{id}/team/assignments/{assignmentId}")
+    suspend fun cancelServiceJobAssignment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("assignmentId") assignmentId: Int
+    ): Response<ApiResponse<Void>>
+
+    @POST("service-jobs/{id}/team/assignments/{assignmentId}/accept")
+    suspend fun acceptServiceJobAssignment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("assignmentId") assignmentId: Int
+    ): Response<ApiResponse<AssignmentDTO>>
+
+    @POST("service-jobs/{id}/team/assignments/{assignmentId}/reject")
+    suspend fun rejectServiceJobAssignment(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("assignmentId") assignmentId: Int,
+        @Body body: AssignmentDecisionRequest? = null
+    ): Response<ApiResponse<AssignmentDTO>>
+
+    @POST("service-jobs/{id}/team/assignments/{assignmentId}/work")
+    suspend fun recordServiceJobWork(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("assignmentId") assignmentId: Int,
+        @Body body: AssignmentActionRequest
+    ): Response<ApiResponse<AssignmentDTO>>
+
+    @POST("service-jobs/{id}/team/handovers")
+    suspend fun requestServiceJobHandover(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: HandoverRequest
+    ): Response<ApiResponse<HandoverDTO>>
+
+    @POST("service-jobs/{id}/team/handovers/{handoverId}/accept")
+    suspend fun acceptServiceJobHandover(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("handoverId") handoverId: Int
+    ): Response<ApiResponse<HandoverDTO>>
+
+    @POST("service-jobs/{id}/team/handovers/{handoverId}/reject")
+    suspend fun rejectServiceJobHandover(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("handoverId") handoverId: Int,
+        @Body body: AssignmentDecisionRequest? = null
+    ): Response<ApiResponse<HandoverDTO>>
+
     @GET("reports/staff")
     suspend fun getStaffReport(
         @Header("Authorization") auth: String,

@@ -4,8 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
-import org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse;
-
 import java.time.LocalDate;
 
 @Entity
@@ -31,10 +29,6 @@ public class ProductSerial {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private Warehouse warehouse;
 
     @Column(name = "warranty_months")
     private Integer warrantyMonths;

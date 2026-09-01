@@ -49,6 +49,8 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
+    LaunchedEffect(Unit) { vm.loadCustomers() }
+
     var showStaffSheet    by rememberSaveable { mutableStateOf(false) }
     var showLocationSheet by rememberSaveable { mutableStateOf(false) }
     var showLineItemSheet by rememberSaveable { mutableStateOf(-1) }

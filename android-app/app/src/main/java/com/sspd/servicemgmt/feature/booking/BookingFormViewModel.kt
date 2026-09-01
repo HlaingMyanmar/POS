@@ -14,6 +14,7 @@ import com.sspd.servicemgmt.core.network.CustomerDTO
 import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.network.ServiceItemDTO
 import com.sspd.servicemgmt.core.network.ShelfLocationDTO
+import com.sspd.servicemgmt.core.realtime.onDataEvent
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,23 @@ class BookingFormViewModel(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    init { loadDependencies() }
+    init {
+        loadDependencies()
+        onDataEvent("Customer") { loadCustomers() }
+    }
+
+    fun loadCustomers() {
+        viewModelScope.launch {
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val customers = ApiClient.service.getCustomers(token).body()?.data ?: emptyList()
+                _uiState.update { s ->
+                    val selected = s.selectedCustomer?.id?.let { id -> customers.find { it.id == id } } ?: s.selectedCustomer
+                    s.copy(customers = customers, selectedCustomer = selected)
+                }
+            } catch (_: Exception) { }
+        }
+    }
 
     private fun loadDependencies() {
         viewModelScope.launch {
@@ -121,31 +138,43 @@ class BookingFormViewModel(
     fun selectCustomer(c: CustomerDTO) = _uiState.update { it.copy(selectedCustomer = c, customerQuery = c.name) }
 
     fun showNewCustomerDialog() = _uiState.update {
-        it.copy(showNewCustomerDialog = true, newCustomerName = it.customerQuery, newCustomerPhone = "")
+        it.copy(showNewCustomerDialog = true, newCustomerName = it.customerQuery, newCustomerPhone = "", newCustomerAddress = "", newCustomerError = null)
     }
-    fun dismissNewCustomerDialog() = _uiState.update { it.copy(showNewCustomerDialog = false) }
-    fun setNewCustomerName(v: String)  = _uiState.update { it.copy(newCustomerName = v) }
+    fun dismissNewCustomerDialog() = _uiState.update { if (it.creatingCustomer) it else it.copy(showNewCustomerDialog = false, newCustomerError = null) }
+    fun setNewCustomerName(v: String)  = _uiState.update { it.copy(newCustomerName = v, newCustomerError = null) }
     fun setNewCustomerPhone(v: String) = _uiState.update { it.copy(newCustomerPhone = v) }
+    fun setNewCustomerAddress(v: String) = _uiState.update { it.copy(newCustomerAddress = v) }
 
     fun createCustomer() {
         val s = _uiState.value
-        if (s.newCustomerName.isBlank()) return
+        if (s.newCustomerName.isBlank()) {
+            _uiState.update { it.copy(newCustomerError = "Name is required") }
+            return
+        }
         viewModelScope.launch {
-            _uiState.update { it.copy(creatingCustomer = true) }
+            _uiState.update { it.copy(creatingCustomer = true, newCustomerError = null) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = ApiClient.service.createCustomer(
                     token,
-                    CustomerDTO(name = s.newCustomerName.trim(), phone = s.newCustomerPhone.ifBlank { null })
+                    CustomerDTO(
+                        name = s.newCustomerName.trim(),
+                        phone = s.newCustomerPhone.trim().ifBlank { null },
+                        address = s.newCustomerAddress.trim().ifBlank { null }
+                    )
                 )
                 val created = res.body()?.data
                 if (res.isSuccessful && created != null) {
                     _uiState.update { it.copy(
-                        customers            = it.customers + created,
+                        customers            = if (it.customers.any { c -> c.id == created.id }) it.customers else it.customers + created,
                         selectedCustomer     = created,
                         customerQuery        = created.name,
                         showNewCustomerDialog = false,
-                        creatingCustomer     = false
+                        newCustomerName      = "",
+                        newCustomerPhone     = "",
+                        newCustomerAddress   = "",
+                        creatingCustomer     = false,
+                        newCustomerError     = null
                     ) }
                 } else {
                     _uiState.update { it.copy(creatingCustomer = false, saveError = res.body()?.message ?: "ဖောက်သည် မသိမ်းနိုင်ပါ") }
@@ -338,7 +367,9 @@ class BookingFormViewModel(
         val showNewCustomerDialog: Boolean                = false,
         val newCustomerName:       String                 = "",
         val newCustomerPhone:      String                 = "",
-        val creatingCustomer:      Boolean                = false
+        val newCustomerAddress:    String                 = "",
+        val creatingCustomer:      Boolean                = false,
+        val newCustomerError:      String?                = null
     )
 }
 

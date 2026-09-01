@@ -30,7 +30,6 @@ public class DataEventAspect {
               "&& !within(org.sspd.servicemgmt.auditoptions..*) " +
               "&& !within(org.sspd.servicemgmt.jwt..*) " +
               "&& !within(org.sspd.servicemgmt.chatoptions..*) " +
-              "&& !within(org.sspd.servicemgmt.bookingoptions.service.BookingAlertService) " +
               "&& !within(org.sspd.servicemgmt.dataevent..*)")
     public void mutatingServices() {}
 
@@ -63,7 +62,11 @@ public class DataEventAspect {
                                     || n.startsWith("cancel"))                           return "DELETE";
         if (n.startsWith("pay")    || n.startsWith("mark")   || n.startsWith("approve")
                 || n.startsWith("complete") || n.startsWith("process")
-                || n.startsWith("reverse")  || n.startsWith("settle"))                  return "ACTION";
+                || n.startsWith("reverse")  || n.startsWith("settle") || n.startsWith("convert")
+                || n.startsWith("assign")   || n.startsWith("accept")  || n.startsWith("reject")
+                || n.startsWith("request")  || n.startsWith("record")  || n.startsWith("deliver")
+                || n.startsWith("notify")   || n.startsWith("archive") || n.startsWith("set")
+                || n.startsWith("import"))                  return "ACTION";
         return null;
     }
 

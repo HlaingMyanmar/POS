@@ -1,16 +1,20 @@
 package org.sspd.servicemgmt.exceptionhandler;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.sspd.servicemgmt.api.ApiResponse;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -92,6 +96,34 @@ public class GlobalExceptionHandler {
                 System.currentTimeMillis()
         );
         return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * SockJS fallback transports establish their own response content type (for example
+     * application/javascript or text/event-stream) and may already have committed the
+     * response when a write fails. Returning our normal JSON ErrorResponse here causes a
+     * second conversion failure and hides the original transport error.
+     */
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public void handleMessageNotWritable(
+            HttpMessageNotWritableException ex,
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) throws IOException {
+        String requestUri = request.getRequestURI();
+        boolean socketTransport = requestUri.startsWith("/ws-clinic/")
+                || requestUri.startsWith("/ws-native/");
+
+        if (response.isCommitted() || socketTransport) {
+            log.debug("Skipping JSON error rendering for WebSocket transport {}", requestUri, ex);
+            if (!response.isCommitted()) {
+                response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            }
+            return;
+        }
+
+        log.error("Failed to serialize response for {}", requestUri, ex);
+        response.sendError(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Response serialization failed");
     }
 
     @ExceptionHandler(RuntimeException.class)

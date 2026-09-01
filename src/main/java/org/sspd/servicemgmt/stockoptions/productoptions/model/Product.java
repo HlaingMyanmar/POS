@@ -72,7 +72,7 @@ public class Product {
     private Integer stockQty = 0;
 
     @Builder.Default
-    @Column(name = "quarantined_qty", nullable = false)
+        @Column(name = "quarantined_qty", nullable = false)
     private Integer quarantinedQty = 0;
 
     @Builder.Default
@@ -83,22 +83,30 @@ public class Product {
     @Column(name = "warranty_months")
     private Integer warrantyMonths = 0;
 
-    @Column(name = "warranty_terms", length = 255)
-    private String warrantyTerms;
-
     @Column(name = "photo_base64", columnDefinition = "LONGTEXT")
     private String photoBase64;
+
+    @Column(name = "image_path", length = 500)
+    private String imagePath;
+
+    @Column(name = "thumbnail_path", length = 500)
+    private String thumbnailPath;
+
+    @Column(name = "image_mime_type", length = 100)
+    private String imageMimeType;
+
+    @Column(name = "original_file_name", length = 255)
+    private String originalFileName;
+
+    @Column(name = "image_width")
+    private Integer imageWidth;
+
+    @Column(name = "image_height")
+    private Integer imageHeight;
 
     @Builder.Default
     @Column(name = "archived", nullable = false)
     private Boolean archived = Boolean.FALSE;
-
-    @Column(name = "warehouse_name", length = 120)
-    private String warehouseName;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id")
-    private org.sspd.servicemgmt.stockoptions.warehouseoptions.model.Warehouse warehouse;
 
     @Column(name = "shelf_location", length = 120)
     private String shelfLocation;

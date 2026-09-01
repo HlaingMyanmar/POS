@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8" />
+<title>SSPD Ubuntu VPS Deployment Guide</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    color: #0f172a;
+    font-family: "Pyidaungsu", "Myanmar Text", "Segoe UI", sans-serif;
+    font-size: 11.5pt;
+    line-height: 1.55;
+    background: #fff;
+  }
+  .cover {
+    page-break-after: always;
+    min-height: 250mm;
+    padding: 18mm 8mm 12mm;
+    background: linear-gradient(165deg, #0b1f3a 0%, #123056 55%, #0e7490 100%);
+    color: #fff;
+    border-radius: 0;
+  }
+  .eyebrow {
+    letter-spacing: .18em;
+    font-size: 9pt;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    font-family: "Segoe UI", sans-serif;
+  }
+  .cover h1 {
+    font-size: 28pt;
+    line-height: 1.25;
+    margin: 18px 0 10px;
+    font-weight: 700;
+  }
+  .cover p.lead { font-size: 13pt; color: #e2e8f0; max-width: 150mm; }
+  .meta-card {
+    margin-top: 28mm;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 14px;
+    padding: 16px 20px;
+  }
+  .meta-card table { width: 100%; border-collapse: collapse; color: #fff; }
+  .meta-card td { padding: 6px 0; font-size: 11pt; vertical-align: top; }
+  .meta-card td:first-child { width: 42mm; color: #7dd3fc; }
+  .badge {
+    display: inline-block;
+    background: #22c55e;
+    color: #052e16;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 8.5pt;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  h2 {
+    color: #0b1f3a;
+    font-size: 16pt;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 3px solid #0e7490;
+  }
+  h3 { color: #155e75; font-size: 12.5pt; margin: 16px 0 6px; }
+  p { margin: 0 0 8px; }
+  .section { page-break-inside: avoid; margin-bottom: 14px; }
+  .page { page-break-after: always; padding-top: 2mm; }
+  .page:last-child { page-break-after: auto; }
+  .arch {
+    background: #0b1f3a;
+    color: #e0f2fe;
+    font-family: Consolas, "Segoe UI", monospace;
+    font-size: 10pt;
+    padding: 12px 14px;
+    border-radius: 10px;
+    text-align: center;
+    letter-spacing: .02em;
+  }
+  pre, .cmd {
+    font-family: Consolas, "Cascadia Mono", "Segoe UI", monospace;
+    font-size: 9.4pt;
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 10px 12px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.45;
+  }
+  .cmd { border-left: 5px solid #22d3ee; }
+  ol.steps { padding-left: 22px; }
+  ol.steps li { margin: 0 0 7px; }
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10.5pt;
+    margin: 8px 0 12px;
+  }
+  table.grid th, table.grid td {
+    border: 1px solid #cbd5e1;
+    padding: 7px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.grid th { background: #0b1f3a; color: #fff; font-family: "Segoe UI", sans-serif; }
+  table.grid tr:nth-child(even) td { background: #f8fafc; }
+  .note, .warn, .ok {
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 8px 0 12px;
+  }
+  .note { background: #ecfeff; border: 1px solid #67e8f9; }
+  .warn { background: #fff7ed; border: 1px solid #fdba74; }
+  .ok { background: #ecfdf5; border: 1px solid #6ee7b7; }
+  .label {
+    font-family: "Segoe UI", sans-serif;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .note .label { color: #0e7490; }
+  .warn .label { color: #c2410c; }
+  .ok .label { color: #047857; }
+  ul.check { list-style: none; padding: 0; }
+  ul.check li { padding: 4px 0 4px 22px; position: relative; }
+  ul.check li:before {
+    content: "☐";
+    position: absolute;
+    left: 0;
+    color: #0e7490;
+    font-family: "Segoe UI", sans-serif;
+  }
+  .toc a { color: #0b1f3a; text-decoration: none; }
+  .toc td { padding: 5px 0; border-bottom: 1px dotted #cbd5e1; }
+  .toc td.num { width: 10mm; color: #0e7490; font-weight: 700; font-family: "Segoe UI", sans-serif; }
+  footer.pagefoot {
+    display: none;
+  }
+  .small { font-size: 9.5pt; color: #475569; }
+  code { font-family: Consolas, monospace; font-size: 9.5pt; background: #e2e8f0; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">SSPD Service Management · Production Runbook</div>
+  <h1>Ubuntu VPS<br/>Spring Boot Deployment Guide</h1>
+  <p class="lead">
+    VPS စတင်ပြင်ဆင်ခြင်းမှ SSH, Java 17, MySQL, .env, WAR, systemd, Nginx,
+    Domain/DNS, SSL, WAR update, log, rollback နှင့် troubleshooting အထိ
+    အဆင့်လိုက် မှတ်တမ်း။
+  </p>
+  <div class="meta-card">
+    <table>
+      <tr><td>Document</td><td>SSPD Ubuntu VPS Deployment Guide</td></tr>
+      <tr><td>Architecture</td><td>Internet → HTTPS 443 Nginx → HTTP 127.0.0.1:8080 Spring Boot → MySQL</td></tr>
+      <tr><td>Current VPS</td><td>118.27.151.89 · SSH key file <code style="background:transparent;color:#7dd3fc">2026728195230.pem</code></td></tr>
+      <tr><td>WAR on server</td><td>/opt/sspd/pos.war · systemd unit <code style="background:transparent;color:#7dd3fc">sspd</code></td></tr>
+      <tr><td>Date</td><td>29 August 2026</td></tr>
+      <tr><td>Secrets policy</td><td><span class="badge">NO PASSWORDS / JWT / PRIVATE KEYS</span></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="page">
+  <h2>၁။ ဘာတွေ ပြီးပြီလဲ / ဘာကျန်သလဲ</h2>
+  <table class="grid">
+    <tr><th>အဆင့်</th><th>အခြေအနေ</th><th>မှတ်ချက်</th></tr>
+    <tr><td>PEM key ဖိုင်</td><td>လုပ်ထားပြီး</td><td><code>D:\ssh\2026728195230.pem</code> — နှိပ်ဖွင့်စရာ မလို</td></tr>
+    <tr><td>SSH ဝင်ခြင်း</td><td>ပြီးနိုင်</td><td><code>root@118-27-151-89:~#</code> ပေါ်ရင် ဝင်ပြီး</td></tr>
+    <tr><td>WAR တင်ခြင်း</td><td>တင်ပြီးဟု ယူဆ</td><td>တင်ပြီး <code>chown</code> + <code>restart</code> လုပ်ရသေးသည်</td></tr>
+    <tr><td>Domain DNS A Record</td><td>SSH နဲ့ မဆိုင်</td><td>IP နဲ့ ဝင်နိုင်ရုံနှင့် domain မပြီးသေး</td></tr>
+    <tr><td>HTTPS / SSL</td><td>DNS ပြီးမှ</td><td>A Record မှန်ပြီးမှ Certbot ရနိုင်သည်</td></tr>
+  </table>
+
+  <div class="warn">
+    <span class="label">PEM ဖိုင် — ဘာနှိပ်ရမှာလဲ</span>
+    <code>.pem</code> သည် စာရွက်စာတမ်း မဟုတ်။ Windows မှာ နှစ်ချက်နှိပ်ပြီး Word/Notepad ဖွင့်ရန် မဟုတ်ပါ။
+    PowerShell သို့မဟုတ် Windows Terminal ဖွင့်ပြီး အောက်က SSH command ကို ရိုက်ပါ။ Key ကို Cursor/IDE ထဲ ဆွဲထည့်ရန်လည်း မလိုပါ။
+  </div>
+
+  <h3>SSH ဝင်ရန် (Windows)</h3>
+  <div class="cmd">ssh -i "D:\ssh\2026728195230.pem" root@118.27.151.89</div>
+  <div class="ok">
+    <span class="label">ဝင်ပြီးကြောင်း</span>
+    ဒီ prompt ပေါ်ရင် VPS ထဲ ရောက်ပြီးပါပြီ။
+    <div class="cmd" style="margin-top:8px">root@118-27-151-89:~#</div>
+  </div>
+  <p class="small">ပထမဆုံးအကြိမ် <code>Are you sure you want to continue connecting</code> မေးရင် <code>yes</code> ရိုက်ပါ။ Permission denied ဆိုရင် key path နှင့် <code>icacls</code> ကြည့်ပါ။</p>
+</div>
+
+<div class="page">
+  <h2>၂။ Domain DNS A Record ပြီးပြီလား</h2>
+  <p><b>မပြီးသေးဟု ယူဆရသည် — SSH အောင်မြင်ရုံနှင့် DNS မပြီးပါ။</b></p>
+  <p>SSH သည် <b>IP address</b> <code>118.27.151.89</code> သို့ တိုက်ရိုက်ဝင်ခြင်း ဖြစ်သည်။ Domain (ဥပမာ <code>your-domain.com</code>) က အဲဒီ IP ကို ညွှန်မှသာ ဘရောက်ဇာတွင် အမည်ဖြင့် ဖွင့်နိုင်ပြီး SSL လက်မှတ် ရနိုင်သည်။</p>
+
+  <h3>Registrar / DNS panel တွင် ထည့်ရန်</h3>
+  <table class="grid">
+    <tr><th>Type</th><th>Name / Host</th><th>Value</th><th>TTL</th></tr>
+    <tr><td>A</td><td>@ (root)</td><td>118.27.151.89</td><td>300 သို့မဟုတ် Auto</td></tr>
+    <tr><td>A</td><td>www</td><td>118.27.151.89</td><td>300 သို့မဟုတ် Auto</td></tr>
+  </table>
+  <div class="note">
+    <span class="label">နှိပ်ရမည်မှာ</span>
+    Domain ဝယ်ထားသော ဆိုက် (Namecheap, GoDaddy, Cloudflare, ပြည်တွင်း registrar) → DNS / Manage Records → <b>Add record</b> → Type <b>A</b> → Value တွင် VPS IP။
+    PEM ဖိုင်ကို နှိပ်ရန် မဟုတ်ပါ။
+  </div>
+
+  <h3>ပြီး/မပြီး စစ်ရန် (Windows PowerShell)</h3>
+  <div class="cmd">nslookup your-domain.com
+ping your-domain.com</div>
+  <p>Address က <code>118.27.151.89</code> ပြမှ A Record မှန်သည်။ မပြသေးရင် DNS ပျံ့နှံ့ချိန် စောင့်ပါ (မကြာခဏ ၅–၃၀ မိနစ်)။</p>
+  <p>VPS ထဲမှ စစ်ရန်:</p>
+  <div class="cmd">dig +short your-domain.com
+curl -I http://127.0.0.1:8080</div>
+</div>
+
+<div class="page">
+  <h2>၃။ စနစ်ပုံစံ (Architecture)</h2>
+  <div class="arch">Internet  →  HTTPS :443 Nginx  →  HTTP 127.0.0.1:8080 Spring Boot WAR  →  MySQL ser_db</div>
+  <ul>
+    <li>Production တွင် Spring Boot <code>SSL_ENABLED=false</code> — certificate ကို Nginx က ကိုင်သည်။</li>
+    <li>WAR ထဲတွင် database password, JWT, keystore မထည့်။ <code>/opt/sspd/.env</code> တွင်သာ ထားသည်။</li>
+    <li>ပထမဆုံး user မရှိသေးရင် ဝဘ်တွင် <b>Create Administrator</b> ဖောင် ပေါ်သည်။</li>
+  </ul>
+
+  <h2>၄။ ပထမဆုံး VPS ပြင်ဆင်ခြင်း</h2>
+  <p>Ubuntu ဝင်ပြီးနောက် (root prompt)။</p>
+  <h3>Update + Java 17 + Nginx + Certbot + MySQL client</h3>
+  <div class="cmd">apt update && apt -y upgrade
+apt -y install openjdk-17-jdk nginx mysql-server certbot python3-certbot-nginx unzip
+java -version</div>
+  <p><code>openjdk version "17...</code> မြင်ရမှ မှန်သည်။</p>
+
+  <h3>MySQL database</h3>
+  <div class="cmd">mysql -u root</div>
+  <div class="cmd">CREATE DATABASE ser_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'sspd'@'localhost' IDENTIFIED BY 'YOUR_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON ser_db.* TO 'sspd'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;</div>
+  <div class="warn"><span class="label">Secret</span> တကယ့် password ကို ဤမှတ်တမ်းတွင် မရေးပါ။ ကိုယ်ပိုင် စာအုပ် / password manager တွင်သာ သိမ်းပါ။</div>
+</div>
+
+<div class="page">
+  <h2>၅။ App user, ဖိုလ်ဒါ, .env</h2>
+  <div class="cmd">useradd --system --home /opt/sspd --shell /usr/sbin/nologin sspd
+mkdir -p /opt/sspd/apk /opt/sspd/Backup
+nano /opt/sspd/.env
+chmod 600 /opt/sspd/.env
+chown -R sspd:sspd /opt/sspd</div>
+
+  <h3>.env ထဲ ထည့်ရမည့် အမည်များ (တန်ဖိုးအစစ် မထည့်)</h3>
+  <table class="grid">
+    <tr><th>Variable</th><th>Production ဥပမာ</th></tr>
+    <tr><td>SPRING_PROFILES_ACTIVE</td><td>prod</td></tr>
+    <tr><td>DB_URL</td><td>jdbc:mysql://localhost:3306/ser_db?rewriteBatchedStatements=true&amp;useServerPrepStmts=false</td></tr>
+    <tr><td>DB_USERNAME</td><td>sspd</td></tr>
+    <tr><td>DB_PASSWORD</td><td>CHANGE_ME</td></tr>
+    <tr><td>JWT_SECRET</td><td>openssl rand -base64 32 ဖြင့် ထုတ်ပါ</td></tr>
+    <tr><td>SSL_ENABLED</td><td>false</td></tr>
+    <tr><td>APP_BASE_URL</td><td>https://your-domain.com</td></tr>
+    <tr><td>APP_APK_STORAGE_DIR</td><td>/opt/sspd/apk</td></tr>
+    <tr><td>BACKUP_ROOT_DIRECTORY</td><td>/opt/sspd/Backup</td></tr>
+    <tr><td>CORS_ALLOWED_ORIGINS</td><td>https://your-domain.com</td></tr>
+    <tr><td>SERVER_ADDRESS</td><td>127.0.0.1</td></tr>
+    <tr><td>SERVER_PORT</td><td>8080</td></tr>
+    <tr><td>BOOTSTRAP_ADMIN_ENABLED</td><td>false (UI က admin ဆောက်မည်)</td></tr>
+  </table>
+  <p>JWT ထုတ်ရန် VPS ပေါ်တွင်:</p>
+  <div class="cmd">openssl rand -base64 32</div>
+</div>
+
+<div class="page">
+  <h2>၆။ WAR တင်ခြင်း (Windows → VPS)</h2>
+  <p>PC ပေါ်က ဖိုင်: <code>C:\Users\SSPD Customer\Documents\POS\target\pos-0.0.1-SNAPSHOT.war</code></p>
+  <p>Windows PowerShell (VPS မဝင်ခင်):</p>
+  <div class="cmd">scp -i "D:\ssh\2026728195230.pem" "C:\Users\SSPD Customer\Documents\POS\target\pos-0.0.1-SNAPSHOT.war" root@118.27.151.89:/opt/sspd/pos.war</div>
+  <div class="note">
+    <span class="label">အမည်</span>
+    Server ပေါ်တွင် <code>/opt/sspd/pos.war</code> ဟု သိမ်းသည်။ systemd <code>ExecStart</code> သည် ဤအမည်နှင့် <b>တူရမည်</b>။
+    Repo နမူနာ <code>deploy/sspd.service</code> က <code>pos-0.0.1-SNAPSHOT.war</code> ဖြစ်နေရင် server unit ကို <code>pos.war</code> သို့ ပြင်ထားပါ။
+  </div>
+
+  <h2>၇။ WAR အသစ်တင်ပြီးနောက် ချက်ချင်း လုပ်ရန်</h2>
+  <p>VPS ထဲ (<code>root@118-27-151-89:~#</code>) ဤ command နှစ်ခု:</p>
+  <div class="cmd">sudo chown sspd:sspd /opt/sspd/pos.war
+sudo systemctl restart sspd</div>
+  <p>စစ်ရန်:</p>
+  <div class="cmd">sudo systemctl status sspd</div>
+  <div class="ok"><span class="label">အောင်မြင်</span><code>active (running)</code> ပေါ်ရင် ဤအဆင့် ပြီးပြီ။ <code>q</code> နှိပ်ပြီး status မှ ထွက်ပါ။</div>
+</div>
+
+<div class="page">
+  <h2>၈။ systemd service</h2>
+  <p>ဖိုင်: <code>/etc/systemd/system/sspd.service</code></p>
+  <div class="cmd">[Unit]
+Description=SSPD Service Management
+After=network.target mysql.service mariadb.service
+
+[Service]
+Type=simple
+User=sspd
+Group=sspd
+WorkingDirectory=/opt/sspd
+EnvironmentFile=/opt/sspd/.env
+ExecStart=/usr/bin/java -Dspring.profiles.active=prod -jar /opt/sspd/pos.war
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target</div>
+  <div class="cmd">systemctl daemon-reload
+systemctl enable --now sspd
+systemctl start sspd
+systemctl stop sspd
+systemctl restart sspd
+systemctl status sspd</div>
+
+  <h2>၉။ Log ကြည့်နည်း</h2>
+  <p>WAR အသစ်တင်ပြီး error ရှိ/မရှိ စစ်ရန် အကောင်းဆုံး:</p>
+  <div class="cmd">sudo journalctl -u sspd -f</div>
+  <p>Log ဆက်တိုက်ပေါ်မည်။ ပြန်ထွက်ရန် <b>Ctrl + C</b>။</p>
+  <p>နောက်ဆုံး ၁၀၀ ကြောင်း:</p>
+  <div class="cmd">sudo journalctl -u sspd -n 100</div>
+</div>
+
+<div class="page">
+  <h2>၁၀။ Nginx + SSL</h2>
+  <p>DNS A Record မှန်ပြီးမှ ဤအဆင့်ကို လုပ်ပါ။ <code>YOUR_DOMAIN</code> နေရာတွင် တကယ့် domain ထည့်ပါ။</p>
+  <div class="cmd">apt -y install nginx
+nano /etc/nginx/sites-available/sspd</div>
+  <p>အဓိက အချက်များ:</p>
+  <ul>
+    <li>Port 80 → HTTPS သို့ ပြန်ညွှန်း</li>
+    <li>Port 443 → <code>proxy_pass http://127.0.0.1:8080</code></li>
+    <li><code>/ws-clinic/</code> နှင့် <code>/ws-native/</code> တွင် WebSocket upgrade</li>
+    <li><code>client_max_body_size 200M;</code> (APK upload)</li>
+  </ul>
+  <div class="cmd">ln -sf /etc/nginx/sites-available/sspd /etc/nginx/sites-enabled/sspd
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
+certbot --nginx -d YOUR_DOMAIN -d www.YOUR_DOMAIN</div>
+  <div class="warn">
+    <span class="label">Certbot မအောင်ရင်</span>
+    အများအားဖြင့် DNS A Record မမှန်ခြင်း သို့မဟုတ် port 80 ကို firewall ပိတ်ထားခြင်း ဖြစ်သည်။
+    <code>ufw allow 80,443/tcp</code> နှင့် <code>nslookup</code> ပြန်စစ်ပါ။
+  </div>
+</div>
+
+<div class="page">
+  <h2>၁၁။ ပထမဆုံး Administrator</h2>
+  <p>Database ထဲ user မရှိသေးရင် ဘရောက်ဇာဖွင့်တာနှင့် <b>Create Administrator</b> ဖောင် ပေါ်သည်။ Username, email, password (အနည်းဆုံး ၈ လုံး) ထည့်ပါ။ ပြီးမှ login။</p>
+  <p>User ရှိပြီးသား <code>ser_db</code> ဆိုရင် ဤဖောင် မပေါ်ပါ။ အရင်အကောင့်နှင့် ဝင်ပါ။</p>
+
+  <h2>၁၂။ Rollback</h2>
+  <div class="cmd">cp /opt/sspd/pos.war /opt/sspd/pos.war.bak-$(date +%F-%H%M)
+# အဟောင်း ပြန်တင်
+cp /opt/sspd/pos.war.bak-YYYY-MM-DD-HHMM /opt/sspd/pos.war
+chown sspd:sspd /opt/sspd/pos.war
+systemctl restart sspd</div>
+  <p>App ပြန်ဆွဲခြင်းက database schema ကို ပြန်မဆွဲပါ (Flyway)။</p>
+
+  <h2>၁၃။ MySQL ဝင်နည်း</h2>
+  <div class="cmd">mysql -u sspd -p ser_db</div>
+  <p>Password မေးရင် <code>.env</code> ထဲ <code>DB_PASSWORD</code> ကို သုံးပါ။ ဇယားကြည့်ရန်:</p>
+  <div class="cmd">SHOW TABLES;
+SELECT id, username, email FROM users LIMIT 10;</div>
+</div>
+
+<div class="page">
+  <h2>၁၄။ Troubleshooting</h2>
+  <table class="grid">
+    <tr><th>လက္ခဏာ</th><th>စစ်ရန်</th></tr>
+    <tr><td>SSH Permission denied</td><td>pem path, ဖိုင်ခွင့်၊ user က root ဟုတ်/မဟုတ်</td></tr>
+    <tr><td>sspd failed / inactive</td><td><code>journalctl -u sspd -n 100</code> — .env, Java, WAR path, DB</td></tr>
+    <tr><td>keystore / SSL error</td><td><code>SSL_ENABLED=false</code> ဖြစ်ရမည်</td></tr>
+    <tr><td>JWT / CHANGE_ME</td><td>ထုတ်ပြီးသား JWT_SECRET ထည့်ပါ</td></tr>
+    <tr><td>Flyway / validate error</td><td>DB နှင့် migration မကိုက်။ clean မလုပ်ရ</td></tr>
+    <tr><td>Domain မရောက်</td><td>A Record၊ TTL၊ <code>nslookup</code></td></tr>
+    <tr><td>502 Bad Gateway</td><td>Java မပြေး / 8080 မဖွင့် — status + journalctl</td></tr>
+    <tr><td>APK upload fail</td><td><code>/opt/sspd/apk</code> ရှိ၊ sspd ပိုင်ဆိုင်၊ 200M</td></tr>
+  </table>
+
+  <h2>၁၅။ အမြန် checklist (VPS အသစ်)</h2>
+  <ul class="check">
+    <li>PEM ကို D:\ssh တွင် သိမ်းပြီး SSH ဝင်နိုင်</li>
+    <li>Java 17, Nginx, MySQL တပ်ပြီး</li>
+    <li>ser_db နှင့် DB user ဖန်တီးပြီး</li>
+    <li>/opt/sspd/.env ပြည့်ပြီး chmod 600</li>
+    <li>pos.war တင်၊ chown sspd:sspd</li>
+    <li>systemctl enable --now sspd → active (running)</li>
+    <li>DNS A Record @ နှင့် www → VPS IP</li>
+    <li>Nginx + certbot HTTPS</li>
+    <li>APP_BASE_URL / CORS ကို https://domain</li>
+    <li>Create Administrator သို့မဟုတ် ရှိပြီးသား admin login</li>
+    <li>journalctl -u sspd -f တွင် error မရှိ</li>
+  </ul>
+
+  <div class="note">
+    <span class="label">နောက် VPS အသစ်</span>
+    ဤစာအုပ်ကို reference အဖြစ် သုံးပါ။ IP, domain, pem ဖိုင်အမည်သာ လဲပါ။ Password နှင့် JWT ကို စက်အသစ်တိုင်း အသစ်ထုတ်ပါ။
+  </div>
+  <p class="small">SSPD · Confidential operations guide · Secrets are never stored in this PDF.</p>
+</div>
+
+</body>
+</html>

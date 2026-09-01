@@ -669,6 +669,12 @@ fun AppNavigation() {
                     screen(Screen.JournalEntries.route) { JournalEntryScreen      { nav.popBackStack() } }
                     screen(Screen.Chat.route)           { ChatScreen              { nav.popBackStack() } }
                     screen(Screen.Account.route)        { AccountSettingsScreen   { nav.popBackStack() } }
+                    screen(Screen.Settings.route)       {
+                        SettingsSecurityScreen(
+                            onBack = { nav.popBackStack() },
+                            onNavigate = { nav.navigate(it) }
+                        )
+                    }
                     screen(Screen.About.route)          { AboutScreen             { nav.popBackStack() } }
                     screen(Screen.SoftwareUpdate.route) { SoftwareUpdateScreen    { nav.popBackStack() } }
                 }

@@ -8,9 +8,6 @@ import org.springframework.stereotype.Service;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
-import org.sspd.servicemgmt.bookingoptions.model.Booking;
-import org.sspd.servicemgmt.bookingoptions.model.BookingDeviceInfo;
-import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.companysettingoptions.dto.CompanySettingsDTO;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
@@ -36,7 +33,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class JasperVoucherService {
 
     private final SaleRepository saleRepository;
-    private final BookingRepository bookingRepository;
     private final ServiceJobRepository serviceJobRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final CompanySettingsService companySettingsService;
@@ -118,56 +114,6 @@ public class JasperVoucherService {
         return JasperExportManager.exportReportToPdf(print);
     }
 
-    public byte[] generateBookingReceipt(Integer bookingId) throws JRException {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NoSuchElementException("Booking not found: " + bookingId));
-
-        CompanySettingsDTO cs = companySettingsService.getSettings();
-
-        List<DeviceInfoRow> deviceInfoRows = new ArrayList<>();
-        if (booking.getDeviceInfos() != null) {
-            int i = 0;
-            for (BookingDeviceInfo di : booking.getDeviceInfos()) {
-                deviceInfoRows.add(new DeviceInfoRow(
-                        nullSafe(di.getName()),
-                        nullSafe(di.getDescription()),
-                        nullSafe(di.getStatus()),
-                        nullSafe(di.getNotice())
-                ));
-                i++;
-            }
-        }
-
-        JasperReport mainReport   = loadReport("booking_receipt");
-        JasperReport deviceReport = loadReport("device_info_subreport");
-
-        Map<String, Object> params = new HashMap<>();
-        params.put("COMPANY_NAME",    cs.getCompanyName());
-        params.put("COMPANY_ADDRESS", nullSafe(cs.getCompanyAddress()));
-        params.put("COMPANY_PHONE",   nullSafe(cs.getCompanyPhone()));
-        params.put("INVOICE_TITLE",   "DEVICE INTAKE RECEIPT");
-        params.put("FOOTER_NOTE",     nullSafe(cs.getFooterNote()));
-        params.put("INVOICE_NO",      booking.getInvoiceNo());
-        params.put("BOOKING_DATE",    booking.getBookingDate() != null ? booking.getBookingDate().format(DT_FMT) : "");
-        params.put("APPOINTMENT_DATE", booking.getAppointmentDate() != null ? booking.getAppointmentDate().format(DT_FMT) : "");
-        params.put("STATUS",          booking.getStatus() != null ? booking.getStatus().name() : "");
-        params.put("CUSTOMER_NAME",   booking.getCustomer() != null ? booking.getCustomer().getName() : "");
-        params.put("CUSTOMER_PHONE",  booking.getCustomer() != null ? nullSafe(booking.getCustomer().getPhone()) : "");
-        params.put("RECEPTIONIST",    booking.getStaff() != null ? booking.getStaff().getName() : "");
-        params.put("DEVICE_TYPE",     nullSafe(booking.getDeviceType()));
-        params.put("BRAND",           nullSafe(booking.getBrand()));
-        params.put("MODEL",           nullSafe(booking.getModel()));
-        params.put("SERIAL_NO",       nullSafe(booking.getSerialNumber()));
-        params.put("COLOR",           nullSafe(booking.getColor()));
-        params.put("ACCESSORIES",     nullSafe(booking.getAccessories()));
-        params.put("TOTAL_AMOUNT",    formatMoney(booking.getTotalAmount()));
-        params.put("REMARK",          nullSafe(booking.getRemark()));
-        params.put("DEVICE_INFO_SOURCE",   new JRBeanCollectionDataSource(deviceInfoRows));
-        params.put("DEVICE_INFO_SUBREPORT", deviceReport);
-
-        return exportToPdf(mainReport, params);
-    }
-
     public byte[] generateServiceVoucher(Integer jobId) throws JRException {
         ServiceJob job = serviceJobRepository.findById(jobId)
                 .orElseThrow(() -> new NoSuchElementException("ServiceJob not found: " + jobId));
@@ -236,23 +182,10 @@ public class JasperVoucherService {
         params.put("CASHIER_NAME",    currentCashierName());
         params.put("ESTIMATED_COST",  job.getEstimatedCost() != null ? formatMoney(job.getEstimatedCost()) : "");
         params.put("DEVICE_CONDITIONS", formatConditionsText(job.getDeviceConditions()));
-        // Accessories: entity's own value first, then booking fallback
         String accessories = nullSafe(job.getAccessories());
-        String bookingNo = "";
-        String color = "";
-        String serialNo = "";
-        if (job.getBookingId() != null) {
-            Optional<org.sspd.servicemgmt.bookingoptions.model.Booking> bookingOpt =
-                    bookingRepository.findById(job.getBookingId());
-            if (bookingOpt.isPresent()) {
-                var b = bookingOpt.get();
-                bookingNo = b.getInvoiceNo() != null ? b.getInvoiceNo() : "";
-                color     = nullSafe(b.getColor());
-                serialNo  = nullSafe(b.getSerialNumber());
-                if (accessories.isBlank()) accessories = nullSafe(b.getAccessories());
-            }
-        }
-        params.put("BOOKING_NO",  bookingNo);
+        String color = nullSafe(job.getColor());
+        String serialNo = nullSafe(job.getSerialNo());
+        params.put("BOOKING_NO",  "");
         params.put("COLOR",       color);
         params.put("SERIAL_NO",   serialNo);
         params.put("ACCESSORIES", accessories);

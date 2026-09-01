@@ -11,7 +11,7 @@ import { supplierService } from '../services/supplierapiservice';
 import { staffService } from '../services/staffapiservice';
 import { productService } from '../services/productapiservice';
 import { AppRoute, PurchaseDTO, PurchaseDetailDTO, PurchaseBudgetCheck, SupplierDTO, StaffDTO, ProductDTO, PaymentMethodDTO, PaymentTransactionDTO, PurchaseReturnDTO, ProductStockHistoryMovementDTO, ReorderSuggestionDTO } from '../types';
-import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp, Download, Loader2, ClipboardList, Ban, ScanLine, FileSpreadsheet, Upload, AlertTriangle, Copy, FileDown, Warehouse, BarChart3, History } from 'lucide-react';
+import { Plus, Trash2, Save, ShoppingCart, Hash, DollarSign, User, List, Eye, X, RefreshCw, ArrowLeft, FileText, AlertCircle, CheckCircle, Search, Filter, CreditCard, Box, Printer, Camera, Share2, ChevronDown, ChevronUp, Download, Loader2, ClipboardList, Ban, ScanLine, FileSpreadsheet, Upload, Copy, FileDown, BarChart3, History } from 'lucide-react';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
@@ -22,8 +22,6 @@ import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import Swal from 'sweetalert2';
 import { supplierPaymentApiService, SupplierPayable, SupplierPayment } from '../services/supplierpaymentapiservice';
 import { purchaseBudgetApiService, PurchaseBudgetDTO } from '../services/purchasebudgetapiservice';
-import { stockLotApiService, StockLotDTO, WarehouseBalanceDTO } from '../services/stocklotapiservice';
-import { warehouseApiService, WarehouseDTO } from '../services/warehouseapiservice';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type PurchaseDetailForm = PurchaseDetailDTO & { productSearch?: string; assignSerials?: boolean };
@@ -199,7 +197,7 @@ const suggestedCost = (p?: ProductDTO | null) => Number(p?.lastPurchaseCost ?? p
 const emptyLine = (): PurchaseDetailForm => ({
   productId: 0, qty: 1, unitCost: 0, subtotal: 0, warrantyMonths: 0,
   itemWarranties: [0], serialNumbers: [''], serialConditions: [''], serialPhotos: [''],
-  productSearch: '', assignSerials: false, batchNumber: '', expiryDate: ''
+  productSearch: '', assignSerials: false
 });
 
 const dateInput = (d: Date) =>
@@ -269,8 +267,6 @@ const PurchaseManagement: React.FC = () => {
   const hasPurchasePerm = (perm: string) => isPurchaseAdmin || (currentUser.permissions || []).includes(perm);
   const canAccessBudgets = hasPurchasePerm('CAN_ACCESS_PURCHASE_BUDGET');
   const canAccessReorder = hasPurchasePerm('CAN_ACCESS_PURCHASE_REORDER');
-  const canAccessWarehouse = hasPurchasePerm('CAN_ACCESS_PURCHASE_WAREHOUSE');
-  const canAccessExpiry = hasPurchasePerm('CAN_ACCESS_PURCHASE_EXPIRY');
   const canAccessAnalytics = hasPurchasePerm('CAN_ACCESS_PURCHASE_ANALYTICS');
   const canAccessImport = hasPurchasePerm('CAN_ACCESS_PURCHASE_IMPORT');
   const canAccessSupplierPayment = hasPurchasePerm('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE');
@@ -317,8 +313,6 @@ const PurchaseManagement: React.FC = () => {
   const [withholdingTaxAmount, setWithholdingTaxAmount] = useState<number>(0);
   const [otherCharges, setOtherCharges] = useState<number>(0);
   const [landedCostAllocationMethod, setLandedCostAllocationMethod] = useState<'VALUE' | 'QUANTITY' | 'MANUAL'>('VALUE');
-  const [warehouseName, setWarehouseName] = useState('');
-  const [warehouses, setWarehouses] = useState<WarehouseDTO[]>([]);
   const [currencyCode, setCurrencyCode] = useState('MMK');
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [attachmentName, setAttachmentName] = useState('');
@@ -330,8 +324,6 @@ const PurchaseManagement: React.FC = () => {
   const ocrImportRef=useRef<HTMLInputElement>(null);
   const [purchaseImporting,setPurchaseImporting]=useState(false);
   const [importPreview,setImportPreview]=useState<PurchaseImportPreview|null>(null);
-  const [warehousePanelOpen,setWarehousePanelOpen]=useState(false);
-  const [warehouseBalances,setWarehouseBalances]=useState<WarehouseBalanceDTO[]>([]);
   const [analyticsPanelOpen,setAnalyticsPanelOpen]=useState(false);
   const [purchaseAnalytics,setPurchaseAnalytics]=useState<PurchaseAnalytics|null>(null);
   const [purchaseTimeline,setPurchaseTimeline]=useState<PurchaseTimelineEvent[]>([]);
@@ -388,9 +380,6 @@ const PurchaseManagement: React.FC = () => {
   const [budgetPanelOpen,setBudgetPanelOpen]=useState(false);
   const [budgetSaving,setBudgetSaving]=useState(false);
   const [budgetForm,setBudgetForm]=useState<PurchaseBudgetDTO>({name:'Monthly Purchase Budget',dateFrom:getThisMonthRange().from,dateTo:getThisMonthRange().to,limitAmount:0,enforcement:'BLOCK',active:true});
-  const [expiringLots,setExpiringLots]=useState<StockLotDTO[]>([]);
-  const [expiryPanelOpen,setExpiryPanelOpen]=useState(false);
-  const [expiryDays,setExpiryDays]=useState(90);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PurchaseDTO | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -470,16 +459,14 @@ const PurchaseManagement: React.FC = () => {
   }, []);
 
   const fetchBudgets=useCallback(async()=>{if(!canAccessBudgets){setPurchaseBudgets([]);return}try{setPurchaseBudgets(await purchaseBudgetApiService.list())}catch{setPurchaseBudgets([])}},[canAccessBudgets]);
-  const fetchExpiringLots=useCallback(async(days:number)=>{if(!canAccessExpiry){setExpiringLots([]);return}try{setExpiringLots(await stockLotApiService.expiring(days))}catch{setExpiringLots([])}},[canAccessExpiry]);
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [supRes, staffRes, prodRes, payRes, whRes] = await Promise.all([
+      const [supRes, staffRes, prodRes, payRes] = await Promise.all([
         supplierService.getAll(),
         staffService.getAll(),
         productService.getAll(),
-        paymentMethodService.getAllActive(),
-        warehouseApiService.list(true).catch(() => [] as WarehouseDTO[])
+        paymentMethodService.getAllActive()
       ]);
       setSuppliers(supRes);
       setStaffs(staffRes);
@@ -488,30 +475,12 @@ const PurchaseManagement: React.FC = () => {
       if (linkedStaff) setStaffSearch(linkedStaff.name);
       setProducts(prodRes);
       setPaymentMethods(payRes);
-      setWarehouses(whRes);
-      setWarehouseName((prev) => {
-        if (prev.trim()) return prev;
-        const main = whRes.find((w) => (w.name || '').toLowerCase() === 'main' || (w.code || '').toLowerCase() === 'main');
-        return main?.name || whRes[0]?.name || '';
-      });
     } catch (error) {
       console.error('Error fetching data:', error);
     }
   }, []);
 
-  const activeWarehouses = useMemo(
-    () => warehouses.filter((w) => w.active !== false),
-    [warehouses]
-  );
-
-  const defaultWarehouseName = useCallback(() => {
-    const main = activeWarehouses.find(
-      (w) => (w.name || '').toLowerCase() === 'main' || (w.code || '').toLowerCase() === 'main'
-    );
-    return main?.name || activeWarehouses[0]?.name || '';
-  }, [activeWarehouses]);
-
-  useEffect(() => { fetchMasterData(); fetchBudgets(); fetchExpiringLots(expiryDays); }, [fetchMasterData, fetchBudgets, fetchExpiringLots, expiryDays]);
+  useEffect(() => { fetchMasterData(); fetchBudgets(); }, [fetchMasterData, fetchBudgets]);
   useRefreshOnTabActivate(fetchMasterData);
 
   useEffect(() => {
@@ -768,7 +737,6 @@ const PurchaseManagement: React.FC = () => {
     && effectivePaidAmount <= netAmount
     && !hasDuplicateSerials
     && !!purchaseDate
-    && !!warehouseName.trim()
     && (dueAmount <= 0 || !!dueDate)
     && creditOverrideValid
     && (effectivePaidAmount <= 0 || selectedPaymentMethodId > 0 || normalizedPurchasePayments.length > 0);
@@ -781,8 +749,6 @@ const PurchaseManagement: React.FC = () => {
       ? 'ဝယ်ယူမှုတာဝန်ခံ ရွေးပါ'
       : filledItemCount === 0
         ? 'ပစ္စည်း ထည့်ပါ'
-        : !warehouseName.trim()
-          ? 'ဂိုဒေါင် ရွေးပါ'
         : details.some((d) => d.productId > 0 && d.unitCost <= 0)
           ? 'ဝယ်ဈေး ဖြည့်ပါ'
           : hasDuplicateSerials
@@ -816,8 +782,7 @@ const PurchaseManagement: React.FC = () => {
     withholdingTaxAmount: safeWithholdingTaxAmount,
     otherCharges: safeOtherCharges,
     landedCostAllocationMethod,
-    warehouseName: warehouseName.trim() || undefined,
-    warehouseId: activeWarehouses.find((w) => w.name === warehouseName)?.id,
+    warehouseName: 'Main',
     currencyCode: currencyCode.trim().toUpperCase() || 'MMK',
     exchangeRate: safeExchangeRate,
     foreignNetAmount,
@@ -852,8 +817,6 @@ const PurchaseManagement: React.FC = () => {
       serialPhotos: (isSerialRequired(d.productId) || d.assignSerials)
         ? resizeStrings(d.serialPhotos || [], d.qty)
         : [],
-      batchNumber: d.batchNumber?.trim() || undefined,
-      expiryDate: d.expiryDate || undefined
     }))
   });
 
@@ -876,7 +839,6 @@ const PurchaseManagement: React.FC = () => {
     setWithholdingTaxAmount(0);
     setOtherCharges(0);
     setLandedCostAllocationMethod('VALUE');
-    setWarehouseName(defaultWarehouseName());
     setCurrencyCode('MMK');
     setExchangeRate(1);
     setAttachmentName('');
@@ -1348,7 +1310,7 @@ const PurchaseManagement: React.FC = () => {
     if(!importPreview)return;
     const valid=importPreview.rows.filter(r=>r.valid&&r.productId&&r.qty&&r.unitCost);
     if(valid.length===0){Swal.fire({icon:'error',title:'No valid rows',text:'Check the spreadsheet columns.'});return}
-    setDetails(valid.map(r=>({productId:r.productId!,qty:r.qty!,unitCost:Number(r.unitCost),subtotal:Number(r.subtotal)||r.qty!*Number(r.unitCost),warrantyMonths:0,itemWarranties:Array.from({length:r.qty!},()=>0),serialNumbers:Array.from({length:r.qty!},()=>''),serialConditions:Array.from({length:r.qty!},()=>''),serialPhotos:Array.from({length:r.qty!},()=>''),productSearch:`${r.productName||r.productCode} (${r.productCode})`,assignSerials:false,batchNumber:r.batchNumber||'',expiryDate:r.expiryDate||''})));
+    setDetails(valid.map(r=>({productId:r.productId!,qty:r.qty!,unitCost:Number(r.unitCost),subtotal:Number(r.subtotal)||r.qty!*Number(r.unitCost),warrantyMonths:0,itemWarranties:Array.from({length:r.qty!},()=>0),serialNumbers:Array.from({length:r.qty!},()=>''),serialConditions:Array.from({length:r.qty!},()=>''),serialPhotos:Array.from({length:r.qty!},()=>''),productSearch:`${r.productName||r.productCode} (${r.productCode})`,assignSerials:false})));
     setImportPreview(null);
     Swal.fire({icon:'success',title:`${valid.length} rows imported`,text:valid.some(r=>r.serialRequired)?'Serial products require serial numbers before confirmation.':'Review and save the voucher.',timer:2200,showConfirmButton:false});
   };
@@ -1409,8 +1371,6 @@ const PurchaseManagement: React.FC = () => {
           serialPhotos: Array.from({ length: qty }, () => ''),
           productSearch: `${product.name} (${product.productCode})`,
           assignSerials: false,
-          batchNumber: '',
-          expiryDate: ''
         });
       }
       if (mapped.length > 0) setDetails(mapped);
@@ -1587,7 +1547,6 @@ const PurchaseManagement: React.FC = () => {
       setWithholdingTaxAmount(Number(source.withholdingTaxAmount) || 0);
       setOtherCharges(Number(source.otherCharges) || 0);
       setLandedCostAllocationMethod(source.landedCostAllocationMethod || 'VALUE');
-      setWarehouseName(source.warehouseName || '');
       setCurrencyCode(source.currencyCode || 'MMK');
       setExchangeRate(Number(source.exchangeRate) || 1);
       setRemark(source.remark ? `Copied from ${source.purchaseCode || source.id}: ${source.remark}` : `Copied from ${source.purchaseCode || source.id}`);
@@ -1604,8 +1563,6 @@ const PurchaseManagement: React.FC = () => {
         serialPhotos: Array.from({length:d.qty},()=> ''),
         productSearch: d.productName || '',
         assignSerials: false,
-        batchNumber: d.batchNumber || '',
-        expiryDate: d.expiryDate || ''
       })));
       setShowNewVoucherForm(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1771,8 +1728,6 @@ const PurchaseManagement: React.FC = () => {
       if (d.serialNumbers?.filter(s => s).length) {
         lines.push(`   Serials: ${d.serialNumbers.filter(s => s).join(', ')}`);
       }
-      if (d.batchNumber) lines.push(`   Batch: ${d.batchNumber}`);
-      if (d.expiryDate) lines.push(`   Expiry: ${d.expiryDate}`);
     });
     lines.push(`------------------------`);
     lines.push(`Subtotal : ${fmt(purchase.totalAmount)}`);
@@ -1985,7 +1940,6 @@ const PurchaseManagement: React.FC = () => {
   const toggleBudget=async(b:PurchaseBudgetDTO)=>{if(!canManageBudgets||!b.id)return;try{await purchaseBudgetApiService.active(b.id,!b.active);await fetchBudgets()}catch(e:any){Swal.fire('Update failed',e.message||'Unable to update budget','error')}};
   const editBudget=(b:PurchaseBudgetDTO)=>setBudgetForm({...b});
   const deleteBudget=async(b:PurchaseBudgetDTO)=>{if(!canManageBudgets||!b.id)return;const ok=await Swal.fire({icon:'warning',title:'Delete budget?',text:b.name,showCancelButton:true,confirmButtonText:'Delete'});if(!ok.isConfirmed)return;try{await purchaseBudgetApiService.remove(b.id);await fetchBudgets()}catch(e:any){Swal.fire('Delete failed',e.message||'Unable to delete budget','error')}};
-  const openWarehousePanel=async()=>{if(!canAccessWarehouse){Swal.fire('ခွင့်ပြုချက် မရှိပါ','Warehouse ကြည့်ရန် CAN_ACCESS_PURCHASE_WAREHOUSE လိုအပ်သည်။','warning');return}setWarehousePanelOpen(v=>!v);if(!warehousePanelOpen){try{setWarehouseBalances(await stockLotApiService.warehouseBalances())}catch{setWarehouseBalances([])}}};
   const openAnalyticsPanel=async()=>{if(!canAccessAnalytics){Swal.fire('ခွင့်ပြုချက် မရှိပါ','Analytics ကြည့်ရန် CAN_ACCESS_PURCHASE_ANALYTICS လိုအပ်သည်။','warning');return}setAnalyticsPanelOpen(v=>!v);if(!analyticsPanelOpen){try{setPurchaseAnalytics(await purchaseApiService.getAnalytics(dateFrom,dateTo))}catch{setPurchaseAnalytics(null)}}};
 
   const filteredPurchases = (listTab === 'overdue' ? overduePurchases : purchases).filter((p) => {
@@ -2060,16 +2014,6 @@ const PurchaseManagement: React.FC = () => {
             {purchaseBudgets.length===0&&<p className="py-4 text-center text-xs text-slate-400">No purchase budgets configured.</p>}
           </section>}
 
-          {expiryPanelOpen&&canAccessExpiry&&<section className="rounded-xl border border-rose-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-black text-slate-800">Expiry / FEFO Stock Lots</h3><p className="text-[10px] text-slate-500">Sales consume tracked lots by earliest expiry date first.</p></div><div className="flex items-center gap-2"><select value={expiryDays} onChange={e=>setExpiryDays(Number(e.target.value))} className="rounded-lg border border-rose-200 px-2 py-1 text-xs"><option value={30}>30 days</option><option value={60}>60 days</option><option value={90}>90 days</option><option value={180}>180 days</option></select><button onClick={()=>setExpiryPanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div></div>
-            <div className="overflow-auto rounded-lg border border-slate-100"><table className="w-full min-w-[760px] text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Product / Batch</th><th className="px-3 py-2 text-left">Purchase</th><th className="px-3 py-2 text-left">Warehouse</th><th className="px-3 py-2 text-right">Remaining</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-center">Alert</th></tr></thead><tbody className="divide-y">{expiringLots.map(l=><tr key={l.id}><td className="px-3 py-2"><b>{l.productName}</b><span className="block text-[10px] text-slate-400">{l.productCode} / {l.batchNumber||`Lot #${l.id}`}</span></td><td className="px-3 py-2 font-mono">{l.purchaseCode}</td><td className="px-3 py-2">{l.warehouseName||'Main'}</td><td className="px-3 py-2 text-right font-bold">{l.remainingQty} / {l.receivedQty}</td><td className="px-3 py-2">{l.expiryDate}<span className="block text-[10px] text-slate-400">{l.daysToExpiry<0?`${Math.abs(l.daysToExpiry)} days overdue`:`${l.daysToExpiry} days left`}</span></td><td className="px-3 py-2 text-center"><span className={`rounded px-2 py-1 text-[10px] font-bold ${l.alertLevel==='EXPIRED'?'bg-slate-200 text-slate-700':l.alertLevel==='CRITICAL'?'bg-rose-100 text-rose-700':l.alertLevel==='WARNING'?'bg-amber-100 text-amber-700':'bg-blue-50 text-blue-700'}`}>{l.alertLevel}</span></td></tr>)}</tbody></table>{expiringLots.length===0&&<p className="p-5 text-center text-xs text-slate-400">No tracked lots expire in this period.</p>}</div>
-          </section>}
-
-          {warehousePanelOpen&&canAccessWarehouse&&<section className="rounded-xl border border-teal-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black text-slate-800">Warehouse stock balance</h3><p className="text-[10px] text-slate-500">Remaining tracked lot quantity grouped by warehouse name.</p></div><button onClick={()=>setWarehousePanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div>
-            <div className="overflow-auto rounded-lg border border-slate-100"><table className="w-full min-w-[640px] text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Warehouse</th><th className="px-3 py-2 text-left">Product</th><th className="px-3 py-2 text-right">Remaining</th><th className="px-3 py-2 text-right">Received</th><th className="px-3 py-2 text-right">Lots</th></tr></thead><tbody className="divide-y">{warehouseBalances.map((row,i)=><tr key={`${row.warehouseName}-${row.productId}-${i}`}><td className="px-3 py-2 font-semibold">{row.warehouseName}</td><td className="px-3 py-2"><b>{row.productName}</b><span className="block text-[10px] text-slate-400">{row.productCode}</span></td><td className="px-3 py-2 text-right font-bold">{row.remainingQty}</td><td className="px-3 py-2 text-right">{row.receivedQty}</td><td className="px-3 py-2 text-right">{row.lotCount}</td></tr>)}</tbody></table>{warehouseBalances.length===0&&<p className="p-5 text-center text-xs text-slate-400">No warehouse lot balances yet.</p>}</div>
-          </section>}
-
           {analyticsPanelOpen&&canAccessAnalytics&&purchaseAnalytics&&<section className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black text-slate-800">Procurement analytics</h3><p className="text-[10px] text-slate-500">{dateFrom || 'From beginning'} - {dateTo || 'Until today'}</p></div><button onClick={()=>setAnalyticsPanelOpen(false)} className="p-1 text-slate-400"><X size={16}/></button></div>
             <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8 text-xs">
@@ -2106,14 +2050,8 @@ const PurchaseManagement: React.FC = () => {
               {canAccessBudgets && (
                 <button onClick={()=>setBudgetPanelOpen(v=>!v)} className="inline-flex items-center justify-center gap-1 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-50"><DollarSign size={13}/> Budgets</button>
               )}
-              {canAccessWarehouse && (
-                <button onClick={()=>void openWarehousePanel()} className="inline-flex items-center justify-center gap-1 rounded-lg border border-teal-200 bg-white px-2 py-1.5 text-[11px] font-bold text-teal-700 hover:bg-teal-50"><Warehouse size={13}/> Warehouse</button>
-              )}
               {canAccessAnalytics && (
                 <button onClick={()=>void openAnalyticsPanel()} className="inline-flex items-center justify-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50"><BarChart3 size={13}/> Analytics</button>
-              )}
-              {canAccessExpiry && (
-                <button onClick={()=>setExpiryPanelOpen(v=>!v)} className="relative inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-50"><AlertTriangle size={13}/> Expiry{expiringLots.length>0&&<span className="ml-0.5 rounded-full bg-rose-600 px-1 text-[9px] text-white">{expiringLots.length}</span>}</button>
               )}
               <button onClick={() => { fetchPurchases(purchasePage, purchasePageSize, debouncedSearch, dateFrom, dateTo); fetchStats(dateFrom, dateTo); }} className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50">
                 <RefreshCw size={13} className={purchasesLoading ? 'animate-spin' : ''} /> ပြန်ဖတ်
@@ -2853,22 +2791,6 @@ const PurchaseManagement: React.FC = () => {
                               <span className="text-[10px] font-semibold text-slate-400">Stock {Number(_rowProduct.stockQty ?? _rowProduct.currentStock ?? 0).toLocaleString()}</span>
                             </div>
                           )}
-                          {detail.productId > 0 && (
-                            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                              <input
-                                value={detail.batchNumber || ''}
-                                onChange={(e) => handleDetailChange(dIndex, 'batchNumber', e.target.value)}
-                                placeholder="Batch"
-                                className="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] focus:outline-none focus:border-indigo-400"
-                              />
-                              <input
-                                type="date"
-                                value={detail.expiryDate || ''}
-                                onChange={(e) => handleDetailChange(dIndex, 'expiryDate', e.target.value)}
-                                className="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] focus:outline-none focus:border-indigo-400"
-                              />
-                            </div>
-                          )}
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -3297,30 +3219,6 @@ const PurchaseManagement: React.FC = () => {
                     <select value={landedCostAllocationMethod} onChange={(e)=>setLandedCostAllocationMethod(e.target.value as 'VALUE'|'QUANTITY'|'MANUAL')} className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm"><option value="VALUE">By Value</option><option value="QUANTITY">By Quantity</option><option value="MANUAL">Manual</option></select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Warehouse / Branch <span className="text-rose-500">*</span></label>
-                    <select
-                      value={warehouseName}
-                      onChange={(e) => setWarehouseName(e.target.value)}
-                      className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-indigo-400"
-                    >
-                      {activeWarehouses.length === 0 && (
-                        <option value="">ဂိုဒေါင် မရှိသေး — ဂိုဒေါင် စာမျက်နှာတွင် ထည့်ပါ</option>
-                      )}
-                      {activeWarehouses.map((w) => (
-                        <option key={w.id ?? w.name} value={w.name}>
-                          {w.name}{w.code ? ` (${w.code})` : ''}
-                        </option>
-                      ))}
-                      {/* Keep previously saved free-text name selectable if not in master */}
-                      {warehouseName && !activeWarehouses.some((w) => w.name === warehouseName) && (
-                        <option value={warehouseName}>{warehouseName} (စာရင်းမရှိ)</option>
-                      )}
-                    </select>
-                    {activeWarehouses.length === 0 && (
-                      <p className="mt-1 text-[10px] text-amber-600">ဝယ်ယူရေး → ဂိုဒေါင် မှ warehouse အသစ်ထည့်ပါ။</p>
-                    )}
-                  </div>
-                  <div>
                     <label className="block text-[10px] font-semibold text-slate-500 mb-1">Invoice Currency</label>
                     <input maxLength={3} value={currencyCode} onChange={(e)=>{ const code=e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3); setCurrencyCode(code); if(code==='MMK') setExchangeRate(1); }} placeholder="MMK" className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-sm uppercase"/>
                   </div>
@@ -3704,7 +3602,7 @@ const PurchaseManagement: React.FC = () => {
             </div>
             <div className="flex-1 overflow-auto p-4">
               <table className="w-full min-w-[720px] text-xs">
-                <thead className="bg-slate-50 text-slate-500"><tr><th className="px-2 py-2 text-left">Row</th><th className="px-2 py-2 text-left">Code</th><th className="px-2 py-2 text-left">Product</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-right">Cost</th><th className="px-2 py-2 text-left">Batch / Expiry</th><th className="px-2 py-2 text-left">Status</th></tr></thead>
+                <thead className="bg-slate-50 text-slate-500"><tr><th className="px-2 py-2 text-left">Row</th><th className="px-2 py-2 text-left">Code</th><th className="px-2 py-2 text-left">Product</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-right">Cost</th><th className="px-2 py-2 text-left">Status</th></tr></thead>
                 <tbody className="divide-y">{importPreview.rows.map(row=>(
                   <tr key={row.rowNumber} className={row.valid?'':'bg-rose-50'}>
                     <td className="px-2 py-2">{row.rowNumber}</td>
@@ -3712,7 +3610,6 @@ const PurchaseManagement: React.FC = () => {
                     <td className="px-2 py-2">{row.productName||'-'}</td>
                     <td className="px-2 py-2 text-right">{row.qty??'-'}</td>
                     <td className="px-2 py-2 text-right">{row.unitCost??'-'}</td>
-                    <td className="px-2 py-2">{[row.batchNumber,row.expiryDate].filter(Boolean).join(' / ')||'-'}</td>
                     <td className="px-2 py-2">{row.valid?'Valid':(row.errors||[]).join('; ')}</td>
                   </tr>
                 ))}</tbody>
@@ -3895,11 +3792,6 @@ const PurchaseManagement: React.FC = () => {
                     <tr key={i}>
                       <td className="px-3 py-2">
                         <p>{d.productName || d.productId}</p>
-                        {(d.batchNumber || d.expiryDate) && (
-                          <p className="text-[10px] text-slate-400">
-                            {d.batchNumber ? `Batch ${d.batchNumber}` : ''}{d.batchNumber && d.expiryDate ? ' · ' : ''}{d.expiryDate ? `Exp ${d.expiryDate}` : ''}
-                          </p>
-                        )}
                       </td>
                       <td className="px-3 py-2">{d.qty}</td>
                       <td className="px-3 py-2 text-right">{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(d.unitCost)}</td>

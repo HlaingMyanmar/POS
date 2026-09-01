@@ -16,6 +16,7 @@ public class ServiceJobLineDTO {
     private BigDecimal billedPrice;
     private BigDecimal price;
     private BigDecimal subtotal;
+    private BigDecimal discountAmount;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private String priceChangeReason;

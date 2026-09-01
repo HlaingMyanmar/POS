@@ -62,7 +62,7 @@ public class CustomerPaymentService {
     private final AccountResolver accounts;
     private final AccountingPeriodGuard periodGuard;
 
-    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_CREATE','CAN_ACCESS_BOOKING_CREATE','CAN_ACCESS_CUSTOMER_PAYMENT_CREATE')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_CREATE','CAN_ACCESS_CUSTOMER_PAYMENT_CREATE')")
     @Transactional
     public CustomerPaymentDTO createAdvancePayment(CustomerPaymentDTO dto) {
         if (dto.getSaleId() != null) {

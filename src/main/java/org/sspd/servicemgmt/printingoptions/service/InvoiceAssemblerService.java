@@ -8,8 +8,8 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.Pa
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
-import org.sspd.servicemgmt.bookingoptions.model.BookingDevice;
-import org.sspd.servicemgmt.bookingoptions.model.BookingDetail;
+import org.sspd.servicemgmt.bookingoptions.model.BookingItem;
+import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.companysettingoptions.dto.CompanySettingsDTO;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
@@ -188,8 +188,8 @@ public class InvoiceAssemblerService {
                 .customerPhone(sale.getCustomer() != null ? safe(sale.getCustomer().getPhone()) : "")
                 .customerAddress(sale.getCustomer() != null ? safe(sale.getCustomer().getAddress()) : "")
                 .cashierName(sale.getStaff() != null ? sale.getStaff().getName() : "")
-                .warehouseName(sale.getWarehouse() != null ? sale.getWarehouse().getName() : sale.getWarehouseName())
-                .warehouseCode(sale.getWarehouse() != null ? sale.getWarehouse().getCode() : null)
+                .warehouseName(null)
+                .warehouseCode(null)
                 .lineItems(items)
                 .payments(payments)
                 .subtotal(fmt(hasCustomVoucherPrice ? voucherTotal : sale.getTotalAmount()))
@@ -204,49 +204,34 @@ public class InvoiceAssemblerService {
                 .build();
     }
 
-    // ── Booking ───────────────────────────────────────────────────────────────
+    // ── Booking (device intake receipt) ───────────────────────────────────────
 
     private PrintInvoiceData assembleBooking(Integer bookingId, CompanySettingsDTO cs) {
-        Booking b = bookingRepository.findByIdWithDevices(bookingId)
+        Booking booking = bookingRepository.findByIdWithItems(bookingId)
                 .orElseThrow(() -> new NoSuchElementException("Booking not found: " + bookingId));
+        if (booking.getItems() == null || booking.getItems().isEmpty()) {
+            throw new IllegalStateException("ပစ္စည်းလက်ခံမထားသေးသော Booking အတွက် လက်ခံ Voucher မထုတ်နိုင်ပါ");
+        }
 
-        // Build device rows — prefer the devices list; fall back to single device fields
         List<PrintInvoiceData.DeviceRow> deviceRows = new ArrayList<>();
-        if (b.getDevices() != null && !b.getDevices().isEmpty()) {
-            int deviceCount = b.getDevices().size();
-            for (int deviceIndex = 0; deviceIndex < deviceCount; deviceIndex++) {
-                BookingDevice d = b.getDevices().get(deviceIndex);
-                deviceRows.add(PrintInvoiceData.DeviceRow.builder()
-                        .deviceType(safe(d.getDeviceType()))
-                        .brand(safe(d.getBrand()))
-                        .model(safe(d.getModel()))
-                        .serialNo(safe(d.getSerialNumber()))
-                        .color(safe(d.getColor()))
-                        .accessories(safe(d.getAccessories()))
-                        .problemDesc(safe(d.getProblemDesc()))
-                        .deviceConditions(safe(d.getDeviceConditions()))
-                        .serviceSummary(formatBookingServices(b, deviceIndex, deviceCount))
-                        .conditionChecklist(formatConditionChecklist(d.getConditionChecklist()))
-                        .partRequests(formatPartRequests(d.getPartRequests()))
-                        .build());
-            }
-        } else if (!safe(b.getBrand()).isBlank() || !safe(b.getModel()).isBlank()
-                || !safe(b.getDeviceType()).isBlank() || !safe(b.getSerialNumber()).isBlank()
-                || !safe(b.getColor()).isBlank() || !safe(b.getAccessories()).isBlank()) {
+        for (BookingItem item : booking.getItems()) {
+            String problem = safe(item.getProblemDesc());
+            if (problem.isBlank()) problem = safe(booking.getComplaintNote());
             deviceRows.add(PrintInvoiceData.DeviceRow.builder()
-                    .deviceType(safe(b.getDeviceType()))
-                    .brand(safe(b.getBrand()))
-                    .model(safe(b.getModel()))
-                    .serialNo(safe(b.getSerialNumber()))
-                    .color(safe(b.getColor()))
-                    .accessories(safe(b.getAccessories()))
-                    .problemDesc("")
-                    .deviceConditions("")
-                    .serviceSummary(formatBookingServices(b, 0, 1))
-                    .conditionChecklist("")
-                    .partRequests("")
+                    .brand(safe(item.getItemName()))
+                    .deviceType(safe(item.getDeviceType()))
+                    .serialNo(safe(item.getSerialNo()))
+                    .color(safe(item.getColor()))
+                    .accessories(safe(item.getAccessories()))
+                    .problemDesc(problem)
+                    .deviceConditions(safe(item.getItemCondition()))
+                    .noticed(safe(item.getNoticed()))
                     .build());
         }
+
+        String receivedAt = booking.getUpdatedAt() != null
+                ? booking.getUpdatedAt().format(DT_FMT)
+                : (booking.getBookingDate() != null ? booking.getBookingDate().format(D_FMT) : "");
 
         return PrintInvoiceData.builder()
                 .companyName(cs.getCompanyName())
@@ -257,26 +242,35 @@ public class InvoiceAssemblerService {
                 .footerNote(safe(cs.getFooterNote()))
                 .headerColor("#1e3a5f")
                 .invoiceTitle("DEVICE INTAKE RECEIPT")
-                .invoiceNo(safe(b.getInvoiceNo()))
-                .invoiceDate(b.getBookingDate() != null ? b.getBookingDate().format(DT_FMT) : "")
-                .dueDate(b.getAppointmentDate() != null ? b.getAppointmentDate().format(DT_FMT) : "")
-                .paymentStatus(b.getStatus() != null ? b.getStatus().name() : "")
-                .customerName(b.getCustomer() != null ? b.getCustomer().getName() : "")
-                .customerPhone(b.getCustomer() != null ? safe(b.getCustomer().getPhone()) : "")
-                .cashierName(b.getStaff() != null ? b.getStaff().getName() : "")
-                .shelfLocation(safe(b.getShelfLocation()))
-                .estimatedCost(b.getTotalAmount() != null ? fmt(b.getTotalAmount()) : "0")
-                .paid(b.getDepositAmount() != null ? fmt(b.getDepositAmount()) : "0")
+                .invoiceNo(safe(booking.getBookingNo()))
+                .invoiceDate(receivedAt)
+                .dueDate(booking.getAppointmentDate() != null ? booking.getAppointmentDate().format(DT_FMT) : "")
+                .paymentStatus(formatBookingStatus(booking.getStatus()))
+                .customerName(booking.getCustomer() != null ? booking.getCustomer().getName() : "")
+                .customerPhone(booking.getCustomer() != null ? safe(booking.getCustomer().getPhone()) : "")
+                .customerAddress(booking.getCustomer() != null ? safe(booking.getCustomer().getAddress()) : "")
+                .cashierName(currentCashierName())
                 .lineItems(List.of())
                 .payments(List.of())
                 .subtotal("0")
                 .discount("0")
-                .netAmount(b.getTotalAmount() != null ? fmt(b.getTotalAmount()) : "0")
+                .netAmount("0")
+                .paid("0")
                 .balanceDue("0")
-                .remark(safe(b.getRemark()))
+                .remark(safe(booking.getRemark()))
+                .problemDesc(safe(booking.getComplaintNote()))
                 .bookingReceipt(true)
                 .deviceRows(deviceRows)
                 .build();
+    }
+
+    private String formatBookingStatus(BookingStatus status) {
+        if (status == null) return "";
+        return switch (status) {
+            case CONFIRMED -> "အတည်ပြုပြီး";
+            case ARRIVED -> "ပစ္စည်းလက်ခံပြီး";
+            case CANCELED -> "ပယ်ဖျက်ထား";
+        };
     }
 
     // ── Service Job ───────────────────────────────────────────────────────────
@@ -334,12 +328,8 @@ public class InvoiceAssemblerService {
             payments.addAll(buildPayments(job.getSaleId(), ReferenceType.Sale));
         }
 
-        // Accessories: entity's own value first, then booking fallback
+        // Accessories from job entity only
         String accessories = safe(job.getAccessories());
-        if (accessories.isBlank() && job.getBookingId() != null) {
-            accessories = bookingRepository.findById(job.getBookingId())
-                    .map(b -> safe(b.getAccessories())).orElse("");
-        }
 
         // Parse device conditions JSON → ConditionRow list
         List<PrintInvoiceData.ConditionRow> conditionRows = parseConditionRows(job.getDeviceConditions());
@@ -378,22 +368,6 @@ public class InvoiceAssemblerService {
                         ? fmt(job.getEstimatedCost()) : "")
                 .deviceConditionRows(conditionRows)
                 .build();
-    }
-
-    private String formatBookingServices(Booking booking, int deviceIndex, int deviceCount) {
-        if (booking.getDetails() == null) return "";
-        List<String> rows = new ArrayList<>();
-        for (BookingDetail detail : booking.getDetails()) {
-            Integer targetIndex = detail.getDeviceIndex();
-            boolean applies = targetIndex != null
-                    ? targetIndex == deviceIndex
-                    : deviceCount == 1 || deviceIndex == 0;
-            if (!applies || detail.getServiceItem() == null) continue;
-            int qty = detail.getQty() != null ? detail.getQty() : 1;
-            String price = detail.getSubtotal() != null ? fmt(detail.getSubtotal()) : fmt(detail.getPrice());
-            rows.add(detail.getServiceItem().getItem() + " x " + qty + " - " + price + " Ks");
-        }
-        return String.join("\n", rows);
     }
 
     private String formatConditionChecklist(String json) {
@@ -522,8 +496,8 @@ public class InvoiceAssemblerService {
                 .customerPhone(purchase.getSupplier() != null ? safe(purchase.getSupplier().getPhone()) : "")
                 .customerAddress(purchase.getSupplier() != null ? safe(purchase.getSupplier().getAddress()) : "")
                 .cashierName(purchase.getStaff() != null ? purchase.getStaff().getName() : "")
-                .warehouseName(purchase.getWarehouse() != null ? purchase.getWarehouse().getName() : purchase.getWarehouseName())
-                .warehouseCode(purchase.getWarehouse() != null ? purchase.getWarehouse().getCode() : null)
+                .warehouseName(null)
+                .warehouseCode(null)
                 .lineItems(items)
                 .payments(purchasePayments)
                 .subtotal(fmt(purchase.getTotalAmount()))

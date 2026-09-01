@@ -20,6 +20,7 @@ sealed class Screen(val route: String) {
     object JournalEntries : Screen("journal_entries")
     object Chat         : Screen("chat")
     object Account      : Screen("account")
+    object Settings     : Screen("settings")
     object About          : Screen("about")
     object SoftwareUpdate : Screen("software_update")
     object ProductDetail  : Screen("product_detail/{productId}?serial={serialNumber}") {

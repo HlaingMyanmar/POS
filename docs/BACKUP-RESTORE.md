@@ -131,7 +131,6 @@ Non-zero `mysql` exit → `IllegalStateException`; controller returns HTTP 500 w
 **Trigger:** `POST /api/v1/backup/import` multipart field `file`.
 
 Allowed names (lowercase): `.sql.gz`, `.sql`, `.sqlbackup`.
-
 1. SAFETY backup; abort if null.
 2. `.sql.gz` → `restoreGzip`; `.sql` / `.sqlbackup` → `restoreSql` (copy stream, then same `mysql` invoke).
 

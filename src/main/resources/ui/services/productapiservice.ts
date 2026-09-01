@@ -23,11 +23,6 @@ export const productService = {
 
   getById: (id: number) => api.get<any, ApiResponse<ProductDTO>>(`/v1/products/${id}`).then((res: any) => res.data),
 
-  warehouseStocks: (id: number) =>
-    api.get<any, ApiResponse<{ warehouseId?: number; warehouseCode?: string; warehouseName: string; remainingQty: number; receivedQty: number; lotCount: number }[]>>(`/v1/products/${id}/warehouse-stocks`).then((res: any) => res.data || []),
-
-  lots: (id: number) =>
-    api.get<any, ApiResponse<import('./stocklotapiservice').StockLotDTO[]>>(`/v1/products/${id}/lots`).then((res: any) => res.data || []),
 
   getStockHistory: (id: number, params?: StockHistoryParams): Promise<ProductStockHistoryDTO> =>
     api.get<any, ApiResponse<ProductStockHistoryDTO>>(`/v1/products/${id}/stock-history`, { params }).then((res: any) => res.data),

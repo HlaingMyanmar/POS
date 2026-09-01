@@ -29,6 +29,8 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_SERVICE_JOB_READ",
             "CAN_ACCESS_SERVICE_JOB_UPDATE",
             "CAN_ACCESS_SERVICE_JOB_REWORK",
+            "CAN_ACCESS_SERVICE_JOB_WORK_LOG",
+            "CAN_ACCESS_SERVICE_JOB_HANDOVER",
             "CAN_ACCESS_BOOKING_READ",
             "CAN_ACCESS_BOOKING_UPDATE",
             "CAN_ACCESS_STAFF_READ",

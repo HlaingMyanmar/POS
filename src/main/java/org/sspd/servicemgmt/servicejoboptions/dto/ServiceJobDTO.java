@@ -9,6 +9,7 @@ import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -34,6 +35,9 @@ public class ServiceJobDTO {
     private BigDecimal discountAmount;
     private Boolean foc;
     private BigDecimal netAmount;
+    private BigDecimal laborNetAmount;
+    private BigDecimal partsNetAmount;
+    private String discountAllocationMethod;
     private BigDecimal paidAmount;
     private BigDecimal dueAmount;
     private LocalDate dueDate;
@@ -48,6 +52,7 @@ public class ServiceJobDTO {
     private String paymentMethodName;
     private Integer bookingId;
     private String bookingNo;
+    private LocalDateTime appointmentDate;
     private Integer saleId;
     private String customerPhone;
     private String color;
@@ -87,6 +92,9 @@ public class ServiceJobDTO {
     private Boolean estimateApproved;
     private String estimateApprovedAt;
     private String estimateApprovedBy;
+    private Boolean finalApprovalStatus;
+    private String finalApprovedBy;
+    private String finalApprovedAt;
     private String priority;
     private Integer helperStaffId;
     private String helperStaffName;

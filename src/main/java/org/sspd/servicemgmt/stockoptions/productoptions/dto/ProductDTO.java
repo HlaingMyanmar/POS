@@ -38,9 +38,13 @@ public class ProductDTO {
     private Integer warrantyMonths;
     private String warrantyTerms;
     private String photoBase64;
+    private String imagePath;
+    private String thumbnailPath;
+    private String imageMimeType;
+    private String originalFileName;
+    private Integer imageWidth;
+    private Integer imageHeight;
     private Boolean archived;
-    private String warehouseName;
-    private Integer warehouseId;
     private Integer openingQty;
     private String openingBatch;
     private java.time.LocalDate openingExpiry;

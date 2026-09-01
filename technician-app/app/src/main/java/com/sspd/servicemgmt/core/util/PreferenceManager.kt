@@ -90,7 +90,19 @@ class PreferenceManager(context: Context) {
             .any { it == wanted }
     }
 
-    fun isTechnician() = hasRole("TECHNICIAN")
+    fun isTechnician(): Boolean {
+        val roles = rolesStr.split(',', ';')
+            .map { it.trim().removePrefix("ROLE_").uppercase() }
+            .filter { it.isNotBlank() }
+
+        return roles.any { role ->
+            role == "TECH" || role == "TECHNICIAN" || role.contains("TECHNICIAN")
+        } || (staffId > 0 && (
+            hasPermission("CAN_ACCESS_SERVICE_JOB_READ") ||
+                hasPermission("CAN_ACCESS_TECHNICIAN_VISIT_START") ||
+                hasPermission("CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN")
+            ))
+    }
 
     fun clear() = p.edit().clear().apply()
 }

@@ -75,7 +75,6 @@ public class SaleReturnService {
     private final AccountResolver accountResolver;
     private final PaymentBalanceValidator paymentBalanceValidator;
     private final CashDrawerService cashDrawerService;
-    private final org.sspd.servicemgmt.stockoptions.lotoptions.service.StockLotService stockLotService;
     private final org.sspd.servicemgmt.saleoptions.salereturnreasonoptions.repository.SaleReturnReasonRepository reasonRepository;
     private final org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService customerPaymentService;
 
@@ -114,9 +113,6 @@ public class SaleReturnService {
         entity.setSale(sale);
         entity.setReturnCode("PENDING");
         entity.setStatus("COMPLETED");
-        entity.setWarehouseName(dto.getWarehouseName() != null && !dto.getWarehouseName().isBlank()
-                ? dto.getWarehouseName().trim()
-                : sale.getWarehouseName());
         if (entity.getReturnDate() == null) {
             entity.setReturnDate(LocalDateTime.now());
         }
@@ -231,7 +227,6 @@ public class SaleReturnService {
         SaleReturn saved = saleReturnRepository.save(entity);
         saved.setReturnCode(generateReturnCode(saved.getId()));
         saved = saleReturnRepository.save(saved);
-        stockLotService.restoreSaleReturn(saved);
 
         BigDecimal oldDue = sale.getDueAmount() != null ? sale.getDueAmount() : BigDecimal.ZERO;
         BigDecimal creditPortion = total.subtract(refund).max(BigDecimal.ZERO);
@@ -320,7 +315,6 @@ public class SaleReturnService {
         }
 
         List<SaleReturnDetail> details = saleReturnDetailRepository.findAllBySaleReturnIn(List.of(existing));
-        stockLotService.reverseSaleReturn(existing);
 
         for (SaleReturnDetail detail : details) {
             Product product = detail.getProduct();

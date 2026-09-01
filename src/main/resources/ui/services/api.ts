@@ -25,6 +25,16 @@ const inferredWsUrlFromApiBase = import.meta.env.VITE_API_BASE_URL
   : '';
 export const WS_URL = (import.meta.env.VITE_WS_URL || inferredWsUrlFromApiBase || defaultWsUrl).toString();
 
+export const resolveAssetUrl = (value?: string | null) => {
+  if (!value || value.startsWith('data:') || /^https?:\/\//i.test(value)) return value || '';
+  try {
+    const apiOrigin = new URL(BASE_URL, window.location.origin).origin;
+    return new URL(value, apiOrigin).toString();
+  } catch {
+    return value;
+  }
+};
+
 /**
  * Access Token is stored ONLY in JS memory (variable) to prevent XSS.
  * It will be lost on page reload.
@@ -44,6 +54,8 @@ export const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' }
 });
+
+const isServiceJobRequest = (url?: string) => /\/v1\/service-jobs(?:\/|$)/i.test(String(url || ''));
 
 /**
  * Request Interceptor
@@ -81,7 +93,7 @@ api.interceptors.response.use(
     const isPublicSetup = requestUrl.includes('/v1/setup/');
 
     // If token expired (401) and we haven't retried yet
-    if (!isPublicSetup && error.response?.status === 401 && !originalRequest._retry) {
+    if (!isPublicSetup && error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
         // Attempt silent refresh using the refreshToken from sessionStorage (tab-isolated)
@@ -102,12 +114,35 @@ api.interceptors.response.use(
       const validationMessage = !responseData.message
         ? Object.values(responseData).find(value => typeof value === 'string')
         : undefined;
-      return Promise.reject({
+      const normalizedError = {
         ...responseData,
-        message: responseData.message || validationMessage || error.message || 'Operation failed'
+        message: responseData.message || validationMessage || error.message || 'Operation failed',
+        globalAlertShown: isServiceJobRequest(originalRequest?.url),
+      };
+      if (normalizedError.globalAlertShown) {
+        void Swal.fire({
+          icon: 'error',
+          title: 'Service Job အမှား',
+          text: normalizedError.message,
+          confirmButtonText: 'OK',
+        });
+      }
+      return Promise.reject(normalizedError);
+    }
+    const normalizedError = {
+      success: false,
+      message: error.message || 'Operation failed',
+      globalAlertShown: isServiceJobRequest(originalRequest?.url),
+    };
+    if (normalizedError.globalAlertShown) {
+      void Swal.fire({
+        icon: 'error',
+        title: 'Service Job အမှား',
+        text: normalizedError.message,
+        confirmButtonText: 'OK',
       });
     }
-    return Promise.reject({ success: false, message: error.message || 'Operation failed' });
+    return Promise.reject(normalizedError);
   }
 );
 
@@ -226,14 +261,14 @@ export const bookingService = {
     return api.get<any, ApiResponse<PagedData<any>>>(`/v1/bookings?page=${page}&size=${size}${q}${df}${dt}`);
   },
   getById: (id: number) => api.get<any, ApiResponse<any>>(`/v1/bookings/${id}`),
-  getUpcoming: (mins = 60) => api.get<any, ApiResponse<any[]>>(`/v1/bookings/upcoming?minutesAhead=${mins}`),
   create: (dto: any) => api.post<any, ApiResponse<any>>('/v1/bookings', dto),
   update: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/bookings/${id}`, dto),
   updateStatus: (id: number, status: string) =>
     api.patch<any, ApiResponse<any>>(`/v1/bookings/${id}/status?status=${status}`),
-  convertToJob: (id: number) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/convert-to-job`, {}),
-  addAttachment: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/attachments`, dto),
-  removeAttachment: (id: number, attachmentId: number) => api.delete<any, ApiResponse<any>>(`/v1/bookings/${id}/attachments/${attachmentId}`),
+  addItems: (id: number, items: any[]) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/items`, items),
+  removeItem: (id: number, itemId: number) => api.delete<any, ApiResponse<any>>(`/v1/bookings/${id}/items/${itemId}`),
+  convertOutdoor: (id: number) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/convert-outdoor`, {}),
+  convertIndoor: (id: number) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/convert-indoor`, {}),
   remove: (id: number) => api.delete<any, ApiResponse<any>>(`/v1/bookings/${id}`),
 };
 
@@ -258,6 +293,7 @@ export const serviceJobService = {
   rework: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/rework`, dto),
   voidSettlement: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/void`, { reason }),
   approveEstimate: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-estimate`, {}),
+  approveFinal: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-final`, {}),
   notify: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/notify`, dto),
   addAttachment: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/attachments`, dto),
   removeAttachment: (id: number, attachmentId: number) => api.delete<any, ApiResponse<any>>(`/v1/service-jobs/${id}/attachments/${attachmentId}`),
@@ -270,6 +306,20 @@ export const serviceJobService = {
   getUnpaid: () => api.get<any, ApiResponse<any[]>>('/v1/service-jobs/unpaid'),
 };
 
+export const serviceJobTeamService = {
+  getTeam: (jobId: number) => api.get<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team`),
+  assign: (jobId: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments`, dto),
+  updateAssignment: (jobId: number, assignmentId: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}`, dto),
+  cancelAssignment: (jobId: number, assignmentId: number) => api.delete<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}`),
+  acceptAssignment: (jobId: number, assignmentId: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/accept`, {}),
+  approveAssignment: (jobId: number, assignmentId: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/approve`, {}),
+  rejectAssignment: (jobId: number, assignmentId: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/reject`, { reason }),
+  recordWork: (jobId: number, assignmentId: number, action: string, note?: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/work`, { action, note }),
+  requestHandover: (jobId: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/handovers`, dto),
+  acceptHandover: (jobId: number, handoverId: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/handovers/${handoverId}/accept`, {}),
+  rejectHandover: (jobId: number, handoverId: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/handovers/${handoverId}/reject`, { reason }),
+};
+
 // ── Excel Export ──────────────────────────────────────────
 export const exportService = {
   bookings: () => `${BASE_URL}/v1/export/bookings`,
@@ -279,8 +329,8 @@ export const exportService = {
 export const reportService = {
   openSalePdf: (saleId: number, pos = false) =>
     openPdfBlob(pos ? `/v1/reports/sale/${saleId}/pos` : `/v1/reports/sale/${saleId}`),
-  openBookingPdf: (bookingId: number) =>
-    openPdfBlob(`/v1/reports/booking/${bookingId}`),
+  openBookingPdf: (bookingId: number, paper = 'A5') =>
+    openPdfBlob(`/v1/print/pdf/booking/${bookingId}?paper=${paper}`),
   openServiceJobPdf: (jobId: number) =>
     openPdfBlob(`/v1/reports/service-job/${jobId}`),
 };

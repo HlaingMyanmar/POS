@@ -121,6 +121,7 @@ class ServiceJobDetailViewModel(
         foc:       Boolean,
         paid:      Double,
         methodId:  Int?,
+        warehouseId: Int?,
         txnNo:     String?,
         dueDate:   String?,
         payments:  List<PaymentTransactionDTO>? = null
@@ -137,6 +138,7 @@ class ServiceJobDetailViewModel(
                         foc             = foc,
                         paidAmount      = paid,
                         paymentMethodId = payments?.firstOrNull()?.paymentMethodId ?: methodId,
+                        warehouseId     = warehouseId,
                         transactionNo   = txnNo?.ifBlank { null },
                         dueDate         = dueDate,
                         payments        = payments?.ifEmpty { null }

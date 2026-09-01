@@ -27,12 +27,6 @@ public class VoucherReportController {
         return pdfResponse(pdf, "sale-pos-" + saleId + ".pdf");
     }
 
-    @GetMapping("/booking/{bookingId}")
-    public ResponseEntity<byte[]> bookingReceipt(@PathVariable Integer bookingId) throws JRException {
-        byte[] pdf = jasperVoucherService.generateBookingReceipt(bookingId);
-        return pdfResponse(pdf, "booking-" + bookingId + ".pdf");
-    }
-
     @GetMapping("/service-job/{jobId}")
     public ResponseEntity<byte[]> serviceVoucher(@PathVariable Integer jobId) throws JRException {
         byte[] pdf = jasperVoucherService.generateServiceVoucher(jobId);

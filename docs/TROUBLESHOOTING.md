@@ -115,7 +115,10 @@ Working directory matters: default `./Backup` is relative to the process CWD.
 
 Browser uses SockJS `/ws-clinic`. Nginx must proxy that location with `Upgrade` headers (`deploy/nginx.conf` does). Timeout in the sample is 3600s.
 
-Android uses `/ws-native`. The sample Nginx file **does not** proxy `/ws-native/`.
+Android uses the exact endpoint `/ws-native` (without a trailing slash). Nginx must
+define `location = /ws-native` with HTTP/1.1 and the `Upgrade` / `Connection`
+headers. A `location /ws-native/` block does not match this request; it falls through
+to the normal HTTP proxy and Spring logs `invalid Upgrade header: null`.
 
 STOMP endpoints are `permitAll`. Topics include `/topic/data-events`, `/topic/sales`, `/topic/barcode-scan`, etc.
 
@@ -136,6 +139,38 @@ There is **no** Maven profile in `pom.xml` to skip the plugin (**Needs Confirmat
 `app.apk.storage-dir` must exist. Multipart limits: `200MB`. POS Manager downloads `/app/servicemgmt.apk`; technician downloads `/app/technician.apk`. Download URL uses `app.download.base-url`.
 
 Technician in-app updates require a signed `assembleRelease` APK uploaded from **Settings → App Version → Technician**, with version code greater than `technician-app/app/build.gradle.kts`.
+
+---
+
+## Flyway: “Detected resolved migration not applied to database: 1 … 7”
+
+**Symptom:** Spring Boot fails at startup with `FlywayValidateException` listing migrations **1–7** (not V100+).
+
+**Cause:** The **deployed WAR is an old build** whose `WEB-INF/classes/db/migration/` still contains legacy `V1__` … `V7__` scripts. The live database was already migrated with the **V100+ baseline** (history shows 100, 101, …). Flyway sees V1–V7 on the classpath but they were never applied to this DB, so validation fails.
+
+**Do not** set `outOfOrder=true` to “fix” this — that would try to run V1–V7 on a DB that already has the V100 schema and can corrupt data.
+
+**Fix:**
+
+1. On the VPS, confirm what is deployed:
+   ```bash
+   jar tf /path/to/pos-0.0.1-SNAPSHOT.war | grep 'db/migration/V'
+   ```
+   You should see only **V100** … **V107** (current repo). If you see `V1__`, `V2__`, … redeploy the latest WAR.
+
+2. Check DB history (PostgreSQL example):
+   ```sql
+   SELECT installed_rank, version, description, success
+   FROM flyway_schema_history
+   ORDER BY installed_rank;
+   ```
+   Expect versions **100+**, not 1–7.
+
+3. Stop the service, replace the WAR with the latest build from this repo, start again. Flyway should apply **V107** (booking `noticed`) if missing, then start normally.
+
+4. If an old exploded Tomcat directory or stale copy of the JAR is used, delete the old deployment folder before copying the new WAR.
+
+Current app config: `spring.flyway.locations=classpath:db/migration` only; archived scripts live under `db/migration_archive/` and are excluded from the WAR in `pom.xml`.
 
 ---
 

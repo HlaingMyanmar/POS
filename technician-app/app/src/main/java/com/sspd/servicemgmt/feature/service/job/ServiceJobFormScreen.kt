@@ -50,6 +50,9 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     val vm: ServiceJobFormViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) { vm.loadCustomers() }
+
     val context = LocalContext.current
     val locationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -1045,6 +1048,15 @@ private fun ServiceLineDraftCard(
                     )
                 }
             }
+            Surface(color = ScreenBg, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, BorderColor)) {
+                Text(
+                    text = confirmationStatusHelp(line.confirmationStatus),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextMuted
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = line.qty, onValueChange = { onChange(line.copy(qty = it)) },
@@ -1135,6 +1147,16 @@ private val LINE_CONFIRMATION_STATUS = listOf(
     "IN_PROGRESS" to "လုပ်ဆောင်ဆဲ",
     "COMPLETED" to "ပြီးစီး"
 )
+
+private fun confirmationStatusHelp(status: String): String = when (status) {
+    "RECOMMENDED" -> "Technician အကြံပြုထားဆဲ — Customer ကို အတည်ပြုမေးရန်"
+    "INSPECTING" -> "စစ်ဆေးနေဆဲ — ဈေးနှင့် လုပ်ဆောင်ချက် မသတ်မှတ်ရသေး"
+    "CUSTOMER_APPROVED" -> "Customer သဘောတူပြီး — ပြင်ဆင်မှု စတင်နိုင်သည်"
+    "CUSTOMER_REJECTED" -> "Customer ငြင်းပယ်ထားသည် — ဒီဝန်ဆောင်မှုအတွက် ငွေမကောက်ပါ"
+    "IN_PROGRESS" -> "လက်ရှိ လုပ်ဆောင်နေသည်"
+    "COMPLETED" -> "ဝန်ဆောင်မှု ပြီးစီးပြီး — ကောက်ခံဈေး စစ်ဆေးရန်"
+    else -> "အတည်ပြုအခြေအနေ ရွေးပါ"
+}
 
 // ── Part Draft Card ───────────────────────────────────────────────────────────
 

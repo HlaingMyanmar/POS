@@ -123,6 +123,12 @@ export interface ProductDTO {
   currentStock: number;
   hasSerial?: boolean;
   photoBase64?: string;
+  imagePath?: string;
+  thumbnailPath?: string;
+  imageMimeType?: string;
+  originalFileName?: string;
+  imageWidth?: number;
+  imageHeight?: number;
   stockQty?: number;
   quarantinedQty?: number;
   reorderLevel?: number;
@@ -1095,78 +1101,6 @@ export interface ShelfLocationDTO {
   active: boolean;
 }
 
-export enum ManufacturingStatus {
-  DRAFT = 'DRAFT',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-}
-
-export interface ManufacturingFormulaItemDTO {
-  id?: number;
-  productId: number;
-  productName?: string;
-  productCode?: string;
-  hasSerial?: boolean;
-  qty: number;
-  unitCost?: number;
-}
-
-export interface ManufacturingFormulaDTO {
-  id?: number;
-  name: string;
-  description?: string;
-  finishedProductName?: string;
-  finishedProductBrandId?: number;
-  finishedProductBrandName?: string;
-  finishedProductCategoryId?: number;
-  finishedProductCategoryName?: string;
-  finishedProductUnitId?: number;
-  finishedProductUnitName?: string;
-  finishedProductType?: string;
-  finishedProductSellingPrice?: number;
-  items: ManufacturingFormulaItemDTO[];
-}
-
-export interface ManufacturingOrderItemDTO {
-  id?: number;
-  productId: number;
-  productName?: string;
-  productCode?: string;
-  hasSerial?: boolean;
-  qty: number;
-  unitCost?: number;
-  selectedSerialIds?: number[];
-  selectedSerialNumbers?: string[];
-  availableQty?: number;
-}
-
-export interface ManufacturingOrderDTO {
-  id?: number;
-  orderCode?: string;
-  status?: string;
-  finishedProductName: string;
-  finishedProductBrandId?: number;
-  finishedProductBrandName?: string;
-  finishedProductCategoryId?: number;
-  finishedProductCategoryName?: string;
-  finishedProductUnitId?: number;
-  finishedProductUnitName?: string;
-  finishedProductType?: string;
-  finishedProductSellingPrice?: number;
-  productionQty?: number;
-  laborCost?: number;
-  overheadCost?: number;
-  wasteCost?: number;
-  finishedProductId?: number;
-  notes?: string;
-  createdAt?: string;
-  completedAt?: string;
-  items: ManufacturingOrderItemDTO[];
-  totalComponentCost?: number;
-  totalProductionCost?: number;
-  unitProductionCost?: number;
-}
-
 export enum AppRoute {
   LOGIN = '/login',
   DASHBOARD = '/',
@@ -1193,7 +1127,6 @@ export enum AppRoute {
   PURCHASES = '/procurement/purchases',
   PURCHASE_RETURNS = '/procurement/purchase-returns',
   PURCHASE_ORDERS = '/procurement/purchase-orders',
-  WAREHOUSES = '/procurement/warehouses',
   SALE_RETURNS = '/sale-returns',
   STOCK_ADJUSTMENTS = '/inventory/stock-adjustments',
   PROFIT_LOSS = '/reports/profit-loss',
@@ -1225,6 +1158,5 @@ export enum AppRoute {
   OPENING_BALANCE          = '/accounting/opening-balance',
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',
-  MANUFACTURING            = '/inventory/manufacturing',
   DAILY_SNAPSHOT           = '/reports/daily-snapshot'
 }

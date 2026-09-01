@@ -23,7 +23,6 @@ import JournalEntryManagement from './pages/JournalEntryManagement';
 import PurchaseManagement from './pages/PurchaseManagement';
 import PurchaseReturnManagement from './pages/PurchaseReturnManagement';
 import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
-import WarehouseManagement from './pages/WarehouseManagement';
 import SaleManagement from './pages/SaleManagement';
 import SaleReturnManagement from './pages/SaleReturnManagement';
 import QuotationManagement from './pages/QuotationManagement';
@@ -58,7 +57,6 @@ import ScanPage from './pages/ScanPage';
 import OpeningBalancePage from './pages/OpeningBalancePage';
 import OpeningStockPage from './pages/OpeningStockPage';
 import AppVersionSettingsPage from './pages/AppVersionSettingsPage';
-import ManufacturingManagement from './pages/ManufacturingManagement';
 import OutdoorTracking from './pages/OutdoorTracking';
 import VideoManagement from './pages/VideoManagement';
 import Layout from './components/Layout';
@@ -276,10 +274,8 @@ const App: React.FC = () => {
           <Route path={AppRoute.OPENING_BALANCE}     element={guard(<OpeningBalancePage />,         'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.PAYMENT_TRANSACTIONS} element={guard(<PaymentTransactionManagement />, 'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.OPENING_STOCK}       element={guard(<OpeningStockPage />,           'CAN_ACCESS_PRODUCT_READ')} />
-          <Route path={AppRoute.MANUFACTURING}       element={guard(<ManufacturingManagement />,    'CAN_ACCESS_PRODUCT_READ')} />
           <Route path={AppRoute.PURCHASES}           element={guard(<PurchaseManagement />,         'CAN_ACCESS_PURCHASE_READ')} />
           <Route path={AppRoute.PURCHASE_ORDERS}     element={guard(<PurchaseOrderManagement />,    'CAN_ACCESS_PURCHASE_ORDER_READ')} />
-          <Route path={AppRoute.WAREHOUSES}          element={guard(<WarehouseManagement />,        'CAN_ACCESS_PURCHASE_WAREHOUSE')} />
           <Route path={AppRoute.PURCHASE_RETURNS}    element={guard(<PurchaseReturnManagement />,   'CAN_ACCESS_PURCHASE_RETURN_READ')} />
           <Route path={AppRoute.SALES}               element={guard(<SaleManagement />,             'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.QUOTATIONS}          element={guard(<QuotationManagement />,        'CAN_ACCESS_QUOTATION_READ')} />

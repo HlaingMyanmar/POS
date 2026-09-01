@@ -26,7 +26,6 @@ public interface SaleMapper {
     @Mapping(target = "paymentStatus", expression = "java(entity.getPaymentStatus() != null ? entity.getPaymentStatus().name() : null)")
     @Mapping(target = "creditStatus", expression = "java(entity.getCreditStatus() != null ? entity.getCreditStatus().name() : null)")
     @Mapping(source = "foc", target = "foc")
-    @Mapping(source = "warehouse.id", target = "warehouseId")
     SaleDTO toDto(Sale entity);
 
     @Mapping(source = "product.id", target = "productId")
@@ -43,7 +42,6 @@ public interface SaleMapper {
     @Mapping(target = "details", ignore = true)
     @Mapping(target = "paymentStatus", ignore = true)
     @Mapping(target = "creditStatus", ignore = true)
-    @Mapping(target = "warehouse", ignore = true)
     @Mapping(target = "voided", expression = "java(dto.getVoided() != null ? dto.getVoided() : Boolean.FALSE)")
     Sale toEntity(SaleDTO dto);
 

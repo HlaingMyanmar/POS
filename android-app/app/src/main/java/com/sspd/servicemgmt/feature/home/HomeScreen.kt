@@ -802,7 +802,7 @@ fun DrawerContent(
                 DrawerMenuItem("ဝန်ဆောင်မှုများ", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,  onNavigate)
                 DrawerMenuItem("အဖွဲ့ စကားဝိုင်း",      Icons.Outlined.Chat,                  Screen.Chat.route,         onNavigate)
                 DrawerSection("စနစ်")
-                DrawerMenuItem("အကောင့်သတ်မှတ်ချက်", Icons.Outlined.ManageAccounts, Screen.Account.route, onNavigate)
+                DrawerMenuItem("ဆက်တင်နှင့် လုံခြုံရေး", Icons.Outlined.Settings, Screen.Settings.route, onNavigate)
                 DrawerMenuItem("အကြောင်းအရာ",        Icons.Outlined.Info,           Screen.About.route,   onNavigate)
             } else {
                 DrawerSection("စီမံခန့်ခွဲမှု")
@@ -835,10 +835,7 @@ fun DrawerContent(
                 DrawerMenuItem("အဖွဲ့ စကားဝိုင်း",               Icons.Outlined.Chat,                  Screen.Chat.route,          onNavigate)
 
                 DrawerSection("စနစ်")
-                DrawerMenuItem("စစ်ဆေးမှု မှတ်တမ်း",           Icons.Outlined.Security,              Screen.AuditLog.route,      onNavigate)
-                DrawerMenuItem("အကောင့်သတ်မှတ်ချက်",        Icons.Outlined.ManageAccounts,        Screen.Account.route,       onNavigate)
-                DrawerMenuItem("အကြောင်းအရာ",               Icons.Outlined.Info,                  Screen.About.route,         onNavigate)
-                DrawerMenuItem("Software Update",            Icons.Outlined.SystemUpdate,          Screen.SoftwareUpdate.route, onNavigate)
+                DrawerMenuItem("ဆက်တင်နှင့် လုံခြုံရေး",      Icons.Outlined.Settings,              Screen.Settings.route,      onNavigate)
             }
         }
 

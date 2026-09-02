@@ -40,7 +40,7 @@ import com.sspd.servicemgmt.core.ui.theme.*
 
 import com.sspd.servicemgmt.core.util.PreferenceManager
 
-private val PayColor = Color(0xFF2563EB)
+private val PayColor = Primary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -197,11 +197,11 @@ fun SupplierPaymentScreen(onBack: () -> Unit) {
                         border = BorderStroke(1.dp, Color(0xFFC7D2FE))
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Apply Credit", fontWeight = FontWeight.ExtraBold, color = Color(0xFF4338CA))
+                            Text("Apply Credit", fontWeight = FontWeight.ExtraBold, color = Primary)
                             Text(
                                 "Available ${money(available)}",
                                 fontSize = 12.sp,
-                                color = Color(0xFF4F46E5),
+                                color = Primary,
                                 fontWeight = FontWeight.Bold
                             )
                             val creditLabel = state.payables
@@ -235,7 +235,7 @@ fun SupplierPaymentScreen(onBack: () -> Unit) {
                                 onClick = { vm.applyCredit() },
                                 enabled = canCreatePayment && !state.busy,
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
                                 shape = RoundedCornerShape(10.dp)
                             ) { Text("Apply Credit", fontWeight = FontWeight.Bold) }
                         }

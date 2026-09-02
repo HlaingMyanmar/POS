@@ -56,7 +56,7 @@ fun SoftwareUpdateScreen(onBack: () -> Unit) {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Primary,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         }
@@ -135,8 +135,8 @@ fun SoftwareUpdateScreen(onBack: () -> Unit) {
                             }
                             Column(Modifier.weight(1f)) {
                                 Text("ဗားရှင်းအသစ်ရှိပါသည်", fontSize = 11.sp, color = Color(0xFFEA580C), fontWeight = FontWeight.Bold)
-                                Text("v${update.versionName}", fontSize = 18.sp, color = Color(0xFF9A3412), fontWeight = FontWeight.ExtraBold)
-                                Text("Version Code ${update.versionCode}", fontSize = 11.sp, color = Color(0xFF9A3412))
+                                Text("v${update.versionName}", fontSize = 18.sp, color = Primary, fontWeight = FontWeight.ExtraBold)
+                                Text("Version Code ${update.versionCode}", fontSize = 11.sp, color = Primary)
                             }
                             if (update.forceUpdate) StatusPill("Force", Color(0xFFFEE2E2), Color(0xFFDC2626))
                         }

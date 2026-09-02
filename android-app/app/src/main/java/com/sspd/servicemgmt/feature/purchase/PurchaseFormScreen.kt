@@ -118,7 +118,7 @@ fun PurchaseFormScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor    = PurchaseColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         },
@@ -786,13 +786,13 @@ private fun PurchaseLineCard(
                         enabled        = !isAutoAssigning,
                         colors         = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFEEF2FF),
-                            contentColor   = Color(0xFF4F46E5)
+                            contentColor   = Primary
                         ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         modifier       = Modifier.height(30.dp)
                     ) {
                         if (isAutoAssigning) {
-                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = Color(0xFF4F46E5))
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = Primary)
                         } else {
                             Icon(Icons.Outlined.AutoAwesome, null, modifier = Modifier.size(13.dp))
                         }
@@ -839,7 +839,7 @@ private fun PurchaseLineCard(
                                 singleLine    = true,
                                 shape         = RoundedCornerShape(8.dp),
                                 colors        = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor   = Color(0xFF4F46E5),
+                                    focusedBorderColor   = Primary,
                                     unfocusedBorderColor = if (sn.isBlank()) Color(0xFFEF4444) else BorderColor
                                 )
                             )

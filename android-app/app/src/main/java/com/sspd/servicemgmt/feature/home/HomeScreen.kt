@@ -256,7 +256,7 @@ private fun TechnicianHomeBody(
         QuadItem("ပစ္စည်း",           Icons.Outlined.Inventory2,            Color(0xFF0891B2), Screen.Products.route),
         QuadItem("ပြင်ဆင်",           Icons.Outlined.Build,                 Color(0xFF059669), Screen.ServiceJobs.route),
         QuadItem("ဝန်ဆောင်မှုများ",  Icons.Outlined.MiscellaneousServices, Color(0xFFD97706), Screen.ServiceMgmt.route),
-        QuadItem("အဖွဲ့ စကားဝိုင်း",     Icons.Outlined.Chat,                  Color(0xFF4F46E5), Screen.Chat.route),
+        QuadItem("အဖွဲ့ စကားဝိုင်း",     Icons.Outlined.Chat,                  Violet, Screen.Chat.route),
     )
     ActionGrid(actions, onNavigate)
 }

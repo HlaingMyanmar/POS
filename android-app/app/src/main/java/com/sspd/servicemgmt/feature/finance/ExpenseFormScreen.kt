@@ -108,7 +108,7 @@ fun ExpenseFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
             TopAppBar(
                 title = { Text(title, fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = accent, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = accent, titleContentColor = OnPrimary)
             )
         },
         bottomBar = {
@@ -300,7 +300,7 @@ private fun ExpenseFormPreviewBody(isExpense: Boolean) {
                 TopAppBar(
                     title = { Text(title, fontWeight = FontWeight.ExtraBold) },
                     navigationIcon = { IconButton(onClick = {}) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = accent, titleContentColor = Color.White)
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = accent, titleContentColor = OnPrimary)
                 )
             },
             bottomBar = {

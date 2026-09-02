@@ -193,7 +193,7 @@ fun SaleListScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Primary, titleContentColor = Color.White
+                    containerColor = Primary, titleContentColor = OnPrimary
                 )
             )
         },

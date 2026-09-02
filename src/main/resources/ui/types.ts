@@ -1157,6 +1157,7 @@ export enum AppRoute {
   SERVICE_JOBS = '/service-jobs',
   SERVICE_HELP = '/help/service-workflow',
   BACKUP = '/settings/backup',
+  ADMIN_QUERIES = '/settings/admin-queries',
   COMPANY_SETTINGS = '/settings/company',
   LABEL_DESIGNER = '/inventory/label-designer',
   AUDIT_LOGS = '/security/audit-logs',

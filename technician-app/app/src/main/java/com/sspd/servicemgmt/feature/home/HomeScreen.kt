@@ -494,7 +494,7 @@ private fun FullHomeBody(
         QuadItem("ရောင်းပြန်လက်ခံ",             Icons.Outlined.AssignmentReturn,     Danger,          Screen.SaleReturns.route),
         QuadItem("Serial Registry",           Icons.Outlined.QrCode2,               Color(0xFF7C3AED),Screen.SerialRegistry.route),
         QuadItem("Opening Balance",           Icons.Outlined.AccountBalance,         Color(0xFF0369A1),Screen.OpeningBalance.route),
-        QuadItem("ငွေပြောင်းလဲမှု",           Icons.Outlined.SwapHoriz,              Color(0xFF4F46E5),Screen.Transfer.route),
+        QuadItem("ငွေပြောင်းလဲမှု",           Icons.Outlined.SwapHoriz,              Violet, Screen.Transfer.route),
     )
     ActionGrid(actions, onNavigate)
 }

@@ -53,7 +53,7 @@ fun PurchaseReturnFormScreen(onBack: () -> Unit, onSuccess: (Int) -> Unit) {
             TopAppBar(
                 title = { Text("ဝယ်ပြန်ပို့ အသစ်", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseReturnFormColor, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseReturnFormColor, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->

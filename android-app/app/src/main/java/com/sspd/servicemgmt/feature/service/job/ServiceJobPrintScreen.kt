@@ -88,7 +88,7 @@ fun ServiceJobPrintScreen(onBack: () -> Unit) {
                         Icon(Icons.Outlined.Print, "ပရင့်", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->

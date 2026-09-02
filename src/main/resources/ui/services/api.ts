@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { AuthResponse, User, DashboardStats, ApiResponse, PagedData } from '../types';
@@ -224,6 +223,13 @@ export const backupService = {
   },
 };
 
+export const adminQueryService = {
+  list: () => api.get<any, ApiResponse<any[]>>('/v1/admin-queries'),
+  run: (id: string) => api.post<any, ApiResponse<any>>(`/v1/admin-queries/${encodeURIComponent(id)}/run`),
+  execute: (sql: string, mode: 'READ' | 'WRITE') =>
+    api.post<any, ApiResponse<any>>('/v1/admin-queries/execute', { sql, mode }),
+};
+
 // ── ServiceType ───────────────────────────────────────────
 export const serviceTypeService = {
   getAll: () => api.get<any, ApiResponse<any[]>>('/v1/service-types'),
@@ -294,6 +300,8 @@ export const serviceJobService = {
   rework: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/rework`, dto),
   voidSettlement: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/void`, { reason }),
   approveEstimate: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-estimate`, {}),
+  holdEstimate: (id: number, reason?: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/hold-estimate`, { reason }),
+  rejectEstimate: (id: number, reason?: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/reject-estimate`, { reason }),
   approveFinal: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-final`, {}),
   leadFinalCheck: (id: number, note?: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/lead-final-check`, { note }),
   returnFinal: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/return-final`, { reason }),

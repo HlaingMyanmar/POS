@@ -5,6 +5,7 @@ import java.util.Locale;
 public enum ServiceLineConfirmationStatus {
     RECOMMENDED,
     INSPECTING,
+    CUSTOMER_HOLD,
     CUSTOMER_APPROVED,
     CUSTOMER_REJECTED,
     IN_PROGRESS,
@@ -20,7 +21,7 @@ public enum ServiceLineConfirmationStatus {
     }
 
     public boolean isBillable() {
-        return this != CUSTOMER_REJECTED;
+        return this != CUSTOMER_REJECTED && this != CUSTOMER_HOLD;
     }
 
     public boolean isCustomerConfirmed() {

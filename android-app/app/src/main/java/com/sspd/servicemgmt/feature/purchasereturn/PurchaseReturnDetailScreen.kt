@@ -70,7 +70,7 @@ fun PurchaseReturnDetailScreen(onBack: () -> Unit) {
                         IconButton(onClick = { showVoidDialog = true }) { Icon(Icons.Outlined.Block, "Void", tint = Color.White) }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseReturnDetailColor, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseReturnDetailColor, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->

@@ -52,7 +52,7 @@ fun SaleReturnFormScreen(onBack: () -> Unit, onSuccess: () -> Unit) {
             TopAppBar(
                 title = { Text(if (vm.isEdit) "Return ပြင်ဆင်ရန်" else "Return အသစ်", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Danger, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Danger, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->

@@ -153,30 +153,32 @@ export default function NewBookingScreen({ navigation }: any) {
   const handleSubmit = async () => {
     if (!customer) { Alert.alert('Error', 'Customer ရွေးပါ'); return; }
     setSubmitting(true);
+    const requestedServices = details.map(d => d._name).filter(Boolean).join(', ');
     const body: BookingDTO = {
       customerId:      customer.id,
-      staffId:         staff?.id,
+      bookingDate:     new Date().toISOString().slice(0, 10),
       appointmentDate: appointDate.trim() ? `${appointDate.trim()}T00:00:00` : undefined,
+      complaintNote:   requestedServices || undefined,
       remark:          remark.trim() || undefined,
-      devices: devices.map(d => ({
-        deviceType:   d.deviceType.trim() || undefined,
-        brand:        d.brand.trim() || undefined,
-        model:        d.model.trim() || undefined,
-        serialNumber: d.serialNo.trim() || undefined,
-        color:        d.color.trim() || undefined,
-        accessories:  d.accessories.trim() || undefined,
-      })),
-      details: details.map(d => ({
-        subServiceTypeId:  d.subServiceTypeId,
-        serviceTypeId:     d.serviceTypeId,
-        description:       d.description,
-        estimatedCost:     d.estimatedCost,
-      })),
     };
     try {
       const res = await api.post<ApiResponse<BookingDTO>>('/bookings', body);
+      const bookingId = res.data.id;
+      if (!bookingId) throw new Error('Booking ID was not returned by the server');
+      if (devices.length > 0) {
+        await api.post<ApiResponse<BookingDTO>>(`/bookings/${bookingId}/items`, devices.map((device, index) => ({
+          itemName: [device.brand.trim(), device.model.trim()].filter(Boolean).join(' ')
+            || device.deviceType.trim()
+            || `Device ${index + 1}`,
+          deviceType: device.deviceType.trim() || undefined,
+          serialNo: device.serialNo.trim() || undefined,
+          color: device.color.trim() || undefined,
+          accessories: device.accessories.trim() || undefined,
+          problemDesc: requestedServices || undefined,
+        })));
+      }
       setSubmitting(false);
-      navigation.replace('BookingDetail', { bookingId: res.data.id });
+      navigation.replace('BookingDetail', { bookingId });
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to create booking');
       setSubmitting(false);

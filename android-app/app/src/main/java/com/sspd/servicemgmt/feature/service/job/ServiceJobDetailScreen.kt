@@ -202,8 +202,8 @@ fun ServiceJobDetailScreen(
             paymentMethods = state.paymentMethods,
             loading        = state.actionLoading,
             onDismiss      = { vm.dismissSettleDialog() },
-            onSettle       = { cost, disc, foc, paid, mid, _, txn, due, payments ->
-                vm.settle(cost, disc, foc, paid, mid, null, txn, due, payments)
+            onSettle       = { cost, disc, foc, paid, mid, _, txn, due, payments, alloc ->
+                vm.settle(cost, disc, foc, paid, mid, null, txn, due, payments, alloc)
             }
         )
     }
@@ -260,6 +260,56 @@ fun ServiceJobDetailScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { vm.dismissHoldDialog() }) { Text("မလုပ်တော့ပါ") } }
+        )
+    }
+
+    var showEstimateHoldDialog by remember { mutableStateOf(false) }
+    var showEstimateRejectDialog by remember { mutableStateOf(false) }
+    if (showEstimateHoldDialog) {
+        var reason by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showEstimateHoldDialog = false },
+            title = { Text("Estimate Hold", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                OutlinedTextField(
+                    value = reason, onValueChange = { reason = it },
+                    label = { Text("မှတ်ချက်") },
+                    placeholder = { Text("Customer ပြန်ဆက်သွယ်ရန်") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { vm.holdEstimate(reason); showEstimateHoldDialog = false },
+                    enabled = !state.actionLoading
+                ) { Text("Hold ထားမည်") }
+            },
+            dismissButton = { TextButton(onClick = { showEstimateHoldDialog = false }) { Text("မလုပ်တော့ပါ") } }
+        )
+    }
+    if (showEstimateRejectDialog) {
+        var reason by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showEstimateRejectDialog = false },
+            title = { Text("Estimate ငြင်းပယ်", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Customer မလုပ်ဘူးဟု ဆုံးဖြတ်ပါက Job ကို ပယ်ဖျက်မည်", fontSize = 12.sp, color = TextMuted)
+                    OutlinedTextField(
+                        value = reason, onValueChange = { reason = it },
+                        label = { Text("အကြောင်းရင်း") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { vm.rejectEstimate(reason); showEstimateRejectDialog = false },
+                    enabled = !state.actionLoading,
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) { Text("ငြင်းပယ်မည်") }
+            },
+            dismissButton = { TextButton(onClick = { showEstimateRejectDialog = false }) { Text("မလုပ်တော့ပါ") } }
         )
     }
 
@@ -368,7 +418,7 @@ fun ServiceJobDetailScreen(
                     IconButton(onClick = onEdit)       { Icon(Icons.Outlined.Edit,    "ပြင်ရန်", tint = Color.White) }
                     IconButton(onClick = onPrint)      { Icon(Icons.Outlined.Print,   "ပရင့်", tint = Color.White) }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->
@@ -707,6 +757,9 @@ fun ServiceJobDetailScreen(
             }
 
             // ── Action buttons ────────────────────────────────────────────────
+            item {
+                ServiceJobActivitySection(activities = job.activities)
+            }
             // Settle button — only when not yet settled (no due amount means it's a fresh settle)
             if (job.status?.uppercase() == "COMPLETED"
                 && (job.paymentStatus?.uppercase() != "PAID" || job.netAmount == null)
@@ -786,12 +839,13 @@ fun ServiceJobDetailScreen(
 
             if ((job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true && job.status?.uppercase() !in listOf("DELIVERED", "CANCELLED")) {
                 item {
-                    OutlinedButton(
-                        onClick = { vm.approveEstimate() },
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = !state.actionLoading
-                    ) { Text("Estimate အတည်ပြုမည်", fontWeight = FontWeight.Bold) }
+                    EstimateActionSection(
+                        isOnHold = jobHasEstimateHold(job),
+                        loading = state.actionLoading,
+                        onApprove = { vm.approveEstimate() },
+                        onHoldEstimate = { showEstimateHoldDialog = true },
+                        onRejectEstimate = { showEstimateRejectDialog = true }
+                    )
                 }
             }
 
@@ -866,11 +920,84 @@ private fun ServiceLineCard(line: ServiceJobLineDTO) {
             Column(Modifier.weight(1f)) {
                 Text(line.serviceItemName ?: "—", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextMain)
                 Text("${line.qty ?: 1} × ${line.price.fmtD()} Ks", fontSize = 11.sp, color = TextMuted)
+                lineConfirmationLabel(line.confirmationStatus)?.let {
+                    Text(it, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = lineConfirmationColor(line.confirmationStatus))
+                }
                 val lineWLabel = fmtWarranty(line.warrantyMonths)
                 if (lineWLabel.isNotEmpty())
                     Text("အာမခံ: $lineWLabel", fontSize = 10.sp, color = androidx.compose.ui.graphics.Color(0xFF0891B2))
             }
-            Text("${line.subtotal.fmtD()} Ks", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+            Text(
+                if (line.confirmationStatus == "CUSTOMER_REJECTED" || line.confirmationStatus == "CUSTOMER_HOLD") "0"
+                else "${line.subtotal.fmtD()} Ks",
+                fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
+                color = if (line.confirmationStatus == "CUSTOMER_REJECTED") Danger else if (line.confirmationStatus == "CUSTOMER_HOLD") Violet else Violet
+            )
+        }
+    }
+}
+
+private fun jobHasEstimateHold(job: ServiceJobDTO) =
+    job.lines.orEmpty().any { it.confirmationStatus == "CUSTOMER_HOLD" }
+
+private fun lineConfirmationLabel(status: String?): String? = when (status) {
+    "CUSTOMER_HOLD" -> "Customer စောင့်ဆိုင်း"
+    "CUSTOMER_REJECTED" -> "Customer ငြင်းပယ်"
+    "CUSTOMER_APPROVED" -> "Customer အတည်ပြုပြီး"
+    "RECOMMENDED" -> "အကြံပြုထားသည်"
+    "INSPECTING" -> "စစ်ဆေးဆဲ"
+    "IN_PROGRESS" -> "လုပ်ဆောင်ဆဲ"
+    "COMPLETED" -> "ပြီးစီး"
+    else -> null
+}
+
+private fun lineConfirmationColor(status: String?) = when (status) {
+    "CUSTOMER_HOLD" -> Violet
+    "CUSTOMER_REJECTED" -> Danger
+    "CUSTOMER_APPROVED" -> Success
+    else -> TextMuted
+}
+
+@Composable
+private fun EstimateActionSection(
+    isOnHold: Boolean,
+    loading: Boolean,
+    onApprove: () -> Unit,
+    onHoldEstimate: () -> Unit,
+    onRejectEstimate: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (isOnHold) {
+            Surface(color = VioletBg, shape = RoundedCornerShape(10.dp)) {
+                Text(
+                    "Customer ဆုံးဖြတ်ချက် စောင့်ဆိုင်းနေသည်",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Violet
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onApprove,
+                modifier = Modifier.weight(1f).height(46.dp),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !loading
+            ) { Text("အတည်ပြု", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+            OutlinedButton(
+                onClick = onHoldEstimate,
+                modifier = Modifier.weight(1f).height(46.dp),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !loading
+            ) { Text("Hold", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+            OutlinedButton(
+                onClick = onRejectEstimate,
+                modifier = Modifier.weight(1f).height(46.dp),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !loading,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
+            ) { Text("ငြင်းပယ်", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
         }
     }
 }
@@ -914,11 +1041,12 @@ private fun SettleDialog(
     paymentMethods: List<PaymentMethodDTO>,
     loading:        Boolean,
     onDismiss:      () -> Unit,
-    onSettle:       (finalCost: Double, discount: Double, foc: Boolean, paid: Double, methodId: Int?, warehouseId: Int?, txnNo: String?, dueDate: String?, payments: List<PaymentTransactionDTO>?) -> Unit
+    onSettle:       (finalCost: Double, discount: Double, foc: Boolean, paid: Double, methodId: Int?, warehouseId: Int?, txnNo: String?, dueDate: String?, payments: List<PaymentTransactionDTO>?, discountAllocationMethod: String) -> Unit
 ) {
     val defaultCost = job?.estimatedCost ?: job?.netAmount ?: 0.0
     var costStr     by remember { mutableStateOf(String.format("%.0f", defaultCost)) }
     var discountStr by remember { mutableStateOf("0") }
+    var allocMethod by remember { mutableStateOf(job?.discountAllocationMethod ?: "PRO_RATA") }
     var foc         by remember { mutableStateOf(false) }
     var paidStr     by remember { mutableStateOf("") }
     var txnNo       by remember { mutableStateOf("") }
@@ -990,6 +1118,18 @@ private fun SettleDialog(
                     modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp),
                     enabled = !foc
                 )
+                if (!foc) {
+                    Text("လျှော့ငွေ ခွဲဝေမှု", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("PRO_RATA" to "အချိုး", "LABOR_FIRST" to "လုပ်အား", "PARTS_FIRST" to "ပစ္စည်း").forEach { (value, label) ->
+                            FilterChip(
+                                selected = allocMethod == value,
+                                onClick = { allocMethod = value },
+                                label = { Text(label, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                }
 
                 // ── Net display ───────────────────────────────────────────────
                 Surface(color = if (foc) SuccessBg else ScreenBg, shape = RoundedCornerShape(8.dp)) {
@@ -1151,7 +1291,8 @@ private fun SettleDialog(
                             null,
                             txnNo.ifBlank { null },
                             dueDate.ifBlank { null },
-                            splitPayments.ifEmpty { null }
+                            splitPayments.ifEmpty { null },
+                            allocMethod
                         )
                     }
                 },

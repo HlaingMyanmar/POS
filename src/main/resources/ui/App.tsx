@@ -34,6 +34,7 @@ import TrialBalanceReport from './pages/TrialBalanceReport';
 import BalanceSheetReport from './pages/BalanceSheetReport';
 import AgingReportPage from './pages/AgingReportPage';
 import BackupSettings from './pages/BackupSettings';
+import AdminQueryPage from './pages/AdminQueryPage';
 import CompanySettingsPage from './pages/CompanySettingsPage';
 import VoucherSettingsPage from './pages/VoucherSettingsPage';
 import ServiceManagement from './pages/ServiceManagement';
@@ -63,6 +64,7 @@ import Layout from './components/Layout';
 import { User, AppLanguage, AppRoute, AppTheme } from './types';
 import { getFromSession } from './utils/storageHelper';
 import { authService, setAccessToken, setupService } from './services/api';
+import { disconnectWs, ensureWsConnected } from './services/wsClient';
 import { getCompanySettings } from './utils/companySettings';
 import { applyDocumentLanguage, resolveInitialLanguage, saveLanguagePreference } from './utils/language';
 import { initDomLanguageTranslator, setDomLanguage } from './utils/domLanguageTranslator';
@@ -74,6 +76,11 @@ const canAccess = (user: User, permission?: RequiredPermission): boolean => {
   if (user.roles.some(r => r === 'ADMINISTRATOR' || r === 'ROLE_ADMINISTRATOR')) return true;
   const required = Array.isArray(permission) ? permission : [permission];
   return required.every(item => (user.permissions || []).includes(item));
+};
+
+const canAccessAny = (user: User, permissions: readonly string[]): boolean => {
+  if (user.roles.some(r => r === 'ADMINISTRATOR' || r === 'ROLE_ADMINISTRATOR')) return true;
+  return permissions.some(item => (user.permissions || []).includes(item));
 };
 
 const CUSTOMER_HISTORY_PERMISSIONS = [
@@ -150,6 +157,7 @@ const App: React.FC = () => {
           if (res.success) {
             setAccessToken(res.data.accessToken);
             setUser(JSON.parse(savedUser));
+            ensureWsConnected();
             void getCompanySettings(true);
             void checkSetup();
           } else {
@@ -187,14 +195,24 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      ensureWsConnected();
+    } else {
+      disconnectWs();
+    }
+  }, [user]);
+
   const handleLoginSuccess = (userData: User, _token: string) => {
     setUser(userData);
+    ensureWsConnected();
     void getCompanySettings(true);
     void checkSetup();
   };
 
   const handleLogout = () => {
     authService.logout();
+    disconnectWs();
     setUser(null);
   };
 
@@ -202,6 +220,12 @@ const App: React.FC = () => {
   const guard = (element: React.ReactNode, perm?: RequiredPermission) => {
     if (!user) return <Navigate to={AppRoute.LOGIN} replace />;
     if (perm && !canAccess(user, perm)) return <Navigate to={AppRoute.DASHBOARD} replace />;
+    return <>{element}</>;
+  };
+
+  const guardAny = (element: React.ReactNode, perms: readonly string[]) => {
+    if (!user) return <Navigate to={AppRoute.LOGIN} replace />;
+    if (!canAccessAny(user, perms)) return <Navigate to={AppRoute.DASHBOARD} replace />;
     return <>{element}</>;
   };
 
@@ -294,6 +318,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.SHELF_LOCATIONS}     element={guard(<ShelfLocationManagement />,    'CAN_ACCESS_SHELF_LOCATION_READ')} />
           <Route path={AppRoute.OUTDOOR_TRACKING}    element={guard(<OutdoorTracking />,            'CAN_ACCESS_TECHNICIAN_LOCATION_READ')} />
           <Route path={AppRoute.BACKUP}              element={guard(<BackupSettings />,             'CAN_ACCESS_BACKUP_SETTINGS_READ')} />
+          <Route path={AppRoute.ADMIN_QUERIES}      element={guardAny(<AdminQueryPage />, ['CAN_ACCESS_ADMIN_QUERY_READ', 'CAN_ACCESS_ADMIN_QUERY_WRITE'])} />
           <Route path={AppRoute.COMPANY_SETTINGS}    element={guard(<CompanySettingsPage />)} />
           <Route path={AppRoute.VOUCHER_SETTINGS}    element={guard(<VoucherSettingsPage />)} />
           <Route path={AppRoute.APP_VERSION_SETTINGS} element={guard(<AppVersionSettingsPage />,   'CAN_ACCESS_USERS_READ')} />

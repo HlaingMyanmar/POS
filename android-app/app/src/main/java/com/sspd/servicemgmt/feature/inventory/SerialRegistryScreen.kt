@@ -92,7 +92,7 @@ fun SerialRegistryScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor    = RegistryColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         }

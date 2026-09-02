@@ -59,7 +59,7 @@ fun SettingsSecurityScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
             TopAppBar(
                 title = { Text("ဆက်တင်နှင့် လုံခြုံရေး", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White, navigationIconContentColor = Color.White),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary, navigationIconContentColor = OnPrimary),
             )
         },
     ) { padding ->

@@ -232,6 +232,9 @@ public enum PermissionName {
     CAN_ACCESS_BACKUP_IMPORT("Backup SQL import/restore ခွင့်"),
     CAN_ACCESS_BACKUP_FILES_READ("Backup file list ကြည့်ရှုခွင့်"),
 
+    CAN_ACCESS_ADMIN_QUERY_READ("SQL Console SELECT query run ခွင့်"),
+    CAN_ACCESS_ADMIN_QUERY_WRITE("SQL Console INSERT/UPDATE/DELETE run ခွင့်"),
+
     CAN_ACCESS_REPORT_READ("အစီရင်ခံစာများကို ကြည့်ရှုခွင့်ပြုသည်"),
 
     CAN_ACCESS_AUDIT_LOG_READ("Audit log မှတ်တမ်းများ ကြည့်ရှုခွင့်"),

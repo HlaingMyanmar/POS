@@ -59,7 +59,7 @@ fun PurchaseOrderListScreen(onBack: () -> Unit) {
                 actions = {
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်ရန်", tint = Color.White) }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseColor, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseColor, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->
@@ -229,7 +229,7 @@ private fun PurchaseOrderCard(
                             onClick = onApprove,
                             enabled = !busy,
                             modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary)
                         ) { Text("Approve", fontSize = 12.sp) }
                         OutlinedButton(
                             onClick = onReject,

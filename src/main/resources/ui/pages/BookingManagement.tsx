@@ -306,7 +306,7 @@ export default function BookingManagement() {
       <div className="flex flex-wrap gap-2">
         {can('CAN_ACCESS_BOOKING_CONVERT_JOB') && detail.status === 'CONFIRMED' && !detail.linkedJobs.length && <button disabled={saving} onClick={() => action('Outdoor Job ပြောင်းမည်လား?', 'OUTDOOR ServiceJob တစ်ခုဖန်တီးပါမည်။', () => bookingService.convertOutdoor(detail.id), 'Outdoor Job ဖန်တီးပြီးပါပြီ')} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white"><MapPin size={17} /> Outdoor Job ပြောင်း</button>}
         {can('CAN_ACCESS_BOOKING_UPDATE') && detail.status === 'CONFIRMED' && !detail.linkedJobs.length && <button onClick={() => { setItems([emptyItem()]); setItemsOpen(true); }} className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-semibold text-white"><PackagePlus size={17} /> ပစ္စည်းလက်ခံ</button>}
-        {!!detail.items.length && <button onClick={() => setPrintBookingId(detail.id)} className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-semibold text-slate-700"><Printer size={17} /> လက်ခံ Voucher</button>}
+        {!!detail.items.length && <button onClick={() => setPrintBookingId(detail.id)} className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 font-semibold text-indigo-800 hover:bg-indigo-100"><Printer size={17} /> လက်ခံ Voucher</button>}
         {can('CAN_ACCESS_BOOKING_CONVERT_JOB') && detail.status === 'ARRIVED' && detail.unconvertedItemCount > 0 && <button disabled={saving} onClick={() => action('Indoor Jobs ပြောင်းမည်လား?', 'မပြောင်းရသေးသော ပစ္စည်းတစ်ခုလျှင် Job တစ်ခုဖန်တီးပါမည်။', () => bookingService.convertIndoor(detail.id), 'Indoor Jobs ဖန်တီးပြီးပါပြီ')} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white"><Home size={17} /> Indoor Job ပြောင်း</button>}
         {can('CAN_ACCESS_BOOKING_UPDATE') && detail.status !== 'CANCELED' && !detail.linkedJobs.length && <button disabled={saving} onClick={() => action('Booking ပယ်ဖျက်မည်လား?', 'Job ပြောင်းပြီးပါက Cancel မရပါ။', () => bookingService.updateStatus(detail.id, 'CANCELED'), 'ပယ်ဖျက်ပြီးပါပြီ')} className="rounded-xl border border-rose-300 px-4 py-2.5 font-semibold text-rose-600">Cancel</button>}
         {can('CAN_ACCESS_BOOKING_UPDATE') && detail.status !== 'CANCELED' && !detail.fullyConverted && <button onClick={() => openEdit(detail)} className="flex items-center gap-2 rounded-xl border px-4 py-2.5"><Pencil size={17} /> ပြင်ဆင်ရန်</button>}
@@ -324,7 +324,7 @@ export default function BookingManagement() {
         documentType="BOOKING"
         documentId={printBookingId}
         title="လက်ခံ Voucher"
-        defaultPaper="A5"
+        defaultPaper="POS_80MM"
         onClose={() => setPrintBookingId(null)}
       />
     )}

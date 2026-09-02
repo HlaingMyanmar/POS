@@ -120,7 +120,7 @@ fun SaleDetailScreen(onBack: () -> Unit, onPrint: () -> Unit = {}) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Primary, titleContentColor = Color.White
+                    containerColor = Primary, titleContentColor = OnPrimary
                 )
             )
         }

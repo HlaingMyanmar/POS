@@ -75,7 +75,7 @@ fun PurchaseDetailScreen(onBack: () -> Unit) {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = PurchaseColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         }

@@ -75,7 +75,7 @@ fun IncomeReportScreen(onBack: () -> Unit) {
                 title = { Text("ဝင်ငွေ / အမြတ် စာရင်း", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
                 actions = { IconButton(onClick = { if (state.mode == ReportMode.YEARLY) vm.selectMode(ReportMode.YEARLY) else vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF059669), titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF059669), titleContentColor = OnPrimary)
             )
         }
     ) { padding ->

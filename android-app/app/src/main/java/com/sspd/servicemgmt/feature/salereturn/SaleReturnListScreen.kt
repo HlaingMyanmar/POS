@@ -48,7 +48,7 @@ fun SaleReturnListScreen(
                 actions = {
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Danger, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Danger, titleContentColor = OnPrimary)
             )
         },
         floatingActionButton = {

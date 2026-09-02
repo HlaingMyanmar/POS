@@ -65,8 +65,8 @@ fun TransferScreen(onBack: () -> Unit) {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
+                    titleContentColor = OnPrimary,
+                    navigationIconContentColor = OnPrimary,
                     actionIconContentColor = Color.White
                 )
             )

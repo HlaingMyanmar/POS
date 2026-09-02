@@ -191,15 +191,21 @@ Supplier balance is recalculated on purchase confirm/cancel (`syncSupplierBalanc
 
 ## Service job
 
-**Settle:** credit checks if due > 0; stamps billed prices; status `COMPLETED`; if parts exist, creates sale via `SaleService.save` with `serviceJobSale`; journals if not FOC; payment txns if paid > 0; may apply booking deposit.
+**Edit rules:** settled (`paymentStatus` set and not voided), `COMPLETED`, `DELIVERED`, and `CANCELLED` jobs cannot be edited. Parts do **not** move stock until settlement creates the internal sale — editing open-job parts must not reverse inventory.
+
+**Settle (idempotent):** row-locked via `findByIdForUpdate`; rejects when already settled (`paymentStatus != null` and not voided). Requires status `COMPLETED`, lead final check, and supervisor final approval. Credit checks if due > 0; stamps billed prices; if parts exist, creates sale via `SaleService.save` with `serviceJobSale`; journals if not FOC; payment txns if paid > 0.
 
 **Pay due:** due must be > 0; payment method or payments required.
 
-**Deliver:** status must be `COMPLETED`; due must be 0 or FOC. Then `DELIVERED`. May complete parent booking.
+**Deliver:** status must be `COMPLETED`; due must be 0, FOC, or due-delivery approved. Then `DELIVERED`.
 
-**Void settlement:** `voidSettlement` — reverses settlement (read method before training; serial mapping test exists).
+**Void settlement:** `voidSettlement` — row-locked; voids linked sale / journals; clears payment fields so the job can be settled again after approvals.
 
 **Rework:** `rework` + `ReworkRequestDTO` (warranty credit field exists on DTO).
+
+**Notify:** `POST .../notify` writes `service_job_notifications` and activity only. Default `LoggingCustomerNotifier` does not send SMS/Viber/Telegram — plug in a `CustomerNotifier` bean for real delivery.
+
+**Job number:** assigned from DB id after insert (`SJ-%06d`) — not `max(id)+1` before insert.
 
 **Technician assign:** without `CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN`, technician roles cannot pick another technician (`RoleSeeder` strips that permission from TECH* roles).
 
@@ -207,7 +213,12 @@ Supplier balance is recalculated on purchase confirm/cancel (`syncSupplierBalanc
 
 ## Booking → job
 
-`POST /api/v1/bookings/{id}/convert-to-job` copies customer, devices, service lines (warranty months from service item, FOC flag) into jobs (`BookingService`). Tests: `BookingServiceConversionTest`.
+Statuses: `CONFIRMED` → outdoor convert; receive items → `ARRIVED` → indoor convert (one job per item); `PATCH .../status` cancels only (`CANCELED`).
+
+- `POST /api/v1/bookings/{id}/convert-outdoor` — one outdoor job for a `CONFIRMED` booking (`BookingService.convertOutdoor`). Concurrent converts use booking row lock.
+- `POST /api/v1/bookings/{id}/convert-indoor` — one indoor job per unconverted item on an `ARRIVED` booking.
+
+Tests: `BookingServiceTest`. Legacy `convert-to-job` / `/scan` endpoints are removed.
 
 ---
 

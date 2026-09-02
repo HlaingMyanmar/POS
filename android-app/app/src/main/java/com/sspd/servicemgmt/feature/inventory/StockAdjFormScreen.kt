@@ -59,7 +59,7 @@ fun StockAdjFormScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor    = AdjColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         },

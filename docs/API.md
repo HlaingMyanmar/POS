@@ -249,17 +249,36 @@ DELETE `/{id}` archives (does not hard-delete).
 
 ## Bookings and jobs
 
-`/api/v1/bookings` — paged GET, GET `/{id}`, `/status/{status}`, `/scan/{invoiceNo}`, `/upcoming?minutesAhead=`, POST, PUT, PATCH `/{id}/status`, POST convert-to-job, attachments, DELETE.
+`/api/v1/bookings`
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/` | paged (`page`, `size`, `search`, `dateFrom`, `dateTo`) |
+| GET | `/{id}` | detail (+ linked jobs when loaded) |
+| POST | `/` | create → status `CONFIRMED` |
+| PUT | `/{id}` | update (not when canceled / fully converted) |
+| PATCH | `/{id}/status?status=CANCELED` | **cancel only** — other statuses rejected |
+| POST | `/{id}/items` | receive indoor items → status `ARRIVED` |
+| DELETE | `/{id}/items/{itemId}` | remove unconverted item |
+| POST | `/{id}/convert-outdoor` | `CONFIRMED` → one outdoor job |
+| POST | `/{id}/convert-indoor` | `ARRIVED` → one job per unconverted item |
+| DELETE | `/{id}` | `CONFIRMED` only, no items / linked jobs |
+
+Booking statuses: `CONFIRMED`, `ARRIVED`, `CANCELED`. There is **no** `/scan`, `/upcoming`, or `convert-to-job` endpoint.
 
 `/api/v1/service-types`, `/api/v1/sub-service-types`, `/api/v1/services` — catalog CRUD; services include `/active`, `/by-type/{id}`, `/{id}/price-history`.
 
 `/api/v1/service-jobs`
 
-GET `/` (page, search, dates), `/{id}`, `/by-booking/{id}`, `/status/{status}`, `/unpaid`, `/overdue`, `/used-serial-numbers`.
+GET `/` (page, search, dates), `/{id}`, `/by-booking/{id}`, `/customer/{customerId}`, `/status/{status}`, `/unpaid`, `/overdue`, `/used-serial-numbers`, `/pending-handovers/mine`, `/handovers/sent/mine`.
 
-POST `/`, PUT `/{id}`, PATCH `/{id}/status`, POST settle, pay-due, deliver, rework, void, approve-estimate, notify, attachments, DELETE.
+POST `/`, PUT `/{id}`, PATCH `/{id}/status`, POST settle, pay-due, deliver, approve-due-delivery, rework, void, approve-estimate, hold-estimate, reject-estimate, approve-final, lead-final-check, return-final, notify, attachments, DELETE.
 
 Settle/pay body: `SettleDTO` (finalCost, discount, foc, paidAmount, payments, paymentMethodId, dueDate, …).
+
+`POST /{id}/notify` — persists notification history only; outbound SMS/Viber/Telegram requires a `CustomerNotifier` provider bean (default logs only).
+
+Job numbers are assigned from the persisted ID (`SJ-000123`) after insert to avoid concurrent collisions.
 
 ---
 

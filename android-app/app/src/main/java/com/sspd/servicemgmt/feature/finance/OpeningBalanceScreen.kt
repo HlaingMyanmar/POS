@@ -83,7 +83,7 @@ fun OpeningBalanceScreen(onBack: () -> Unit) {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor    = CapColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         }

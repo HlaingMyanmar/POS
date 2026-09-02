@@ -8,6 +8,9 @@ import org.sspd.servicemgmt.accountingoptions.coaoptions.repository.ChartOfAccou
 @Component
 @RequiredArgsConstructor
 public class AccountResolver {
+    public ChartOfAccount laborDiscount() { return get(AccountCode.LABOR_DISCOUNT); }
+    public ChartOfAccount partsDiscount() { return get(AccountCode.PARTS_DISCOUNT); }
+    public ChartOfAccount paymentDiscount() { return get(AccountCode.PAYMENT_DISCOUNT); }
 
     private final ChartOfAccountRepository coaRepo;
 

@@ -112,6 +112,18 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
                    AND a.staff.id = :staffId
                    AND a.status IN :assignmentStatuses
                )
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobHandover h
+                 WHERE h.serviceJob.id = j.id
+                   AND h.toStaff.id = :staffId
+                   AND h.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
+               )
+          )
+          AND NOT EXISTS (
+               SELECT 1 FROM ServiceJobHandover hOut
+               WHERE hOut.serviceJob.id = j.id
+                 AND hOut.fromAssignment.staff.id = :staffId
+                 AND hOut.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
           )
         ORDER BY CASE
                    WHEN j.priority = 'URGENT' THEN 0
@@ -143,6 +155,18 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
                    AND a.staff.id = :staffId
                    AND a.status IN :assignmentStatuses
                )
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobHandover h
+                 WHERE h.serviceJob.id = j.id
+                   AND h.toStaff.id = :staffId
+                   AND h.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
+               )
+          )
+          AND NOT EXISTS (
+               SELECT 1 FROM ServiceJobHandover hOut
+               WHERE hOut.serviceJob.id = j.id
+                 AND hOut.fromAssignment.staff.id = :staffId
+                 AND hOut.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
           )
         ORDER BY j.id DESC
         """)
@@ -164,6 +188,18 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
                    AND a.staff.id = :staffId
                    AND a.status IN :assignmentStatuses
                )
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobHandover h
+                 WHERE h.serviceJob.id = j.id
+                   AND h.toStaff.id = :staffId
+                   AND h.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
+               )
+          )
+          AND NOT EXISTS (
+               SELECT 1 FROM ServiceJobHandover hOut
+               WHERE hOut.serviceJob.id = j.id
+                 AND hOut.fromAssignment.staff.id = :staffId
+                 AND hOut.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
           )
         ORDER BY j.receivedDate DESC
         """)
@@ -188,6 +224,18 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
                    AND a.staff.id = :staffId
                    AND a.status IN :assignmentStatuses
                )
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobHandover h
+                 WHERE h.serviceJob.id = j.id
+                   AND h.toStaff.id = :staffId
+                   AND h.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
+               )
+          )
+          AND NOT EXISTS (
+               SELECT 1 FROM ServiceJobHandover hOut
+               WHERE hOut.serviceJob.id = j.id
+                 AND hOut.fromAssignment.staff.id = :staffId
+                 AND hOut.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
           )
         ORDER BY j.estimatedCompletion ASC
         """)
@@ -208,6 +256,18 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
                    AND a.staff.id = :staffId
                    AND a.status IN :assignmentStatuses
                )
+            OR EXISTS (
+                 SELECT 1 FROM ServiceJobHandover h
+                 WHERE h.serviceJob.id = j.id
+                   AND h.toStaff.id = :staffId
+                   AND h.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
+               )
+          )
+          AND NOT EXISTS (
+               SELECT 1 FROM ServiceJobHandover hOut
+               WHERE hOut.serviceJob.id = j.id
+                 AND hOut.fromAssignment.staff.id = :staffId
+                 AND hOut.status = org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING
           )
         """)
     long countByStatusForStaff(

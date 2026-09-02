@@ -668,6 +668,11 @@ export interface JournalEntryDTO {
   description: string;
   staffId: number;
   staffName?: string;
+  status?: string;
+  reversalOfId?: number;
+  reversedBy?: string;
+  reversedAt?: string;
+  reversalReason?: string;
   details: JournalDetailDTO[];
 }
 
@@ -1043,6 +1048,17 @@ export interface ServiceJobDTO {
   netAmount?: number;
   paidAmount?: number;
   dueAmount?: number;
+  paymentDiscountAmount?: number;
+  paymentDiscountApprovedBy?: string;
+  paymentDiscountApprovedAt?: string;
+  paymentDiscountApprovalNote?: string;
+  dueDeliveryApprovedBy?: string;
+  dueDeliveryApprovedAt?: string;
+  dueDeliveryApprovalReason?: string;
+  voided?: boolean;
+  voidReason?: string;
+  voidedBy?: string;
+  voidedAt?: string;
   dueDate?: string;
   paymentStatus?: string;
   creditStatus?: string;
@@ -1074,6 +1090,8 @@ export interface SettleDTO {
   discountAmount?: number;
   foc?: boolean;
   paidAmount?: number;
+  paymentDiscountAmount?: number;
+  paymentDiscountApprovalNote?: string;
   dueDate?: string;
   paymentMethodId?: number;
   paymentAccountId?: number;

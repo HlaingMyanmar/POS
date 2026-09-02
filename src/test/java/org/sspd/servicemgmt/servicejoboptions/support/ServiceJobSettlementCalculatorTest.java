@@ -50,6 +50,33 @@ class ServiceJobSettlementCalculatorTest {
     }
 
     @Test
+    void laborAndPartsGross_useChargeAndUnitPrice() {
+        ServiceJobLine line = ServiceJobLine.builder()
+                .qty(1)
+                .price(new BigDecimal("50000"))
+                .subtotal(new BigDecimal("45000"))
+                .discountAmount(new BigDecimal("5000"))
+                .confirmationStatus(ServiceLineConfirmationStatus.COMPLETED)
+                .build();
+        Product product = new Product();
+        product.setId(1);
+        ServiceJobPart part = ServiceJobPart.builder()
+                .product(product)
+                .qty(2)
+                .unitPrice(new BigDecimal("10000"))
+                .discountAmount(new BigDecimal("2000"))
+                .subtotal(new BigDecimal("18000"))
+                .build();
+        ServiceJob job = ServiceJob.builder()
+                .lines(java.util.List.of(line))
+                .productParts(java.util.List.of(part))
+                .build();
+
+        assertEquals(new BigDecimal("50000"), ServiceJobSettlementCalculator.laborGross(job));
+        assertEquals(new BigDecimal("20000"), ServiceJobSettlementCalculator.partsGross(job));
+    }
+
+    @Test
     void rejectsOverallDiscountAboveGross() {
         ServiceJob job = jobWithBalances(new BigDecimal("10000"), new BigDecimal("5000"));
         assertThrows(IllegalArgumentException.class, () -> ServiceJobSettlementCalculator.compute(

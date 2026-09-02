@@ -32,8 +32,12 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username or email: " + usernameOrEmail));
 
+        String principal = user.getEmail() != null && !user.getEmail().isBlank()
+                ? user.getEmail().trim()
+                : user.getUsername();
+
         return new TokenAwareUserDetails(
-                user.getEmail(),
+                principal,
                 user.getPassword(),
                 user.getIsActive(),
                 getAuthorities(user),

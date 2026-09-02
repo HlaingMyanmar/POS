@@ -1,6 +1,9 @@
 package org.sspd.servicemgmt.accountingoptions.coaoptions;
 
 public final class AccountCode {
+    public static final String LABOR_DISCOUNT = "EXP-029";
+    public static final String PARTS_DISCOUNT = "EXP-030";
+    public static final String PAYMENT_DISCOUNT = "EXP-031";
     private AccountCode() {}
 
     // ── Root Groups ─────────────────────────────────

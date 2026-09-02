@@ -23,6 +23,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
 
     private val _uiState = MutableStateFlow(
         UiState(
+            workTab = WORK_TAB_ACTIVE,
             fromDate = if (PreferenceManager(application).shouldScopeToOwnStaff()) null else today(),
             toDate = if (PreferenceManager(application).shouldScopeToOwnStaff()) null else today(),
         )
@@ -45,11 +46,12 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
             try {
                 val s   = _uiState.value
                 val scoped = prefs.shouldScopeToOwnStaff()
+                val ignoreDates = workTabIgnoresDateFilter(s.workTab)
                 val res = ApiClient.service.getServiceJobs(
                     auth     = ApiClient.bearer(prefs.authToken),
                     search   = s.search,
-                    dateFrom = s.fromDate ?: "",
-                    dateTo   = s.toDate   ?: "",
+                    dateFrom = if (ignoreDates) "" else (s.fromDate ?: ""),
+                    dateTo   = if (ignoreDates) "" else (s.toDate   ?: ""),
                     staffId  = if (scoped) prefs.staffId else null,
                 )
                 if (res.isSuccessful) {
@@ -64,6 +66,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun setFilter(f: String) = _uiState.update { it.copy(filter = f) }
+    fun setWorkTab(tab: WorkTab) = _uiState.update { it.copy(workTab = tab) }
 
     fun setSearch(q: String) { _uiState.update { it.copy(search = q) }; load() }
 
@@ -107,6 +110,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
     data class UiState(
         val items:         List<ServiceJobDTO> = emptyList(),
         val loading:       Boolean             = true,
+        val workTab:       WorkTab             = WORK_TAB_ACTIVE,
         val filter:        String              = "ALL",
         val search:        String              = "",
         val fromDate:      String?             = null,

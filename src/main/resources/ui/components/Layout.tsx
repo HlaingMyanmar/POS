@@ -195,8 +195,8 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ရောင်းချမှု', icon: <TrendingUp size={18} />, path: AppRoute.SALES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ဈေးနှုန်းကမ်းလှမ်း', icon: <ClipboardList size={18} />, path: AppRoute.QUOTATIONS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_QUOTATION_READ' },
       { name: 'ရောင်းပြန်ပို့', icon: <RotateCcw size={18} />, path: AppRoute.SALE_RETURNS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_RETURN_READ' },
-      { name: 'အကြွေးစားပွဲ', icon: <CreditCard size={18} />, path: AppRoute.CREDIT, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
-      { name: 'ဖောက်သည်များ', icon: <Users size={18} />, path: AppRoute.CUSTOMERS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_CUSTOMER_READ' },
+      { name: 'ဖောက်သည်များ', icon: <Users size={18} />, path: AppRoute.CUSTOMERS, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_CUSTOMER_READ' },
+      { name: 'အကြွေးစားပွဲ', icon: <CreditCard size={18} />, path: AppRoute.CREDIT, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'စာရင်းပင်မ', icon: <BarChart3 size={18} />, path: AppRoute.ACCOUNTING_DASHBOARD, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_COA_READ' },
       { name: 'စာရင်းဇယား', icon: <BookOpen size={18} />, path: AppRoute.COA, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_COA_READ' },
       { name: 'ဂျာနယ်မှတ်တမ်း', icon: <BookMarked size={18} />, path: AppRoute.JOURNAL_ENTRIES, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_JOURNAL_READ' },
@@ -210,7 +210,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ရောင်းအားအဆင့်', icon: <BarChart3 size={18} />, path: AppRoute.SALES_RANKING, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ဝယ်ယူမှုအကျဉ်း', icon: <Truck size={18} />, path: AppRoute.PURCHASE_SUMMARY, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_PURCHASE_READ' },
       { name: 'ဝန်ဆောင်မှုအကျဉ်း', icon: <Wrench size={18} />, path: AppRoute.SERVICE_SUMMARY, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_SERVICE_JOB_READ' },
-      { name: 'Customer History', icon: <Users size={18} />, path: AppRoute.CUSTOMER_HISTORY, group: 'အစီရင်ခံစာ', permission: CUSTOMER_HISTORY_PERMISSIONS },
+      { name: 'Customer History', icon: <Users size={18} />, path: AppRoute.CUSTOMER_HISTORY, group: 'ဖောက်သည်', permission: CUSTOMER_HISTORY_PERMISSIONS },
       { name: 'ဝန်ထမ်းစွမ်းဆောင်ရည်', icon: <Activity size={18} />, path: AppRoute.STAFF_PERFORMANCE, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_STAFF_READ' },
       { name: 'လက်ကျန်အစီရင်ခံ', icon: <Package size={18} />, path: AppRoute.STOCK_REPORT, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_PRODUCT_READ' },
       { name: 'အမြတ်/အရှုံး', icon: <FileText size={18} />, path: AppRoute.PROFIT_LOSS, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_REPORT_READ' },
@@ -238,13 +238,14 @@ const Layout: React.FC<LayoutProps> = ({
   );
 
   const menuGroups = useMemo(() => {
-    const groupOrder = ['အထွေထွေ', 'ဝန်ထမ်းရေးရာ', 'ကုန်ပစ္စည်း', 'ဝယ်ယူရေး', 'ရောင်းချရေး', 'စာရင်းကိုင်', 'အစီရင်ခံစာ', 'ဝန်ဆောင်မှု', 'လုံခြုံရေး', 'ဆက်တင်'];
+    const groupOrder = ['အထွေထွေ', 'ဝန်ထမ်းရေးရာ', 'ကုန်ပစ္စည်း', 'ဝယ်ယူရေး', 'ရောင်းချရေး', 'ဖောက်သည်', 'စာရင်းကိုင်', 'အစီရင်ခံစာ', 'ဝန်ဆောင်မှု', 'လုံခြုံရေး', 'ဆက်တင်'];
     const groupIcons: Record<string, React.ReactNode> = {
       'အထွေထွေ': <LayoutDashboard size={18} />,
       'ဝန်ထမ်းရေးရာ': <UserCircle size={18} />,
       'ကုန်ပစ္စည်း': <Box size={18} />,
       'ဝယ်ယူရေး': <ShoppingCart size={18} />,
       'ရောင်းချရေး': <TrendingUp size={18} />,
+      'ဖောက်သည်': <Users size={18} />,
       'စာရင်းကိုင်': <BookMarked size={18} />,
       'အစီရင်ခံစာ': <BarChart3 size={18} />,
       'ဝန်ဆောင်မှု': <CalendarClock size={18} />,
@@ -256,7 +257,8 @@ const Layout: React.FC<LayoutProps> = ({
       'ဝန်ထမ်းရေးရာ': 'ဝန်ထမ်းနှင့် လူ့စွမ်းအား',
       'ကုန်ပစ္စည်း': 'ပစ္စည်း၊ စီရီနှင့် လက်ကျန်',
       'ဝယ်ယူရေး': 'ဝယ်ယူမှုနှင့် ပေးသွင်းသူ',
-      'ရောင်းချရေး': 'ရောင်းချမှု၊ ဖောက်သည်နှင့် အကြွေး',
+      'ရောင်းချရေး': 'ရောင်းချမှု၊ ကမ်းလှမ်းချက်နှင့် ပြန်ပို့',
+      'ဖောက်သည်': 'ဖောက်သည်မှတ်ပုံ၊ အကြွေးနှင့် မှတ်တမ်း',
       'စာရင်းကိုင်': 'ငွေစာရင်းနှင့် ဂျာနယ်',
       'အစီရင်ခံစာ': 'စိတ်ဖြာမှု၊ အဆင့်နှင့် အကျဉ်း',
       'ဝန်ဆောင်မှု': 'ပစ္စည်းလက်ခံနှင့် ဝန်ဆောင်မှု',

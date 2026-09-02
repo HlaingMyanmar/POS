@@ -114,7 +114,7 @@ const JournalEntryManagement: React.FC = () => {
     void loadData();
   }, []);
   useRefreshOnTabActivate(loadData);
-  useDataEvents(['Sale', 'Purchase', 'Expense', 'Income', 'Journal', 'StockAdj', 'Return'], loadData);
+  useDataEvents(['Sale', 'Purchase', 'Expense', 'Income', 'Journal', 'StockAdj', 'Return', 'Accounting'], loadData);
 
   const getStaffName = (id?: number) => staffs.find((staff) => staff.id === id)?.name || '-';
 
@@ -303,6 +303,9 @@ const JournalEntryManagement: React.FC = () => {
                 const balanced = Math.abs(totals.debit - totals.credit) < 0.01;
                 const isOpen = expandedId === entry.id;
                 const source = detectSource(entry);
+                const journalStatus = (entry.status || 'POSTED').toUpperCase();
+                const isReversed = journalStatus === 'REVERSED';
+                const isReversalEntry = Boolean(entry.reversalOfId);
 
                 return (
                   <React.Fragment key={entry.id || `${entry.referenceNo}-${index}`}>
@@ -310,6 +313,7 @@ const JournalEntryManagement: React.FC = () => {
                       <td className="px-4 py-3 align-top">
                         <div className="font-extrabold text-slate-900">{entry.referenceNo || `#${entry.id}`}</div>
                         <div className="text-[11px] text-slate-400 mt-1">ID #{entry.id || '-'}</div>
+                        {entry.reversalOfId && <div className="text-[10px] text-violet-600 mt-1">↩ Reversal of #{entry.reversalOfId}</div>}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="text-slate-700">{fmtDateTime(entry.entryDate)}</div>
@@ -322,9 +326,14 @@ const JournalEntryManagement: React.FC = () => {
                       <td className="px-4 py-3 align-top text-right font-mono font-bold text-emerald-700">{money(totals.debit)}</td>
                       <td className="px-4 py-3 align-top text-right font-mono font-bold text-rose-700">{money(totals.credit)}</td>
                       <td className="px-4 py-3 align-top text-center">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${balanced ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                          {balanced ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />} {balanced ? 'Balanced' : 'စစ်ရန်'}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${isReversed ? 'bg-slate-200 text-slate-700' : isReversalEntry ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {isReversed ? 'REVERSED' : isReversalEntry ? 'REVERSAL' : journalStatus}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold ${balanced ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {balanced ? <CheckCircle2 size={10} /> : <AlertTriangle size={10} />} {balanced ? 'Balanced' : 'စစ်ရန်'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 align-top text-center">
                         <button type="button" onClick={() => setExpandedId(isOpen ? null : entry.id || null)} className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
@@ -340,7 +349,14 @@ const JournalEntryManagement: React.FC = () => {
                             <div className="px-4 py-3 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                               <div>
                                 <h4 className="font-extrabold text-slate-800 text-sm">Double-entry lines</h4>
-                                <p className="text-xs text-slate-500 mt-1">{entry.referenceNo} • {sourceLabels[source]}</p>
+                                <p className="text-xs text-slate-500 mt-1">{entry.referenceNo} • {sourceLabels[source]} • {journalStatus}</p>
+                                {(entry.reversedBy || entry.reversalReason) && (
+                                  <p className="text-[11px] text-slate-500 mt-1">
+                                    {entry.reversedBy && <>Reversed by {entry.reversedBy}</>}
+                                    {entry.reversedAt && <> · {fmtDateTime(entry.reversedAt)}</>}
+                                    {entry.reversalReason && <> · {entry.reversalReason}</>}
+                                  </p>
+                                )}
                               </div>
                               <div className={`text-xs font-bold ${balanced ? 'text-emerald-700' : 'text-amber-700'}`}>
                                 Difference: {money(Math.abs(totals.debit - totals.credit))}

@@ -48,6 +48,10 @@ public class CompanySettingsService {
         if (dto.getPurchaseReturnPrefix() != null) s.setPurchaseReturnPrefix(dto.getPurchaseReturnPrefix().isBlank() ? "PRN" : dto.getPurchaseReturnPrefix().trim());
         if (dto.getPurchaseReturnDigits() != null && dto.getPurchaseReturnDigits() >= 1 && dto.getPurchaseReturnDigits() <= 10) s.setPurchaseReturnDigits(dto.getPurchaseReturnDigits());
         s.setPoFinalApprovalThreshold(dto.getPoFinalApprovalThreshold());
+        if (dto.getServiceSupervisorApprovalRequired() != null)
+            s.setServiceSupervisorApprovalRequired(dto.getServiceSupervisorApprovalRequired());
+        if (dto.getServiceAllowDeliveryWithDue() != null)
+            s.setServiceAllowDeliveryWithDue(dto.getServiceAllowDeliveryWithDue());
         return toDto(repository.save(s));
     }
 
@@ -88,6 +92,8 @@ public class CompanySettingsService {
         dto.setPurchaseReturnPrefix(s.getPurchaseReturnPrefix() != null ? s.getPurchaseReturnPrefix() : "PRN");
         dto.setPurchaseReturnDigits(s.getPurchaseReturnDigits() != null ? s.getPurchaseReturnDigits() : 5);
         dto.setPoFinalApprovalThreshold(s.getPoFinalApprovalThreshold());
+        dto.setServiceSupervisorApprovalRequired(!Boolean.FALSE.equals(s.getServiceSupervisorApprovalRequired()));
+        dto.setServiceAllowDeliveryWithDue(Boolean.TRUE.equals(s.getServiceAllowDeliveryWithDue()));
         return dto;
     }
 }

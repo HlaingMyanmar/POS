@@ -32,6 +32,19 @@ public class JournalEntry {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Builder.Default
+    @Column(length = 20, nullable = false)
+    private String status = "POSTED";
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reversal_of_id")
+    private JournalEntry reversalOf;
+    @Column(name = "reversed_by", length = 120)
+    private String reversedBy;
+    @Column(name = "reversed_at")
+    private LocalDateTime reversedAt;
+    @Column(name = "reversal_reason", columnDefinition = "TEXT")
+    private String reversalReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "staff_id")
     private Staff staff;

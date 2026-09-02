@@ -95,4 +95,12 @@ public class CompanySettings {
     /** When set (>0), PO totals at/above this amount require a second (final) approval. */
     @Column(name = "po_final_approval_threshold", precision = 18, scale = 2)
     private java.math.BigDecimal poFinalApprovalThreshold;
+
+    @Builder.Default
+    @Column(name = "service_supervisor_approval_required", nullable = false)
+    private Boolean serviceSupervisorApprovalRequired = Boolean.TRUE;
+
+    @Builder.Default
+    @Column(name = "service_allow_delivery_with_due", nullable = false)
+    private Boolean serviceAllowDeliveryWithDue = Boolean.FALSE;
 }

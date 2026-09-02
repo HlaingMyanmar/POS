@@ -290,10 +290,13 @@ export const serviceJobService = {
   settle: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/settle`, dto),
   payDue: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/pay-due`, dto),
   deliver: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/deliver`, {}),
+  approveDueDelivery: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-due-delivery`, { reason }),
   rework: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/rework`, dto),
   voidSettlement: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/void`, { reason }),
   approveEstimate: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-estimate`, {}),
   approveFinal: (id: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/approve-final`, {}),
+  leadFinalCheck: (id: number, note?: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/lead-final-check`, { note }),
+  returnFinal: (id: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/return-final`, { reason }),
   notify: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/notify`, dto),
   addAttachment: (id: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${id}/attachments`, dto),
   removeAttachment: (id: number, attachmentId: number) => api.delete<any, ApiResponse<any>>(`/v1/service-jobs/${id}/attachments/${attachmentId}`),
@@ -304,6 +307,8 @@ export const serviceJobService = {
     return api.get<any, ApiResponse<string[]>>(`/v1/service-jobs/used-serial-numbers${q}`);
   },
   getUnpaid: () => api.get<any, ApiResponse<any[]>>('/v1/service-jobs/unpaid'),
+  getPendingHandovers: () => api.get<any, ApiResponse<any[]>>('/v1/service-jobs/pending-handovers/mine'),
+  getSentHandovers: () => api.get<any, ApiResponse<any[]>>('/v1/service-jobs/handovers/sent/mine'),
 };
 
 export const serviceJobTeamService = {
@@ -314,7 +319,9 @@ export const serviceJobTeamService = {
   acceptAssignment: (jobId: number, assignmentId: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/accept`, {}),
   approveAssignment: (jobId: number, assignmentId: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/approve`, {}),
   rejectAssignment: (jobId: number, assignmentId: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/reject`, { reason }),
-  recordWork: (jobId: number, assignmentId: number, action: string, note?: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/work`, { action, note }),
+  recordWork: (jobId: number, assignmentId: number, action: string, details: any = {}) => api.post<any, ApiResponse<any>>(
+    `/v1/service-jobs/${jobId}/team/assignments/${assignmentId}/work`,
+    { action, ...(typeof details === 'string' ? { note: details } : details || {}) }),
   requestHandover: (jobId: number, dto: any) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/handovers`, dto),
   acceptHandover: (jobId: number, handoverId: number) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/handovers/${handoverId}/accept`, {}),
   rejectHandover: (jobId: number, handoverId: number, reason: string) => api.post<any, ApiResponse<any>>(`/v1/service-jobs/${jobId}/team/handovers/${handoverId}/reject`, { reason }),

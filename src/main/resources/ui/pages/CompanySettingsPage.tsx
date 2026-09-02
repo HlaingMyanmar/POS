@@ -24,6 +24,8 @@ const emptySettings: CompanySettings = {
   bookingPrefix: 'BK',
   bookingDigits: 6,
   poFinalApprovalThreshold: null,
+  serviceSupervisorApprovalRequired: true,
+  serviceAllowDeliveryWithDue: false,
 };
 
 const MAX_LOGO_BYTES = 500 * 1024;
@@ -185,6 +187,26 @@ const CompanySettingsPage: React.FC = () => {
                 <p className="text-[10px] text-slate-400 mt-1">
                   PO စုစုပေါင်း ဤပမာဏနှင့် အထက်ဖြစ်ပါက ဒုတိယအဆင့် အတည်ပြုချက် လိုအပ်သည်။ ဗလာထားပါက second approval မလို။
                 </p>
+              </div>
+              <div className="md:col-span-2 rounded-xl border border-purple-200 bg-purple-50 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input type="checkbox" checked={settings.serviceSupervisorApprovalRequired !== false}
+                    onChange={e => set('serviceSupervisorApprovalRequired', e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-purple-600" />
+                  <span><b className="block text-sm text-purple-950">Service Job Supervisor Final Approval လိုအပ်သည်</b>
+                    <span className="mt-1 block text-xs text-purple-700">ဖွင့်ထားလျှင် Lead Final Check ပြီးနောက် Supervisor က အတည်ပြု/ပြန်ပြင်ရန် ဆုံးဖြတ်ရမည်။ ပိတ်ထားလျှင် Lead Final Check ပြီးတာနဲ့ Job COMPLETED အလိုအလျောက်ဖြစ်မည်။</span>
+                  </span>
+                </label>
+              </div>
+              <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input type="checkbox" checked={settings.serviceAllowDeliveryWithDue === true}
+                    onChange={e => set('serviceAllowDeliveryWithDue', e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-600" />
+                  <span><b className="block text-sm text-amber-950">အကြွေးကျန် Service Job ပေးအပ်ခွင့်</b>
+                    <span className="mt-1 block text-xs text-amber-700">ဖွင့်ထားလျှင် Manager approval reason မှတ်တမ်းတင်ပြီးမှ Due ရှိသော completed job ကို ပေးအပ်နိုင်သည်။</span>
+                  </span>
+                </label>
               </div>
             </div>
 

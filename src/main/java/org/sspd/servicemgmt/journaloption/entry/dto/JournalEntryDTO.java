@@ -17,4 +17,9 @@ public class JournalEntryDTO {
     private Integer staffId;
     private String staffName;
     private List<JournalDetailDTO> details;
+    private String status;
+    private Integer reversalOfId;
+    private String reversedBy;
+    private LocalDateTime reversedAt;
+    private String reversalReason;
 }

@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import com.sspd.servicemgmt.core.network.AssignmentDTO
 import com.sspd.servicemgmt.core.network.TeamSnapshotDTO
 import com.sspd.servicemgmt.core.network.TechnicianVisitDTO
 import com.sspd.servicemgmt.core.tracking.LocationPermission
@@ -103,10 +104,21 @@ private fun TechnicianTeamSection(
     team: TeamSnapshotDTO?,
     loading: Boolean,
     onAccept: (Int) -> Unit,
-    onWork: (Int, String) -> Unit
+    onWork: (Int, String, String?, String?, String?, String?) -> Unit
 ) {
     val assignments = team?.assignments.orEmpty()
     if (assignments.isEmpty()) return
+    var completeTarget by remember { mutableStateOf<AssignmentDTO?>(null) }
+    completeTarget?.let { target ->
+        CompleteWorkDialog(
+            assignment = target,
+            onDismiss = { completeTarget = null },
+            onConfirm = { work, service, parts, note ->
+                completeTarget = null
+                target.id?.let { onWork(it, "COMPLETE", work, service, parts, note) }
+            }
+        )
+    }
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
@@ -143,6 +155,17 @@ private fun TechnicianTeamSection(
                         Text(it, fontSize = 12.sp, color = TextMuted)
                     }
                     Text("အချိန်: ${assignment.accumulatedMinutes ?: 0} မိနစ်", fontSize = 11.sp, color = TextMuted)
+                    assignment.logs.orEmpty().filter { it.action == "COMPLETE" || it.action == "NOTE" }.takeLast(2).forEach { log ->
+                        log.completedWork?.takeIf { it.isNotBlank() }?.let {
+                            Text("လုပ်ပြီးသောအလုပ်: $it", fontSize = 11.sp, color = TextMain)
+                        }
+                        log.serviceDetails?.takeIf { it.isNotBlank() }?.let {
+                            Text("Service: $it", fontSize = 10.sp, color = TextMuted)
+                        }
+                        log.partsDetails?.takeIf { it.isNotBlank() }?.let {
+                            Text("Parts: $it", fontSize = 10.sp, color = TextMuted)
+                        }
+                    }
                     if (assignment.mine && !loading) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             when (assignment.status?.uppercase()) {
@@ -154,31 +177,31 @@ private fun TechnicianTeamSection(
                                 "ACTIVE" -> {
                                     if (assignment.workStartedAt.isNullOrBlank()) {
                                         OutlinedButton(
-                                            onClick = { assignment.id?.let { onWork(it, "START") } },
+                                            onClick = { assignment.id?.let { onWork(it, "START", null, null, null, null) } },
                                             modifier = Modifier.height(32.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp)
                                         ) { Text("စတင်", fontSize = 11.sp) }
                                     } else {
                                         OutlinedButton(
-                                            onClick = { assignment.id?.let { onWork(it, "PAUSE") } },
+                                            onClick = { assignment.id?.let { onWork(it, "PAUSE", null, null, null, null) } },
                                             modifier = Modifier.height(32.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp)
                                         ) { Text("ရပ်", fontSize = 11.sp) }
                                     }
                                     Button(
-                                        onClick = { assignment.id?.let { onWork(it, "COMPLETE") } },
+                                        onClick = { completeTarget = assignment },
                                         modifier = Modifier.height(32.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp)
                                     ) { Text("ပြီးစီး", fontSize = 11.sp) }
                                 }
                                 "PAUSED" -> {
                                     OutlinedButton(
-                                        onClick = { assignment.id?.let { onWork(it, "RESUME") } },
+                                        onClick = { assignment.id?.let { onWork(it, "RESUME", null, null, null, null) } },
                                         modifier = Modifier.height(32.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp)
                                     ) { Text("ဆက်", fontSize = 11.sp) }
                                     Button(
-                                        onClick = { assignment.id?.let { onWork(it, "COMPLETE") } },
+                                        onClick = { completeTarget = assignment },
                                         modifier = Modifier.height(32.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp)
                                     ) { Text("ပြီးစီး", fontSize = 11.sp) }
@@ -381,7 +404,31 @@ fun ServiceJobDetailScreen(
             paymentMethods = state.paymentMethods,
             loading        = state.actionLoading,
             onDismiss      = { vm.dismissPayDueDialog() },
-            onPay          = { amt, mid, txn, note, payments -> vm.payDue(amt, mid, txn, note, payments) }
+            onPay          = { amt, mid, txn, note, payments, discount, discountNote ->
+                vm.payDue(amt, mid, txn, note, payments, discount, discountNote)
+            }
+        )
+    }
+
+    if (state.showDueDeliveryDialog) {
+        var reason by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { vm.dismissDueDeliveryDialog() },
+            title = { Text("Due Delivery Approval", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                OutlinedTextField(
+                    value = reason, onValueChange = { reason = it },
+                    label = { Text("Approval reason *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { vm.confirmDueDeliveryAndDeliver(reason) },
+                    enabled = !state.actionLoading && reason.isNotBlank()
+                ) { Text("အတည်ပြုပြီး ပေးအပ်မည်") }
+            },
+            dismissButton = { TextButton(onClick = { vm.dismissDueDeliveryDialog() }) { Text("မလုပ်တော့ပါ") } }
         )
     }
 
@@ -673,7 +720,32 @@ fun ServiceJobDetailScreen(
                     team = state.team,
                     loading = state.actionLoading,
                     onAccept = vm::acceptAssignment,
-                    onWork = { id, action -> vm.recordWork(id, action) }
+                    onWork = { id, action, work, service, parts, note ->
+                        vm.recordWork(id, action, note, work, service, parts)
+                    }
+                )
+            }
+            item {
+                ServiceJobHandoverSection(
+                    team = state.team,
+                    assignments = state.team?.assignments.orEmpty(),
+                    staff = state.staff,
+                    myStaffId = vm.myStaffId,
+                    canSupervise = vm.canSupervise,
+                    loading = state.actionLoading,
+                    onAccept = vm::acceptHandover,
+                    onReject = vm::rejectHandover,
+                    onRequest = vm::requestHandover
+                )
+            }
+            item {
+                ServiceJobFinalCheckSection(
+                    team = state.team,
+                    loading = state.actionLoading,
+                    canSupervise = vm.canSupervise,
+                    onLeadFinalCheck = vm::submitLeadFinalCheck,
+                    onApproveFinal = { },
+                    onReturnForRework = { }
                 )
             }
             item {
@@ -698,7 +770,11 @@ fun ServiceJobDetailScreen(
                     statuses.filter { (key, _) -> key == currentStatus || key in allowedStatuses }.forEach { (key, label) ->
                         val isCurrent = currentStatus == key
                         val blockedByEstimate = key == "IN_PROGRESS" && (job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true
-                        val blockedByPayment = key == "DELIVERED" && job.foc != true && ((job.dueAmount ?: 0.0) > 0 || job.paymentStatus?.uppercase() != "PAID")
+                        val due = job.dueAmount ?: 0.0
+                        val canDeliverWithDue = state.serviceAllowDeliveryWithDue && !job.dueDeliveryApprovedAt.isNullOrBlank()
+                        val blockedByPayment = key == "DELIVERED" && job.foc != true && (
+                            job.paymentStatus.isNullOrBlank() || (due > 0.0 && !canDeliverWithDue)
+                            )
                         FilterChip(
                             selected = isCurrent,
                             onClick  = {
@@ -734,8 +810,14 @@ fun ServiceJobDetailScreen(
                 if (allowedStatuses.contains("IN_PROGRESS") && (job.estimatedCost ?: 0.0) > 0 && job.estimateApproved != true) {
                     Text("Estimate အတည်ပြုပြီးမှ ‘လုပ်ဆောင်ဆဲ’ ကို ရွေးနိုင်ပါမယ်", fontSize = 11.sp, color = Warning, fontWeight = FontWeight.Bold)
                 }
-                if (allowedStatuses.contains("DELIVERED") && job.foc != true && ((job.dueAmount ?: 0.0) > 0 || job.paymentStatus?.uppercase() != "PAID")) {
-                    Text("ငွေရှင်းပြီးမှ ‘ပြန်ပေးပြီး’ ကို ရွေးနိုင်ပါမယ်", fontSize = 11.sp, color = Warning, fontWeight = FontWeight.Bold)
+                val due = job.dueAmount ?: 0.0
+                val canDeliverWithDue = state.serviceAllowDeliveryWithDue && !job.dueDeliveryApprovedAt.isNullOrBlank()
+                if (allowedStatuses.contains("DELIVERED") && job.foc != true && (job.paymentStatus.isNullOrBlank() || (due > 0.0 && !canDeliverWithDue))) {
+                    Text(
+                        if (due > 0.0 && state.serviceAllowDeliveryWithDue) "Due delivery approval ရပြီးမှ ‘ပြန်ပေးပြီး’ ရွေးနိုင်ပါမယ်"
+                        else "ငွေရှင်းပြီးမှ ‘ပြန်ပေးပြီး’ ကို ရွေးနိုင်ပါမယ်",
+                        fontSize = 11.sp, color = Warning, fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
@@ -799,6 +881,10 @@ fun ServiceJobDetailScreen(
                         JobSummaryRow("ပေးပြီး",             "${job.paidAmount.fmtD()} Ks", Success)
                         if ((job.dueAmount ?: 0.0) > 0)
                             JobSummaryRow("ကျန်ငွေ",          "${job.dueAmount.fmtD()} Ks", Danger, bold = true)
+                        if ((job.paymentDiscountAmount ?: 0.0) > 0)
+                            JobSummaryRow("Payment Discount", "-${job.paymentDiscountAmount.fmtD()} Ks", Warning)
+                        if (!job.dueDeliveryApprovedAt.isNullOrBlank())
+                            JobSummaryRow("Due Delivery OK", job.dueDeliveryApprovedBy ?: "Approved", Success)
                         if (job.foc == true) {
                             Surface(color = SuccessBg, shape = RoundedCornerShape(6.dp), modifier = Modifier.fillMaxWidth()) {
                                 Text("FREE OF CHARGE", modifier = Modifier.padding(8.dp),
@@ -1317,9 +1403,11 @@ private fun JobPayDueDialog(
     paymentMethods: List<PaymentMethodDTO>,
     loading:        Boolean,
     onDismiss:      () -> Unit,
-    onPay:          (amount: Double, methodId: Int, txnNo: String?, note: String?, payments: List<PaymentTransactionDTO>?) -> Unit
+    onPay:          (amount: Double, methodId: Int, txnNo: String?, note: String?, payments: List<PaymentTransactionDTO>?, paymentDiscount: Double, paymentDiscountApprovalNote: String?) -> Unit
 ) {
     var amountStr  by remember { mutableStateOf(String.format("%.0f", dueAmount)) }
+    var discountStr by remember { mutableStateOf("0") }
+    var discountNote by remember { mutableStateOf("") }
     var selectedPm by remember { mutableStateOf<PaymentMethodDTO?>(null) }
     var splitPayments by remember { mutableStateOf<List<PaymentTransactionDTO>>(emptyList()) }
     var txnNo      by remember { mutableStateOf("") }
@@ -1379,6 +1467,20 @@ private fun JobPayDueDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     shape = RoundedCornerShape(10.dp), isError = error.isNotBlank()
+                )
+                OutlinedTextField(
+                    value = discountStr, onValueChange = { discountStr = it; error = "" },
+                    label = { Text("Payment Discount (Ks)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                OutlinedTextField(
+                    value = discountNote, onValueChange = { discountNote = it },
+                    label = { Text("Discount Approval Note") },
+                    enabled = (discountStr.toDoubleOrNull() ?: 0.0) > 0.0,
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
                 )
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth().clickable { showSheet = true },
@@ -1441,12 +1543,17 @@ private fun JobPayDueDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val discount = discountStr.toDoubleOrNull() ?: 0.0
                     val amt = if (splitPayments.isNotEmpty()) splitPayments.sumOf { it.amount ?: 0.0 } else amountStr.toDoubleOrNull()
                     when {
-                        amt == null || amt <= 0 -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ပါ"
-                        amt > dueAmount + 0.01  -> error = "ကျန်ငွေထက် မကျော်ရပါ"
-                        selectedPm == null      -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
-                        else -> selectedPm?.id?.let { onPay(amt, it, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }) }
+                        amt == null || (amt <= 0 && discount <= 0) -> error = "ပေးချေငွေ သို့မဟုတ် discount ထည့်ပါ"
+                        amt != null && amt + discount > dueAmount + 0.01 -> error = "ပေးချေငွေနှင့် discount သည် ကျန်ငွေထက် မကျော်ရပါ"
+                        discount > 0 && discountNote.isBlank() -> error = "Discount approval note လိုအပ်သည်"
+                        amt != null && amt > 0 && selectedPm == null && splitPayments.isEmpty() -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
+                        else -> {
+                            val methodId = selectedPm?.id ?: splitPayments.firstOrNull()?.paymentMethodId ?: 0
+                            onPay(amt ?: 0.0, methodId, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }, discount, discountNote.ifBlank { null })
+                        }
                     }
                 },
                 enabled = !loading,

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sspd.servicemgmt.core.network.ApiClient
+import com.sspd.servicemgmt.core.network.HandoverDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.realtime.DataEventBus
@@ -23,6 +24,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
 
     private val _uiState = MutableStateFlow(
         UiState(
+            workTab = WORK_TAB_ACTIVE,
             fromDate = if (PreferenceManager(application).shouldScopeToOwnStaff()) null else today(),
             toDate = if (PreferenceManager(application).shouldScopeToOwnStaff()) null else today(),
         )
@@ -45,17 +47,32 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
             try {
                 val s   = _uiState.value
                 val scoped = prefs.shouldScopeToOwnStaff()
+                val ignoreDates = workTabIgnoresDateFilter(s.workTab)
                 val res = ApiClient.service.getServiceJobs(
                     auth     = ApiClient.bearer(prefs.authToken),
                     search   = s.search,
-                    dateFrom = s.fromDate ?: "",
-                    dateTo   = s.toDate   ?: "",
+                    dateFrom = if (ignoreDates) "" else (s.fromDate ?: ""),
+                    dateTo   = if (ignoreDates) "" else (s.toDate   ?: ""),
                     staffId  = if (scoped) prefs.staffId else null,
                 )
                 if (res.isSuccessful) {
                     val items = res.body()?.data?.content ?: emptyList()
+                    var sentHandovers = emptyList<HandoverDTO>()
+                    var sentPending = 0
+                    if (scoped) {
+                        runCatching {
+                            ApiClient.service.mySentHandovers(ApiClient.bearer(prefs.authToken))
+                        }.getOrNull()?.body()?.data?.let { sent ->
+                            sentHandovers = sent
+                            sentPending = sent.count { it.status.equals("PENDING", true) }
+                        }
+                    }
                     _uiState.update {
-                        it.copy(items = if (scoped) items.filterOwnStaff(prefs.staffId) else items)
+                        it.copy(
+                            items = if (scoped) items.filterOwnStaff(prefs.staffId) else items,
+                            sentHandovers = sentHandovers,
+                            sentPendingCount = sentPending,
+                        )
                     }
                 }
             } catch (_: Exception) {}
@@ -64,6 +81,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun setFilter(f: String) = _uiState.update { it.copy(filter = f) }
+    fun setWorkTab(tab: WorkTab) = _uiState.update { it.copy(workTab = tab) }
 
     fun setSearch(q: String) { _uiState.update { it.copy(search = q) }; load() }
 
@@ -101,8 +119,11 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
     fun clearDeleteSuccess() = _uiState.update { it.copy(deleteSuccess = null) }
 
     data class UiState(
-        val items:         List<ServiceJobDTO> = emptyList(),
-        val loading:       Boolean             = true,
+        val items:             List<ServiceJobDTO> = emptyList(),
+        val sentHandovers:     List<HandoverDTO>   = emptyList(),
+        val sentPendingCount:  Int                 = 0,
+        val loading:           Boolean             = true,
+        val workTab:       WorkTab             = WORK_TAB_ACTIVE,
         val filter:        String              = "ALL",
         val search:        String              = "",
         val fromDate:      String?             = null,
@@ -119,5 +140,6 @@ private fun today(): String =
 
 private fun List<ServiceJobDTO>.filterOwnStaff(staffId: Int): List<ServiceJobDTO> =
     filter { job ->
+        job.pendingHandoverForMe == true ||
         job.assignedStaffId == staffId || job.helperStaffId == staffId
     }

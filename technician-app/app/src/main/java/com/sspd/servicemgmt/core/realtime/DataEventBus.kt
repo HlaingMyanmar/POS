@@ -74,6 +74,7 @@ object DataEventBus {
             onConnected    = {
                 stomp?.subscribe("/topic/data-events")
                 stomp?.subscribe("/topic/service-jobs")
+                stomp?.subscribe("/topic/service")
             },
             onMessage      = { dest, body ->
                 when (dest) {
@@ -82,9 +83,15 @@ object DataEventBus {
                         scope.launch { _events.emit(event) }
                     }
                     "/topic/service-jobs" -> {
+                        scope.launch {
+                            _events.emit(DataEvent(entity = "Service Job", action = body))
+                        }
                         if (body.contains("JOB_CREATED")) {
                             scope.launch { _jobCreated.emit(body) }
                         }
+                    }
+                    "/topic/service" -> scope.launch {
+                        _events.emit(DataEvent(entity = "Service", action = body))
                     }
                 }
             },

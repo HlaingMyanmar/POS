@@ -14,6 +14,7 @@ public interface JournalEntryRepository extends JpaRepository<JournalEntry, Inte
 
     // Reference No (ဥပမာ - Purchase Code) နဲ့ Journal ကို ပြန်ရှာဖို့
     Optional<JournalEntry> findByReferenceNo(String referenceNo);
+    List<JournalEntry> findAllByReferenceNoStartingWith(String referenceNoPrefix);
 
     // နေ့စွဲအလိုက် Journal များကို ရှာဖွေရန်
     List<JournalEntry> findByEntryDateBetween(LocalDateTime start, LocalDateTime end);

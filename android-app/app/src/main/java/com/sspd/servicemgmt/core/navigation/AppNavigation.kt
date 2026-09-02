@@ -490,7 +490,8 @@ fun AppNavigation() {
                             onBack       = { nav.popBackStack() },
                             onJobCreated = { nav.navigate(Screen.ServiceJobs.route) },
                             onEdit       = { nav.navigate(Screen.EditBooking.createRoute(bookingId)) },
-                            onPrint      = { nav.navigate(Screen.BookingPrint.createRoute(bookingId)) }
+                            onPrint      = { nav.navigate(Screen.BookingPrint.createRoute(bookingId)) },
+                            onJobClick   = { id -> nav.navigate(Screen.ServiceJobDetail.createRoute(id)) }
                         )
                     }
                     composable(

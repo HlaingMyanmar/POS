@@ -11,7 +11,12 @@ import com.sspd.servicemgmt.core.network.PaymentTransactionDTO
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.network.ReworkRequestDTO
 import com.sspd.servicemgmt.core.network.AssignmentActionRequest
+import com.sspd.servicemgmt.core.network.NoteRequest
+import com.sspd.servicemgmt.core.network.ReasonRequest
+import com.sspd.servicemgmt.core.network.AssignmentDecisionRequest
 import com.sspd.servicemgmt.core.network.AssignmentDTO
+import com.sspd.servicemgmt.core.network.HandoverDTO
+import com.sspd.servicemgmt.core.network.HandoverRequest
 import com.sspd.servicemgmt.core.network.ServiceJobAttachmentDTO
 import com.sspd.servicemgmt.core.network.TeamSnapshotDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
@@ -53,6 +58,7 @@ class ServiceJobDetailViewModel(
                 val teamD   = async { ApiClient.service.getServiceJobTeam(token, jobId) }
                 val pmD     = async { ApiClient.service.getActivePaymentMethods(token) }
                 val staffD  = async { ApiClient.service.getActiveStaff(token) }
+                val settingsD = async { ApiClient.service.getCompanySettings(token) }
                 val jobData = jobD.await().body()?.data
                 val allSerials = (jobData?.productParts ?: emptyList()).flatMap { it.serialNumbers ?: emptyList() }
                 val snMap: Map<String, ProductSerialDTO> = if (allSerials.isNotEmpty()) {
@@ -68,6 +74,7 @@ class ServiceJobDetailViewModel(
                         paymentMethods    = pmD.await().body()?.data ?: emptyList(),
                         staff             = staffD.await().body()?.data ?: emptyList(),
                         serialWarrantyMap = snMap,
+                        serviceAllowDeliveryWithDue = settingsD.await().body()?.data?.serviceAllowDeliveryWithDue == true,
                         loading           = false
                     )
                 }
@@ -103,11 +110,104 @@ class ServiceJobDetailViewModel(
         }
     }
 
-    fun recordWork(assignmentId: Int, action: String, note: String? = null) {
+    fun acceptHandover(handoverId: Int) {
+        runHandoverAction("Hand Over လက်ခံပြီးပါပြီ") {
+            ApiClient.service.acceptServiceJobHandover(it, jobId, handoverId)
+        }
+    }
+
+    fun rejectHandover(handoverId: Int, reason: String?) {
+        runHandoverAction("Hand Over ငြင်းပယ်ပြီးပါပြီ") {
+            ApiClient.service.rejectServiceJobHandover(it, jobId, handoverId, AssignmentDecisionRequest(reason))
+        }
+    }
+
+    fun requestHandover(
+        fromAssignmentId: Int,
+        toStaffId: Int,
+        completedWork: String?,
+        remainingWork: String,
+        diagnosisNote: String?
+    ) {
+        runHandoverAction("Hand Over တောင်းဆိုပြီးပါပြီ") {
+            ApiClient.service.requestServiceJobHandover(
+                it, jobId,
+                HandoverRequest(
+                    fromAssignmentId = fromAssignmentId,
+                    toStaffId = toStaffId,
+                    completedWork = completedWork,
+                    remainingWork = remainingWork,
+                    diagnosisNote = diagnosisNote
+                )
+            )
+        }
+    }
+
+    fun recordWork(
+        assignmentId: Int,
+        action: String,
+        note: String? = null,
+        completedWork: String? = null,
+        serviceDetails: String? = null,
+        partsDetails: String? = null
+    ) {
         runTeamAction {
             ApiClient.service.recordServiceJobWork(
-                it, jobId, assignmentId, AssignmentActionRequest(action = action, note = note)
+                it, jobId, assignmentId,
+                AssignmentActionRequest(
+                    action = action,
+                    note = note,
+                    completedWork = completedWork,
+                    serviceDetails = serviceDetails,
+                    partsDetails = partsDetails
+                )
             )
+        }
+    }
+
+    fun submitLeadFinalCheck(note: String) = runJobAction(
+        if (_uiState.value.team?.supervisorApprovalRequired == false) "Lead Final Check ပြီး၍ Job COMPLETED ဖြစ်ပါပြီ"
+        else "Lead Final Check တင်ပြီးပါပြီ"
+    ) {
+        ApiClient.service.submitLeadFinalCheck(it, jobId, NoteRequest(note.ifBlank { null }))
+    }
+
+    private inline fun runJobAction(successMsg: String, crossinline call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<ServiceJobDTO>>) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = call(token)
+                if (res.isSuccessful && res.body()?.data != null) {
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, actionSuccess = successMsg) }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    val canSupervise get() = prefs.hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+    val myStaffId get() = prefs.staffId
+
+    private fun runHandoverAction(successMsg: String, call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<HandoverDTO>>) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = call(token)
+                if (res.isSuccessful && res.body()?.data != null) {
+                    load()
+                    _uiState.update { it.copy(actionLoading = false, actionSuccess = successMsg) }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
         }
     }
 
@@ -130,12 +230,47 @@ class ServiceJobDetailViewModel(
     }
 
     fun deliver() {
+        val job = _uiState.value.job ?: return
+        val due = job.dueAmount ?: 0.0
+        val approved = !job.dueDeliveryApprovedAt.isNullOrBlank()
+        if (due > 0.0 && !approved) {
+            if (!_uiState.value.serviceAllowDeliveryWithDue) {
+                _uiState.update { it.copy(actionError = "Company Settings မှာ အကြွေးကျန်ဖြင့် ပေးအပ်ခွင့် ပိတ်ထားသည်") }
+                return
+            }
+            _uiState.update { it.copy(showDueDeliveryDialog = true, actionError = null) }
+            return
+        }
+        deliverNow()
+    }
+
+    fun dismissDueDeliveryDialog() = _uiState.update { it.copy(showDueDeliveryDialog = false) }
+
+    fun confirmDueDeliveryAndDeliver(reason: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val approveRes = ApiClient.service.approveServiceJobDueDelivery(token, jobId, ReasonRequest(reason.trim()))
+                if (!approveRes.isSuccessful) {
+                    _uiState.update { it.copy(actionLoading = false, actionError = approveRes.body()?.message ?: "Due delivery အတည်ပြုမရပါ") }
+                    return@launch
+                }
+                approveRes.body()?.data?.let { approvedJob -> _uiState.update { state -> state.copy(job = approvedJob) } }
+                deliverNow()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    private fun deliverNow() {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
                 val res = ApiClient.service.deliverServiceJob(ApiClient.bearer(prefs.authToken), jobId)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "ပစ္စည်းပြန်အပ်ပြီး") }
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, showDueDeliveryDialog = false, actionSuccess = "ပစ္စည်းပြန်အပ်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "ပြန်အပ်မှု မအောင်မြင်ပါ") }
                 }
@@ -200,7 +335,15 @@ class ServiceJobDetailViewModel(
     fun showPayDueDialog() = _uiState.update { it.copy(showPayDueDialog = true) }
     fun dismissPayDueDialog() = _uiState.update { it.copy(showPayDueDialog = false, actionError = null) }
 
-    fun payDue(amount: Double, methodId: Int, txnNo: String?, note: String?, payments: List<PaymentTransactionDTO>? = null) {
+    fun payDue(
+        amount: Double,
+        methodId: Int,
+        txnNo: String?,
+        note: String?,
+        payments: List<PaymentTransactionDTO>? = null,
+        paymentDiscount: Double = 0.0,
+        paymentDiscountApprovalNote: String? = null
+    ) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
@@ -212,7 +355,9 @@ class ServiceJobDetailViewModel(
                         paymentMethodId = payments?.firstOrNull()?.paymentMethodId ?: methodId,
                         transactionNo   = txnNo?.ifBlank { null },
                         note            = note?.ifBlank { null },
-                        payments        = payments?.ifEmpty { null }
+                        payments        = payments?.ifEmpty { null },
+                        paymentDiscountAmount = paymentDiscount,
+                        paymentDiscountApprovalNote = paymentDiscountApprovalNote?.ifBlank { null }
                     )
                 )
                 if (res.isSuccessful && res.body()?.data != null) {
@@ -450,6 +595,8 @@ class ServiceJobDetailViewModel(
         val showCreditDialog:  Boolean                      = false,
         val showNotifyDialog:  Boolean                      = false,
         val showHoldDialog:    Boolean                      = false,
+        val showDueDeliveryDialog: Boolean                  = false,
+        val serviceAllowDeliveryWithDue: Boolean            = false,
         val creditBalance:     Double                       = 0.0,
         val deleteLoading:     Boolean                      = false,
         val actionSuccess:     String?                      = null,

@@ -23,6 +23,8 @@ export type CompanySettings = {
   bookingDigits?: number;
   /** Blank / undefined = no second-level PO approval */
   poFinalApprovalThreshold?: number | null;
+  serviceSupervisorApprovalRequired?: boolean;
+  serviceAllowDeliveryWithDue?: boolean;
 };
 
 const DEFAULT_SETTINGS: CompanySettings = {
@@ -45,6 +47,8 @@ const DEFAULT_SETTINGS: CompanySettings = {
   bookingPrefix: 'BK',
   bookingDigits: 6,
   poFinalApprovalThreshold: null,
+  serviceSupervisorApprovalRequired: true,
+  serviceAllowDeliveryWithDue: false,
 };
 
 let cached: CompanySettings | null = null;

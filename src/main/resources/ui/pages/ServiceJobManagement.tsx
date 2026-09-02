@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw, Plus } from 'lucide-react';
-import { serviceJobService, serviceItemService, serviceJobTeamService, bookingService, resolveAssetUrl } from '../services/api';
+import { serviceJobService, serviceItemService, serviceJobTeamService, bookingService, resolveAssetUrl, companySettingsService } from '../services/api';
 import { staffService } from '../services/staffapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { productService } from '../services/productapiservice';
@@ -255,18 +255,31 @@ const applyServiceItem = (line: any, si: any) => {
     warrantyCovered: Boolean(si.focDefault),
   };
 };
-type WorkTab = 'active' | 'payment' | 'handover' | 'closed' | 'all';
-const needsPayment = (job: any) => job.status === 'COMPLETED' && (!job.paymentStatus || Number(job.dueAmount || 0) > 0);
-const readyForHandover = (job: any) => job.status === 'COMPLETED' && Boolean(job.paymentStatus) && Number(job.dueAmount || 0) <= 0;
-const countWorkQueue = (rows: any[]) => ({
+type WorkTab = 'active' | 'payment' | 'handover' | 'transfer' | 'sent' | 'closed' | 'all';
+const isSettledCompleted = (job: any) => job.status === 'COMPLETED' && Boolean(job.paymentStatus);
+const hasOutstandingDue = (job: any) => Number(job.dueAmount || 0) > 0;
+const needsPayment = (job: any) => job.status === 'COMPLETED' && (!job.paymentStatus || hasOutstandingDue(job));
+const canDeliverJob = (job: any, allowDeliveryWithDue = false) =>
+  isSettledCompleted(job) && (!hasOutstandingDue(job) || Boolean(job.foc) || (allowDeliveryWithDue && Boolean(job.dueDeliveryApprovedAt)));
+const inHandoverQueue = (job: any, allowDeliveryWithDue = false) => {
+  if (!isSettledCompleted(job)) return false;
+  if (!hasOutstandingDue(job) || Boolean(job.foc)) return true;
+  return allowDeliveryWithDue;
+};
+const needsDueDeliveryApproval = (job: any, allowDeliveryWithDue = false) =>
+  isSettledCompleted(job) && hasOutstandingDue(job) && allowDeliveryWithDue && !job.dueDeliveryApprovedAt;
+const readyForHandover = canDeliverJob;
+const countWorkQueue = (rows: any[], allowDeliveryWithDue = false) => ({
   active: rows.filter((j: any) => ACTIVE_STATUSES.includes(j.status)).length,
   payment: rows.filter(needsPayment).length,
-  handover: rows.filter(readyForHandover).length,
+  handover: rows.filter((j) => inHandoverQueue(j, allowDeliveryWithDue)).length,
+  transfer: rows.filter((j: any) => j.pendingHandoverForMe).length,
 });
-const nextActionLabel = (job: any) => {
+const nextActionLabel = (job: any, allowDeliveryWithDue = false) => {
   if (ACTIVE_STATUSES.includes(job.status)) return job.status === 'RECEIVED' ? 'စစ်ဆေးရန်' : job.status === 'INSPECTING' ? 'ပြင်ဆင်ရန်' : 'ဆက်လက်လုပ်ဆောင်ရန်';
-  if (needsPayment(job)) return Number(job.dueAmount || 0) > 0 ? 'ကျန်ငွေကောက်ရန်' : 'ငွေရှင်းရန်';
-  if (readyForHandover(job)) return 'ပစ္စည်းပေးအပ်ရန်';
+  if (needsPayment(job)) return hasOutstandingDue(job) ? 'ကျန်ငွေကောက်ရန်' : 'ငွေရှင်းရန်';
+  if (needsDueDeliveryApproval(job, allowDeliveryWithDue)) return 'Due delivery အတည်ပြုရန်';
+  if (canDeliverJob(job, allowDeliveryWithDue)) return 'ပစ္စည်းပေးအပ်ရန်';
   if (job.status === 'DELIVERED') return 'အလုပ်ပြီးပိတ်ထား';
   return job.status === 'CANCELLED' ? 'ပယ်ဖျက်ထား' : 'အသေးစိတ်စစ်ရန်';
 };
@@ -948,11 +961,17 @@ export default function ServiceJobManagement() {
     || (currentUser.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR');
   const canOverridePrice = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE')
     || (currentUser.roles || []).some((role: string) => role === 'ADMINISTRATOR' || role === 'ROLE_ADMINISTRATOR');
+  const isManagerRole = (currentUser.roles || []).some((role: string) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR', 'MANAGER', 'ROLE_MANAGER'].includes(role));
+  const canPaymentDiscountApprove = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_JOB_PAYMENT_DISCOUNT_APPROVE') || isManagerRole;
+  const canDueDeliveryApprove = (currentUser.permissions || []).includes('CAN_ACCESS_SERVICE_JOB_DUE_DELIVERY_APPROVE') || isManagerRole;
+  const [companySettings, setCompanySettings] = useState<{ serviceAllowDeliveryWithDue?: boolean }>({ serviceAllowDeliveryWithDue: false });
+  const allowDeliveryWithDue = companySettings.serviceAllowDeliveryWithDue === true;
   const myStaffId = currentUser.staffId != null ? String(currentUser.staffId) : '';
   const canPickOwnTechnician = Boolean(myStaffId);
   const technicianFieldDisabled = !canAssignTechnician && !canPickOwnTechnician;
   const [jobs, setJobs]           = useState<any[]>([]);
-  const [workQueueCounts, setWorkQueueCounts] = useState({ active: 0, payment: 0, handover: 0 });
+  const [sentHandovers, setSentHandovers] = useState<any[]>([]);
+  const [workQueueCounts, setWorkQueueCounts] = useState({ active: 0, payment: 0, handover: 0, transfer: 0, sent: 0 });
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
   const [tab, setTab]             = useState<WorkTab>('active');
@@ -989,7 +1008,7 @@ export default function ServiceJobManagement() {
 
   const [showCreditPay, setShowCreditPay] = useState(false);
   const [creditPayJob, setCreditPayJob]   = useState<any>(null);
-  const [creditPayForm, setCreditPayForm] = useState({ paidAmount: '', paymentMethodId: '', paymentAccountId: '', transactionNo: '', payments: [] as PaymentTransactionDTO[] });
+  const [creditPayForm, setCreditPayForm] = useState({ paidAmount: '', paymentDiscountAmount: '0', paymentDiscountApprovalNote: '', paymentMethodId: '', paymentAccountId: '', transactionNo: '', payments: [] as PaymentTransactionDTO[] });
 
   const [printId, setPrintId]   = useState<number | null>(null);
   const [logJob, setLogJob]     = useState<any>(null);
@@ -1004,7 +1023,27 @@ export default function ServiceJobManagement() {
   const [reworkSerialLoading, setReworkSerialLoading] = useState(false);
   const [expandedJobFamilies, setExpandedJobFamilies] = useState<Record<string, boolean>>({});
   const PAGE_SIZE = 20;
-  const workflowTab = tab === 'active' || tab === 'payment' || tab === 'handover';
+  const workflowTab = tab === 'active' || tab === 'payment' || tab === 'handover' || tab === 'transfer' || tab === 'sent';
+
+  const loadSentHandovers = async () => {
+    if (canAssignTechnician) {
+      setSentHandovers([]);
+      return;
+    }
+    try {
+      const res = await serviceJobService.getSentHandovers();
+      if (res.success) {
+        const rows = res.data ?? [];
+        setSentHandovers(rows);
+        setWorkQueueCounts(prev => ({
+          ...prev,
+          sent: rows.filter((h: any) => String(h.status || '').toUpperCase() === 'PENDING').length,
+        }));
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const load = async () => {
     const ignoresDateRange = workflowTab || search.trim().length > 0;
@@ -1019,7 +1058,7 @@ export default function ServiceJobManagement() {
         const rows = res.data?.content ?? [];
         setJobs(rows);
         setTotal(res.data?.totalElements ?? 0);
-        setWorkQueueCounts(countWorkQueue(rows));
+        setWorkQueueCounts(countWorkQueue(rows, allowDeliveryWithDue));
       }
       return;
     }
@@ -1032,19 +1071,20 @@ export default function ServiceJobManagement() {
       setTotal(listRes.data?.totalElements ?? 0);
     }
     if (queueRes.success) {
-      setWorkQueueCounts(countWorkQueue(queueRes.data?.content ?? []));
+      setWorkQueueCounts(countWorkQueue(queueRes.data?.content ?? [], allowDeliveryWithDue));
     }
   };
 
   const loadReferenceData = async () => {
     try {
-      const [staffRes, serviceItemRes, productRes, payMethodRes, customerRes, creditTermRes] = await Promise.allSettled([
+      const [staffRes, serviceItemRes, productRes, payMethodRes, customerRes, creditTermRes, settingsRes] = await Promise.allSettled([
         staffService.getAllActive(),
         serviceItemService.getActive(),
         productService.getAll(),
         paymentMethodService.getAllActive(),
         customerService.getAll(),
         creditTermService.getAll(),
+        companySettingsService.getSettings(),
       ]);
 
       if (staffRes.status === 'fulfilled') {
@@ -1069,6 +1109,10 @@ export default function ServiceJobManagement() {
       if (payMethodRes.status === 'fulfilled') setPayMethods(Array.isArray(payMethodRes.value) ? payMethodRes.value : []);
       if (customerRes.status === 'fulfilled') setCustomers(Array.isArray(customerRes.value) ? customerRes.value : []);
       if (creditTermRes.status === 'fulfilled') setCreditTerms(Array.isArray(creditTermRes.value) ? creditTermRes.value : []);
+      if (settingsRes.status === 'fulfilled') {
+        const settingsData = (settingsRes.value as any)?.data ?? settingsRes.value;
+        setCompanySettings({ serviceAllowDeliveryWithDue: settingsData?.serviceAllowDeliveryWithDue === true });
+      }
     } catch {
       // ignore
     }
@@ -1076,19 +1120,35 @@ export default function ServiceJobManagement() {
 
   useEffect(() => {
     void load();
+    void loadSentHandovers();
     void loadReferenceData();
   }, [page, tab, search, dateFrom, dateTo]);
   useRefreshOnTabActivate(() => {
     void load();
+    void loadSentHandovers();
     void loadReferenceData();
   });
   useDataEvents(['Service Job', 'Booking', 'Customer', 'Staff', 'Service', 'Product', 'Payment', 'Credit'], () => {
     void load();
+    void loadSentHandovers();
     void loadReferenceData();
   });
   useWebsocket('/topic/service-jobs', () => {
     void load();
+    void loadSentHandovers();
     void loadReferenceData();
+  });
+  useWebsocket('/topic/handovers', (event) => {
+    void load();
+    void loadSentHandovers();
+    const kind = String(event || '').toUpperCase();
+    if (kind === 'JOB_HANDOVER_ACCEPTED') {
+      void Swal.fire({ icon: 'success', title: 'Hand Over လက်ခံပြီး', text: 'လက်ခံမည့် Technician က Hand Over ကို လက်ခံပြီးပါပြီ။', timer: 4000, showConfirmButton: true });
+    } else if (kind === 'JOB_HANDOVER_REJECTED') {
+      void Swal.fire({ icon: 'info', title: 'Hand Over ငြင်းပယ်ပြီး', text: 'လက်ခံမည့် Technician က Hand Over ကို ငြင်းပယ်ပါပြီ။ Job ကို ပြန်လုပ်ဆောင်နိုင်ပါသည်။', timer: 5000, showConfirmButton: true });
+    } else if (kind === 'JOB_HANDOVER_REQUESTED') {
+      void loadSentHandovers();
+    }
   });
   useWebsocket('/topic/booking', () => {
     void load();
@@ -1107,7 +1167,8 @@ export default function ServiceJobManagement() {
     const matchesWorkTab = tab === 'all'
       || (tab === 'active' && ACTIVE_STATUSES.includes(j.status))
       || (tab === 'payment' && needsPayment(j))
-      || (tab === 'handover' && readyForHandover(j))
+      || (tab === 'handover' && inHandoverQueue(j, allowDeliveryWithDue))
+      || (tab === 'transfer' && j.pendingHandoverForMe)
       || (tab === 'closed' && ARCHIVED_STATUSES.includes(j.status));
     return matchesStatus && matchesWorkTab;
   };
@@ -1164,8 +1225,29 @@ export default function ServiceJobManagement() {
     active: workQueueCounts.active,
     payment: workQueueCounts.payment,
     handover: workQueueCounts.handover,
+    transfer: workQueueCounts.transfer,
+    sent: workQueueCounts.sent,
     closed: statusFilteredJobs.filter(j => ARCHIVED_STATUSES.includes(j.status)).length,
     all: statusFilteredJobs.length,
+  };
+
+  const openSentHandoverJob = async (handover: any) => {
+    const jobId = handover?.serviceJobId;
+    if (!jobId) return;
+    try {
+      const res = await serviceJobService.getById(jobId);
+      if (res.success && res.data) setTeamJob(res.data);
+      else void Swal.fire('အမှား', 'Job detail မဖတ်နိုင်ပါ', 'error');
+    } catch {
+      void Swal.fire('အမှား', 'Job detail မဖတ်နိုင်ပါ', 'error');
+    }
+  };
+
+  const handoverStatusLabel = (status?: string) => {
+    const s = String(status || '').toUpperCase();
+    if (s === 'ACCEPTED') return { text: 'လက်ခံပြီး', cls: 'bg-emerald-100 text-emerald-800' };
+    if (s === 'REJECTED') return { text: 'ငြင်းပယ်ပြီး', cls: 'bg-rose-100 text-rose-800' };
+    return { text: 'စောင့်ဆိုင်းနေ', cls: 'bg-amber-100 text-amber-800' };
   };
   const availableStatuses = STATUS_LIST;
   const technicianChoices = (() => {
@@ -1434,7 +1516,7 @@ export default function ServiceJobManagement() {
   const openCreditPay = (j: any) => {
     setCreditPayJob(j);
     const due = Number(j.dueAmount) || 0;
-    setCreditPayForm({ paidAmount: due > 0 ? String(due) : '', paymentMethodId: '', paymentAccountId: '', transactionNo: '', payments: [] });
+    setCreditPayForm({ paidAmount: due > 0 ? String(due) : '', paymentDiscountAmount: '0', paymentDiscountApprovalNote: '', paymentMethodId: '', paymentAccountId: '', transactionNo: '', payments: [] });
     setShowCreditPay(true);
   };
 
@@ -1442,21 +1524,27 @@ export default function ServiceJobManagement() {
     if (!creditPayJob) return;
     const creditPayments = normalizePayments(creditPayForm.payments || []);
     const paid = creditPayments.length > 0 ? paymentTotal(creditPayForm.payments || []) : Number(creditPayForm.paidAmount || 0);
-    if (paid <= 0) { Swal.fire('အမှား', 'ပေးချေမည့် ပမာဏ ထည့်ပါ', 'error'); return; }
+    const paymentDiscount = Number(creditPayForm.paymentDiscountAmount || 0);
+    if (paid + paymentDiscount <= 0) { Swal.fire('အမှား', 'ပေးချေငွေ သို့မဟုတ် အတည်ပြုထားသော ထပ်လျှော့ငွေ ထည့်ပါ', 'error'); return; }
+    if (paid + paymentDiscount > Number(creditPayJob.dueAmount || 0)) { Swal.fire('အမှား', 'ပေးချေငွေနှင့် ထပ်လျှော့ငွေသည် အကြွေးကျန်ထက် မကျော်ရပါ', 'error'); return; }
+    if (paymentDiscount > 0 && !canPaymentDiscountApprove) { Swal.fire('ခွင့်ပြုချက်မရှိ', 'Payment discount approval ခွင့်ပြုချက် လိုအပ်သည်', 'error'); return; }
+    if (paymentDiscount > 0 && !creditPayForm.paymentDiscountApprovalNote.trim()) { Swal.fire('အမှား', 'Payment Discount approval note ထည့်ပါ', 'error'); return; }
     const methodId = creditPayments[0]?.paymentMethodId
       || (creditPayForm.paymentMethodId ? Number(creditPayForm.paymentMethodId) : null)
       || (creditPayForm.payments || []).find(p => Number(p.paymentMethodId) > 0)?.paymentMethodId
       || null;
-    if (!methodId) { Swal.fire('အမှား', 'ငွေပေးချေနည်း ရွေးပါ', 'error'); return; }
+    if (paid > 0 && !methodId) { Swal.fire('အမှား', 'ငွေပေးချေနည်း ရွေးပါ', 'error'); return; }
     const paymentsPayload = creditPayments.length > 0
       ? creditPayments
-      : [{ paymentMethodId: methodId, amount: paid, transactionNo: creditPayForm.transactionNo?.trim() || undefined }];
+      : (paid > 0 ? [{ paymentMethodId: methodId, amount: paid, transactionNo: creditPayForm.transactionNo?.trim() || undefined }] : []);
     const dto = {
       paidAmount: paid,
       paymentMethodId: methodId,
       paymentAccountId: creditPayForm.paymentAccountId ? Number(creditPayForm.paymentAccountId) : null,
       transactionNo: creditPayForm.transactionNo || null,
       payments: paymentsPayload,
+      paymentDiscountAmount: paymentDiscount,
+      paymentDiscountApprovalNote: creditPayForm.paymentDiscountApprovalNote || null,
     };
     try {
       const res = await serviceJobService.payDue(creditPayJob.id, dto);
@@ -1471,13 +1559,38 @@ export default function ServiceJobManagement() {
   };
 
   const cpPaid = Number(creditPayForm.paidAmount || 0);
+  const cpDiscount = Number(creditPayForm.paymentDiscountAmount || 0);
   const cpDue = creditPayJob ? Number(creditPayJob.dueAmount || 0) : 0;
-  const cpRemaining = Math.max(0, cpDue - cpPaid);
+  const cpRemaining = Math.max(0, cpDue - cpPaid - cpDiscount);
   const cpSelectedPM = payMethods.find(m => String(m.id) === creditPayForm.paymentMethodId);
   const cpRequiresTxn = cpSelectedPM && /bank|kpay|wave|aya|kbz|mpu/i.test(cpSelectedPM.methodName);
 
   /* ── Deliver ───────────────────────────────────────────────── */
   const handleDeliver = async (id: number) => {
+    const deliveryJob = jobs.find((item: any) => item.id === id);
+    if (hasOutstandingDue(deliveryJob) && !allowDeliveryWithDue) {
+      Swal.fire('အမှား', 'Company Settings မှာ အကြွေးကျန်ဖြင့် ပေးအပ်ခွင့် ပိတ်ထားသည်', 'error');
+      return;
+    }
+    if (needsDueDeliveryApproval(deliveryJob, allowDeliveryWithDue)) {
+      if (!canDueDeliveryApprove) {
+        Swal.fire('ခွင့်ပြုချက်မရှိ', 'Due delivery အတည်ပြုခွင့် လိုအပ်သည်', 'error');
+        return;
+      }
+      const approval = await Swal.fire({
+        title: 'အကြွေးကျန်ဖြင့် ပေးအပ်ရန် Manager Approval',
+        input: 'textarea', inputPlaceholder: 'Approval reason *', icon: 'warning',
+        showCancelButton: true, confirmButtonText: 'အတည်ပြုမည်',
+        inputValidator: value => value?.trim() ? null : 'Approval reason လိုအပ်သည်',
+      });
+      if (!approval.isConfirmed) return;
+      try {
+        await serviceJobService.approveDueDelivery(id, String(approval.value).trim());
+      } catch (e: any) {
+        if (!e?.globalAlertShown) Swal.fire('အတည်ပြုမရပါ', apiErrorMessage(e), 'error');
+        return;
+      }
+    }
     const confirmation = await Swal.fire({
       title: 'ပစ္စည်းပေးအပ်မှု အတည်ပြုရန်', input: 'text',
       inputLabel: 'ပစ္စည်းလက်ခံယူသူအမည် / ဖုန်း', inputPlaceholder: 'အမည် သို့မဟုတ် ဖုန်းနံပါတ်',
@@ -1784,6 +1897,8 @@ export default function ServiceJobManagement() {
 
   /* ── Tabs config ───────────────────────────────────────────── */
   const tabDef: { key: WorkTab; label: string; note: string; count: number; active: string; inactive: string }[] = [
+    ...(!canAssignTechnician ? [{ key: 'transfer' as WorkTab, label: 'Hand Over လက်ခံ', note: 'Admin ထံမှ လက်ခံ', count: counts.transfer, active: 'border-amber-500 text-amber-800 bg-amber-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' }] : []),
+    ...(!canAssignTechnician ? [{ key: 'sent' as WorkTab, label: 'Hand Over ပို့ထား', note: 'လက်ခံ/ငြင်းပယ် status', count: counts.sent, active: 'border-violet-500 text-violet-800 bg-violet-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' }] : []),
     { key: 'active', label: 'လုပ်ဆောင်ဆဲ', note: 'ရက်မကန့်သတ်', count: counts.active, active: 'border-blue-500 text-blue-700 bg-blue-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
     { key: 'payment', label: 'ငွေရှင်းရန်', note: 'ရက်မကန့်သတ်', count: counts.payment, active: 'border-rose-500 text-rose-700 bg-rose-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
     { key: 'handover', label: 'ပေးအပ်ရန်', note: 'ရက်မကန့်သတ်', count: counts.handover, active: 'border-emerald-500 text-emerald-700 bg-emerald-50', inactive: 'border-transparent text-slate-500 hover:bg-slate-100' },
@@ -1820,11 +1935,11 @@ export default function ServiceJobManagement() {
               <option value="all">အခြေအနေအားလုံး</option>
               {availableStatuses.map(status => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
             </select>
-            <input type="date" value={dateFrom} disabled={tab === 'active' || tab === 'payment' || tab === 'handover'}
+            <input type="date" value={dateFrom} disabled={tab === 'active' || tab === 'payment' || tab === 'handover' || tab === 'transfer' || tab === 'sent'}
               title={workflowTab ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : 'ရက်စွဲဖြင့် စစ်ထုတ်ရန်'}
               onChange={e => { setDateFrom(e.target.value); setPage(0); }}
               className="min-h-11 border rounded-xl px-2.5 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" />
-            <input type="date" value={dateTo} disabled={tab === 'active' || tab === 'payment' || tab === 'handover'}
+            <input type="date" value={dateTo} disabled={tab === 'active' || tab === 'payment' || tab === 'handover' || tab === 'transfer' || tab === 'sent'}
               title={workflowTab ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်' : 'ရက်စွဲဖြင့် စစ်ထုတ်ရန်'}
               onChange={e => { setDateTo(e.target.value); setPage(0); }}
               className="min-h-11 col-span-2 border rounded-xl px-2.5 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 sm:col-span-1" />
@@ -1835,21 +1950,52 @@ export default function ServiceJobManagement() {
           </button>
         </div>
         <p className="border-b bg-white px-3 py-1.5 text-[11px] text-slate-500">
-          {workflowTab
+          {tab === 'sent'
+            ? 'သင် Hand Over ပို့ထားသော Job များ — လက်ခံ/ငြင်းပယ် status ကို ဒီမှာ ကြည့်နိုင်ပါသည်'
+            : workflowTab
             ? 'လုပ်ဆောင်ရန်ကျန်သောအလုပ်အားလုံးကို ရက်မကန့်သတ်ဘဲ ပြထားသည်'
             : 'ရက်စွဲအတိုင်း ပြသည် (ရှာဖွေလျှင် ရက်မကန့်သတ်)'}
         </p>
+        {tab === 'sent' ? (
+          <div className="p-3 space-y-3">
+            {sentHandovers.map((h: any) => {
+              const badge = handoverStatusLabel(h.status);
+              return (
+                <article key={h.id} className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-mono text-sm font-black text-purple-700">{h.jobNo || `#${h.serviceJobId}`}</p>
+                      <p className="mt-1 text-sm text-slate-700"><b>{h.fromStaffName}</b> → <b>{h.toStaffName}</b></p>
+                      <p className="mt-1 text-xs text-slate-500">{h.role}{h.requestedAt ? ` · ${new Date(h.requestedAt).toLocaleString()}` : ''}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${badge.cls}`}>{badge.text}</span>
+                  </div>
+                  {h.remainingWork && <p className="mt-3 text-sm text-slate-700"><b>ကျန်ရှိ:</b> {h.remainingWork}</p>}
+                  {h.rejectionReason && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">ငြင်းပယ်ရသည့်အကြောင်း: {h.rejectionReason}</p>}
+                  {h.actedAt && <p className="mt-2 text-xs text-slate-500">ဆုံးဖြတ်ချိန်: {new Date(h.actedAt).toLocaleString()}{h.actedBy ? ` · ${h.actedBy}` : ''}</p>}
+                  <div className="mt-3">
+                    <button type="button" onClick={() => void openSentHandoverJob(h)} className="min-h-10 rounded-lg border border-violet-300 bg-violet-50 px-4 text-xs font-bold text-violet-900">Hand Over History ကြည့်ရန်</button>
+                  </div>
+                </article>
+              );
+            })}
+            {sentHandovers.length === 0 && (
+              <div className="rounded-2xl border-2 border-dashed bg-white py-16 text-center text-sm text-slate-400">Hand Over ပို့ထားသော Job မရှိသေးပါ</div>
+            )}
+          </div>
+        ) : (
+        <>
         <div className="grid gap-3 bg-slate-100 p-3 md:hidden">
           {hierarchicalJobs.map(({ job: j, depth }) => {
             const balance = Number(j.dueAmount || 0);
-            const actionTone = needsPayment(j) ? 'border-rose-300 bg-rose-50 text-rose-700' : readyForHandover(j) ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : ACTIVE_STATUSES.includes(j.status) ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-300 bg-slate-50 text-slate-700';
+            const actionTone = needsPayment(j) ? 'border-rose-300 bg-rose-50 text-rose-700' : canDeliverJob(j, allowDeliveryWithDue) ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : needsDueDeliveryApproval(j, allowDeliveryWithDue) ? 'border-amber-300 bg-amber-50 text-amber-700' : ACTIVE_STATUSES.includes(j.status) ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-300 bg-slate-50 text-slate-700';
             return <article key={`mobile-${j.id}`} className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${depth > 0 ? 'ml-4 border-amber-300' : 'border-slate-200'}`}>
               <header className="flex items-center justify-between gap-2 border-b px-4 py-3"><div className="flex flex-wrap items-center gap-1.5"><span className="font-mono text-sm font-black text-purple-700">{j.jobNo}</span>{serviceModeChip(j.serviceMode)}<span className={`rounded-full px-2 py-1 text-[10px] font-black ${priorityStyle[j.priority || 'NORMAL'] || priorityStyle.NORMAL}`}>{j.priority || 'NORMAL'}</span>{depth > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-800">LINKED REWORK</span>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${STATUS_COLOR[j.status as JobStatus] || 'bg-slate-100 text-slate-700'}`}>{STATUS_LABEL[j.status as JobStatus] || j.status}</span></header>
               <div className="space-y-3 p-4"><div><p className="font-black text-slate-900">{j.customerName}<span className="ml-2 text-xs font-medium text-slate-400">{j.customerPhone}</span></p><p className="mt-1 font-semibold text-slate-700">{j.itemName || 'ပစ္စည်းအမည်မရှိ'}{j.serialNo ? <span className="ml-2 font-mono text-xs text-slate-400">SN: {j.serialNo}</span> : null}</p><p className="mt-1 line-clamp-2 text-xs text-slate-500">{j.problemDesc || 'ပြဿနာမဖော်ပြထားပါ'}</p></div>
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs"><span className="font-bold text-indigo-700">Appointment:</span> <span className={j.appointmentDate ? 'font-semibold text-indigo-900' : 'text-slate-500'}>{formatAppointment(j.appointmentDate)}</span></div>
-                <div className={`rounded-xl border px-3 py-2 text-sm font-black ${actionTone}`}>နောက်လုပ်ရန် → {nextActionLabel(j)}</div>
+                <div className={`rounded-xl border px-3 py-2 text-sm font-black ${actionTone}`}>နောက်လုပ်ရန် → {nextActionLabel(j, allowDeliveryWithDue)}</div>
                 <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 text-xs"><div><span className="block text-slate-400">ကျသင့်ငွေ</span><b>{Number(j.netAmount ?? j.finalCost ?? j.estimatedCost ?? 0).toLocaleString()} Ks</b></div><div><span className="block text-slate-400">ကျန်ငွေ</span><b className={balance > 0 ? 'text-rose-700' : 'text-emerald-700'}>{balance.toLocaleString()} Ks</b></div></div>
-                <div className="flex flex-wrap gap-2"><button onClick={() => setPrintId(j.id)} className="min-h-10 rounded-lg border px-3 text-xs font-bold"><Printer size={14}/></button>{j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && <button onClick={() => openEdit(j)} className="min-h-10 rounded-lg border border-blue-200 px-3 text-xs font-bold text-blue-700">ပြင်ဆင်မည်</button>}{j.status === 'COMPLETED' && !j.paymentStatus && <button onClick={() => openSettle(j)} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white">ငွေရှင်းမည်</button>}{balance > 0 && j.paymentStatus && <button onClick={() => openCreditPay(j)} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white">အကြွေးဆပ်မည်</button>}{readyForHandover(j) && <button onClick={() => handleDeliver(j.id)} className="min-h-10 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white">ပစ္စည်းပေးအပ်မည်</button>}{j.status === 'DELIVERED' && <button onClick={() => openRework(j)} className="min-h-10 rounded-lg bg-amber-500 px-3 text-xs font-bold text-white">Warranty / Rework</button>}</div>
+                <div className="flex flex-wrap gap-2"><button onClick={() => setPrintId(j.id)} className="min-h-10 rounded-lg border px-3 text-xs font-bold"><Printer size={14}/></button>{j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && <button onClick={() => openEdit(j)} className="min-h-10 rounded-lg border border-blue-200 px-3 text-xs font-bold text-blue-700">ပြင်ဆင်မည်</button>}{j.status === 'COMPLETED' && !j.paymentStatus && <button onClick={() => openSettle(j)} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white">ငွေရှင်းမည်</button>}{balance > 0 && j.paymentStatus && <button onClick={() => openCreditPay(j)} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-bold text-white">အကြွေးဆပ်မည်</button>}{readyForHandover(j, allowDeliveryWithDue) && <button onClick={() => handleDeliver(j.id)} className="min-h-10 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white">ပစ္စည်းပေးအပ်မည်</button>}{needsDueDeliveryApproval(j, allowDeliveryWithDue) && <button onClick={() => handleDeliver(j.id)} className="min-h-10 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white">Due Delivery အတည်ပြု</button>}{j.status === 'DELIVERED' && <button onClick={() => openRework(j)} className="min-h-10 rounded-lg bg-amber-500 px-3 text-xs font-bold text-white">Warranty / Rework</button>}</div>
               </div>
             </article>;
           })}
@@ -1955,7 +2101,7 @@ export default function ServiceJobManagement() {
                         {STATUS_LABEL[j.status as JobStatus] ?? j.status}
                       </span>
                       <span className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${priorityStyle[j.priority || 'NORMAL'] || priorityStyle.NORMAL}`}>{j.priority || 'NORMAL'}</span>
-                      <div className={`mt-1.5 rounded-lg px-2 py-1 text-[10px] font-black ${needsPayment(j) ? 'bg-rose-50 text-rose-700' : readyForHandover(j) ? 'bg-emerald-50 text-emerald-700' : ACTIVE_STATUSES.includes(j.status) ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>နောက်လုပ်ရန် → {nextActionLabel(j)}</div>
+                      <div className={`mt-1.5 rounded-lg px-2 py-1 text-[10px] font-black ${needsPayment(j) ? 'bg-rose-50 text-rose-700' : canDeliverJob(j, allowDeliveryWithDue) ? 'bg-emerald-50 text-emerald-700' : needsDueDeliveryApproval(j, allowDeliveryWithDue) ? 'bg-amber-50 text-amber-700' : ACTIVE_STATUSES.includes(j.status) ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>နောက်လုပ်ရန် → {nextActionLabel(j, allowDeliveryWithDue)}</div>
                     </td>
                     <td className="px-3 py-3 text-xs text-slate-600">
                       {j.estimatedCost ? Number(j.estimatedCost).toLocaleString() : '—'}
@@ -2001,10 +2147,10 @@ export default function ServiceJobManagement() {
                             💳 အကြွေးဆပ်
                           </button>
                         )}
-                        {isCompleted && (
-                          <button onClick={() => handleDeliver(j.id)} title="ပစ္စည်းပေးအပ်ပြီး Job ပိတ်ရန်"
-                            className="px-2 py-1 text-xs border border-green-200 rounded-lg text-green-700 hover:bg-green-50 font-bold transition-colors whitespace-nowrap">
-                            ✓ Closed
+                        {isCompleted && inHandoverQueue(j, allowDeliveryWithDue) && (
+                          <button onClick={() => handleDeliver(j.id)} title={needsDueDeliveryApproval(j, allowDeliveryWithDue) ? 'Due delivery approval + ပေးအပ်ရန်' : 'ပစ္စည်းပေးအပ်ပြီး Job ပိတ်ရန်'}
+                            className={`px-2 py-1 text-xs border font-bold transition-colors whitespace-nowrap ${needsDueDeliveryApproval(j, allowDeliveryWithDue) ? 'border-amber-200 rounded-lg text-amber-700 hover:bg-amber-50' : 'border-green-200 rounded-lg text-green-700 hover:bg-green-50'}`}>
+                            {needsDueDeliveryApproval(j, allowDeliveryWithDue) ? '⚠ Due Deliver' : '✓ Closed'}
                           </button>
                         )}
                         {j.status === 'DELIVERED' && (
@@ -2022,10 +2168,13 @@ export default function ServiceJobManagement() {
                         {!j.estimateApproved && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
                           <button onClick={() => handleApproveEstimate(j)} className="px-2 py-1 text-xs border border-slate-200 rounded-lg font-bold">Estimate ✓</button>
                         )}
-                        {canAssignTechnician && !j.finalApprovalStatus && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
-                          <button onClick={() => handleApproveFinal(j)} className="px-2 py-1 text-xs border border-emerald-200 rounded-lg font-bold text-emerald-700">Final Check ✓</button>
+                        {canAssignTechnician && j.leadFinalCheckStatus && !j.finalApprovalStatus && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
+                          <button onClick={() => handleApproveFinal(j)} className="px-2 py-1 text-xs border border-emerald-200 rounded-lg font-bold text-emerald-700">Supervisor Approval ✓</button>
                         )}
-                        <button onClick={() => setTeamJob(j)} className="px-2 py-1 text-xs border border-purple-200 rounded-lg font-bold text-purple-700">Technician Assignment</button>
+                        {j.pendingHandoverForMe && (
+                          <button onClick={() => setTeamJob(j)} className="px-2 py-1 text-xs border border-amber-300 rounded-lg font-bold text-amber-900 bg-amber-50">Hand Over လက်ခံ</button>
+                        )}
+                        <button onClick={() => setTeamJob(j)} className={`px-2 py-1 text-xs border rounded-lg font-bold ${j.pendingHandoverForMe ? 'border-amber-300 text-amber-900 bg-amber-50' : 'border-purple-200 text-purple-700'}`}>Technician Assignment</button>
                         <button onClick={() => openLog(j)} className="px-2 py-1 text-xs border rounded-lg font-bold">မှတ်တမ်း</button>
                       </div>
                     </td>
@@ -2055,6 +2204,8 @@ export default function ServiceJobManagement() {
                 className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-slate-50">ရှေ့ →</button>
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
 
@@ -2824,6 +2975,24 @@ export default function ServiceJobManagement() {
                     className="px-3 py-2 rounded-lg bg-rose-500 text-white text-xs font-bold hover:bg-rose-600 shrink-0">အပြည့်</button>
                 </div>
 
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase text-rose-700">Payment Discount (Ks)</label>
+                    <input type="number" min={0} max={cpDue - cpPaid}
+                      value={creditPayForm.paymentDiscountAmount}
+                      onChange={e => setCreditPayForm(p => ({ ...p, paymentDiscountAmount: e.target.value }))}
+                      disabled={!canPaymentDiscountApprove}
+                      className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm disabled:opacity-40" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase text-rose-700">Approval Note</label>
+                    <input value={creditPayForm.paymentDiscountApprovalNote}
+                      onChange={e => setCreditPayForm(p => ({ ...p, paymentDiscountApprovalNote: e.target.value }))}
+                      disabled={!canPaymentDiscountApprove || cpDiscount <= 0} placeholder="Manager approval reason"
+                      className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm disabled:opacity-40" />
+                  </div>
+                </div>
+
                 {/* Payment Method */}
                 <div>
                   <label className="block text-[10px] font-semibold text-rose-700 uppercase mb-1">ငွေပေးချေနည်း *</label>
@@ -2874,6 +3043,7 @@ export default function ServiceJobManagement() {
                     <span>ယခုပေးချေမည်</span>
                     <span className="font-semibold text-rose-700">{cpPaid.toLocaleString()} Ks</span>
                   </div>
+                  {cpDiscount > 0 && <div className="flex justify-between text-violet-700"><span>အတည်ပြု ထပ်လျှော့ငွေ</span><span className="font-semibold">{cpDiscount.toLocaleString()} Ks</span></div>}
                   <div className={`flex justify-between font-bold text-base ${cpRemaining > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                     <span>{cpRemaining > 0 ? 'ကျန်ပေးရန်' : 'အပြည့်ရှင်းပြီး ✓'}</span>
                     <span>{cpRemaining.toLocaleString()} Ks</span>
@@ -2986,6 +3156,33 @@ export default function ServiceJobManagement() {
                 </div>
               </section>
               <section>
+                <p className="mb-2 text-xs font-black uppercase text-slate-500">ငွေရှင်းမှု Audit</p>
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                  {Number(logJob.paymentDiscountAmount || 0) > 0 && (
+                    <div>
+                      <b>Payment Discount:</b> {Number(logJob.paymentDiscountAmount).toLocaleString()} Ks
+                      {logJob.paymentDiscountApprovedBy && <span className="ml-2 text-slate-500">by {logJob.paymentDiscountApprovedBy}</span>}
+                      {logJob.paymentDiscountApprovalNote && <p className="mt-1 text-slate-500">{logJob.paymentDiscountApprovalNote}</p>}
+                    </div>
+                  )}
+                  {logJob.dueDeliveryApprovedAt && (
+                    <div>
+                      <b>Due Delivery Approved:</b> {logJob.dueDeliveryApprovedBy || '—'}
+                      {logJob.dueDeliveryApprovalReason && <p className="mt-1 text-slate-500">{logJob.dueDeliveryApprovalReason}</p>}
+                    </div>
+                  )}
+                  {logJob.voided && (
+                    <div className="text-rose-700">
+                      <b>Voided:</b> {logJob.voidReason || '—'} · {logJob.voidedBy || '—'}
+                      {logJob.voidedAt && <span className="ml-1 text-slate-500">{new Date(logJob.voidedAt).toLocaleString()}</span>}
+                    </div>
+                  )}
+                  {Number(logJob.paymentDiscountAmount || 0) <= 0 && !logJob.dueDeliveryApprovedAt && !logJob.voided && (
+                    <p className="text-slate-400">ငွေရှင်းမှု audit metadata မရှိသေးပါ</p>
+                  )}
+                </div>
+              </section>
+              <section>
                 <p className="mb-2 text-xs font-black uppercase text-slate-500">Timeline</p>
                 <div className="space-y-1">
                   {(logJob.activities || []).map((a: any) => (
@@ -3057,7 +3254,7 @@ export default function ServiceJobManagement() {
       )}
 
       {teamJob && <TechnicianAssignmentPanel job={teamJob} staff={technicianChoices}
-        canAssign={canAssignTechnician} onClose={() => setTeamJob(null)} onChanged={() => void load()} />}
+        canAssign={canAssignTechnician} myStaffId={currentUser.staffId} onClose={() => setTeamJob(null)} onChanged={() => void load()} />}
 
       {/* Print Preview */}
       {printId && (

@@ -23,6 +23,15 @@ public class ServiceJobAssignmentLog {
     @Column(columnDefinition = "TEXT")
     private String note;
 
+    @Column(name = "completed_work", columnDefinition = "TEXT")
+    private String completedWork;
+
+    @Column(name = "service_details", columnDefinition = "TEXT")
+    private String serviceDetails;
+
+    @Column(name = "parts_details", columnDefinition = "TEXT")
+    private String partsDetails;
+
     @Column(length = 100)
     private String actor;
 

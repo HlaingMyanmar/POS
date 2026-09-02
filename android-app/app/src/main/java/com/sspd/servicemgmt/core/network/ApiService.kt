@@ -595,11 +595,31 @@ interface ApiService {
         @Path("id") id: Int
     ): Response<ApiResponse<Void>>
 
-    @POST("bookings/{id}/convert-to-job")
-    suspend fun convertBookingToJob(
+    @POST("bookings/{id}/convert-outdoor")
+    suspend fun convertBookingOutdoor(
         @Header("Authorization") auth: String,
         @Path("id") id: Int
-    ): Response<ApiResponse<List<ServiceJobDTO>>>
+    ): Response<ApiResponse<BookingDTO>>
+
+    @POST("bookings/{id}/convert-indoor")
+    suspend fun convertBookingIndoor(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int
+    ): Response<ApiResponse<BookingDTO>>
+
+    @POST("bookings/{id}/items")
+    suspend fun addBookingItems(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: List<BookingItemDTO>
+    ): Response<ApiResponse<BookingDTO>>
+
+    @DELETE("bookings/{id}/items/{itemId}")
+    suspend fun removeBookingItem(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("itemId") itemId: Int
+    ): Response<ApiResponse<BookingDTO>>
 
     @POST("bookings/{id}/attachments")
     suspend fun addBookingAttachment(
@@ -701,10 +721,22 @@ interface ApiService {
         @Query("excludeJobId") excludeJobId: Int? = null
     ): Response<ApiResponse<Set<String>>>
 
+    @GET("company-settings")
+    suspend fun getCompanySettings(
+        @Header("Authorization") auth: String
+    ): Response<ApiResponse<CompanySettingsDTO>>
+
     @POST("service-jobs/{id}/deliver")
     suspend fun deliverServiceJob(
         @Header("Authorization") auth: String,
         @Path("id") id: Int
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/approve-due-delivery")
+    suspend fun approveServiceJobDueDelivery(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: ReasonRequest
     ): Response<ApiResponse<ServiceJobDTO>>
 
     @POST("service-jobs/{id}/void")
@@ -718,6 +750,26 @@ interface ApiService {
     suspend fun approveServiceJobEstimate(
         @Header("Authorization") auth: String,
         @Path("id") id: Int
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/approve-final")
+    suspend fun approveServiceJobFinal(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/lead-final-check")
+    suspend fun submitLeadFinalCheck(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: NoteRequest
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/return-final")
+    suspend fun returnFinalCheck(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: ReasonRequest
     ): Response<ApiResponse<ServiceJobDTO>>
 
     @POST("service-jobs/{id}/notify")

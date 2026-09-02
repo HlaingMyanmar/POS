@@ -217,6 +217,8 @@ public enum PermissionName {
     CAN_ACCESS_SERVICE_JOB_DELETE("Service Job များကို ဖျက်သိမ်းခွင့်"),
     CAN_ACCESS_SERVICE_JOB_SETTLE("Service Job settlement ပြုလုပ်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_VOID("Service Job settlement ပြန်ဖျက်ခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_PAYMENT_DISCOUNT_APPROVE("Service Job အကြွေးဆပ်ချိန် ထပ်လျှော့ငွေ အတည်ပြုခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_DUE_DELIVERY_APPROVE("အကြွေးကျန် Service Job ပေးအပ်မှု အတည်ပြုခွင့်"),
     CAN_ACCESS_SERVICE_JOB_PRICE_EDIT("Service Job ဈေးနှုန်းပြင်ဆင်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE("Min/Max ကျော်သော ဝန်ဆောင်မှုစျေး Manager အတည်ပြုခွင့်"),
     CAN_ACCESS_SERVICE_JOB_REWORK("Service Job rework ဖန်တီးခွင့်"),

@@ -20,11 +20,14 @@ import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepos
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +35,8 @@ public class ServiceJobTeamService {
     private static final EnumSet<AssignmentStatus> CURRENT = EnumSet.of(
             AssignmentStatus.PENDING, AssignmentStatus.ACTIVE,
             AssignmentStatus.PAUSED, AssignmentStatus.COMPLETED);
+    private static final Set<HandoverStatus> SENT_HANDOVER_STATUSES = EnumSet.of(
+            HandoverStatus.PENDING, HandoverStatus.ACCEPTED, HandoverStatus.REJECTED);
 
     private final ServiceJobRepository jobRepository;
     private final ServiceJobAssignmentRepository assignmentRepository;
@@ -41,6 +46,7 @@ public class ServiceJobTeamService {
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final CompanySettingsRepository companySettingsRepository;
 
     @Transactional
     public TeamSnapshotDTO snapshot(Integer jobId) {
@@ -236,22 +242,35 @@ public class ServiceJobTeamService {
                 if (assignment.getStatus() != AssignmentStatus.ACTIVE
                         && assignment.getStatus() != AssignmentStatus.PAUSED)
                     throw new IllegalStateException("Notes can only be added to an active assignment");
-                if (trimToNull(request.getNote()) == null)
-                    throw new IllegalArgumentException("Note is required");
+                if (trimToNull(request.getNote()) == null
+                        && trimToNull(request.getCompletedWork()) == null
+                        && trimToNull(request.getServiceDetails()) == null
+                        && trimToNull(request.getPartsDetails()) == null)
+                    throw new IllegalArgumentException("Work, service, parts or note detail is required");
             }
             case COMPLETE -> {
                 if (assignment.getStatus() != AssignmentStatus.ACTIVE
                         && assignment.getStatus() != AssignmentStatus.PAUSED)
                     throw new IllegalStateException("Only active assignment can be completed");
+                if (trimToNull(request.getCompletedWork()) == null)
+                    throw new IllegalArgumentException("Completed work is required");
+                if (assignment.getRole() == AssignmentRole.LEAD) {
+                    boolean unfinishedMember = assignmentRepository
+                            .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT).stream()
+                            .filter(a -> !a.getId().equals(assignment.getId()))
+                            .anyMatch(a -> a.getStatus() != AssignmentStatus.COMPLETED);
+                    if (unfinishedMember)
+                        throw new IllegalStateException("Complete all Member and Helper assignments before Lead completion");
+                }
                 closeTimer(assignment, now);
                 assignment.setStatus(AssignmentStatus.COMPLETED);
-                assignment.setCompletionNote(trimToNull(request.getNote()));
+                assignment.setCompletionNote(trimToNull(request.getCompletedWork()));
                 assignment.setCompletedAt(now);
             }
         }
         assignment.setLastActionAt(now);
         assignmentRepository.save(assignment);
-        addLog(assignment, request.getAction(), trimToNull(request.getNote()));
+        addLog(assignment, request);
         recordActivity(job, "ASSIGNMENT_" + request.getAction().name(), assignment.getStaff().getName());
         broadcast("JOB_TEAM_CHANGED");
         return toDto(assignment);
@@ -285,7 +304,7 @@ public class ServiceJobTeamService {
                 .requestedAt(LocalDateTime.now()).build());
         recordActivity(source.getServiceJob(), "HANDOVER_REQUESTED",
                 source.getStaff().getName() + " -> " + target.getName());
-        broadcast("JOB_HANDOVER_REQUESTED");
+        broadcastHandover("JOB_HANDOVER_REQUESTED");
         return toDto(handover);
     }
 
@@ -336,7 +355,7 @@ public class ServiceJobTeamService {
         syncLegacyFields(job);
         recordActivity(job, "HANDOVER_ACCEPTED",
                 source.getStaff().getName() + " -> " + successor.getStaff().getName());
-        broadcast("JOB_HANDOVER_ACCEPTED");
+        broadcastHandover("JOB_HANDOVER_ACCEPTED");
         return toDto(handover);
     }
 
@@ -347,15 +366,36 @@ public class ServiceJobTeamService {
         requireSelfOrManager(handover.getToStaff().getId());
         if (handover.getStatus() != HandoverStatus.PENDING)
             throw new IllegalStateException("Only pending Hand Over can be rejected");
-        handover.setStatus(HandoverStatus.REJECTED);
+handover.setStatus(HandoverStatus.REJECTED);
         handover.setActedBy(currentUsername());
         handover.setActedAt(LocalDateTime.now());
         handover.setRejectionReason(request == null ? null : trimToNull(request.getReason()));
         handoverRepository.save(handover);
         recordActivity(handover.getServiceJob(), "HANDOVER_REJECTED",
                 handover.getToStaff().getName() + noteSuffix(handover.getRejectionReason()));
-        broadcast("JOB_HANDOVER_REJECTED");
+        broadcastHandover("JOB_HANDOVER_REJECTED");
         return toDto(handover);
+    }
+
+    @Transactional(readOnly = true)
+    public List<HandoverDTO> myPendingHandovers() {
+        Integer mine = currentStaffId();
+        if (mine == null) return List.of();
+        return handoverRepository.findAllByToStaffIdAndStatusOrderByRequestedAtDesc(mine, HandoverStatus.PENDING)
+                .stream().map(this::toDto).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<HandoverDTO> mySentHandovers() {
+        Integer mine = currentStaffId();
+        if (mine == null) return List.of();
+        return handoverRepository.findAllByFromStaffIdAndStatusInOrderByRequestedAtDesc(mine, SENT_HANDOVER_STATUSES)
+                .stream().map(this::toDto).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ServiceJobHandover> findById(Integer handoverId) {
+        return handoverRepository.findById(handoverId);
     }
 
     @Transactional
@@ -370,6 +410,37 @@ public class ServiceJobTeamService {
         ServiceJob job = requireJob(jobId);
         syncFromJob(job);
         return evaluateCompletionBlockReason(jobId);
+    }
+
+    @Transactional
+    public void assertLeadCanFinalCheck(Integer jobId) {
+        ServiceJob job = requireJob(jobId);
+        syncFromJob(job);
+        if (!evaluateCanComplete(jobId))
+            throw new IllegalStateException(evaluateCompletionBlockReason(jobId));
+        ServiceJobAssignment lead = assignmentRepository
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT).stream()
+                .filter(a -> a.getRole() == AssignmentRole.LEAD)
+                .findFirst().orElseThrow(() -> new IllegalStateException("A current lead technician is required"));
+        requireSelfOrManager(lead.getStaff().getId());
+    }
+
+    @Transactional
+    public void reopenLeadForRework(Integer jobId, String reason) {
+        ServiceJob job = requireOpenJobForUpdate(jobId);
+        ServiceJobAssignment lead = assignmentRepository
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT).stream()
+                .filter(a -> a.getRole() == AssignmentRole.LEAD)
+                .findFirst().orElseThrow(() -> new IllegalStateException("A current lead technician is required"));
+        lead.setStatus(AssignmentStatus.ACTIVE);
+        lead.setCompletionNote(null);
+        lead.setCompletedAt(null);
+        lead.setLastActionAt(LocalDateTime.now());
+        assignmentRepository.save(lead);
+        addLog(lead, AssignmentWorkAction.NOTE, "Supervisor returned for rework" + noteSuffix(reason));
+        recordActivity(job, "FINAL_CHECK_RETURNED", reason);
+        syncLegacyFields(job);
+        broadcast("JOB_TEAM_CHANGED");
     }
 
     private boolean evaluateCanComplete(Integer jobId) {
@@ -402,8 +473,19 @@ public class ServiceJobTeamService {
                 .stream().map(this::toDto).toList());
         dto.setHandovers(handoverRepository.findAllByServiceJobIdOrderByRequestedAtDesc(job.getId())
                 .stream().map(this::toDto).toList());
+        dto.setMyPendingHandovers(dto.getHandovers().stream()
+                .filter(h -> h.getStatus() == HandoverStatus.PENDING && h.isTargetMine())
+                .toList());
         dto.setCanComplete(evaluateCanComplete(job.getId()));
         dto.setCompletionBlockReason(evaluateCompletionBlockReason(job.getId()));
+        dto.setLeadFinalCheckStatus(Boolean.TRUE.equals(job.getLeadFinalCheckStatus()));
+        dto.setLeadFinalCheckedBy(job.getLeadFinalCheckedBy());
+        dto.setLeadFinalCheckedAt(job.getLeadFinalCheckedAt() == null ? null : job.getLeadFinalCheckedAt().toString());
+        dto.setLeadFinalCheckNote(job.getLeadFinalCheckNote());
+        dto.setFinalReturnReason(job.getFinalReturnReason());
+        dto.setSupervisorApprovalRequired(companySettingsRepository.findAll().stream().findFirst()
+                .map(s -> !Boolean.FALSE.equals(s.getServiceSupervisorApprovalRequired())).orElse(true));
+        dto.setFinalApprovalStatus(Boolean.TRUE.equals(job.getFinalApprovalStatus()));
         return dto;
     }
 
@@ -477,6 +559,9 @@ public class ServiceJobTeamService {
         dto.setId(log.getId());
         dto.setAction(log.getAction());
         dto.setNote(log.getNote());
+        dto.setCompletedWork(log.getCompletedWork());
+        dto.setServiceDetails(log.getServiceDetails());
+        dto.setPartsDetails(log.getPartsDetails());
         dto.setActor(log.getActor());
         dto.setOccurredAt(log.getOccurredAt());
         return dto;
@@ -506,6 +591,7 @@ public class ServiceJobTeamService {
                 ? null : handover.getSuccessorAssignment().getId());
         Integer mine = currentStaffId();
         dto.setTargetMine(mine != null && mine.equals(handover.getToStaff().getId()));
+        dto.setFromMine(mine != null && mine.equals(handover.getFromAssignment().getStaff().getId()));
         return dto;
     }
 
@@ -529,6 +615,16 @@ public class ServiceJobTeamService {
     private void addLog(ServiceJobAssignment assignment, AssignmentWorkAction action, String note) {
         logRepository.save(ServiceJobAssignmentLog.builder().assignment(assignment).action(action)
                 .note(note).actor(currentUsername()).occurredAt(LocalDateTime.now()).build());
+    }
+
+    private void addLog(ServiceJobAssignment assignment, AssignmentActionRequest request) {
+        logRepository.save(ServiceJobAssignmentLog.builder()
+                .assignment(assignment).action(request.getAction())
+                .note(trimToNull(request.getNote()))
+                .completedWork(trimToNull(request.getCompletedWork()))
+                .serviceDetails(trimToNull(request.getServiceDetails()))
+                .partsDetails(trimToNull(request.getPartsDetails()))
+                .actor(currentUsername()).occurredAt(LocalDateTime.now()).build());
     }
 
     private void recordActivity(ServiceJob job, String type, String note) {
@@ -600,8 +696,13 @@ public class ServiceJobTeamService {
     private Integer currentStaffId() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null) return null;
-        return userRepository.findWithStaffByUsernameOrEmail(authentication.getName())
-                .map(user -> user.getStaff() == null ? null : user.getStaff().getId()).orElse(null);
+        String name = authentication.getName();
+        if (name == null || name.isBlank()) return null;
+        return userRepository.findWithStaffByUsernameOrEmail(name.trim())
+                .map(user -> user.getStaff() == null ? null : user.getStaff().getId())
+                .or(() -> userRepository.findByUsernameOrEmail(name.trim(), name.trim())
+                        .map(user -> user.getStaff() == null ? null : user.getStaff().getId()))
+                .orElse(null);
     }
 
     private String currentUsername() {
@@ -631,16 +732,11 @@ public class ServiceJobTeamService {
     }
 
     private void broadcast(String event) {
-        Runnable send = () -> messagingTemplate.convertAndSend("/topic/service-jobs", event);
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    send.run();
-                }
-            });
-        } else {
-            send.run();
-        }
+        messagingTemplate.convertAndSend("/topic/service-jobs", event);
+    }
+
+    private void broadcastHandover(String event) {
+        messagingTemplate.convertAndSend("/topic/handovers", event);
+        messagingTemplate.convertAndSend("/topic/service-jobs", event);
     }
 }

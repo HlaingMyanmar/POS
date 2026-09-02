@@ -161,6 +161,22 @@ public class ServiceJob {
     @Column(name = "due_amount", precision = 15, scale = 2)
     private BigDecimal dueAmount = BigDecimal.ZERO;
 
+    @Builder.Default
+    @Column(name = "payment_discount_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal paymentDiscountAmount = BigDecimal.ZERO;
+    @Column(name = "payment_discount_approved_by", length = 120)
+    private String paymentDiscountApprovedBy;
+    @Column(name = "payment_discount_approved_at")
+    private LocalDateTime paymentDiscountApprovedAt;
+    @Column(name = "payment_discount_approval_note", columnDefinition = "TEXT")
+    private String paymentDiscountApprovalNote;
+    @Column(name = "due_delivery_approved_by", length = 120)
+    private String dueDeliveryApprovedBy;
+    @Column(name = "due_delivery_approved_at")
+    private LocalDateTime dueDeliveryApprovedAt;
+    @Column(name = "due_delivery_approval_reason", columnDefinition = "TEXT")
+    private String dueDeliveryApprovalReason;
+
     @Column(name = "due_date")
     private LocalDate dueDate;
 
@@ -208,6 +224,22 @@ public class ServiceJob {
 
     @Column(name = "final_approved_at")
     private LocalDateTime finalApprovedAt;
+
+    @Builder.Default
+    @Column(name = "lead_final_check_status", nullable = false)
+    private Boolean leadFinalCheckStatus = Boolean.FALSE;
+
+    @Column(name = "lead_final_checked_by", length = 120)
+    private String leadFinalCheckedBy;
+
+    @Column(name = "lead_final_checked_at")
+    private LocalDateTime leadFinalCheckedAt;
+
+    @Column(name = "lead_final_check_note", columnDefinition = "TEXT")
+    private String leadFinalCheckNote;
+
+    @Column(name = "final_return_reason", columnDefinition = "TEXT")
+    private String finalReturnReason;
 
     @Builder.Default
     @Column(name = "priority", length = 20)

@@ -401,6 +401,8 @@ private fun FullHomeBody(
     HomeActionSection("ရောင်း", listOf(
         QuadItem("အရောင်းဆိုင်ရာ", Icons.Outlined.Receipt, Primary, Screen.Sales.route),
         QuadItem("ရောင်းပြန်လက်ခံ", Icons.Outlined.AssignmentReturn, Danger, Screen.SaleReturns.route),
+    ), onNavigate)
+    HomeActionSection("ဖောက်သည်", listOf(
         QuadItem("ဖောက်သည်များ", Icons.Outlined.Groups, Success, Screen.Customers.route),
         QuadItem("ခရက်ဒစ် စားပွဲ", Icons.Outlined.CreditCard, Gold, Screen.CreditDesk.route),
     ), onNavigate)
@@ -624,9 +626,8 @@ private fun BookingAlertCard(
     onNavigate: () -> Unit,
     onDismiss:  () -> Unit,
 ) {
-    val deviceLine = listOfNotNull(booking.brand, booking.model)
-        .joinToString(" ")
-        .ifEmpty { booking.deviceType }
+    val deviceLine = booking.complaintNote?.takeIf { it.isNotBlank() }
+        ?: listOfNotNull(booking.brand, booking.model).joinToString(" ").ifBlank { booking.deviceType }
 
     Card(
         shape     = RoundedCornerShape(14.dp),
@@ -816,8 +817,12 @@ fun DrawerContent(
                 DrawerMenuItem("ဝယ်ပြန်ပို့",                    Icons.Outlined.AssignmentReturn,       Screen.PurchaseReturns.route,   onNavigate)
                 DrawerMenuItem("ရောင်းပြန်လက်ခံ",                Icons.Outlined.AssignmentReturn,       Screen.SaleReturns.route,       onNavigate)
                 DrawerMenuItem("စီးရီး မှတ်တမ်း",           Icons.Outlined.QrCode2,                Screen.SerialRegistry.route,    onNavigate)
+
+                DrawerSection("ဖောက်သည်")
                 DrawerMenuItem("ဖောက်သည်များ",              Icons.Outlined.Groups,                 Screen.Customers.route,         onNavigate)
                 DrawerMenuItem("ခရက်ဒစ် စားပွဲ",     Icons.Outlined.CreditCard,             Screen.CreditDesk.route,        onNavigate)
+
+                DrawerSection("ဝန်ဆောင်မှု")
                 DrawerMenuItem("ဝန်ဆောင်မှုများ",          Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,       onNavigate)
                 DrawerMenuItem("ကန့်တည်နေရာများ",          Icons.Outlined.LocationOn,            Screen.ShelfLocations.route,    onNavigate)
 

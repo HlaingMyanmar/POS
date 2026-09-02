@@ -7,4 +7,7 @@ import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.Assignment
 public class AssignmentActionRequest {
     private AssignmentWorkAction action;
     private String note;
+    private String completedWork;
+    private String serviceDetails;
+    private String partsDetails;
 }

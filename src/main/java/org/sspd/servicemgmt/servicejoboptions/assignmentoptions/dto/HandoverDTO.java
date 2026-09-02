@@ -28,4 +28,5 @@ public class HandoverDTO {
     private String rejectionReason;
     private Integer successorAssignmentId;
     private boolean targetMine;
+    private boolean fromMine;
 }

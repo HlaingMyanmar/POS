@@ -214,7 +214,31 @@ fun ServiceJobDetailScreen(
             paymentMethods = state.paymentMethods,
             loading        = state.actionLoading,
             onDismiss      = { vm.dismissPayDueDialog() },
-            onPay          = { amt, mid, txn, note, payments -> vm.payDue(amt, mid, txn, note, payments) }
+            onPay          = { amt, mid, txn, note, payments, discount, discountNote ->
+                vm.payDue(amt, mid, txn, note, payments, discount, discountNote)
+            }
+        )
+    }
+
+    if (state.showDueDeliveryDialog) {
+        var reason by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { vm.dismissDueDeliveryDialog() },
+            title = { Text("Due Delivery Approval", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                OutlinedTextField(
+                    value = reason, onValueChange = { reason = it },
+                    label = { Text("Approval reason *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { vm.confirmDueDeliveryAndDeliver(reason) },
+                    enabled = !state.actionLoading && reason.isNotBlank()
+                ) { Text("အတည်ပြုပြီး ပေးအပ်မည်") }
+            },
+            dismissButton = { TextButton(onClick = { vm.dismissDueDeliveryDialog() }) { Text("မလုပ်တော့ပါ") } }
         )
     }
 
@@ -493,6 +517,27 @@ fun ServiceJobDetailScreen(
                 }
             }
 
+            item {
+                TechnicianAssignmentSection(
+                    team = state.team,
+                    staff = state.staff,
+                    loading = state.actionLoading,
+                    onAssign = { staffId, role, task -> vm.assignTechnician(staffId, role, task) },
+                    onCancelAssignment = vm::cancelAssignment
+                )
+            }
+
+            item {
+                ServiceJobFinalCheckSection(
+                    team = state.team,
+                    loading = state.actionLoading,
+                    canSupervise = vm.canSupervise,
+                    onLeadFinalCheck = vm::submitLeadFinalCheck,
+                    onApproveFinal = vm::approveFinal,
+                    onReturnForRework = vm::returnFinalCheck
+                )
+            }
+
             // ── Status chips ──────────────────────────────────────────────────
             item {
                 Text("အဆင့် ပြောင်းရန်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
@@ -606,6 +651,10 @@ fun ServiceJobDetailScreen(
                         JobSummaryRow("ပေးပြီး",             "${job.paidAmount.fmtD()} Ks", Success)
                         if ((job.dueAmount ?: 0.0) > 0)
                             JobSummaryRow("ကျန်ငွေ",          "${job.dueAmount.fmtD()} Ks", Danger, bold = true)
+                        if ((job.paymentDiscountAmount ?: 0.0) > 0)
+                            JobSummaryRow("Payment Discount", "-${job.paymentDiscountAmount.fmtD()} Ks", Warning)
+                        if (!job.dueDeliveryApprovedAt.isNullOrBlank())
+                            JobSummaryRow("Due Delivery OK", job.dueDeliveryApprovedBy ?: "Approved", Success)
                         if (job.foc == true) {
                             Surface(color = SuccessBg, shape = RoundedCornerShape(6.dp), modifier = Modifier.fillMaxWidth()) {
                                 Text("FREE OF CHARGE", modifier = Modifier.padding(8.dp),
@@ -1126,9 +1175,11 @@ private fun JobPayDueDialog(
     paymentMethods: List<PaymentMethodDTO>,
     loading:        Boolean,
     onDismiss:      () -> Unit,
-    onPay:          (amount: Double, methodId: Int, txnNo: String?, note: String?, payments: List<PaymentTransactionDTO>?) -> Unit
+    onPay:          (amount: Double, methodId: Int, txnNo: String?, note: String?, payments: List<PaymentTransactionDTO>?, paymentDiscount: Double, paymentDiscountApprovalNote: String?) -> Unit
 ) {
     var amountStr  by remember { mutableStateOf(String.format("%.0f", dueAmount)) }
+    var discountStr by remember { mutableStateOf("0") }
+    var discountNote by remember { mutableStateOf("") }
     var selectedPm by remember { mutableStateOf<PaymentMethodDTO?>(null) }
     var splitPayments by remember { mutableStateOf<List<PaymentTransactionDTO>>(emptyList()) }
     var txnNo      by remember { mutableStateOf("") }
@@ -1179,6 +1230,20 @@ private fun JobPayDueDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     shape = RoundedCornerShape(10.dp), isError = error.isNotBlank()
+                )
+                OutlinedTextField(
+                    value = discountStr, onValueChange = { discountStr = it; error = "" },
+                    label = { Text("Payment Discount (Ks)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                OutlinedTextField(
+                    value = discountNote, onValueChange = { discountNote = it },
+                    label = { Text("Discount Approval Note") },
+                    enabled = (discountStr.toDoubleOrNull() ?: 0.0) > 0.0,
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
                 )
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth().clickable { showSheet = true },
@@ -1241,12 +1306,17 @@ private fun JobPayDueDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val discount = discountStr.toDoubleOrNull() ?: 0.0
                     val amt = if (splitPayments.isNotEmpty()) splitPayments.sumOf { it.amount ?: 0.0 } else amountStr.toDoubleOrNull()
                     when {
-                        amt == null || amt <= 0 -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ပါ"
-                        amt > dueAmount + 0.01  -> error = "ကျန်ငွေထက် မကျော်ရပါ"
-                        selectedPm == null      -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
-                        else -> selectedPm?.id?.let { onPay(amt, it, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }) }
+                        amt == null || (amt <= 0 && discount <= 0) -> error = "ပေးချေငွေ သို့မဟုတ် discount ထည့်ပါ"
+                        amt != null && amt + discount > dueAmount + 0.01 -> error = "ပေးချေငွေနှင့် discount သည် ကျန်ငွေထက် မကျော်ရပါ"
+                        discount > 0 && discountNote.isBlank() -> error = "Discount approval note လိုအပ်သည်"
+                        amt != null && amt > 0 && selectedPm == null && splitPayments.isEmpty() -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
+                        else -> {
+                            val methodId = selectedPm?.id ?: splitPayments.firstOrNull()?.paymentMethodId ?: 0
+                            onPay(amt ?: 0.0, methodId, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }, discount, discountNote.ifBlank { null })
+                        }
                     }
                 },
                 enabled = !loading,

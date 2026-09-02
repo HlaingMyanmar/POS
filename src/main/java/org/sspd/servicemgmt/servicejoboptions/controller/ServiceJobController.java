@@ -9,8 +9,10 @@ import org.sspd.servicemgmt.api.PagedResponse;
 import org.sspd.servicemgmt.servicejoboptions.dto.ReworkRequestDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.SettleDTO;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.dto.HandoverDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
 import org.sspd.servicemgmt.servicejoboptions.service.ServiceJobService;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.service.ServiceJobTeamService;
 
 import java.util.List;
 
@@ -21,6 +23,19 @@ import java.util.List;
 public class ServiceJobController {
 
     private final ServiceJobService service;
+    private final ServiceJobTeamService teamService;
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
+    @GetMapping("/pending-handovers/mine")
+    ResponseEntity<ApiResponse<List<HandoverDTO>>> myPendingHandovers() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Pending handovers", teamService.myPendingHandovers()));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
+    @GetMapping("/handovers/sent/mine")
+    ResponseEntity<ApiResponse<List<HandoverDTO>>> mySentHandovers() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Sent handovers", teamService.mySentHandovers()));
+    }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_READ')")
     @GetMapping
@@ -122,6 +137,14 @@ public class ServiceJobController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Delivered", service.deliver(id)));
     }
 
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SERVICE_JOB_DUE_DELIVERY_APPROVE','ROLE_ADMINISTRATOR','ROLE_MANAGER')")
+    @PostMapping("/{id}/approve-due-delivery")
+    ResponseEntity<ApiResponse<ServiceJobDTO>> approveDueDelivery(
+            @PathVariable Integer id, @RequestBody java.util.Map<String, Object> body) {
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Due delivery approved", service.approveDueDelivery(id, reason)));
+    }
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_REWORK')")
     @PostMapping("/{id}/rework")
     ResponseEntity<ApiResponse<ServiceJobDTO>> rework(
@@ -148,6 +171,24 @@ public class ServiceJobController {
     @PostMapping("/{id}/approve-final")
     public ResponseEntity<ApiResponse<ServiceJobDTO>> approveFinal(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Final approval completed", service.approveFinalCompletion(id)));
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SERVICE_JOB_WORK_LOG','CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN')")
+    @PostMapping("/{id}/lead-final-check")
+    public ResponseEntity<ApiResponse<ServiceJobDTO>> leadFinalCheck(@PathVariable Integer id,
+            @RequestBody(required = false) java.util.Map<String, Object> body) {
+        String note = body == null || body.get("note") == null ? null : String.valueOf(body.get("note"));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Lead final check submitted",
+                service.submitLeadFinalCheck(id, note)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN')")
+    @PostMapping("/{id}/return-final")
+    public ResponseEntity<ApiResponse<ServiceJobDTO>> returnFinal(@PathVariable Integer id,
+            @RequestBody java.util.Map<String, Object> body) {
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Returned for rework",
+                service.returnFinalCheck(id, reason)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")

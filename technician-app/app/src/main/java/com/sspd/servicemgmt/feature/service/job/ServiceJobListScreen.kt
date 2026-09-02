@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
+import com.sspd.servicemgmt.core.network.HandoverDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
@@ -130,11 +131,13 @@ fun ServiceJobListScreen(
         )
     }
 
+    val counts = workQueueCounts(state.items, state.sentPendingCount)
+    val tabFiltered = filterByWorkTab(state.items, state.workTab)
     val filtered = when (state.filter) {
-        "ALL"    -> state.items
-        "CREDIT" -> state.items.filter { (it.dueAmount ?: 0.0) > 0 }
-        "OVERDUE" -> state.items.filter { it.overdue == true }
-        else     -> state.items.filter { it.status?.uppercase() == state.filter }
+        "ALL"    -> tabFiltered
+        "CREDIT" -> tabFiltered.filter { (it.dueAmount ?: 0.0) > 0 }
+        "OVERDUE" -> tabFiltered.filter { it.overdue == true }
+        else     -> tabFiltered.filter { it.status?.uppercase() == state.filter }
     }
 
     Scaffold(
@@ -161,6 +164,59 @@ fun ServiceJobListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
+            OutlinedTextField(
+                value = state.search,
+                onValueChange = vm::setSearch,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                placeholder = { Text("Job နံပါတ် / ဖောက်သည် ရှာပါ", fontSize = 13.sp) },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp), tint = TextMuted) },
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+
+            val summaryMetrics = listOf(
+                "Total" to state.items.size.toString(),
+                "Active" to (counts[WORK_TAB_ACTIVE] ?: 0).toString(),
+                "Payment" to (counts[WORK_TAB_PAYMENT] ?: 0).toString(),
+                "Handover" to (counts[WORK_TAB_HANDOVER] ?: 0).toString(),
+                "Transfer" to (counts[WORK_TAB_TRANSFER] ?: 0).toString(),
+                "Sent" to (counts[WORK_TAB_SENT] ?: 0).toString()
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                summaryMetrics.forEach { (label, value) ->
+                    SummaryMetricCard(label = label, value = value)
+                }
+            }
+
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    WORK_TAB_TRANSFER to "Hand Over",
+                    WORK_TAB_SENT to "ပို့ထား",
+                    WORK_TAB_ACTIVE to "လုပ်ဆောင်ဆဲ",
+                    WORK_TAB_PAYMENT to "ငွေရှင်းရန်",
+                    WORK_TAB_HANDOVER to "ပေးအပ်ရန်",
+                    WORK_TAB_CLOSED to "ပိတ်ပြီး",
+                    WORK_TAB_ALL to "အားလုံး"
+                ).forEach { (k, v) ->
+                    val count = counts[k]
+                    FilterChip(
+                        selected = state.workTab == k,
+                        onClick  = { vm.setWorkTab(k) },
+                        label    = {
+                            Text(
+                                if (count != null && k != WORK_TAB_ALL && k != WORK_TAB_CLOSED) "$v ($count)" else v,
+                                fontSize = 12.sp
+                            )
+                        }
+                    )
+                }
+            }
 
             // ── Date filter row ───────────────────────────────────────────────
             Row(
@@ -239,6 +295,29 @@ fun ServiceJobListScreen(
             if (state.loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppLoading()
+                }
+            } else if (state.workTab == WORK_TAB_SENT) {
+                if (state.sentHandovers.isEmpty()) {
+                    Box(
+                        Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Hand Over ပို့ထားသော Job မရှိသေးပါ", color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("ပို့ထားပြီးပါက လက်ခံ/ငြင်းပယ် status ကို ဒီမှာ ကြည့်နိုင်ပါသည်", fontSize = 12.sp, color = TextMuted)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.sentHandovers, key = { it.id ?: it.hashCode() }) { handover ->
+                            SentHandoverListCard(handover = handover, onOpen = {
+                                handover.serviceJobId?.let(onJobClick)
+                            })
+                        }
+                    }
                 }
             } else if (filtered.isEmpty()) {
                 Box(
@@ -378,6 +457,25 @@ fun ServiceJobListScreen(
 }
 
 @Composable
+private fun SummaryMetricCard(label: String, value: String) {
+    Surface(
+        color = CardBg,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, BorderColor),
+        tonalElevation = 1.dp,
+        modifier = Modifier.defaultMinSize(minWidth = 118.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(label, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+        }
+    }
+}
+
+@Composable
 private fun ServiceModeChip(mode: String?) {
     val outdoor = mode.equals("OUTDOOR", ignoreCase = true)
     Surface(
@@ -427,4 +525,37 @@ private fun Long.formatMillisToDate(): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
         .format(Date(this))
+
+@Composable
+private fun SentHandoverListCard(handover: HandoverDTO, onOpen: () -> Unit) {
+    val status = handover.status?.uppercase().orEmpty()
+    val (bg, fg, label) = when (status) {
+        "ACCEPTED" -> Triple(Color(0xFFD1FAE5), Color(0xFF065F46), "လက်ခံပြီး")
+        "REJECTED" -> Triple(Color(0xFFFEE2E2), Color(0xFF991B1B), "ငြင်းပယ်ပြီး")
+        else -> Triple(Color(0xFFFEF3C7), Color(0xFF92400E), "စောင့်ဆိုင်းနေ")
+    }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(handover.jobNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+                Surface(color = bg, shape = RoundedCornerShape(50)) {
+                    Text(label, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = fg)
+                }
+            }
+            Text("${handover.fromStaffName} → ${handover.toStaffName}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            handover.remainingWork?.takeIf { it.isNotBlank() }?.let {
+                Text("ကျန်ရှိ: $it", fontSize = 11.sp, color = TextMuted, maxLines = 2)
+            }
+            handover.rejectionReason?.takeIf { it.isNotBlank() }?.let {
+                Text("ငြင်းပယ်ရသည့်အကြောင်း: $it", fontSize = 11.sp, color = Danger)
+            }
+            Text("Hand Over History ကြည့်ရန်", fontSize = 11.sp, color = Primary, fontWeight = FontWeight.Bold)
+        }
+    }
+}
 

@@ -282,6 +282,7 @@ data class SaleDTO(
 
 data class BookingDTO(
     val id: Int? = null,
+    val bookingNo: String? = null,
     val invoiceNo: String? = null,
     val customerId: Int? = null,
     val customerName: String? = null,
@@ -292,6 +293,7 @@ data class BookingDTO(
     val paymentMethodName: String? = null,
     val bookingDate: String? = null,
     val appointmentDate: String? = null,
+    val complaintNote: String? = null,
     val status: String? = null,
     val serviceMode: String? = null,
     val totalAmount: Double? = null,
@@ -306,10 +308,40 @@ data class BookingDTO(
     val problemDesc: String? = null,
     val shelfLocation: String? = null,
     val remark: String? = null,
+    val items: List<BookingItemDTO>? = null,
     val devices: List<BookingDeviceDTO>? = null,
     val details: List<BookingDetailItemDTO>? = null,
     val deviceInfos: List<BookingDeviceInfoDTO>? = null,
-    val attachments: List<BookingAttachmentDTO>? = null
+    val attachments: List<BookingAttachmentDTO>? = null,
+    val linkedJobs: List<ServiceJobDTO>? = null,
+    val unconvertedItemCount: Long? = null,
+    val fullyConverted: Boolean? = null
+)
+
+fun BookingDTO.displayNo(): String = bookingNo ?: invoiceNo ?: "#${id ?: "-"}"
+
+data class BookingItemDTO(
+    val id: Int? = null,
+    val itemName: String? = null,
+    val deviceType: String? = null,
+    val serialNo: String? = null,
+    val color: String? = null,
+    val accessories: String? = null,
+    val problemDesc: String? = null,
+    val itemCondition: String? = null,
+    val noticed: String? = null,
+    val convertedJobId: Int? = null,
+    val photos: List<BookingItemPhotoDTO>? = null
+)
+
+data class BookingItemPhotoDTO(
+    val id: Int? = null,
+    val slot: Int? = null,
+    val fileName: String? = null,
+    val contentType: String? = null,
+    val dataUrl: String? = null,
+    val imagePath: String? = null,
+    val thumbnailPath: String? = null
 )
 
 // ─── Service Jobs ────────────────────────────────────────────────────────────
@@ -461,7 +493,9 @@ data class ServiceJobPayDueRequest(
     val paymentMethodId: Int? = null,
     val transactionNo:   String? = null,
     val payments:        List<PaymentTransactionDTO>? = null,
-    val note:            String? = null
+    val note:            String? = null,
+    val paymentDiscountAmount: Double = 0.0,
+    val paymentDiscountApprovalNote: String? = null
 )
 
 data class ReworkRequestDTO(
@@ -559,6 +593,13 @@ data class ServiceJobDTO(
     val netAmount: Double? = null,
     val paidAmount: Double? = null,
     val dueAmount: Double? = null,
+    val paymentDiscountAmount: Double? = null,
+    val paymentDiscountApprovedBy: String? = null,
+    val paymentDiscountApprovedAt: String? = null,
+    val paymentDiscountApprovalNote: String? = null,
+    val dueDeliveryApprovedBy: String? = null,
+    val dueDeliveryApprovedAt: String? = null,
+    val dueDeliveryApprovalReason: String? = null,
     val dueDate: String? = null,
     val paymentStatus: String? = null,
     val paymentMethodId: Int? = null,
@@ -614,11 +655,24 @@ data class ServiceJobDTO(
     val modifiedAt: String? = null,
     val technicianMinutes: Long? = null,
     val overdue: Boolean? = null,
+    val finalApprovalStatus: Boolean? = null,
+    val finalApprovedBy: String? = null,
+    val finalApprovedAt: String? = null,
+    val leadFinalCheckStatus: Boolean? = null,
+    val leadFinalCheckedBy: String? = null,
+    val leadFinalCheckedAt: String? = null,
+    val leadFinalCheckNote: String? = null,
+    val finalReturnReason: String? = null,
+    val supervisorApprovalRequired: Boolean? = null,
     val lines: List<ServiceJobLineDTO>? = null,
     val productParts: List<ServiceJobPartDTO>? = null,
     val activities: List<ServiceJobActivityDTO>? = null,
     val attachments: List<ServiceJobAttachmentDTO>? = null,
-    val notifications: List<ServiceJobNotificationDTO>? = null
+    val notifications: List<ServiceJobNotificationDTO>? = null,
+    val pendingHandoverForMe: Boolean? = null,
+    val pendingHandoverId: Int? = null,
+    val pendingHandoverFromStaffName: String? = null,
+    val pendingHandoverRemainingWork: String? = null
 )
 
 data class TeamSnapshotDTO(
@@ -626,8 +680,16 @@ data class TeamSnapshotDTO(
     val jobNo: String? = null,
     val canComplete: Boolean = false,
     val completionBlockReason: String? = null,
+    val leadFinalCheckStatus: Boolean = false,
+    val leadFinalCheckedBy: String? = null,
+    val leadFinalCheckedAt: String? = null,
+    val leadFinalCheckNote: String? = null,
+    val finalReturnReason: String? = null,
+    val supervisorApprovalRequired: Boolean = true,
+    val finalApprovalStatus: Boolean = false,
     val assignments: List<AssignmentDTO>? = null,
-    val handovers: List<HandoverDTO>? = null
+    val handovers: List<HandoverDTO>? = null,
+    val myPendingHandovers: List<HandoverDTO>? = null
 )
 
 data class AssignmentDTO(
@@ -656,6 +718,9 @@ data class AssignmentLogDTO(
     val id: Int? = null,
     val action: String? = null,
     val note: String? = null,
+    val completedWork: String? = null,
+    val serviceDetails: String? = null,
+    val partsDetails: String? = null,
     val actor: String? = null,
     val occurredAt: String? = null
 )
@@ -668,7 +733,17 @@ data class AssignmentRequest(
 
 data class AssignmentActionRequest(
     val action: String,
-    val note: String? = null
+    val note: String? = null,
+    val completedWork: String? = null,
+    val serviceDetails: String? = null,
+    val partsDetails: String? = null
+)
+
+data class NoteRequest(val note: String? = null)
+data class ReasonRequest(val reason: String)
+
+data class CompanySettingsDTO(
+    val serviceAllowDeliveryWithDue: Boolean? = false
 )
 
 data class AssignmentDecisionRequest(
@@ -695,7 +770,8 @@ data class HandoverDTO(
     val actedAt: String? = null,
     val rejectionReason: String? = null,
     val successorAssignmentId: Int? = null,
-    val targetMine: Boolean = false
+    val targetMine: Boolean = false,
+    val fromMine: Boolean = false
 )
 
 data class HandoverRequest(

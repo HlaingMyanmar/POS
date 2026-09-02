@@ -21,4 +21,6 @@ public class SettleDTO {
     private Integer warehouseId;
     private String transactionNo;
     private List<PaymentTransactionDTO> payments;
+    private BigDecimal paymentDiscountAmount;
+    private String paymentDiscountApprovalNote;
 }

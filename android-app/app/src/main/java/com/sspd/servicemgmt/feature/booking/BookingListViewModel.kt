@@ -54,6 +54,8 @@ class BookingListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun setStatusFilter(f: String) = _uiState.update { it.copy(statusFilter = f) }
+
     fun setSearch(q: String) {
         _uiState.update { it.copy(search = q) }
         load()
@@ -102,6 +104,7 @@ class BookingListViewModel(application: Application) : AndroidViewModel(applicat
         val items:         List<BookingDTO> = emptyList(),
         val loading:       Boolean          = true,
         val search:        String           = "",
+        val statusFilter:  String           = "ALL",
         val fromDate:      String?          = null,
         val toDate:        String?          = null,
         val deleteTarget:  BookingDTO?      = null,

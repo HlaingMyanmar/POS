@@ -125,11 +125,13 @@ fun ServiceJobListScreen(
         )
     }
 
+    val counts = workQueueCounts(state.items)
+    val tabFiltered = filterByWorkTab(state.items, state.workTab)
     val filtered = when (state.filter) {
-        "ALL"    -> state.items
-        "CREDIT" -> state.items.filter { (it.dueAmount ?: 0.0) > 0 }
-        "OVERDUE" -> state.items.filter { it.overdue == true }
-        else     -> state.items.filter { it.status?.uppercase() == state.filter }
+        "ALL"    -> tabFiltered
+        "CREDIT" -> tabFiltered.filter { (it.dueAmount ?: 0.0) > 0 }
+        "OVERDUE" -> tabFiltered.filter { it.overdue == true }
+        else     -> tabFiltered.filter { it.status?.uppercase() == state.filter }
     }
 
     Scaffold(
@@ -162,6 +164,25 @@ fun ServiceJobListScreen(
                 placeholder = "Job နံပါတ် / ဖောက်သည် ရှာပါ",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
+
+            val summaryMetrics = listOf(
+                "Total" to state.items.size.toString(),
+                "Active" to (counts[WORK_TAB_ACTIVE] ?: 0).toString(),
+                "Payment" to (counts[WORK_TAB_PAYMENT] ?: 0).toString(),
+                "Handover" to (counts[WORK_TAB_HANDOVER] ?: 0).toString()
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                summaryMetrics.forEach { (label, value) ->
+                    SummaryMetricCard(label = label, value = value)
+                }
+            }
 
             // ── Date filter row ───────────────────────────────────────────────
             Row(
@@ -204,6 +225,34 @@ fun ServiceJobListScreen(
                     ) {
                         Icon(Icons.Outlined.Close, null, tint = Danger, modifier = Modifier.size(16.dp))
                     }
+                }
+            }
+
+            // ── Work queue tabs ───────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    WORK_TAB_ACTIVE to "လုပ်ဆောင်ဆဲ",
+                    WORK_TAB_PAYMENT to "ငွေရှင်းရန်",
+                    WORK_TAB_HANDOVER to "ပေးအပ်ရန်",
+                    WORK_TAB_CLOSED to "ပိတ်ပြီး",
+                    WORK_TAB_ALL to "အားလုံး"
+                ).forEach { (k, v) ->
+                    val count = counts[k]
+                    FilterChip(
+                        selected = state.workTab == k,
+                        onClick  = { vm.setWorkTab(k) },
+                        label    = {
+                            Text(
+                                if (count != null && k != WORK_TAB_ALL && k != WORK_TAB_CLOSED) "$v ($count)" else v,
+                                fontSize = 12.sp
+                            )
+                        }
+                    )
                 }
             }
 
@@ -397,6 +446,25 @@ private fun JobStatusBadge(status: String?) {
             fontWeight = FontWeight.Bold,
             color      = color
         )
+    }
+}
+
+@Composable
+private fun SummaryMetricCard(label: String, value: String) {
+    Surface(
+        color = CardBg,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, BorderColor),
+        tonalElevation = 1.dp,
+        modifier = Modifier.defaultMinSize(minWidth = 118.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(label, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+        }
     }
 }
 

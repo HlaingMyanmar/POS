@@ -88,6 +88,9 @@ public class CoaSeeder implements CommandLineRunner {
         seed(AccountCode.STAFF_ALLOWANCE, "Staff Allowance",                AccountType.Expense, expenseParent);
         seed(AccountCode.DONATION,        "Donation",                       AccountType.Expense, expenseParent);
         seed(AccountCode.GENERAL_SALE_EXP,"General Sale Expense",           AccountType.Expense, expenseParent);
+        seed(AccountCode.LABOR_DISCOUNT, "Labor Discount",                  AccountType.Expense, expenseParent);
+        seed(AccountCode.PARTS_DISCOUNT, "Parts Discount",                  AccountType.Expense, expenseParent);
+        seed(AccountCode.PAYMENT_DISCOUNT, "Payment Discount",              AccountType.Expense, expenseParent);
         seed(AccountCode.MISC_EXPENSE,    "Miscellaneous Expense",          AccountType.Expense, expenseParent);
 
         log.info("COA seeding completed");

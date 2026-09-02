@@ -19,6 +19,7 @@ import org.sspd.servicemgmt.creditoptions.service.CreditService;
 import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
+import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
@@ -34,7 +35,10 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobPartDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.SettleDTO;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobAssignmentRepository;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobHandoverRepository;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobHandover;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.service.ServiceJobTeamService;
 import org.sspd.servicemgmt.servicejoboptions.model.DiscountAllocationMethod;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
@@ -75,6 +79,7 @@ import org.sspd.servicemgmt.stockoptions.stockmovementoptions.model.MovementType
 import org.sspd.servicemgmt.stockoptions.stockmovementoptions.model.StockMovement;
 import org.sspd.servicemgmt.stockoptions.stockmovementoptions.service.StockMovementService;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -88,8 +93,9 @@ import java.util.HashSet;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import org.springframework.data.domain.Page;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -122,13 +128,14 @@ public class ServiceJobService {
     private final CashDrawerService cashDrawerService;
     private final ServiceJobTeamService teamService;
     private final ServiceJobAssignmentRepository assignmentRepository;
+    private final ServiceJobHandoverRepository handoverRepository;
+    private final CompanySettingsRepository companySettingsRepository;
 
     private static final Collection<AssignmentStatus> VISIBLE_ASSIGNMENT_STATUSES = EnumSet.of(
             AssignmentStatus.PENDING,
             AssignmentStatus.ACTIVE,
             AssignmentStatus.PAUSED,
-            AssignmentStatus.COMPLETED,
-            AssignmentStatus.HANDED_OVER
+            AssignmentStatus.COMPLETED
     );
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
@@ -140,8 +147,10 @@ public class ServiceJobService {
         Integer scopedStaffId = resolveStaffScope(staffId);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("id").descending());
         if (scopedStaffId != null) {
-            return repo.findBySearchAndDateForStaff(search, from, to, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES, pageable)
+            Page<ServiceJobDTO> jobPage = repo.findBySearchAndDateForStaff(search, from, to, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES, pageable)
                     .map(this::toDto);
+            enrichPendingHandovers(jobPage.getContent(), scopedStaffId);
+            return jobPage;
         }
         return repo.findBySearchAndDate(search, from, to, pageable).map(this::toDto);
     }
@@ -408,6 +417,14 @@ public class ServiceJobService {
         if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
             throw new IllegalStateException("Closed jobs cannot be approved");
         teamService.assertCanComplete(id);
+        if (!Boolean.TRUE.equals(job.getLeadFinalCheckStatus()))
+            throw new IllegalStateException("Lead Technician final check is required before supervisor approval");
+        if (job.getLeadFinalCheckedAt() == null || assignmentRepository
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(id, EnumSet.of(
+                        AssignmentStatus.PENDING, AssignmentStatus.ACTIVE,
+                        AssignmentStatus.PAUSED, AssignmentStatus.COMPLETED)).stream()
+                .anyMatch(a -> a.getLastActionAt() != null && a.getLastActionAt().isAfter(job.getLeadFinalCheckedAt())))
+            throw new IllegalStateException("Work changed after Lead final check; submit Lead final check again");
         job.setFinalApprovalStatus(true);
         job.setFinalApprovedBy(currentUsername());
         job.setFinalApprovedAt(LocalDateTime.now());
@@ -421,6 +438,81 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_FINAL_APPROVED");
         return result;
+    }
+
+    @Transactional
+    public ServiceJobDTO submitLeadFinalCheck(Integer id, String note) {
+        ServiceJob job = repo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
+            throw new IllegalStateException("Closed jobs cannot be final checked");
+        teamService.assertLeadCanFinalCheck(id);
+        LocalDateTime now = LocalDateTime.now();
+        job.setLeadFinalCheckStatus(true);
+        job.setLeadFinalCheckedBy(currentUsername());
+        job.setLeadFinalCheckedAt(now);
+        job.setLeadFinalCheckNote(trimToNull(note));
+        job.setFinalReturnReason(null);
+        if (!supervisorApprovalRequired()) {
+            ServiceJobStatus from = job.getStatus();
+            job.setFinalApprovalStatus(true);
+            job.setFinalApprovedBy("AUTO_AFTER_LEAD_CHECK");
+            job.setFinalApprovedAt(now);
+            job.setStatus(ServiceJobStatus.COMPLETED);
+            job.setCompletedDate(now);
+            syncLineStatuses(job, ServiceJobStatus.COMPLETED);
+            recordActivity(job, "LEAD_FINAL_CHECK_AUTO_APPROVED", from == null ? null : from.name(),
+                    ServiceJobStatus.COMPLETED.name(), trimToNull(note));
+        } else {
+            recordActivity(job, "LEAD_FINAL_CHECK", job.getStatus().name(), job.getStatus().name(), trimToNull(note));
+        }
+        ServiceJobDTO result = toDto(repo.save(job));
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_LEAD_FINAL_CHECKED");
+        return result;
+    }
+
+    @Transactional
+    public ServiceJobDTO returnFinalCheck(Integer id, String reason) {
+        if (!hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN"))
+            throw new AccessDeniedException("Supervisor permission is required");
+        if (trimToNull(reason) == null)
+            throw new IllegalArgumentException("Return reason is required");
+        ServiceJob job = repo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (!Boolean.TRUE.equals(job.getLeadFinalCheckStatus()))
+            throw new IllegalStateException("Lead final check has not been submitted");
+        if (job.getStatus() == ServiceJobStatus.COMPLETED || job.getStatus() == ServiceJobStatus.DELIVERED
+                || job.getStatus() == ServiceJobStatus.CANCELLED)
+            throw new IllegalStateException("Completed or closed jobs cannot be returned from final check");
+        teamService.reopenLeadForRework(id, reason.trim());
+        job.setLeadFinalCheckStatus(false);
+        job.setLeadFinalCheckedBy(null);
+        job.setLeadFinalCheckedAt(null);
+        job.setLeadFinalCheckNote(null);
+        job.setFinalApprovalStatus(false);
+        job.setFinalApprovedBy(null);
+        job.setFinalApprovedAt(null);
+        job.setFinalReturnReason(reason.trim());
+        job.setStatus(ServiceJobStatus.IN_PROGRESS);
+        ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "SUPERVISOR_RETURNED", ServiceJobStatus.IN_PROGRESS.name(),
+                ServiceJobStatus.IN_PROGRESS.name(), reason.trim());
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_FINAL_CHECK_RETURNED");
+        return result;
+    }
+
+    private boolean supervisorApprovalRequired() {
+        return companySettingsRepository.findAll().stream().findFirst()
+                .map(s -> !Boolean.FALSE.equals(s.getServiceSupervisorApprovalRequired())).orElse(true);
+    }
+
+    private boolean serviceAllowDeliveryWithDue() {
+        return companySettingsRepository.findAll().stream().findFirst()
+                .map(s -> Boolean.TRUE.equals(s.getServiceAllowDeliveryWithDue())).orElse(false);
+    }
+
+    private String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private Staff resolveAssignedTechnician(Integer requestedStaffId, Staff fallback) {
@@ -469,15 +561,51 @@ public class ServiceJobService {
         if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) return true;
         Staff mine = currentUserStaff();
         if (mine == null || job == null || job.getId() == null) return false;
-        return isJobVisibleToStaff(job, mine.getId());
+        return canReadJobAsStaff(job, mine.getId());
+    }
+
+    private boolean canReadJobAsStaff(ServiceJob job, Integer staffId) {
+        if (staffId == null || staffId <= 0) return false;
+        Integer jobId = job.getId();
+        if (handoverRepository.existsByServiceJobIdAndToStaffIdAndStatus(
+                jobId, staffId, HandoverStatus.PENDING)) return true;
+        if (handoverRepository.existsByServiceJobIdAndFromStaffId(jobId, staffId)) return true;
+        if (assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(
+                jobId, staffId, VISIBLE_ASSIGNMENT_STATUSES)) return true;
+        if (job.getAssignedStaff() != null && staffId.equals(job.getAssignedStaff().getId())) return true;
+        if (job.getHelperStaff() != null && staffId.equals(job.getHelperStaff().getId())) return true;
+        return false;
     }
 
     private boolean isJobVisibleToStaff(ServiceJob job, Integer staffId) {
         if (staffId == null || staffId <= 0) return false;
+        Integer jobId = job.getId();
+        if (handoverRepository.existsByServiceJobIdAndToStaffIdAndStatus(
+                jobId, staffId, HandoverStatus.PENDING)) return true;
+        if (handoverRepository.existsByServiceJobIdAndFromStaffIdAndStatus(
+                jobId, staffId, HandoverStatus.PENDING)) return false;
+        if (assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(
+                jobId, staffId, VISIBLE_ASSIGNMENT_STATUSES)) return true;
         if (job.getAssignedStaff() != null && staffId.equals(job.getAssignedStaff().getId())) return true;
         if (job.getHelperStaff() != null && staffId.equals(job.getHelperStaff().getId())) return true;
-        return assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(
-                job.getId(), staffId, VISIBLE_ASSIGNMENT_STATUSES);
+        return false;
+    }
+
+    private void enrichPendingHandovers(List<ServiceJobDTO> dtos, Integer staffId) {
+        if (dtos.isEmpty() || staffId == null || staffId <= 0) return;
+        List<Integer> jobIds = dtos.stream().map(ServiceJobDTO::getId).toList();
+        Map<Integer, ServiceJobHandover> pendingByJob = handoverRepository
+                .findAllByToStaffIdAndStatusAndServiceJobIdIn(staffId, HandoverStatus.PENDING, jobIds)
+                .stream()
+                .collect(Collectors.toMap(h -> h.getServiceJob().getId(), h -> h, (left, right) -> left));
+        for (ServiceJobDTO dto : dtos) {
+            ServiceJobHandover handover = pendingByJob.get(dto.getId());
+            if (handover == null) continue;
+            dto.setPendingHandoverForMe(true);
+            dto.setPendingHandoverId(handover.getId());
+            dto.setPendingHandoverFromStaffName(handover.getFromAssignment().getStaff().getName());
+            dto.setPendingHandoverRemainingWork(handover.getRemainingWork());
+        }
     }
 
     @Transactional
@@ -585,14 +713,31 @@ public class ServiceJobService {
             throw new RuntimeException("No outstanding due for this service job.");
 
         BigDecimal incoming = paymentTotal(dto.getPayments(), dto.getPaidAmount());
-        if (incoming.compareTo(BigDecimal.ZERO) <= 0)
-            throw new RuntimeException("Paid amount must be greater than zero.");
-        if (dto.getPaymentMethodId() == null && (dto.getPayments() == null || dto.getPayments().isEmpty()))
+        BigDecimal paymentDiscount = nz(dto.getPaymentDiscountAmount());
+        if (incoming.compareTo(BigDecimal.ZERO) < 0 || paymentDiscount.compareTo(BigDecimal.ZERO) < 0)
+            throw new IllegalArgumentException("Payment and discount amounts cannot be negative.");
+        if (incoming.add(paymentDiscount).compareTo(BigDecimal.ZERO) <= 0)
+            throw new RuntimeException("Payment or approved payment discount must be greater than zero.");
+        if (incoming.compareTo(BigDecimal.ZERO) > 0 && dto.getPaymentMethodId() == null && (dto.getPayments() == null || dto.getPayments().isEmpty()))
             throw new RuntimeException("Payment Method ရွေးပါ");
+        if (incoming.add(paymentDiscount).compareTo(currentDue) > 0)
+            throw new IllegalArgumentException("Payment plus discount cannot exceed outstanding due.");
+        if (paymentDiscount.compareTo(BigDecimal.ZERO) > 0) {
+            if (!hasAuthority("CAN_ACCESS_SERVICE_JOB_PAYMENT_DISCOUNT_APPROVE")
+                    && !hasAuthority("ROLE_ADMINISTRATOR") && !hasAuthority("ROLE_MANAGER"))
+                throw new org.springframework.security.access.AccessDeniedException("Payment discount approval permission is required.");
+            if (dto.getPaymentDiscountApprovalNote() == null || dto.getPaymentDiscountApprovalNote().isBlank())
+                throw new IllegalArgumentException("Payment discount approval note is required.");
+            job.setPaymentDiscountApprovedBy(currentUsername());
+            job.setPaymentDiscountApprovedAt(LocalDateTime.now());
+            job.setPaymentDiscountApprovalNote(dto.getPaymentDiscountApprovalNote().trim());
+            job.setPaymentDiscountAmount(nz(job.getPaymentDiscountAmount()).add(paymentDiscount));
+        }
 
-        BigDecimal applied = incoming.min(currentDue);
-        BigDecimal newPaid = (job.getPaidAmount() != null ? job.getPaidAmount() : BigDecimal.ZERO).add(applied);
-        BigDecimal newDue  = currentDue.subtract(applied);
+        BigDecimal applied = incoming;
+        BigDecimal receivableReduction = incoming.add(paymentDiscount);
+        BigDecimal newPaid = nz(job.getPaidAmount()).add(applied);
+        BigDecimal newDue  = currentDue.subtract(receivableReduction);
 
         job.setPaidAmount(newPaid);
         job.setDueAmount(newDue);
@@ -610,20 +755,24 @@ public class ServiceJobService {
         ServiceJob saved = repo.save(job);
 
         // Journal: DR Cash/Bank, CR Accounts Receivable
-        createPayDueJournal(saved, dto.getPaymentAccountId(), pm, applied, dto.getPayments());
-        createPaymentTransactions(saved, pm, applied, dto.getTransactionNo(), dto.getPayments());
+        createPayDueJournal(saved, dto.getPaymentAccountId(), pm, applied, paymentDiscount, receivableReduction, dto.getPayments());
+        if (applied.compareTo(BigDecimal.ZERO) > 0)
+            createPaymentTransactions(saved, pm, applied, dto.getTransactionNo(), dto.getPayments());
 
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_PAY_DUE");
+        recordActivity(saved, "DUE_COLLECTED", null, saved.getPaymentStatus().name(),
+                "Cash/Bank " + applied + ", payment discount " + paymentDiscount + ", AR reduced " + receivableReduction);
+        messagingTemplate.convertAndSend("/topic/service-jobs", paymentDiscount.signum() > 0 ? "JOB_DUE_PAID_WITH_DISCOUNT" : "JOB_PAY_DUE");
         return toDto(saved);
     }
 
     private void createPayDueJournal(ServiceJob job, Integer paymentAccountId,
-                                     PaymentMethod pm, BigDecimal applied, List<PaymentTransactionDTO> payments) {
-        if (applied.compareTo(BigDecimal.ZERO) <= 0) return;
+                                     PaymentMethod pm, BigDecimal applied, BigDecimal paymentDiscount,
+                                     BigDecimal receivableReduction, List<PaymentTransactionDTO> payments) {
+        if (receivableReduction.compareTo(BigDecimal.ZERO) <= 0) return;
 
         List<JournalDetailDTO> details = new ArrayList<>();
 
-        for (PaymentLine line : resolvePaymentLines(payments, applied, pm)) {
+        for (PaymentLine line : applied.signum() > 0 ? resolvePaymentLines(payments, applied, pm) : List.<PaymentLine>of()) {
             JournalDetailDTO drCash = new JournalDetailDTO();
             drCash.setAccountId(resolveCashAccount(line.method(), paymentAccountId));
             drCash.setDebit(line.amount());
@@ -631,15 +780,23 @@ public class ServiceJobService {
             details.add(drCash);
         }
 
+        if (paymentDiscount.signum() > 0) {
+            JournalDetailDTO drDiscount = new JournalDetailDTO();
+            drDiscount.setAccountId(accountResolver.paymentDiscount().getId());
+            drDiscount.setDebit(paymentDiscount);
+            drDiscount.setCredit(BigDecimal.ZERO);
+            details.add(drDiscount);
+        }
+
         // CR Accounts Receivable
         JournalDetailDTO crAr = new JournalDetailDTO();
         crAr.setAccountId(accountResolver.receivable().getId());
         crAr.setDebit(BigDecimal.ZERO);
-        crAr.setCredit(applied);
+        crAr.setCredit(receivableReduction);
         details.add(crAr);
 
         JournalEntryDTO entry = new JournalEntryDTO();
-        entry.setReferenceNo(job.getJobNo() + "-PAY");
+        entry.setReferenceNo(job.getJobNo() + "-PAY-" + System.nanoTime());
         entry.setEntryDate(LocalDateTime.now());
         entry.setDescription("AR collection for service job " + job.getJobNo());
         entry.setStaffId(job.getAssignedStaff() != null ? job.getAssignedStaff().getId() : null);
@@ -657,13 +814,33 @@ public class ServiceJobService {
         BigDecimal due = job.getDueAmount() != null ? job.getDueAmount() : BigDecimal.ZERO;
         boolean settledOrFree = Boolean.TRUE.equals(job.getFoc())
                 || (job.getPaymentStatus() != null && due.compareTo(BigDecimal.ZERO) <= 0);
-        if (!settledOrFree)
+        boolean dueDeliveryApproved = due.compareTo(BigDecimal.ZERO) > 0
+                && serviceAllowDeliveryWithDue()
+                && job.getDueDeliveryApprovedAt() != null;
+        if (!settledOrFree && !dueDeliveryApproved)
             throw new IllegalStateException("ငွေရှင်းပြီး သို့မဟုတ် FOC အတည်ပြုပြီးမှ ပစ္စည်းပေးအပ်နိုင်ပါသည်။");
         job.setStatus(ServiceJobStatus.DELIVERED);
         job.setDeliveredDate(LocalDateTime.now());
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "DELIVERED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.DELIVERED.name(), null);
         messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DELIVERED");
+        return result;
+    }
+
+    @Transactional
+    public ServiceJobDTO approveDueDelivery(Integer id, String reason) {
+        if (reason == null || reason.isBlank()) throw new IllegalArgumentException("Due delivery approval reason is required.");
+        ServiceJob job = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (job.getStatus() != ServiceJobStatus.COMPLETED || nz(job.getDueAmount()).signum() <= 0)
+            throw new IllegalStateException("Only a completed job with outstanding due can be approved.");
+        boolean enabled = serviceAllowDeliveryWithDue();
+        if (!enabled) throw new IllegalStateException("Delivery with outstanding due is disabled in Company Settings.");
+        job.setDueDeliveryApprovedBy(currentUsername());
+        job.setDueDeliveryApprovedAt(LocalDateTime.now());
+        job.setDueDeliveryApprovalReason(reason.trim());
+        ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "DUE_DELIVERY_APPROVED", null, job.getStatus().name(), reason.trim());
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DUE_DELIVERY_APPROVED");
         return result;
     }
 
@@ -926,6 +1103,7 @@ public class ServiceJobService {
         if (job.getStatus() == ServiceJobStatus.DELIVERED)
             throw new IllegalStateException("ပေးအပ်ပြီးသော Job ကို ဖျက်မရပါ။");
         repo.deleteById(id);
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DELETED");
     }
 
     @Transactional
@@ -942,7 +1120,12 @@ public class ServiceJobService {
             throw new IllegalStateException("ပေးအပ်ပြီးသော Job ကို void မလုပ်နိုင်ပါ");
 
         if (job.getSaleId() != null) {
-            try { saleService.voidSale(job.getSaleId(), reason); }
+            Integer saleId = job.getSaleId();
+            try {
+                saleService.voidSale(saleId, reason);
+                recordActivity(job, "INVENTORY_REVERSED", null, job.getStatus().name(),
+                        "Linked sale #" + saleId + " voided — inventory/COGS reversed");
+            }
             catch (Exception ignored) { /* inventory sale may already be void */ }
             job.setSaleId(null);
         }
@@ -965,10 +1148,10 @@ public class ServiceJobService {
             tx.setReversalReason(reason.trim());
             paymentTransactionRepo.save(tx);
         });
-        journalWriter.reverseByReferenceNo(job.getJobNo());
-        journalWriter.reverseByReferenceNo(job.getJobNo() + "-PAY");
-        journalWriter.reverseByReferenceNo(job.getJobNo() + "-COGS");
-        journalWriter.reverseByReferenceNo(job.getJobNo() + "-RETURN-COST");
+        String actor = currentUsername();
+        journalWriter.reverseByReferenceNo(job.getJobNo(), actor, reason.trim());
+        journalWriter.reverseByReferencePrefix(job.getJobNo() + "-PAY", actor, reason.trim());
+        journalWriter.reverseByReferenceNo(job.getJobNo() + "-RETURN-COST", actor, reason.trim());
 
         job.setVoided(true);
         job.setVoidReason(reason.trim());
@@ -1011,6 +1194,7 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "ESTIMATE_APPROVED", null, job.getStatus() != null ? job.getStatus().name() : null,
                 "Estimate " + job.getEstimatedCost());
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_ESTIMATE_APPROVED");
         return result;
     }
 
@@ -1036,6 +1220,7 @@ public class ServiceJobService {
         out.setNote(saved.getNote());
         out.setActor(saved.getActor());
         out.setNotifiedAt(saved.getNotifiedAt());
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_NOTIFICATION_ADDED");
         return out;
     }
 
@@ -1057,6 +1242,7 @@ public class ServiceJobService {
             .uploadedAt(LocalDateTime.now())
             .build());
         recordActivity(job, "ATTACHMENT", null, job.getStatus() != null ? job.getStatus().name() : null, saved.getFileName());
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_ATTACHMENT_ADDED");
         return toAttachmentDto(saved);
     }
 
@@ -1067,6 +1253,7 @@ public class ServiceJobService {
         if (!attachment.getServiceJob().getId().equals(jobId))
             throw new IllegalArgumentException("Attachment does not belong to this job");
         attachmentRepo.delete(attachment);
+        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_ATTACHMENT_DELETED");
     }
 
     @Transactional(readOnly = true)
@@ -1277,6 +1464,14 @@ public class ServiceJobService {
                                     List<PaymentTransactionDTO> payments) {
         BigDecimal revenueAmt = nz(laborNet).add(nz(partsNet));
         if (revenueAmt.compareTo(BigDecimal.ZERO) <= 0) return;
+        BigDecimal laborGross = ServiceJobSettlementCalculator.laborGross(job);
+        BigDecimal partsGross = ServiceJobSettlementCalculator.partsGross(job);
+        if (laborGross.add(partsGross).signum() <= 0) {
+            laborGross = nz(laborNet);
+            partsGross = nz(partsNet);
+        }
+        BigDecimal laborDiscount = laborGross.subtract(nz(laborNet)).max(BigDecimal.ZERO);
+        BigDecimal partsDiscount = partsGross.subtract(nz(partsNet)).max(BigDecimal.ZERO);
 
         BigDecimal cashPortion = paid;
         BigDecimal arPortion  = due;
@@ -1303,19 +1498,34 @@ public class ServiceJobService {
             details.add(drAr);
         }
 
-        if (laborNet != null && laborNet.compareTo(BigDecimal.ZERO) > 0) {
+        if (laborDiscount.signum() > 0) {
+            JournalDetailDTO drLaborDiscount = new JournalDetailDTO();
+            drLaborDiscount.setAccountId(accountResolver.laborDiscount().getId());
+            drLaborDiscount.setDebit(laborDiscount);
+            drLaborDiscount.setCredit(BigDecimal.ZERO);
+            details.add(drLaborDiscount);
+        }
+        if (partsDiscount.signum() > 0) {
+            JournalDetailDTO drPartsDiscount = new JournalDetailDTO();
+            drPartsDiscount.setAccountId(accountResolver.partsDiscount().getId());
+            drPartsDiscount.setDebit(partsDiscount);
+            drPartsDiscount.setCredit(BigDecimal.ZERO);
+            details.add(drPartsDiscount);
+        }
+
+        if (laborGross.compareTo(BigDecimal.ZERO) > 0) {
             JournalDetailDTO crLabor = new JournalDetailDTO();
             crLabor.setAccountId(accountResolver.serviceRevenue().getId());
             crLabor.setDebit(BigDecimal.ZERO);
-            crLabor.setCredit(laborNet);
+            crLabor.setCredit(laborGross);
             details.add(crLabor);
         }
 
-        if (partsNet != null && partsNet.compareTo(BigDecimal.ZERO) > 0) {
+        if (partsGross.compareTo(BigDecimal.ZERO) > 0) {
             JournalDetailDTO crParts = new JournalDetailDTO();
             crParts.setAccountId(accountResolver.sales().getId());
             crParts.setDebit(BigDecimal.ZERO);
-            crParts.setCredit(partsNet);
+            crParts.setCredit(partsGross);
             details.add(crParts);
         }
 
@@ -1528,6 +1738,13 @@ public class ServiceJobService {
         dto.setDiscountAllocationMethod(j.getDiscountAllocationMethod() != null ? j.getDiscountAllocationMethod().name() : null);
         dto.setPaidAmount(j.getPaidAmount());
         dto.setDueAmount(j.getDueAmount());
+        dto.setPaymentDiscountAmount(j.getPaymentDiscountAmount());
+        dto.setPaymentDiscountApprovedBy(j.getPaymentDiscountApprovedBy());
+        dto.setPaymentDiscountApprovedAt(j.getPaymentDiscountApprovedAt());
+        dto.setPaymentDiscountApprovalNote(j.getPaymentDiscountApprovalNote());
+        dto.setDueDeliveryApprovedBy(j.getDueDeliveryApprovedBy());
+        dto.setDueDeliveryApprovedAt(j.getDueDeliveryApprovedAt());
+        dto.setDueDeliveryApprovalReason(j.getDueDeliveryApprovalReason());
         dto.setDueDate(j.getDueDate());
         dto.setPaymentStatus(j.getPaymentStatus() != null ? j.getPaymentStatus().name() : null);
         dto.setCreditStatus(j.getCreditStatus() != null ? j.getCreditStatus().name() : null);
@@ -1630,6 +1847,12 @@ public class ServiceJobService {
         dto.setFinalApprovalStatus(Boolean.TRUE.equals(j.getFinalApprovalStatus()));
         dto.setFinalApprovedBy(j.getFinalApprovedBy());
         dto.setFinalApprovedAt(j.getFinalApprovedAt() != null ? j.getFinalApprovedAt().toString() : null);
+        dto.setLeadFinalCheckStatus(Boolean.TRUE.equals(j.getLeadFinalCheckStatus()));
+        dto.setLeadFinalCheckedBy(j.getLeadFinalCheckedBy());
+        dto.setLeadFinalCheckedAt(j.getLeadFinalCheckedAt() != null ? j.getLeadFinalCheckedAt().toString() : null);
+        dto.setLeadFinalCheckNote(j.getLeadFinalCheckNote());
+        dto.setFinalReturnReason(j.getFinalReturnReason());
+        dto.setSupervisorApprovalRequired(supervisorApprovalRequired());
         dto.setPriority(j.getPriority() != null ? j.getPriority() : "NORMAL");
         if (j.getHelperStaff() != null) {
             dto.setHelperStaffId(j.getHelperStaff().getId());

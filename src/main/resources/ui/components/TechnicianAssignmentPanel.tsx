@@ -1,15 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Swal from 'sweetalert2';
-import { serviceJobTeamService } from '../services/api';
+import { serviceJobService, serviceJobTeamService } from '../services/api';
 import { useWebsocket } from '../hooks/useWebsocket';
+import { getFromSession } from '../utils/storageHelper';
+import ServiceJobHandoverPanel from './ServiceJobHandoverPanel';
+import ServiceJobFinalCheckPanel from './ServiceJobFinalCheckPanel';
+import ServiceJobWorkLogPanel from './ServiceJobWorkLogPanel';
 
 type Assignment = {
   id: number; staffId: number; staffName: string; role: 'LEAD' | 'MEMBER' | 'HELPER';
   status: string; approvalStatus?: string; taskDescription?: string; workStartedAt?: string;
   accumulatedMinutes?: number; mine: boolean;
 };
-type Snapshot = { canComplete: boolean; completionBlockReason?: string; assignments: Assignment[] };
+type Handover = {
+  id: number; fromStaffName: string; toStaffName: string; toStaffId?: number; role: string;
+  completedWork?: string; remainingWork: string; diagnosisNote?: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED'; requestedAt?: string;
+  rejectionReason?: string; targetMine?: boolean;
+};
+type Snapshot = {
+  canComplete: boolean; completionBlockReason?: string; assignments: Assignment[]; handovers?: Handover[];
+  myPendingHandovers?: Handover[];
+  leadFinalCheckStatus?: boolean; leadFinalCheckedBy?: string; leadFinalCheckedAt?: string;
+  leadFinalCheckNote?: string; finalReturnReason?: string; supervisorApprovalRequired?: boolean;
+  finalApprovalStatus?: boolean;
+};
 type MemberDraft = { key: number; staffId: string; taskDescription: string };
+type HandoverDraft = { fromAssignmentId: number; toStaffId: string; completedWork: string; remainingWork: string; diagnosisNote: string };
 const live = new Set(['PENDING', 'ACTIVE', 'PAUSED', 'COMPLETED']);
 const field = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:text-sm';
 const roleText: Record<string, string> = { LEAD: 'အဓိကပြုပြင်သူ', MEMBER: 'အဖွဲ့ဝင်', HELPER: 'အကူပြုပြင်သူ' };
@@ -22,8 +39,8 @@ const friendlyReason = (reason?: string) => reason === 'A current lead technicia
     ? 'Technician တစ်ဦးချင်းစီ၏ လုပ်ငန်းကို ပြီးစီးအဖြစ် သတ်မှတ်ရန်လိုအပ်ပါသည်။'
     : reason || 'Technician လုပ်ငန်းများ မပြီးသေးပါ။';
 
-export default function TechnicianAssignmentPanel({ job, staff, canAssign, onClose, onChanged }:
-  { job: any; staff: any[]; canAssign: boolean; onClose: () => void; onChanged?: () => void }) {
+export default function TechnicianAssignmentPanel({ job, staff, canAssign, myStaffId, onClose, onChanged }:
+  { job: any; staff: any[]; canAssign: boolean; myStaffId?: number; onClose: () => void; onChanged?: () => void }) {
   const [data, setData] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<'setup' | 'workspace'>('workspace');
@@ -33,6 +50,7 @@ export default function TechnicianAssignmentPanel({ job, staff, canAssign, onClo
   const [members, setMembers] = useState<MemberDraft[]>([newMember(1)]);
   const [nextKey, setNextKey] = useState(2);
   const [add, setAdd] = useState({ staffId: '', role: 'MEMBER' as 'MEMBER' | 'HELPER', taskDescription: '' });
+  const [handover, setHandover] = useState<HandoverDraft | null>(null);
 
   const load = async () => {
     try {
@@ -49,12 +67,25 @@ export default function TechnicianAssignmentPanel({ job, staff, canAssign, onClo
     void load();
     onChanged?.();
   });
+  useWebsocket('/topic/handovers', () => {
+    void load();
+    onChanged?.();
+  });
   const current = useMemo(() => (data?.assignments || []).filter(item => live.has(item.status)), [data]);
   const history = useMemo(() => (data?.assignments || []).filter(item => !live.has(item.status)), [data]);
   const leadAssignment = current.find(item => item.role === 'LEAD');
   const unfinished = current.filter(item => item.status !== 'COMPLETED');
   const used = new Set(current.map(item => String(item.staffId)));
   const available = staff.filter(person => !used.has(String(person.id)));
+
+  const resolvedStaffId = useMemo(() => {
+    if (myStaffId != null) return myStaffId;
+    try {
+      const user = JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number };
+      if (user.staffId != null) return user.staffId;
+    } catch { /* ignore */ }
+    return data?.assignments?.find(item => item.mine)?.staffId;
+  }, [myStaffId, data?.assignments]);
 
   const run = async (action: () => Promise<any>, success?: string) => {
     setBusy(true);
@@ -68,6 +99,21 @@ export default function TechnicianAssignmentPanel({ job, staff, canAssign, onClo
   const askNote = async (title: string, required = false) => {
     const result = await Swal.fire({ title, input: 'textarea', inputPlaceholder: 'အကြောင်းပြချက် / မှတ်ချက်', showCancelButton: true, confirmButtonText: 'အတည်ပြု', cancelButtonText: 'မလုပ်တော့ပါ', inputValidator: required ? value => value?.trim() ? undefined : 'အချက်အလက်ဖြည့်ပါ' : undefined });
     return result.isConfirmed ? String(result.value || '') : null;
+  };
+  const askWorkDetails = async (complete: boolean) => {
+    const result = await Swal.fire({
+      title: complete ? 'လုပ်ငန်းပြီးစီးမှတ်တမ်း' : 'လုပ်ငန်းမှတ်တမ်းတင်ရန်',
+      html: `<div class="space-y-2 text-left"><textarea id="work-done" class="swal2-textarea !m-0 !w-full" placeholder="လုပ်ပြီးသောအလုပ်${complete ? ' *' : ''}"></textarea><textarea id="work-service" class="swal2-textarea !m-0 !w-full" placeholder="Service အသေးစိတ်"></textarea><textarea id="work-parts" class="swal2-textarea !m-0 !w-full" placeholder="အသုံးပြုသော Parts"></textarea><textarea id="work-note" class="swal2-textarea !m-0 !w-full" placeholder="အခြားမှတ်ချက်"></textarea></div>`,
+      showCancelButton: true, confirmButtonText: complete ? 'ပြီးစီးမည်' : 'မှတ်တမ်းတင်မည်', cancelButtonText: 'မလုပ်တော့ပါ',
+      preConfirm: () => {
+        const value = (id: string) => (document.getElementById(id) as HTMLTextAreaElement | null)?.value.trim() || '';
+        const details = { completedWork: value('work-done'), serviceDetails: value('work-service'), partsDetails: value('work-parts'), note: value('work-note') };
+        if (complete && !details.completedWork) { Swal.showValidationMessage('လုပ်ပြီးသောအလုပ် ဖြည့်ပါ။'); return false; }
+        if (!complete && !Object.values(details).some(Boolean)) { Swal.showValidationMessage('မှတ်တမ်းအနည်းဆုံးတစ်ခု ဖြည့်ပါ။'); return false; }
+        return details;
+      },
+    });
+    return result.isConfirmed ? result.value : null;
   };
   const reset = () => {
     setStep(0); setMode(''); setLead({ staffId: '', taskDescription: 'စစ်ဆေးမှုနှင့် ပြုပြင်မှုကို တာဝန်ယူရန်' });
@@ -99,9 +145,24 @@ export default function TechnicianAssignmentPanel({ job, staff, canAssign, onClo
     } finally { setBusy(false); }
   };
   const work = async (assignment: Assignment, action: string, needsNote = false) => {
-    const text = needsNote ? await askNote(action === 'COMPLETE' ? 'ပြီးစီးမှုမှတ်ချက်' : 'လုပ်ငန်းမှတ်ချက်', true) : '';
-    if (needsNote && text == null) return;
-    await run(() => serviceJobTeamService.recordWork(job.id, assignment.id, action, text || undefined));
+    const details = needsNote ? await askWorkDetails(action === 'COMPLETE') : {};
+    if (needsNote && details == null) return;
+    await run(() => serviceJobTeamService.recordWork(job.id, assignment.id, action, details || {}));
+  };
+  const sendHandover = async () => {
+    if (!handover) return;
+    if (!handover.toStaffId) return void Swal.fire('Technician ရွေးပါ', 'Hand Over လက်ခံမည့် Technician ကို ရွေးပါ။', 'warning');
+    if (!handover.remainingWork.trim()) return void Swal.fire('ကျန်ရှိသောအလုပ် ဖြည့်ပါ', 'လက်ခံမည့် Technician ဆက်လုပ်ရမည့်အလုပ်ကို ရေးပါ။', 'warning');
+    await run(async () => {
+      await serviceJobTeamService.requestHandover(job.id, {
+        ...handover,
+        toStaffId: Number(handover.toStaffId),
+        completedWork: handover.completedWork.trim(),
+        remainingWork: handover.remainingWork.trim(),
+        diagnosisNote: handover.diagnosisNote.trim(),
+      });
+      setHandover(null);
+    }, 'Hand Over တောင်းဆိုပြီးပါပြီ');
   };
 
   return <div className="fixed inset-0 z-[70] flex items-stretch justify-center bg-black/55 sm:items-center sm:p-4"><div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[95dvh] sm:rounded-2xl">
@@ -113,11 +174,17 @@ export default function TechnicianAssignmentPanel({ job, staff, canAssign, onClo
       {step === 2 && <ReviewStep mode={mode} lead={lead} members={members} available={available} />}
       <div className="mt-7 flex flex-col-reverse gap-3 border-t pt-4 sm:flex-row sm:justify-between"><button onClick={() => step === 0 ? (current.length ? setView('workspace') : onClose()) : setStep(value => value - 1)} className="min-h-11 rounded-xl border px-5 text-sm font-bold text-slate-600">{step === 0 ? 'မလုပ်တော့ပါ' : 'အရင်အဆင့်'}</button>{step < 2 ? <button onClick={goNext} className="min-h-11 rounded-xl bg-indigo-600 px-6 text-sm font-black text-white">နောက်တစ်ဆင့်</button> : <button disabled={busy} onClick={submit} className="min-h-11 rounded-xl bg-indigo-600 px-6 text-sm font-black text-white disabled:opacity-50">{busy ? 'ပေးပို့နေသည်...' : 'တာဝန်ပေးပို့မည်'}</button>}</div>
     </> : <div className="space-y-6">
+      <ServiceJobHandoverPanel current={current} available={available} handovers={data.handovers || []} myPendingHandovers={data.myPendingHandovers || []} canAssign={canAssign} myStaffId={resolvedStaffId} busy={busy} draft={handover} setDraft={setHandover} send={() => void sendHandover()} accept={item => run(() => serviceJobTeamService.acceptHandover(job.id, item.id), 'Hand Over လက်ခံပြီးပါပြီ')} reject={async item => { const reason = await askNote('Hand Over ငြင်းပယ်ရသည့်အကြောင်း', true); if (reason != null) await run(() => serviceJobTeamService.rejectHandover(job.id, item.id, reason), 'Hand Over ငြင်းပယ်ပြီးပါပြီ'); }} />
       <section className="rounded-2xl border bg-slate-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">လက်ရှိ Technician Assignment</p><h3 className="mt-1 text-lg font-black">{leadAssignment?.staffName || 'Lead Technician မရှိသေးပါ'}</h3><p className="mt-1 text-sm text-slate-600">{leadAssignment ? `${current.length} ဦးတာဝန်ပေးထားသည် · ${unfinished.length} ဦးမပြီးသေး` : 'Job မပြီးစီးမီ အဓိကပြုပြင်သူတစ်ဦး သတ်မှတ်ပါ။'}</p></div>{canAssign && !leadAssignment && <button onClick={() => { reset(); setView('setup'); }} className="min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white">တာဝန်ပေးရန်</button>}</div></section>
-      <section><h3 className="font-black">Job ပြီးစီးရန် လိုအပ်ချက်များ</h3><div className="mt-3 space-y-2 rounded-2xl border p-4"><Check ok={!!leadAssignment} text="Lead Technician သတ်မှတ်ပြီး" /><Check ok={!!current.length && !unfinished.length} text={unfinished.length ? `Technician Assignment ${unfinished.length} ခု မပြီးသေး` : 'Technician Assignment အားလုံးပြီးစီး'} /><Check ok={!!job.finalApprovalStatus} text={job.finalApprovalStatus ? 'Supervisor Final Check အတည်ပြုပြီး' : 'Supervisor Final Check မလုပ်ရသေး'} />{!data.canComplete && <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{friendlyReason(data.completionBlockReason)}</p>}</div></section>
+      <section><h3 className="font-black">Job ပြီးစီးရန် လိုအပ်ချက်များ</h3><div className="mt-3 space-y-2 rounded-2xl border p-4"><Check ok={!!leadAssignment} text="Lead Technician သတ်မှတ်ပြီး" /><Check ok={!!current.length && !unfinished.length} text={unfinished.length ? `Technician Assignment ${unfinished.length} ခု မပြီးသေး` : 'Technician Assignment အားလုံးပြီးစီး'} /><Check ok={!!data.leadFinalCheckStatus} text={data.leadFinalCheckStatus ? 'Lead Technician Final Check တင်ပြီး' : 'Lead Technician Final Check မတင်ရသေး'} />{data.supervisorApprovalRequired !== false && <Check ok={!!data.finalApprovalStatus} text={data.finalApprovalStatus ? 'Supervisor အတည်ပြုပြီး' : 'Supervisor အတည်ပြုချက် မရသေး'} />}{!data.canComplete && <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{friendlyReason(data.completionBlockReason)}</p>}</div></section>
       {canAssign && leadAssignment && <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><h3 className="font-black text-indigo-950">အဖွဲ့ဝင် သို့မဟုတ် Helper ထည့်ရန်</h3><p className="mt-1 text-xs text-indigo-700">Helper Request သည် Supervisor approval ရပြီးမှ လက်ခံနိုင်ပါမည်။</p><div className="mt-3 grid gap-3 md:grid-cols-4"><select className={field} value={add.role} onChange={event => setAdd({ ...add, role: event.target.value as any })}><option value="MEMBER">Team Member</option><option value="HELPER">Helper Request</option></select><People value={add.staffId} list={available} placeholder="Technician ရွေးပါ" onChange={(value: string) => setAdd({ ...add, staffId: value })} /><input className={field} value={add.taskDescription} onChange={event => setAdd({ ...add, taskDescription: event.target.value })} placeholder="လုပ်ငန်းတာဝန် *" /><button disabled={busy} onClick={() => run(async () => { if (!add.staffId) throw new Error('Technician ရွေးပါ'); if (!add.taskDescription.trim()) throw new Error('လုပ်ငန်းတာဝန် ဖြည့်ပါ'); await serviceJobTeamService.assign(job.id, { ...add, staffId: Number(add.staffId) }); setAdd({ staffId: '', role: 'MEMBER', taskDescription: '' }); }, add.role === 'HELPER' ? 'Helper Request ပို့ပြီးပါပြီ' : 'အဖွဲ့ဝင် ထည့်ပြီးပါပြီ')} className="min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white">{add.role === 'HELPER' ? 'Request ပို့ရန်' : 'အဖွဲ့ဝင်ထည့်ရန်'}</button></div></section>}
       <section><h3 className="mb-3 font-black">လက်ရှိအဖွဲ့ ({current.length})</h3><div className="grid gap-3 lg:grid-cols-2">{current.map(assignment => <AssignmentCard key={assignment.id} a={assignment} manage={canAssign} approve={() => run(() => serviceJobTeamService.approveAssignment(job.id, assignment.id), 'Helper Request အတည်ပြုပြီးပါပြီ')} accept={() => run(() => serviceJobTeamService.acceptAssignment(job.id, assignment.id), 'တာဝန်လက်ခံပြီးပါပြီ')} reject={async () => { const reason = await askNote('Assignment ငြင်းပယ်ရသည့်အကြောင်း'); if (reason != null) await run(() => serviceJobTeamService.rejectAssignment(job.id, assignment.id, reason)); }} start={() => work(assignment, 'START')} pause={() => work(assignment, 'PAUSE')} resume={() => work(assignment, 'RESUME')} addNote={() => work(assignment, 'NOTE', true)} complete={() => work(assignment, 'COMPLETE', true)} edit={async () => { const text = await askNote('လုပ်ငန်းတာဝန် ပြင်ရန်', true); if (text != null) await run(() => serviceJobTeamService.updateAssignment(job.id, assignment.id, { taskDescription: text })); }} remove={() => run(() => serviceJobTeamService.cancelAssignment(job.id, assignment.id), 'Assignment ဖယ်ရှားပြီးပါပြီ')} />)}</div></section>
       {!!history.length && <section><h3 className="mb-3 font-black">Assignment မှတ်တမ်း</h3><div className="grid gap-3 lg:grid-cols-2">{history.map(assignment => <AssignmentCard key={assignment.id} a={assignment} manage={false} />)}</div></section>}
+      <ServiceJobWorkLogPanel assignments={[...current, ...history]} />
+      <ServiceJobFinalCheckPanel snapshot={data} lead={leadAssignment} canAssign={canAssign} busy={busy}
+        leadCheck={async () => { const note = await askNote('Lead Technician Final Check မှတ်ချက်'); if (note != null) await run(() => serviceJobService.leadFinalCheck(job.id, note), data.supervisorApprovalRequired === false ? 'Lead Final Check ပြီး၍ Job COMPLETED ဖြစ်ပါပြီ' : 'Lead Final Check တင်ပြီးပါပြီ'); }}
+        approve={() => run(() => serviceJobService.approveFinal(job.id), 'Supervisor အတည်ပြုပြီး Job COMPLETED ဖြစ်ပါပြီ')}
+        returnWork={async () => { const reason = await askNote('ပြန်ပြင်ရမည့်အကြောင်း', true); if (reason != null) await run(() => serviceJobService.returnFinal(job.id, reason), 'Lead Technician ထံ ပြန်ပြင်ရန်ပို့ပြီးပါပြီ'); }} />
     </div>}</main>
   </div></div>;
 }

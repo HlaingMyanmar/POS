@@ -14,6 +14,7 @@ public interface JournalMapper {
 
     @Mapping(source = "staff.id", target = "staffId")
     @Mapping(source = "staff.name", target = "staffName")
+    @Mapping(source = "reversalOf.id", target = "reversalOfId")
     JournalEntryDTO toDto(JournalEntry entity);
 
     @Mapping(source = "account.id", target = "accountId")
@@ -23,5 +24,6 @@ public interface JournalMapper {
     // Entity သို့ ပြန်ပြောင်းတဲ့အခါ Relationship တွေကို Service မှာပဲ handle လုပ်ပါမယ်
     @Mapping(target = "staff", ignore = true)
     @Mapping(target = "details", ignore = true)
+    @Mapping(target = "reversalOf", ignore = true)
     JournalEntry toEntity(JournalEntryDTO dto);
 }

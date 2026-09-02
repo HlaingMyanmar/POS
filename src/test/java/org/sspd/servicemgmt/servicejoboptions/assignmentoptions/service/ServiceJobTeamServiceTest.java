@@ -14,9 +14,11 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.dto.AssignmentActionRequest;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.dto.AssignmentRequest;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentRole;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentWorkAction;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobAssignment;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobAssignmentLogRepository;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobAssignmentRepository;
@@ -27,6 +29,7 @@ import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepos
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 
 import java.util.List;
 import java.util.Optional;
@@ -51,13 +54,15 @@ class ServiceJobTeamServiceTest {
     @Mock StaffRepository staffRepository;
     @Mock UserRepository userRepository;
     @Mock SimpMessagingTemplate messagingTemplate;
+    @Mock CompanySettingsRepository companySettingsRepository;
 
     private ServiceJobTeamService service;
 
     @BeforeEach
     void setUp() {
         service = new ServiceJobTeamService(jobRepository, assignmentRepository, logRepository,
-                handoverRepository, activityRepository, staffRepository, userRepository, messagingTemplate);
+                handoverRepository, activityRepository, staffRepository, userRepository, messagingTemplate,
+                companySettingsRepository);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("manager", "n/a",
                         List.of(new SimpleGrantedAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN"))));
@@ -220,6 +225,32 @@ class ServiceJobTeamServiceTest {
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> service.acceptHandover(8, 40));
         assertTrue(ex.getMessage().contains("current lead already exists"));
+    }
+
+    @Test
+    void recordWork_blocksLeadCompleteBeforeMembers() {
+        Staff lead = staff(5, "Lead");
+        Staff member = staff(8, "Member");
+        ServiceJob job = openJob(9);
+        ServiceJobAssignment leadAssignment = assignment(31, lead, AssignmentRole.LEAD, AssignmentStatus.ACTIVE);
+        leadAssignment.setServiceJob(job);
+        ServiceJobAssignment memberAssignment = assignment(32, member, AssignmentRole.MEMBER, AssignmentStatus.ACTIVE);
+        memberAssignment.setServiceJob(job);
+
+        when(jobRepository.findByIdForUpdate(9)).thenReturn(Optional.of(job));
+        when(assignmentRepository.findForUpdate(9, 31)).thenReturn(Optional.of(leadAssignment));
+        when(assignmentRepository.findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(eq(9), any()))
+                .thenReturn(List.of(leadAssignment, memberAssignment));
+        when(assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(eq(9), eq(5), any()))
+                .thenReturn(true);
+
+        AssignmentActionRequest request = new AssignmentActionRequest();
+        request.setAction(AssignmentWorkAction.COMPLETE);
+        request.setCompletedWork("Lead finished");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> service.recordWork(9, 31, request));
+        assertTrue(ex.getMessage().contains("Complete all Member and Helper assignments before Lead completion"));
     }
 
     private static ServiceJob job(int id, Staff lead, Staff helper) {

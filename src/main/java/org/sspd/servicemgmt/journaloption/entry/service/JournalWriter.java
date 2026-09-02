@@ -57,6 +57,7 @@ public class JournalWriter {
         }
 
         JournalEntry journal = journalMapper.toEntity(dto);
+        if (journal.getStatus() == null || journal.getStatus().isBlank()) journal.setStatus("POSTED");
         if (dto.getStaffId() != null) {
             journal.setStaff(staffRepository.findById(dto.getStaffId())
                     .orElseThrow(() -> new ResourceNotFoundException("Staff not found")));
@@ -84,12 +85,55 @@ public class JournalWriter {
 
     @Transactional
     public void reverseByReferenceNo(String referenceNo) {
+        reverseByReferenceNo(referenceNo, "system", "Reversal");
+    }
+
+    @Transactional
+    public void reverseByReferenceNo(String referenceNo, String actor, String reason) {
         journalRepository.findByReferenceNo(referenceNo).ifPresent(journal -> {
-            for (JournalDetail detail : journal.getDetails()) {
-                reverseAccountBalance(detail.getAccount(), detail.getDebit(), detail.getCredit());
+            if ("REVERSED".equals(journal.getStatus()) || journalRepository.findByReferenceNo(referenceNo + "-REV").isPresent()) {
+                return;
             }
-            journalRepository.delete(journal);
+            LocalDateTime now = LocalDateTime.now();
+            JournalEntry reversal = JournalEntry.builder()
+                    .entryDate(now)
+                    .referenceNo(referenceNo + "-REV")
+                    .description("Reversal of " + referenceNo + ": " + reason)
+                    .staff(journal.getStaff())
+                    .status("POSTED")
+                    .reversalOf(journal)
+                    .reversedBy(actor)
+                    .reversedAt(now)
+                    .reversalReason(reason)
+                    .build();
+            reversal = journalRepository.save(reversal);
+            for (JournalDetail detail : journal.getDetails()) {
+                BigDecimal reversedDebit = detail.getCredit() != null ? detail.getCredit() : BigDecimal.ZERO;
+                BigDecimal reversedCredit = detail.getDebit() != null ? detail.getDebit() : BigDecimal.ZERO;
+                detailRepository.save(JournalDetail.builder()
+                        .journalEntry(reversal)
+                        .account(detail.getAccount())
+                        .debit(reversedDebit)
+                        .credit(reversedCredit)
+                        .build());
+                updateAccountBalance(detail.getAccount(), reversedDebit, reversedCredit);
+            }
+            journal.setStatus("REVERSED");
+            journal.setReversedBy(actor);
+            journal.setReversedAt(now);
+            journal.setReversalReason(reason);
+            journalRepository.save(journal);
+            messagingTemplate.convertAndSend(ACCOUNTING_TOPIC, "JOURNAL_REVERSED");
         });
+    }
+
+    @Transactional
+    public void reverseByReferencePrefix(String referencePrefix, String actor, String reason) {
+        journalRepository.findAllByReferenceNoStartingWith(referencePrefix).stream()
+                .filter(journal -> journal.getReversalOf() == null)
+                .map(JournalEntry::getReferenceNo)
+                .toList()
+                .forEach(reference -> reverseByReferenceNo(reference, actor, reason));
     }
 
     private void updateAccountBalance(ChartOfAccount account, BigDecimal debit, BigDecimal credit) {

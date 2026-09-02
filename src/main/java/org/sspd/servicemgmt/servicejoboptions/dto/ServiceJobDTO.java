@@ -40,6 +40,13 @@ public class ServiceJobDTO {
     private String discountAllocationMethod;
     private BigDecimal paidAmount;
     private BigDecimal dueAmount;
+    private BigDecimal paymentDiscountAmount;
+    private String paymentDiscountApprovedBy;
+    private LocalDateTime paymentDiscountApprovedAt;
+    private String paymentDiscountApprovalNote;
+    private String dueDeliveryApprovedBy;
+    private LocalDateTime dueDeliveryApprovedAt;
+    private String dueDeliveryApprovalReason;
     private LocalDate dueDate;
     private String paymentStatus;
     private String creditStatus;
@@ -95,6 +102,12 @@ public class ServiceJobDTO {
     private Boolean finalApprovalStatus;
     private String finalApprovedBy;
     private String finalApprovedAt;
+    private Boolean leadFinalCheckStatus;
+    private String leadFinalCheckedBy;
+    private String leadFinalCheckedAt;
+    private String leadFinalCheckNote;
+    private String finalReturnReason;
+    private Boolean supervisorApprovalRequired;
     private String priority;
     private Integer helperStaffId;
     private String helperStaffName;
@@ -110,4 +123,8 @@ public class ServiceJobDTO {
     private List<ServiceJobActivityDTO> activities;
     private List<ServiceJobAttachmentDTO> attachments;
     private List<ServiceJobNotificationDTO> notifications;
+    private Boolean pendingHandoverForMe;
+    private Integer pendingHandoverId;
+    private String pendingHandoverFromStaffName;
+    private String pendingHandoverRemainingWork;
 }

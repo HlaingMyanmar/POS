@@ -57,6 +57,23 @@ public final class ServiceJobSettlementCalculator {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    public static BigDecimal laborGross(ServiceJob job) {
+        if (job.getLines() == null) return BigDecimal.ZERO;
+        return job.getLines().stream()
+                .filter(ServiceJobLine::isBillable)
+                .filter(line -> !Boolean.TRUE.equals(line.getWarrantyCovered()))
+                .map(line -> line.chargeUnitPrice().multiply(BigDecimal.valueOf(line.getQty() != null ? line.getQty() : 1)))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public static BigDecimal partsGross(ServiceJob job) {
+        if (job.getProductParts() == null) return BigDecimal.ZERO;
+        return job.getProductParts().stream()
+                .filter(part -> !Boolean.TRUE.equals(part.getWarrantyCovered()))
+                .map(part -> nz(part.getUnitPrice()).multiply(BigDecimal.valueOf(part.getQty() != null ? part.getQty() : 1)))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     public static BigDecimal lineBalance(ServiceJobLine line) {
         if (!line.isBillable() || Boolean.TRUE.equals(line.getWarrantyCovered())) {
             return BigDecimal.ZERO;

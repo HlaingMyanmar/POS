@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
@@ -22,6 +21,7 @@ import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
+import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.sspd.servicemgmt.servicejoboptions.service.ServiceJobService;
 
 import java.time.LocalDate;
@@ -44,7 +44,7 @@ public class BookingService {
     private final CompanySettingsRepository companySettingsRepository;
     private final ServiceJobRepository serviceJobRepository;
     private final ServiceJobService serviceJobService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final DataEventPublisher dataEventPublisher;
     private final BookingPhotoStorageService bookingPhotoStorageService;
 
     @Transactional(readOnly = true)
@@ -397,6 +397,6 @@ public class BookingService {
     }
 
     private void broadcast(String event) {
-        messagingTemplate.convertAndSend("/topic/booking", event);
+        dataEventPublisher.publishTopic("/topic/booking", event);
     }
 }

@@ -9,7 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,7 +53,7 @@ class ServiceJobTeamServiceTest {
     @Mock ServiceJobActivityRepository activityRepository;
     @Mock StaffRepository staffRepository;
     @Mock UserRepository userRepository;
-    @Mock SimpMessagingTemplate messagingTemplate;
+    @Mock DataEventPublisher dataEventPublisher;
     @Mock CompanySettingsRepository companySettingsRepository;
 
     private ServiceJobTeamService service;
@@ -61,7 +61,7 @@ class ServiceJobTeamServiceTest {
     @BeforeEach
     void setUp() {
         service = new ServiceJobTeamService(jobRepository, assignmentRepository, logRepository,
-                handoverRepository, activityRepository, staffRepository, userRepository, messagingTemplate,
+                handoverRepository, activityRepository, staffRepository, userRepository, dataEventPublisher,
                 companySettingsRepository);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("manager", "n/a",

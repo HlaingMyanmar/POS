@@ -134,7 +134,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                 actions = {
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary)
             )
         },
         floatingActionButton = {

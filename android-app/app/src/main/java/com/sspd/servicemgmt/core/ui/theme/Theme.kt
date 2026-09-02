@@ -14,20 +14,24 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 
 private val AppColorScheme = lightColorScheme(
-    primary            = Primary,
-    onPrimary          = OnPrimary,
-    primaryContainer   = PrimaryLight,
-    onPrimaryContainer = Primary,
-    secondary          = Gold,
-    onSecondary        = Color.White,
-    background         = ScreenBg,
-    onBackground       = TextMain,
-    surface            = CardBg,
-    onSurface          = TextMain,
-    surfaceVariant     = ScreenBg,
-    outline            = BorderColor,
-    error              = Danger,
-    onError            = Color.White,
+    primary              = Primary,
+    onPrimary            = OnPrimary,
+    primaryContainer     = PrimaryLight,
+    onPrimaryContainer   = Primary,
+    secondary            = Violet,
+    secondaryContainer   = VioletBg,
+    onSecondaryContainer = Violet,
+    tertiary             = Accent,
+    onSecondary          = Color.White,
+    background           = ScreenBg,
+    onBackground         = TextMain,
+    surface              = CardBg,
+    onSurface            = TextMain,
+    surfaceVariant       = SurfaceSoft,
+    surfaceContainer     = SurfaceSoft,
+    outline              = BorderColor,
+    error                = Danger,
+    onError              = Color.White,
 )
 
 private val MyanmarFontFamily = FontFamily.SansSerif

@@ -25,7 +25,7 @@ class BookingPrintViewModel(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    init { loadHtml("A4") }
+    init { loadHtml("POS_80MM") }
 
     fun loadHtml(paper: String) {
         viewModelScope.launch {

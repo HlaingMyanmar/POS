@@ -6,7 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItem;
@@ -42,7 +42,7 @@ class BookingServiceTest {
     @Mock CompanySettingsRepository companySettingsRepository;
     @Mock ServiceJobRepository serviceJobRepository;
     @Mock ServiceJobService serviceJobService;
-    @Mock SimpMessagingTemplate messagingTemplate;
+    @Mock DataEventPublisher dataEventPublisher;
     @Mock BookingPhotoStorageService bookingPhotoStorageService;
 
     private BookingService service;
@@ -50,7 +50,7 @@ class BookingServiceTest {
     @BeforeEach
     void setUp() {
         service = new BookingService(repository, itemRepository, customerRepository,
-            companySettingsRepository, serviceJobRepository, serviceJobService, messagingTemplate,
+            companySettingsRepository, serviceJobRepository, serviceJobService, dataEventPublisher,
             bookingPhotoStorageService);
     }
 

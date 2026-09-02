@@ -9,14 +9,14 @@
 
     <!--
         Splash screen theme — applied at cold launch via installSplashScreen().
-        Background : Primary blue  #2563EB
+        Background : Primary teal  #0F766E
         Icon       : ic_launcher_foreground (white circle + blue S lettermark)
         After exit : swaps to Theme.SSPDManager automatically
     -->
     <style name="Theme.SSPDManager.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#2563EB</item>
+        <item name="windowSplashScreenBackground">#0F766E</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
-        <item name="windowSplashScreenIconBackgroundColor">#2563EB</item>
+        <item name="windowSplashScreenIconBackgroundColor">#0F766E</item>
         <item name="postSplashScreenTheme">@style/Theme.SSPDManager</item>
     </style>
 

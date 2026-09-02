@@ -77,7 +77,7 @@ fun JournalEntryScreen(onBack: () -> Unit) {
                 title = { Text("ဂျာနယ်မှတ်တမ်း", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
                 actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "Refresh", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = JournalColor, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = JournalColor, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->

@@ -168,6 +168,22 @@ public class ServiceJobController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PostMapping("/{id}/hold-estimate")
+    ResponseEntity<ApiResponse<ServiceJobDTO>> holdEstimate(@PathVariable Integer id,
+            @RequestBody(required = false) java.util.Map<String, Object> body) {
+        String reason = body == null || body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Estimate on hold", service.holdEstimate(id, reason)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PostMapping("/{id}/reject-estimate")
+    ResponseEntity<ApiResponse<ServiceJobDTO>> rejectEstimate(@PathVariable Integer id,
+            @RequestBody(required = false) java.util.Map<String, Object> body) {
+        String reason = body == null || body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Estimate rejected", service.rejectEstimate(id, reason)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
     @PostMapping("/{id}/approve-final")
     public ResponseEntity<ApiResponse<ServiceJobDTO>> approveFinal(@PathVariable Integer id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Final approval completed", service.approveFinalCompletion(id)));
@@ -196,7 +212,9 @@ public class ServiceJobController {
     ResponseEntity<ApiResponse<org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO>> notifyCustomer(
             @PathVariable Integer id,
             @RequestBody org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobNotificationDTO dto) {
-        return ResponseEntity.ok(new ApiResponse<>(true, "Notification logged", service.notifyCustomer(id, dto)));
+        return ResponseEntity.ok(new ApiResponse<>(true,
+                "Notification logged (outbound delivery requires a messaging provider)",
+                service.notifyCustomer(id, dto)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")

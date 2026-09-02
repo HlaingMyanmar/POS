@@ -77,6 +77,10 @@ import com.sspd.servicemgmt.core.ui.theme.ScreenBg
 import com.sspd.servicemgmt.core.util.AlertSound
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.feature.auth.LoginScreen
+import com.sspd.servicemgmt.feature.booking.BookingDetailScreen
+import com.sspd.servicemgmt.feature.booking.BookingFormScreen
+import com.sspd.servicemgmt.feature.booking.BookingListScreen
+import com.sspd.servicemgmt.feature.booking.BookingPrintScreen
 import com.sspd.servicemgmt.feature.chat.ChatScreen
 import com.sspd.servicemgmt.feature.customer.CustomerHistoryScreen
 import com.sspd.servicemgmt.feature.home.HomeScreen
@@ -401,6 +405,53 @@ fun TechnicianAppNavigation() {
                         arguments = listOf(navArgument("jobId") { type = NavType.IntType })
                     ) {
                         ServiceJobPrintScreen(onBack = { nav.popBackStack() })
+                    }
+
+                    screen(Screen.Bookings.route) {
+                        BookingListScreen(
+                            onBack = { nav.popBackStack() },
+                            onBookingClick = { id -> nav.navigate(Screen.BookingDetail.createRoute(id)) },
+                            onNewBooking = { nav.navigate(Screen.NewBooking.route) },
+                            onEditBooking = { id -> nav.navigate(Screen.EditBooking.createRoute(id)) }
+                        )
+                    }
+                    screen(Screen.NewBooking.route) {
+                        BookingFormScreen(
+                            onBack = { nav.popBackStack() },
+                            onSuccess = {
+                                nav.navigate(Screen.Bookings.route) {
+                                    popUpTo(Screen.NewBooking.route) { inclusive = true }
+                                }
+                            }
+                        )
+                    }
+                    composable(
+                        route = Screen.EditBooking.route,
+                        arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+                    ) {
+                        BookingFormScreen(
+                            onBack = { nav.popBackStack() },
+                            onSuccess = { nav.popBackStack() }
+                        )
+                    }
+                    composable(
+                        route = Screen.BookingDetail.route,
+                        arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+                    ) { entry ->
+                        val bookingId = entry.arguments?.getInt("bookingId") ?: -1
+                        BookingDetailScreen(
+                            onBack = { nav.popBackStack() },
+                            onJobCreated = { nav.navigate(Screen.ServiceJobs.route) },
+                            onEdit = { nav.navigate(Screen.EditBooking.createRoute(bookingId)) },
+                            onPrint = { nav.navigate(Screen.BookingPrint.createRoute(bookingId)) },
+                            onJobClick = { jobId -> nav.navigate(Screen.ServiceJobDetail.createRoute(jobId)) }
+                        )
+                    }
+                    composable(
+                        route = Screen.BookingPrint.route,
+                        arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+                    ) {
+                        BookingPrintScreen(onBack = { nav.popBackStack() })
                     }
 
                     screen(Screen.ServiceMgmt.route) { ServiceManagementScreen { nav.popBackStack() } }

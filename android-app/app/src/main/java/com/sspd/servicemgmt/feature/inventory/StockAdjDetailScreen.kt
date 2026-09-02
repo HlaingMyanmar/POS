@@ -87,7 +87,7 @@ fun StockAdjDetailScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor    = AdjColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         }

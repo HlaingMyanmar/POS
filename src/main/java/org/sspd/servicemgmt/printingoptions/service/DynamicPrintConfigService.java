@@ -63,6 +63,13 @@ public class DynamicPrintConfigService {
 
         if (setting == null) return base;
 
+        // Layout dimensions in voucher_settings are tuned for setting.paperSize.
+        // When the preview toolbar sends a different paper (e.g. A4 while DB is 80mm),
+        // use registry defaults for that paper — mixing thermal zeros with A4 breaks render.
+        if (shouldUseRegistryOnly(setting, paperSizeOverride, paperSize)) {
+            return base;
+        }
+
         return PrintLayoutConfig.builder()
                 .name(paperSize)
                 // Page physical dimensions come from the registry (they don't change)
@@ -73,7 +80,7 @@ public class DynamicPrintConfigService {
                 .marginBottomMm(coalesceF(setting.getMarginBottomMm(), base.getMarginBottomMm()))
                 .marginLeftMm(  coalesceF(setting.getMarginLeftMm(),   base.getMarginLeftMm()))
                 .marginRightMm( coalesceF(setting.getMarginRightMm(),  base.getMarginRightMm()))
-                // Component heights — override with DB value when non-null
+                // Component heights — override with DB value when non-null and > 0
                 .headerHeightPx(      coalesceI(setting.getHeaderHeightPx(),       base.getHeaderHeightPx()))
                 .contHeaderHeightPx(  coalesceI(setting.getContHeaderHeightPx(),   base.getContHeaderHeightPx()))
                 .infoBlocksHeightPx(  coalesceI(setting.getInfoBlocksHeightPx(),   base.getInfoBlocksHeightPx()))
@@ -96,11 +103,19 @@ public class DynamicPrintConfigService {
         return "A4";
     }
 
+    private static boolean shouldUseRegistryOnly(
+            VoucherSetting setting, String paperSizeOverride, String resolvedPaperSize) {
+        if (paperSizeOverride == null || paperSizeOverride.isBlank()) return false;
+        if (setting.getPaperSize() == null || setting.getPaperSize().isBlank()) return false;
+        return !setting.getPaperSize().equalsIgnoreCase(resolvedPaperSize);
+    }
+
     private static float coalesceF(Integer dbValue, float registryDefault) {
         return dbValue != null ? dbValue.floatValue() : registryDefault;
     }
 
+    /** Treat 0 as unset — thermal registry uses 0 and must not leak into A4/A5 math. */
     private static int coalesceI(Integer dbValue, int registryDefault) {
-        return dbValue != null ? dbValue : registryDefault;
+        return (dbValue != null && dbValue > 0) ? dbValue : registryDefault;
     }
 }

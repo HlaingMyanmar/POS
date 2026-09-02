@@ -19,7 +19,7 @@
     <!-- S lettermark — single continuous stroke -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#2563EB"
+        android:strokeColor="#0F766E"
         android:strokeWidth="11"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"

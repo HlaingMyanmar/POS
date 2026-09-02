@@ -63,7 +63,7 @@ fun PurchaseReturnListScreen(
                 title = { Text("ဝယ်ပြန်ပို့", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back", tint = Color.White) } },
                 actions = { IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "Refresh", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseReturnColor, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PurchaseReturnColor, titleContentColor = OnPrimary)
             )
         },
         floatingActionButton = {

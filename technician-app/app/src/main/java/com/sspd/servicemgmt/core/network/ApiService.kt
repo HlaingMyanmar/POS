@@ -752,6 +752,20 @@ interface ApiService {
         @Path("id") id: Int
     ): Response<ApiResponse<ServiceJobDTO>>
 
+    @POST("service-jobs/{id}/hold-estimate")
+    suspend fun holdServiceJobEstimate(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: ReasonRequest
+    ): Response<ApiResponse<ServiceJobDTO>>
+
+    @POST("service-jobs/{id}/reject-estimate")
+    suspend fun rejectServiceJobEstimate(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body body: ReasonRequest
+    ): Response<ApiResponse<ServiceJobDTO>>
+
     @POST("service-jobs/{id}/approve-final")
     suspend fun approveServiceJobFinal(
         @Header("Authorization") auth: String,

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Printer, X, Download, RefreshCw, FileText, ZoomIn, ZoomOut } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Printer, X, Download, RefreshCw, FileText, ZoomIn, ZoomOut, Receipt } from 'lucide-react';
 import { DocumentType, PaperSize, PrintOptions } from '../types/print.types';
 import { useHtmlPreview, useIframePrint, usePdfDownload } from '../hooks/usePrint';
 import { voucherSettingService, VoucherSettingDto, DocumentType as VoucherDocType } from '../../services/voucherSettingService';
@@ -12,24 +12,52 @@ interface InvoicePrintPreviewProps {
   onClose: () => void;
 }
 
-const PAPER_OPTIONS: { label: string; value: PaperSize }[] = [
-  { label: 'A4',      value: 'A4' },
-  { label: 'A5',      value: 'A5' },
-  { label: '80mm POS', value: 'POS_80MM' },
-  { label: '58mm POS', value: 'POS_58MM' },
+type PaperOption = { label: string; hint?: string; value: PaperSize };
+
+const PAPER_OPTIONS_DEFAULT: PaperOption[] = [
+  { label: 'A4', value: 'A4', hint: 'Full page' },
+  { label: 'A5', value: 'A5', hint: 'Half page' },
+  { label: '80mm', value: 'POS_80MM', hint: 'Thermal' },
+  { label: '58mm', value: 'POS_58MM', hint: 'Thermal' },
 ];
 
+const PAPER_OPTIONS_BOOKING: PaperOption[] = [
+  { label: '80mm', value: 'POS_80MM', hint: 'Thermal' },
+  { label: '58mm', value: 'POS_58MM', hint: 'Thermal' },
+  { label: 'A5', value: 'A5', hint: 'Half page' },
+  { label: 'A4', value: 'A4', hint: 'Full page' },
+];
+
+const PAPER_MAP: Record<string, PaperSize> = {
+  A4: 'A4',
+  A5: 'A5',
+  POS_80MM: 'POS_80MM',
+  POS_58MM: 'POS_58MM',
+};
+
+function previewWidthFor(paper: PaperSize): string {
+  switch (paper) {
+    case 'POS_58MM': return '58mm';
+    case 'POS_80MM': return '80mm';
+    case 'A5': return '148mm';
+    default: return '210mm';
+  }
+}
+
+function previewHeightFor(paper: PaperSize): string {
+  switch (paper) {
+    case 'POS_58MM':
+    case 'POS_80MM':
+      return '70vh';
+    case 'A5':
+      return '210mm';
+    default:
+      return '297mm';
+  }
+}
 
 /**
- * Full-screen print preview modal.
- *
- * Features:
- *  - Paper size switcher (A4 / A5 / POS thermal)
- *  - Inline HTML preview in iframe (fast, no PDF needed)
- *  - Print button → triggers browser print dialog on iframe
- *  - PDF download button → fetches backend PDF
- *  - Zoom in / out for the iframe preview
- *  - Keyboard shortcut: Escape closes, Ctrl+P prints
+ * Full-screen print preview modal — voucher / invoice preview with paper switcher.
  */
 export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
   documentType,
@@ -38,54 +66,55 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
   defaultPaper = 'A4',
   onClose,
 }) => {
-  const [paperSize, setPaperSize]           = useState<PaperSize>(defaultPaper);
-  const [zoom, setZoom]                     = useState(100);
+  const isBooking = documentType === 'BOOKING';
+  const paperOptions = isBooking ? PAPER_OPTIONS_BOOKING : PAPER_OPTIONS_DEFAULT;
+  const resolvedDefault = isBooking ? (defaultPaper || 'POS_80MM') : defaultPaper;
+
+  const [paperSize, setPaperSize] = useState<PaperSize>(resolvedDefault);
+  const [zoom, setZoom] = useState(100);
   const [voucherSetting, setVoucherSetting] = useState<VoucherSettingDto | null>(null);
-  const [settingsReady, setSettingsReady]   = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
   const [copyType, setCopyType] = useState<'CUSTOMER' | 'SHOP' | 'BOTH'>('CUSTOMER');
 
-  const PAPER_MAP: Record<string, PaperSize> = { A4: 'A4', A5: 'A5', POS_80MM: 'POS_80MM', POS_58MM: 'POS_58MM' };
-
-  // Load saved voucher settings for this document type
   useEffect(() => {
     voucherSettingService.getByType(documentType as VoucherDocType)
       .then(s => {
         setVoucherSetting(s);
-        const mapped = s.paperSize && PAPER_MAP[s.paperSize] ? PAPER_MAP[s.paperSize] : defaultPaper;
-        setPaperSize(mapped);
+        // Booking preview: keep toolbar default (80mm); DB paper is for admin defaults only.
+        if (!isBooking) {
+          const mapped = s.paperSize && PAPER_MAP[s.paperSize] ? PAPER_MAP[s.paperSize] : resolvedDefault;
+          setPaperSize(mapped);
+        }
       })
       .catch(() => {})
       .finally(() => setSettingsReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
 
-  // Build options from saved settings (fallback to sensible defaults)
-  const options: PrintOptions = {
+  const options: PrintOptions = useMemo(() => ({
     paperSize,
     design: 'STANDARD',
-    showLogo:           voucherSetting?.showLogo           ?? true,
-    showSerial:         voucherSetting?.showSerial         ?? true,
+    showLogo: voucherSetting?.showLogo ?? true,
+    showSerial: voucherSetting?.showSerial ?? true,
     showPaymentHistory: voucherSetting?.showPaymentHistory ?? true,
-    showSignatures:     voucherSetting?.showSignatures     ?? false,
-    showQrCode:         voucherSetting?.showQrCode         ?? false,
-    sign1Label:         voucherSetting?.sign1Label        || 'Prepared By',
-    sign2Label:         voucherSetting?.sign2Label        || 'Received By',
+    showSignatures: voucherSetting?.showSignatures ?? false,
+    showQrCode: voucherSetting?.showQrCode ?? false,
+    sign1Label: voucherSetting?.sign1Label || 'Prepared By',
+    sign2Label: voucherSetting?.sign2Label || 'Received By',
     rowsOverride: 0,
     copyType,
-  };
+  }), [paperSize, copyType, voucherSetting]);
 
   const { html, loading, error, load } = useHtmlPreview();
   const { iframeRef, print } = useIframePrint();
   const { execute: downloadPdf, loading: pdfLoading } = usePdfDownload();
 
-  // Load preview only after settings are fetched (so options include saved values)
   useEffect(() => {
     if (!settingsReady) return;
     load(documentType, documentId, options);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType, documentId, paperSize, copyType, settingsReady]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -102,175 +131,167 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
     downloadPdf(documentType, documentId, options, 'download');
   };
 
+  const HeaderIcon = isBooking ? Receipt : FileText;
+
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 60,
-        display: 'flex', flexDirection: 'column',
-        background: 'rgba(15,23,42,0.9)',
-      }}
-    >
-      {/* ── Toolbar ── */}
-      <div
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '8px 16px',
-          background: '#fff', borderBottom: '1px solid #e2e8f0',
-          flexShrink: 0, gap: 12,
-        }}
-      >
-        {/* Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <FileText size={16} style={{ color: '#6366f1' }} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{title}</span>
-        </div>
+    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-950/90">
+      {/* Toolbar */}
+      <header className="shrink-0 border-b border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+              <HeaderIcon size={20} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-extrabold text-slate-900">{title}</h2>
+              <p className="text-xs text-slate-500">
+                {isBooking ? `Booking #${documentId} · လက်ခံဘောင်ချာ preview` : `Document #${documentId}`}
+              </p>
+            </div>
+          </div>
 
-        {/* Paper switcher */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11, color: '#64748b', marginRight: 4 }}>Paper:</span>
-          {PAPER_OPTIONS.map((p) => (
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              key={p.value}
-              onClick={() => setPaperSize(p.value)}
-              style={{
-                padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                border: '1px solid',
-                borderColor: paperSize === p.value ? '#6366f1' : '#e2e8f0',
-                background: paperSize === p.value ? '#eef2ff' : '#fff',
-                color: paperSize === p.value ? '#4338ca' : '#475569',
-                cursor: 'pointer',
-              }}
+              type="button"
+              onClick={() => load(documentType, documentId, options)}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              title="Reload preview"
             >
-              {p.label}
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Refresh
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={pdfLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <Download size={14} />
+              {pdfLoading ? 'PDF…' : 'PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={print}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-700"
+            >
+              <Printer size={16} />
+              ပရင့်ထုတ်မည်
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+              title="Close (Esc)"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* Zoom */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button onClick={() => setZoom((z) => Math.max(50, z - 10))}
-                  style={toolBtnStyle} title="Zoom out">
-            <ZoomOut size={14} />
-          </button>
-          <span style={{ fontSize: 12, color: '#64748b', minWidth: 36, textAlign: 'center' }}>
-            {zoom}%
-          </span>
-          <button onClick={() => setZoom((z) => Math.min(200, z + 10))}
-                  style={toolBtnStyle} title="Zoom in">
-            <ZoomIn size={14} />
-          </button>
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">စက္ကူ</span>
+          <div className="flex flex-wrap gap-2">
+            {paperOptions.map(p => {
+              const active = paperSize === p.value;
+              return (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setPaperSize(p.value)}
+                  className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                    active
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-800 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-bold leading-none">{p.label}</div>
+                  {p.hint && <div className="mt-0.5 text-[10px] text-slate-500">{p.hint}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="ml-auto flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1">
+            <button
+              type="button"
+              onClick={() => setZoom(z => Math.max(50, z - 10))}
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+              title="Zoom out"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <span className="min-w-[3rem] text-center text-xs font-semibold text-slate-600">{zoom}%</span>
+            <button
+              type="button"
+              onClick={() => setZoom(z => Math.min(200, z + 10))}
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+              title="Zoom in"
+            >
+              <ZoomIn size={14} />
+            </button>
+          </div>
+
+          {documentType === 'SALE' && (
+            <select
+              value={copyType}
+              onChange={e => setCopyType(e.target.value as typeof copyType)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-600"
+            >
+              <option value="CUSTOMER">Customer Copy</option>
+              <option value="SHOP">Shop Copy</option>
+              <option value="BOTH">Both Copies</option>
+            </select>
+          )}
         </div>
+      </header>
 
-        {documentType === 'SALE' && (
-          <select value={copyType} onChange={(event) => setCopyType(event.target.value as typeof copyType)} title="Print copy" style={{ padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, color: '#475569', background: '#fff' }}>
-            <option value="CUSTOMER">Customer Copy</option>
-            <option value="SHOP">Shop Copy</option>
-            <option value="BOTH">Both Copies</option>
-          </select>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => load(documentType, documentId, options)}
-                  style={toolBtnStyle} title="Reload preview" disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
-            onClick={handleDownload}
-            disabled={pdfLoading}
-            style={{
-              ...toolBtnStyle,
-              padding: '6px 12px', background: '#f8fafc',
-              border: '1px solid #e2e8f0', borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 12, fontWeight: 600, color: '#475569',
-            }}
-          >
-            <Download size={13} />
-            {pdfLoading ? 'Generating…' : 'PDF'}
-          </button>
-          <button
-            onClick={print}
-            style={{
-              ...toolBtnStyle,
-              padding: '6px 14px', background: '#6366f1',
-              border: 'none', borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 13, fontWeight: 700, color: '#fff',
-            }}
-          >
-            <Printer size={14} /> Print
-          </button>
-          <button onClick={onClose} style={{ ...toolBtnStyle, marginLeft: 4 }} title="Close (Esc)">
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── Preview area ── */}
-      <div
-        style={{
-          flex: 1, overflow: 'auto', padding: 24,
-          display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
-        }}
-      >
+      {/* Preview */}
+      <div className="flex flex-1 justify-center overflow-auto bg-[#F4F7FA] p-4 sm:p-8">
         {loading && (
-          <div style={centeredMsg}>
-            <RefreshCw size={24} style={{ color: '#6366f1', animation: 'spin 1s linear infinite' }} />
-            <span style={{ color: '#94a3b8', fontSize: 13, marginTop: 10 }}>Rendering preview…</span>
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 self-center">
+            <RefreshCw size={28} className="animate-spin text-indigo-600" />
+            <p className="text-sm font-medium text-slate-500">Voucher ပြင်ဆင်နေသည်…</p>
           </div>
         )}
 
         {error && !loading && (
-          <div style={centeredMsg}>
-            <span style={{ color: '#ef4444', fontSize: 14 }}>{error}</span>
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 self-center rounded-2xl border border-rose-200 bg-white px-8 py-10 shadow-sm">
+            <p className="text-sm font-semibold text-rose-600">{error}</p>
             <button
+              type="button"
               onClick={() => load(documentType, documentId, options)}
-              style={{ marginTop: 12, padding: '6px 16px', borderRadius: 8, background: '#6366f1', color: '#fff', border: 'none', cursor: 'pointer' }}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700"
             >
-              Retry
+              ထပ်မံ ကြိုးစားမည်
             </button>
           </div>
         )}
 
         {html && !loading && (
-          <iframe
-            ref={iframeRef}
-            srcDoc={html}
-            title={title}
-            style={{
-              border: 'none',
-              width: paperSize === 'A5' ? '148mm' : paperSize.startsWith('POS') ? '100mm' : '210mm',
-              minHeight: '80vh',
-              boxShadow: '0 4px 32px rgba(0,0,0,0.25)',
-              background: '#fff',
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: 'top center',
-              marginBottom: zoom < 100 ? `-${(100 - zoom) * 4}px` : 0,
-            }}
-          />
+          <div
+            className="origin-top transition-transform"
+            style={{ transform: `scale(${zoom / 100})` }}
+          >
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+              <iframe
+                ref={iframeRef}
+                srcDoc={html}
+                title={title}
+                className="block border-0 bg-white"
+                style={{
+                  width: previewWidthFor(paperSize),
+                  minHeight: previewHeightFor(paperSize),
+                }}
+              />
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Shortcut hint */}
-      <div style={{
-        textAlign: 'center', padding: '4px 0 8px',
-        fontSize: 10.5, color: '#64748b',
-      }}>
-        Ctrl+P to print · Esc to close
-      </div>
+      <footer className="shrink-0 border-t border-slate-800 bg-slate-950/80 py-2 text-center text-[11px] text-slate-400">
+        Ctrl+P ပရင့် · Esc ပိတ်ရန် · Pinch/Zoom slider ဖြင့် ကြည့်နိုင်ပါသည်
+      </footer>
     </div>
   );
-};
-
-const toolBtnStyle: React.CSSProperties = {
-  padding: 6, borderRadius: 6, border: 'none',
-  background: 'transparent', cursor: 'pointer',
-  display: 'flex', alignItems: 'center',
-  color: '#475569', transition: 'background 0.15s',
-};
-
-const centeredMsg: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', alignItems: 'center',
-  justifyContent: 'center', minHeight: 200, gap: 4,
 };

@@ -20,8 +20,12 @@ public class DataEventPublisher {
         payload.put("entity", entity);
         payload.put("action", action);
         payload.put("resourceId", resourceId);
+        publishTopic("/topic/data-events", payload);
+    }
 
-        Runnable send = () -> messaging.convertAndSend("/topic/data-events", payload);
+    /** Broadcast to any STOMP topic after the current transaction commits. */
+    public void publishTopic(String topic, Object payload) {
+        Runnable send = () -> messaging.convertAndSend(topic, payload);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override

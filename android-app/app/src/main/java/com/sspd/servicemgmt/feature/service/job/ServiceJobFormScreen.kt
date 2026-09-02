@@ -405,7 +405,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
             TopAppBar(
                 title = { Text(if (vm.isEdit) "Job ပြင်ဆင်ရန်" else "Job အသစ်", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->
@@ -841,7 +841,7 @@ private fun ServiceLineDraftCard(
 ) {
     val qty = line.qty.toIntOrNull() ?: 1
     val chargeUnit = when {
-        line.confirmationStatus == "CUSTOMER_REJECTED" || line.warrantyCovered -> 0.0
+        line.confirmationStatus == "CUSTOMER_REJECTED" || line.confirmationStatus == "CUSTOMER_HOLD" || line.warrantyCovered -> 0.0
         line.billedPrice.toDoubleOrNull() != null -> line.billedPrice.toDouble()
         line.confirmationStatus in setOf("CUSTOMER_APPROVED", "IN_PROGRESS", "COMPLETED") &&
             line.approvedPrice.toDoubleOrNull() != null -> line.approvedPrice.toDouble()
@@ -938,6 +938,7 @@ private fun ServiceLineDraftCard(
                 Text(
                     text = when {
                         line.confirmationStatus == "CUSTOMER_REJECTED" -> "ကောက်ခံမည်: ငြင်းပယ် — 0"
+                        line.confirmationStatus == "CUSTOMER_HOLD" -> "ကောက်ခံမည်: Hold — 0"
                         line.warrantyCovered -> "ကောက်ခံမည်: FREE"
                         else -> "ကောက်ခံမည်: ${String.format("%,.0f", qty * chargeUnit)} Ks"
                     },
@@ -945,6 +946,7 @@ private fun ServiceLineDraftCard(
                     fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     color = when {
                         line.confirmationStatus == "CUSTOMER_REJECTED" -> Danger
+                        line.confirmationStatus == "CUSTOMER_HOLD" -> Violet
                         line.warrantyCovered -> Success
                         else -> TextMain
                     }
@@ -972,6 +974,7 @@ private fun ServiceLineDraftCard(
 private val LINE_CONFIRMATION_STATUS = listOf(
     "RECOMMENDED" to "အကြံပြုထားသည်",
     "INSPECTING" to "စစ်ဆေးဆဲ",
+    "CUSTOMER_HOLD" to "Customer စောင့်ဆိုင်း",
     "CUSTOMER_APPROVED" to "Customer အတည်ပြုပြီး",
     "CUSTOMER_REJECTED" to "Customer ငြင်းပယ်",
     "IN_PROGRESS" to "လုပ်ဆောင်ဆဲ",

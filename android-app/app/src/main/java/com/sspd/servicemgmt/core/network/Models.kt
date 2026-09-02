@@ -222,6 +222,7 @@ data class SaleItemDTO(
     val customerMargin: Double? = null,
     val subtotal: Double? = null,
     val discountAmount: Double? = null,
+    val discountAllocationMethod: String? = null,
     val foc: Boolean? = null,
     val warrantyMonths: Int? = null,
     val warrantyExpiryDate: String? = null,
@@ -493,6 +494,7 @@ data class ServiceJobPartDTO(
 data class SettleJobRequest(
     val finalCost:        Double,
     val discountAmount:   Double  = 0.0,
+    val discountAllocationMethod: String? = "PRO_RATA",
     val foc:              Boolean = false,
     val paidAmount:       Double,
     val paymentMethodId:  Int?    = null,
@@ -602,6 +604,7 @@ data class ServiceJobDTO(
     val estimatedCost: Double? = null,
     val finalCost: Double? = null,
     val discountAmount: Double? = null,
+    val discountAllocationMethod: String? = null,
     val foc: Boolean? = null,
     val status: String? = null,
     val netAmount: Double? = null,

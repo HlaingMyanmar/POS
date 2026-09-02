@@ -49,6 +49,7 @@ import {
   ChevronRight,
   ChevronDown,
   Smartphone,
+  Terminal,
   CircleHelp,
   Video
 } from 'lucide-react';
@@ -119,10 +120,17 @@ const isAdministrator = (user: User) =>
 
 type MenuPermission = string | readonly string[];
 
-const hasMenuAccess = (user: User, permission?: MenuPermission): boolean => {
+const hasMenuAccess = (
+  user: User,
+  permission?: MenuPermission,
+  match: 'all' | 'any' = 'all'
+): boolean => {
   if (!permission) return true;
   if (isAdministrator(user)) return true;
   const required = Array.isArray(permission) ? permission : [permission];
+  if (match === 'any') {
+    return required.some(item => (user.permissions || []).includes(item));
+  }
   return required.every(item => (user.permissions || []).includes(item));
 };
 
@@ -230,6 +238,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'Video Management', icon: <Video size={18} />, path: AppRoute.VIDEOS, group: 'ဝန်ဆောင်မှု', permission: 'CAN_ACCESS_VIDEO_READ' },
       { name: 'အသုံးပြုနည်းလမ်းညွှန်', icon: <CircleHelp size={18} />, path: AppRoute.SERVICE_HELP, group: 'ဝန်ဆောင်မှု' },
       { name: 'အရန်သိမ်းဆည်း', icon: <Database size={18} />, path: AppRoute.BACKUP, group: 'ဆက်တင်', permission: 'CAN_ACCESS_BACKUP_SETTINGS_READ' },
+      { name: 'SQL Console', icon: <Terminal size={18} />, path: AppRoute.ADMIN_QUERIES, group: 'ဆက်တင်', permission: ['CAN_ACCESS_ADMIN_QUERY_READ', 'CAN_ACCESS_ADMIN_QUERY_WRITE'], permissionMatch: 'any' as const },
       { name: 'ကုမ္ပဏီဆက်တင်', icon: <Settings size={18} />, path: AppRoute.COMPANY_SETTINGS, group: 'ဆက်တင်' },
       { name: 'ပရင့်ဒီဇိုင်း', icon: <FileText size={18} />, path: AppRoute.VOUCHER_SETTINGS, group: 'ဆက်တင်' },
       { name: 'App Version', icon: <Smartphone size={18} />, path: AppRoute.APP_VERSION_SETTINGS, group: 'ဆက်တင်', permission: 'CAN_ACCESS_USERS_READ' }
@@ -273,7 +282,7 @@ const Layout: React.FC<LayoutProps> = ({
         description: groupDescriptions[group],
         items: menuItems
           .filter((item) => item.group === group)
-          .filter((item) => hasMenuAccess(user, item.permission))
+          .filter((item) => hasMenuAccess(user, item.permission, item.permissionMatch ?? 'all'))
       }))
       .filter((group) => group.items.length > 0);
   }, [menuItems, user]);
@@ -365,7 +374,7 @@ const Layout: React.FC<LayoutProps> = ({
     <div className={`h-screen overflow-x-hidden flex ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       {/* Sidebar */}
       <div className={`hidden lg:flex flex-col h-screen ${isSidebarCollapsed ? 'w-20' : 'w-72'} ${isDark ? 'bg-slate-900 border-r border-slate-800' : 'bg-white border-r border-slate-200'} shadow-xl overflow-hidden transition-all duration-200`}>
-        {/* Header — indigo gradient matching mobile DrawerMenu */}
+        {/* Header — teal gradient matching mobile DrawerMenu */}
         <div className="relative bg-indigo-600 overflow-hidden flex-shrink-0">
           {/* Decorative circles */}
           <div className="absolute w-32 h-32 rounded-full bg-white/[0.07] -top-8 -right-6 pointer-events-none" />

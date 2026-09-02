@@ -168,7 +168,8 @@ class ServiceJobDetailViewModel(
         warehouseId: Int?,
         txnNo:     String?,
         dueDate:   String?,
-        payments:  List<PaymentTransactionDTO>? = null
+        payments:  List<PaymentTransactionDTO>? = null,
+        discountAllocationMethod: String = "PRO_RATA"
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
@@ -179,6 +180,7 @@ class ServiceJobDetailViewModel(
                     SettleJobRequest(
                         finalCost       = finalCost,
                         discountAmount  = discount,
+                        discountAllocationMethod = discountAllocationMethod,
                         foc             = foc,
                         paidAmount      = paid,
                         paymentMethodId = payments?.firstOrNull()?.paymentMethodId ?: methodId,
@@ -356,6 +358,42 @@ class ServiceJobDetailViewModel(
                 val data = res.body()?.data
                 if (res.isSuccessful && data != null) {
                     _uiState.update { it.copy(job = data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun holdEstimate(reason: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.holdServiceJobEstimate(token, jobId, ReasonRequest(reason.trim()))
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(job = data, actionLoading = false, actionSuccess = "Estimate Hold ထားပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun rejectEstimate(reason: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.rejectServiceJobEstimate(token, jobId, ReasonRequest(reason.trim()))
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update { it.copy(job = data, actionLoading = false, actionSuccess = "Estimate ငြင်းပယ်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }

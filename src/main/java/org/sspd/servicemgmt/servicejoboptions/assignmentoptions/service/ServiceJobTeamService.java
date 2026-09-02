@@ -1,7 +1,7 @@
 package org.sspd.servicemgmt.servicejoboptions.assignmentoptions.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -45,7 +45,7 @@ public class ServiceJobTeamService {
     private final ServiceJobActivityRepository activityRepository;
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final DataEventPublisher dataEventPublisher;
     private final CompanySettingsRepository companySettingsRepository;
 
     @Transactional
@@ -732,11 +732,11 @@ handover.setStatus(HandoverStatus.REJECTED);
     }
 
     private void broadcast(String event) {
-        messagingTemplate.convertAndSend("/topic/service-jobs", event);
+        dataEventPublisher.publishTopic("/topic/service-jobs", event);
     }
 
     private void broadcastHandover(String event) {
-        messagingTemplate.convertAndSend("/topic/handovers", event);
-        messagingTemplate.convertAndSend("/topic/service-jobs", event);
+        dataEventPublisher.publishTopic("/topic/handovers", event);
+        dataEventPublisher.publishTopic("/topic/service-jobs", event);
     }
 }

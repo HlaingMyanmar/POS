@@ -155,43 +155,42 @@ export interface BookingDetailDTO {
 
 export interface BookingDTO {
   id?: number;
-  invoiceNo?: string;
+  bookingNo?: string;
   customerId?: number;
   customerName?: string;
   customerPhone?: string;
-  staffId?: number;
-  staffName?: string;
-  paymentMethodId?: number;
-  paymentMethodName?: string;
   bookingDate?: string;
   appointmentDate?: string;
-  totalAmount?: number;
-  status?: string;
+  complaintNote?: string;
+  status?: 'CONFIRMED' | 'ARRIVED' | 'CANCELED';
   remark?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  items?: BookingItemDTO[];
+  linkedJobs?: ServiceJobDTO[];
+  unconvertedItemCount?: number;
+  fullyConverted?: boolean;
+}
+
+export interface BookingItemDTO {
+  id?: number;
+  itemName: string;
   deviceType?: string;
-  brand?: string;
-  model?: string;
-  serialNumber?: string;
+  serialNo?: string;
   color?: string;
   accessories?: string;
-  shelfLocation?: string;
-  depositAmount?: number;
-  signatureData?: string;
-  attachments?: {
+  problemDesc?: string;
+  itemCondition?: string;
+  noticed?: string;
+  convertedJobId?: number;
+  photos?: {
     id?: number;
-    attachmentType?: string;
+    slot?: number;
     fileName?: string;
+    contentType?: string;
     dataUrl?: string;
-  }[];
-  details?: BookingDetailDTO[];
-  devices?: {
-    id?: number;
-    deviceType?: string;
-    brand?: string;
-    model?: string;
-    serialNumber?: string;
-    color?: string;
-    accessories?: string;
+    imageUrl?: string;
+    thumbnailUrl?: string;
   }[];
 }
 

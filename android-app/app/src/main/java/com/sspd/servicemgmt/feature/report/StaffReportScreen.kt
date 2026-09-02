@@ -62,7 +62,7 @@ fun StaffReportScreen(onBack: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Primary, titleContentColor = Color.White
+                    containerColor = Primary, titleContentColor = OnPrimary
                 )
             )
         }

@@ -172,6 +172,14 @@ class ServiceJobDetailViewModel(
         ApiClient.service.submitLeadFinalCheck(it, jobId, NoteRequest(note.ifBlank { null }))
     }
 
+    fun approveFinal() = runJobAction("Supervisor အတည်ပြုပြီး Job COMPLETED ဖြစ်ပါပြီ") {
+        ApiClient.service.approveServiceJobFinal(it, jobId)
+    }
+
+    fun returnFinalCheck(reason: String) = runJobAction("Lead Technician ထံ ပြန်ပြင်ရန်ပို့ပြီးပါပြီ") {
+        ApiClient.service.returnFinalCheck(it, jobId, ReasonRequest(reason))
+    }
+
     private inline fun runJobAction(successMsg: String, crossinline call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<ServiceJobDTO>>) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
@@ -293,7 +301,8 @@ class ServiceJobDetailViewModel(
         methodId:  Int?,
         txnNo:     String?,
         dueDate:   String?,
-        payments:  List<PaymentTransactionDTO>? = null
+        payments:  List<PaymentTransactionDTO>? = null,
+        discountAllocationMethod: String = "PRO_RATA"
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
@@ -304,6 +313,7 @@ class ServiceJobDetailViewModel(
                     SettleJobRequest(
                         finalCost       = finalCost,
                         discountAmount  = discount,
+                        discountAllocationMethod = discountAllocationMethod,
                         foc             = foc,
                         paidAmount      = paid,
                         paymentMethodId = payments?.firstOrNull()?.paymentMethodId ?: methodId,
@@ -475,6 +485,40 @@ class ServiceJobDetailViewModel(
                 val res = ApiClient.service.approveServiceJobEstimate(token, jobId)
                 if (res.isSuccessful && res.body()?.data != null) {
                     _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "Estimate အတည်ပြုပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun holdEstimate(reason: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.holdServiceJobEstimate(token, jobId, ReasonRequest(reason.trim()))
+                if (res.isSuccessful && res.body()?.data != null) {
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "Estimate Hold ထားပြီး") }
+                } else {
+                    _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
+    fun rejectEstimate(reason: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.rejectServiceJobEstimate(token, jobId, ReasonRequest(reason.trim()))
+                if (res.isSuccessful && res.body()?.data != null) {
+                    _uiState.update { it.copy(job = res.body()?.data, actionLoading = false, actionSuccess = "Estimate ငြင်းပယ်ပြီး") }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }

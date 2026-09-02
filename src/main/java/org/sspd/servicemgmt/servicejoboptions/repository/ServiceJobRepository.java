@@ -24,6 +24,7 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select j from ServiceJob j where j.id = :id")
     Optional<ServiceJob> findByIdForUpdate(@Param("id") Integer id);
+
     @Query("""
         SELECT CASE WHEN COUNT(j) > 0 THEN true ELSE false END
         FROM ServiceJob j
@@ -46,7 +47,6 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
         """)
     List<ServiceJob> findOverdue(@Param("now") LocalDateTime now);
 
-    Optional<ServiceJob> findTopByOrderByIdDesc();
     List<ServiceJob> findByStatus(ServiceJobStatus status);
     List<ServiceJob> findByStatusAndPaymentStatusIsNullOrderByReceivedDateDesc(ServiceJobStatus status);
     List<ServiceJob> findByCustomerId(Integer customerId);

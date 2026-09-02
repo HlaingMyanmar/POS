@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.sspd.servicemgmt.core.network.ApiClient
+import com.sspd.servicemgmt.core.ui.theme.OnPrimary
 import com.sspd.servicemgmt.core.ui.theme.Primary
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import org.json.JSONArray
@@ -78,8 +79,8 @@ fun WebModuleScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
+                    titleContentColor = OnPrimary,
+                    navigationIconContentColor = OnPrimary,
                 ),
             )
         },

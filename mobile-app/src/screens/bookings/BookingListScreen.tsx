@@ -19,12 +19,9 @@ const fmtDate = (v?: string) => {
 };
 
 const STATUS_COL: Record<string, { bg: string; text: string }> = {
-  Pending:    { bg: C.warningBg,    text: C.warning  },
-  Confirmed:  { bg: C.primaryLight, text: C.primary  },
-  IN_STORAGE: { bg: '#ccfbf1',      text: '#0f766e'  },
-  Converted:  { bg: C.violetBg,     text: C.violet   },
-  Completed:  { bg: C.successBg,    text: C.success  },
-  Cancelled:  { bg: C.dangerBg,     text: C.danger   },
+  CONFIRMED: { bg: C.primaryLight, text: C.primary },
+  ARRIVED:   { bg: '#ccfbf1', text: '#0f766e' },
+  CANCELED:  { bg: C.dangerBg, text: C.danger },
 };
 
 export default function BookingListScreen({ navigation }: any) {
@@ -59,19 +56,17 @@ export default function BookingListScreen({ navigation }: any) {
   useWsTopic('/topic/booking', () => load(true));
 
   const renderItem = ({ item }: { item: BookingDTO }) => {
-    const col = STATUS_COL[item.status ?? 'Pending'] ?? STATUS_COL.Pending;
+    const col = STATUS_COL[item.status ?? 'CONFIRMED'] ?? STATUS_COL.CONFIRMED;
     return (
       <TouchableOpacity style={st.card} onPress={() => navigation.navigate('BookingDetail', { bookingId: item.id })} activeOpacity={0.75}>
         <View style={st.cardTop}>
-          <Text style={st.code}>{item.invoiceNo ?? `#${item.id}`}</Text>
+          <Text style={st.code}>{item.bookingNo ?? `#${item.id}`}</Text>
           <View style={[st.badge, { backgroundColor: col.bg }]}>
             <Text style={[st.badgeText, { color: col.text }]}>{(item.status ?? '').replace('_', ' ')}</Text>
           </View>
         </View>
         <Text style={st.customer}>{item.customerName ?? '-'}</Text>
-        {item.brand || item.model ? (
-          <Text style={st.device}>{[item.brand, item.model, item.deviceType].filter(Boolean).join(' · ')}</Text>
-        ) : null}
+        {item.complaintNote ? <Text style={st.device}>{item.complaintNote}</Text> : null}
         {/* Date row */}
         <View style={st.dateRow}>
           {item.bookingDate ? (
@@ -88,7 +83,7 @@ export default function BookingListScreen({ navigation }: any) {
           ) : null}
         </View>
         <View style={st.cardBottom}>
-          {item.totalAmount ? <Text style={st.amount}>{Number(item.totalAmount).toLocaleString()} Ks</Text> : <View />}
+          <Text style={st.device}>{item.unconvertedItemCount ?? 0} item(s) pending conversion</Text>
         </View>
       </TouchableOpacity>
     );

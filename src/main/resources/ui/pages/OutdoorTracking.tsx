@@ -363,7 +363,7 @@ const OutdoorTracking: React.FC = () => {
         const route = payload?.routes?.[0];
         if (!route?.geometry) throw new Error('Route not found');
         routeLayer.current = L.geoJSON(route.geometry, {
-          style: { color: '#4F46E5', weight: 5, opacity: 0.85 }
+          style: { color: '#0F766E', weight: 5, opacity: 0.85 }
         }).addTo(map);
         const customerMarker = L.circleMarker(
           [selected.customerLatitude, selected.customerLongitude],
@@ -461,7 +461,7 @@ const OutdoorTracking: React.FC = () => {
     const boundsPoints: number[][] = [...points];
 
     if (points.length > 1) {
-      L.polyline(points, { color: '#4F46E5', weight: 5, opacity: 0.85 })
+      L.polyline(points, { color: '#0F766E', weight: 5, opacity: 0.85 })
         .bindPopup(`မှတ်တမ်းတင်ထားသော GPS လမ်းကြောင်း · ${points.length} points`)
         .addTo(map);
     }

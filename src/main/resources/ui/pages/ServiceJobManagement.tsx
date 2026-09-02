@@ -115,6 +115,7 @@ const STATUS_ACTION: Record<string, string> = {
 const LINE_CONFIRMATION_STATUS = [
   { value: 'RECOMMENDED', label: 'အကြံပြုထားသည်', cls: 'border-amber-200 bg-amber-50 text-amber-800' },
   { value: 'INSPECTING', label: 'စစ်ဆေးဆဲ', cls: 'border-sky-200 bg-sky-50 text-sky-800' },
+  { value: 'CUSTOMER_HOLD', label: 'Customer စောင့်ဆိုင်း', cls: 'border-violet-200 bg-violet-50 text-violet-800' },
   { value: 'CUSTOMER_APPROVED', label: 'Customer အတည်ပြုပြီး', cls: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
   { value: 'CUSTOMER_REJECTED', label: 'Customer ငြင်းပယ်', cls: 'border-rose-200 bg-rose-50 text-rose-800' },
   { value: 'IN_PROGRESS', label: 'လုပ်ဆောင်ဆဲ', cls: 'border-indigo-200 bg-indigo-50 text-indigo-800' },
@@ -124,6 +125,7 @@ const lineConfirmationMeta = (value?: string) => LINE_CONFIRMATION_STATUS.find(i
 const LINE_CONFIRMATION_HELP: Record<string, string> = {
   RECOMMENDED: 'Technician အကြံပြုထားဆဲ — Customer ကို မေးရန်',
   INSPECTING: 'စစ်ဆေးနေဆဲ — ဈေးနှင့် လုပ်ဆောင်ချက် မသတ်မှတ်ရသေး',
+  CUSTOMER_HOLD: 'Customer ဆုံးဖြတ်ချက် စောင့်ဆိုင်းနေသည်',
   CUSTOMER_APPROVED: 'Customer သဘောတူပြီး — ပြင်ဆင်မှု စတင်နိုင်သည်',
   CUSTOMER_REJECTED: 'Customer ငြင်းပယ်ထားသည် — ဒီလိုင်းကို ကောက်ခံမည်မဟုတ်',
   IN_PROGRESS: 'လက်ရှိ လုပ်ဆောင်နေသည်',
@@ -186,7 +188,7 @@ const lineOutOfRange = (l: any) =>
   || outsideMinMax(l.approvedPrice, l.minPrice, l.maxPrice)
   || outsideMinMax(l.billedPrice, l.minPrice, l.maxPrice);
 const displayChargeUnit = (l: any) => {
-  if (l.confirmationStatus === 'CUSTOMER_REJECTED' || l.warrantyCovered) return 0;
+  if (l.confirmationStatus === 'CUSTOMER_REJECTED' || l.confirmationStatus === 'CUSTOMER_HOLD' || l.warrantyCovered) return 0;
   if (l.billedPrice !== '' && l.billedPrice != null) return Number(l.billedPrice);
   if (['CUSTOMER_APPROVED', 'IN_PROGRESS', 'COMPLETED'].includes(l.confirmationStatus) && l.approvedPrice !== '' && l.approvedPrice != null) {
     return Number(l.approvedPrice);
@@ -194,7 +196,7 @@ const displayChargeUnit = (l: any) => {
   return Number(l.estimatedPrice ?? l.price ?? 0);
 };
 const serviceLineGross = (line: any) => {
-  if (line.confirmationStatus === 'CUSTOMER_REJECTED' || line.warrantyCovered) return 0;
+  if (line.confirmationStatus === 'CUSTOMER_REJECTED' || line.confirmationStatus === 'CUSTOMER_HOLD' || line.warrantyCovered) return 0;
   return Number(line.qty || 1) * displayChargeUnit(line);
 };
 const serviceLineBalance = (line: any) => Math.max(0, serviceLineGross(line) - Number(line.discountAmount || 0));
@@ -854,7 +856,9 @@ const ServiceLinePriceFields: React.FC<{
   ].filter(Boolean).join(' · ');
   const charge = displayChargeUnit(line);
   const lineGross = Number(line.qty || 1) * charge;
-  const lineNet = line.confirmationStatus === 'CUSTOMER_REJECTED' ? 0 : line.warrantyCovered ? 0 : Math.max(0, lineGross - Number(line.discountAmount || 0));
+  const lineNet = line.confirmationStatus === 'CUSTOMER_REJECTED' || line.confirmationStatus === 'CUSTOMER_HOLD'
+    ? 0
+    : line.warrantyCovered ? 0 : Math.max(0, lineGross - Number(line.discountAmount || 0));
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
@@ -1656,6 +1660,41 @@ export default function ServiceJobManagement() {
       Swal.fire({ icon: 'success', title: 'Estimate အတည်ပြုပြီး', timer: 1000, showConfirmButton: false }); load();
     } else Swal.fire('အမှား', res.message, 'error');
   };
+  const handleHoldEstimate = async (job: any) => {
+    const result = await Swal.fire({
+      title: 'Estimate Hold',
+      text: 'Customer ဆုံးဖြတ်ချက် စောင့်ဆိုင်းမည်လား?',
+      input: 'text',
+      inputPlaceholder: 'မှတ်ချက် (ဥပမာ — customer ပြန်ဆက်သွယ်ရန်)',
+      showCancelButton: true,
+      confirmButtonText: 'Hold ထားမည်',
+      cancelButtonText: 'မလုပ်တော့ပါ',
+    });
+    if (!result.isConfirmed) return;
+    const res = await serviceJobService.holdEstimate(job.id, result.value || undefined);
+    if (res.success) {
+      Swal.fire({ icon: 'info', title: 'Estimate Hold ထားပြီး', timer: 1000, showConfirmButton: false });
+      load();
+    } else Swal.fire('အမှား', res.message, 'error');
+  };
+  const handleRejectEstimate = async (job: any) => {
+    const result = await Swal.fire({
+      title: 'Estimate ငြင်းပယ်',
+      text: 'Customer မလုပ်ဘူးဟု ဆုံးဖြတ်ပါက Job ကို ပယ်ဖျက်မည်။',
+      input: 'text',
+      inputPlaceholder: 'ငြင်းပယ်ရသည့် အကြောင်းရင်း',
+      showCancelButton: true,
+      confirmButtonColor: '#e11d48',
+      confirmButtonText: 'ငြင်းပယ်မည်',
+      cancelButtonText: 'မလုပ်တော့ပါ',
+    });
+    if (!result.isConfirmed) return;
+    const res = await serviceJobService.rejectEstimate(job.id, result.value || undefined);
+    if (res.success) {
+      Swal.fire({ icon: 'success', title: 'Estimate ငြင်းပယ်ပြီး', timer: 1000, showConfirmButton: false });
+      load();
+    } else Swal.fire('အမှား', res.message, 'error');
+  };
   const handleApproveFinal = async (job: any) => {
     try {
       const teamResponse = await serviceJobTeamService.getTeam(job.id);
@@ -2166,7 +2205,11 @@ export default function ServiceJobManagement() {
                           <button onClick={() => handleApplyCredit(j)} className="px-2 py-1 text-xs border border-indigo-200 rounded-lg text-indigo-700 font-bold">Credit</button>
                         )}
                         {!j.estimateApproved && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
-                          <button onClick={() => handleApproveEstimate(j)} className="px-2 py-1 text-xs border border-slate-200 rounded-lg font-bold">Estimate ✓</button>
+                          <>
+                            <button onClick={() => handleApproveEstimate(j)} className="px-2 py-1 text-xs border border-slate-200 rounded-lg font-bold">Estimate ✓</button>
+                            <button onClick={() => handleHoldEstimate(j)} className="px-2 py-1 text-xs border border-violet-200 rounded-lg font-bold text-violet-700">Hold</button>
+                            <button onClick={() => handleRejectEstimate(j)} className="px-2 py-1 text-xs border border-rose-200 rounded-lg font-bold text-rose-700">ငြင်းပယ်</button>
+                          </>
                         )}
                         {canAssignTechnician && j.leadFinalCheckStatus && !j.finalApprovalStatus && j.status !== 'DELIVERED' && j.status !== 'CANCELLED' && (
                           <button onClick={() => handleApproveFinal(j)} className="px-2 py-1 text-xs border border-emerald-200 rounded-lg font-bold text-emerald-700">Supervisor Approval ✓</button>

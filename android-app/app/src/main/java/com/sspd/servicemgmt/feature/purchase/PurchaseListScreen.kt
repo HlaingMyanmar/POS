@@ -84,7 +84,7 @@ fun PurchaseListScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = PurchaseColor,
-                    titleContentColor = Color.White
+                    titleContentColor = OnPrimary
                 )
             )
         },

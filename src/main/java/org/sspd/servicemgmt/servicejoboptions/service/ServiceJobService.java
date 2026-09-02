@@ -58,6 +58,7 @@ import org.sspd.servicemgmt.technicianvisitoptions.repository.TechnicianVisitRep
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRepository;
+import org.sspd.servicemgmt.servicejoboptions.support.CustomerNotifier;
 import org.sspd.servicemgmt.servicejoboptions.support.ServiceJobSettlementBreakdown;
 import org.sspd.servicemgmt.servicejoboptions.support.ServiceJobSettlementCalculator;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobNotificationRepository;
@@ -82,7 +83,7 @@ import org.sspd.servicemgmt.stockoptions.stockmovementoptions.service.StockMovem
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -95,6 +96,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -119,7 +121,7 @@ public class ServiceJobService {
     private final CreditService creditService;
     private final CustomerPaymentService customerPaymentService;
     private final CustomerCreditApplicationRepository creditApplicationRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final DataEventPublisher dataEventPublisher;
     private final ReworkPartResolutionRepository reworkResolutionRepo;
     private final StockMovementService stockMovementService;
     private final ServiceJobActivityRepository activityRepo;
@@ -130,6 +132,7 @@ public class ServiceJobService {
     private final ServiceJobAssignmentRepository assignmentRepository;
     private final ServiceJobHandoverRepository handoverRepository;
     private final CompanySettingsRepository companySettingsRepository;
+    private final CustomerNotifier customerNotifier;
 
     private static final Collection<AssignmentStatus> VISIBLE_ASSIGNMENT_STATUSES = EnumSet.of(
             AssignmentStatus.PENDING,
@@ -220,7 +223,7 @@ public class ServiceJobService {
     @Transactional
     public ServiceJobDTO create(ServiceJobDTO dto) {
         ServiceJob job = ServiceJob.builder()
-            .jobNo(generateJobNo())
+            .jobNo(temporaryJobNo())
             .customer(customerRepo.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found")))
             .itemName(dto.getItemName())
@@ -258,11 +261,13 @@ public class ServiceJobService {
         buildLines(job, dto);
         buildProductParts(job, dto);
         refreshEstimateApproval(job);
+        job = repo.saveAndFlush(job);
+        job.setJobNo(generateJobNo(job.getId()));
         job = repo.save(job);
         teamService.syncFromJob(job.getId());
         ServiceJobDTO result = toDto(job);
         recordActivity(job, "CREATED", null, job.getStatus() != null ? job.getStatus().name() : "RECEIVED", "Job created");
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_CREATED");
+        broadcastJobEvent( "JOB_CREATED");
         return result;
     }
 
@@ -276,12 +281,11 @@ public class ServiceJobService {
 
     @Transactional
     public ServiceJobDTO update(Integer id, ServiceJobDTO dto) {
-        ServiceJob job = repo.findById(id)
+        ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         BigDecimal previousEstimate = job.getEstimatedCost() != null ? job.getEstimatedCost() : BigDecimal.ZERO;
 
-        if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
-            throw new IllegalStateException("Delivered or cancelled service jobs cannot be edited");
+        assertEditable(job);
 
         if (dto.getCustomerId() != null)
             job.setCustomer(customerRepo.findById(dto.getCustomerId())
@@ -323,7 +327,8 @@ public class ServiceJobService {
             buildLines(job, dto);
         }
         if (dto.getProductParts() != null) {
-            reverseProductParts(job);
+            // Job parts are only issued from inventory when settlement creates the
+            // internal sale. Before settlement there is nothing to put back into stock.
             job.getProductParts().clear();
             buildProductParts(job, dto);
         } else {
@@ -344,7 +349,7 @@ public class ServiceJobService {
         teamService.syncFromJob(job.getId());
         ServiceJobDTO updated = toDto(job);
         recordActivity(job, "UPDATED", null, job.getStatus() != null ? job.getStatus().name() : null, "Job updated");
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_UPDATED");
+        broadcastJobEvent( "JOB_UPDATED");
         return updated;
     }
 
@@ -373,6 +378,9 @@ public class ServiceJobService {
             throw new IllegalStateException("Supervisor final approval is required before completing this job");
         if (status == ServiceJobStatus.WAITING_PARTS && (holdReason == null || holdReason.isBlank()))
             throw new IllegalArgumentException("ပစ္စည်းစောင့်ရသည့်အကြောင်းရင်း ဖြည့်ပါ။");
+        if (status == ServiceJobStatus.IN_PROGRESS && job.getLines() != null
+                && job.getLines().stream().anyMatch(l -> l.getConfirmationStatus() == ServiceLineConfirmationStatus.CUSTOMER_HOLD))
+            throw new IllegalStateException("Customer estimate hold — hold ဖြေရှင်းပြီးမှ ပြင်ဆင်မှုစတင်နိုင်ပါသည်။");
         if (status == ServiceJobStatus.IN_PROGRESS && job.getEstimatedCost() != null
                 && job.getEstimatedCost().compareTo(BigDecimal.ZERO) > 0
                 && !Boolean.TRUE.equals(job.getEstimateApproved()))
@@ -390,7 +398,7 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "STATUS", from != null ? from.name() : null, status.name(),
                 status == ServiceJobStatus.WAITING_PARTS ? holdReason : null);
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_STATUS_CHANGED");
+        broadcastJobEvent( "JOB_STATUS_CHANGED");
         return result;
     }
 
@@ -436,7 +444,7 @@ public class ServiceJobService {
             recordActivity(job, "FINAL_APPROVAL", currentStatus != null ? currentStatus.name() : null, ServiceJobStatus.COMPLETED.name(), null);
         }
         ServiceJobDTO result = toDto(repo.save(job));
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_FINAL_APPROVED");
+        broadcastJobEvent( "JOB_FINAL_APPROVED");
         return result;
     }
 
@@ -467,7 +475,7 @@ public class ServiceJobService {
             recordActivity(job, "LEAD_FINAL_CHECK", job.getStatus().name(), job.getStatus().name(), trimToNull(note));
         }
         ServiceJobDTO result = toDto(repo.save(job));
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_LEAD_FINAL_CHECKED");
+        broadcastJobEvent( "JOB_LEAD_FINAL_CHECKED");
         return result;
     }
 
@@ -497,7 +505,7 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "SUPERVISOR_RETURNED", ServiceJobStatus.IN_PROGRESS.name(),
                 ServiceJobStatus.IN_PROGRESS.name(), reason.trim());
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_FINAL_CHECK_RETURNED");
+        broadcastJobEvent( "JOB_FINAL_CHECK_RETURNED");
         return result;
     }
 
@@ -610,10 +618,11 @@ public class ServiceJobService {
 
     @Transactional
     public ServiceJobDTO settle(Integer id, SettleDTO dto) {
-        ServiceJob job = repo.findById(id)
+        ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
 
         teamService.assertCanComplete(id);
+        assertReadyForSettlement(job);
 
         boolean isFoc = Boolean.TRUE.equals(dto.getFoc());
         stampBilledPrices(job);
@@ -699,13 +708,13 @@ public class ServiceJobService {
         }
         recordActivity(saved, "SETTLED", saved.getStatus().name(), ServiceJobStatus.COMPLETED.name(),
                 "Settled " + saved.getNetAmount());
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_SETTLED");
+        broadcastJobEvent( "JOB_SETTLED");
         return toDto(repo.findById(saved.getId()).orElse(saved));
     }
 
     @Transactional
     public ServiceJobDTO payDue(Integer id, SettleDTO dto) {
-        ServiceJob job = repo.findById(id)
+        ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
 
         BigDecimal currentDue = job.getDueAmount() != null ? job.getDueAmount() : BigDecimal.ZERO;
@@ -761,7 +770,7 @@ public class ServiceJobService {
 
         recordActivity(saved, "DUE_COLLECTED", null, saved.getPaymentStatus().name(),
                 "Cash/Bank " + applied + ", payment discount " + paymentDiscount + ", AR reduced " + receivableReduction);
-        messagingTemplate.convertAndSend("/topic/service-jobs", paymentDiscount.signum() > 0 ? "JOB_DUE_PAID_WITH_DISCOUNT" : "JOB_PAY_DUE");
+        broadcastJobEvent( paymentDiscount.signum() > 0 ? "JOB_DUE_PAID_WITH_DISCOUNT" : "JOB_PAY_DUE");
         return toDto(saved);
     }
 
@@ -807,7 +816,7 @@ public class ServiceJobService {
 
     @Transactional
     public ServiceJobDTO deliver(Integer id) {
-        ServiceJob job = repo.findById(id)
+        ServiceJob job = repo.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         if (job.getStatus() != ServiceJobStatus.COMPLETED)
             throw new IllegalStateException("Only completed jobs can be marked as delivered");
@@ -823,14 +832,14 @@ public class ServiceJobService {
         job.setDeliveredDate(LocalDateTime.now());
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "DELIVERED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.DELIVERED.name(), null);
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DELIVERED");
+        broadcastJobEvent( "JOB_DELIVERED");
         return result;
     }
 
     @Transactional
     public ServiceJobDTO approveDueDelivery(Integer id, String reason) {
         if (reason == null || reason.isBlank()) throw new IllegalArgumentException("Due delivery approval reason is required.");
-        ServiceJob job = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        ServiceJob job = repo.findByIdForUpdate(id).orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         if (job.getStatus() != ServiceJobStatus.COMPLETED || nz(job.getDueAmount()).signum() <= 0)
             throw new IllegalStateException("Only a completed job with outstanding due can be approved.");
         boolean enabled = serviceAllowDeliveryWithDue();
@@ -840,7 +849,7 @@ public class ServiceJobService {
         job.setDueDeliveryApprovalReason(reason.trim());
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "DUE_DELIVERY_APPROVED", null, job.getStatus().name(), reason.trim());
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DUE_DELIVERY_APPROVED");
+        broadcastJobEvent( "JOB_DUE_DELIVERY_APPROVED");
         return result;
     }
 
@@ -948,7 +957,7 @@ public class ServiceJobService {
         }
 
         ServiceJob rework = ServiceJob.builder()
-            .jobNo(generateJobNo()).customer(original.getCustomer())
+            .jobNo(temporaryJobNo()).customer(original.getCustomer())
             .assignedStaff(resolveAssignedTechnician(req.getAssignedStaffId(), original.getAssignedStaff()))
             .itemName(original.getItemName()).deviceType(original.getDeviceType()).itemCondition(original.getItemCondition())
             .deviceConditions(original.getDeviceConditions()).partRequests(original.getPartRequests())
@@ -973,6 +982,8 @@ public class ServiceJobService {
                 .warrantyCovered(customerCharge.compareTo(BigDecimal.ZERO) == 0).build());
         }
 
+        rework = repo.saveAndFlush(rework);
+        rework.setJobNo(generateJobNo(rework.getId()));
         rework = repo.save(rework);
         if (mode != ReworkResolutionMode.SERVICE_ONLY) {
             updateOldPartDisposition(originalPart, req.getOldPartDisposition());
@@ -995,7 +1006,7 @@ public class ServiceJobService {
         if (mode == ReworkResolutionMode.REFUND) {
             recordReworkRefund(rework, refundAmount, req.getRefundPaymentMethodId(), req.getRefundTransactionNo());
         }
-        messagingTemplate.convertAndSend("/topic/service-jobs", "REWORK_CREATED");
+        broadcastJobEvent( "REWORK_CREATED");
         return toDto(rework);
     }
 
@@ -1096,21 +1107,21 @@ public class ServiceJobService {
     }
     @Transactional
     public void delete(Integer id) {
-        ServiceJob job = repo.findById(id)
+        ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
             throw new IllegalStateException("Settled job ကို ဖျက်မရပါ။ Settlement void လုပ်ပါ။");
         if (job.getStatus() == ServiceJobStatus.DELIVERED)
             throw new IllegalStateException("ပေးအပ်ပြီးသော Job ကို ဖျက်မရပါ။");
         repo.deleteById(id);
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_DELETED");
+        broadcastJobEvent( "JOB_DELETED");
     }
 
     @Transactional
     public ServiceJobDTO voidSettlement(Integer id, String reason) {
         if (reason == null || reason.isBlank())
             throw new IllegalArgumentException("Void reason is required");
-        ServiceJob job = repo.findById(id)
+        ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         if (Boolean.TRUE.equals(job.getVoided()))
             throw new IllegalStateException("Settlement is already voided");
@@ -1126,7 +1137,10 @@ public class ServiceJobService {
                 recordActivity(job, "INVENTORY_REVERSED", null, job.getStatus().name(),
                         "Linked sale #" + saleId + " voided — inventory/COGS reversed");
             }
-            catch (Exception ignored) { /* inventory sale may already be void */ }
+            catch (Exception ex) {
+                recordActivity(job, "INVENTORY_REVERSE_FAILED", null, job.getStatus().name(),
+                        "Linked sale #" + saleId + " void failed: " + ex.getMessage());
+            }
             job.setSaleId(null);
         }
 
@@ -1168,7 +1182,7 @@ public class ServiceJobService {
         job.setStatus(ServiceJobStatus.IN_PROGRESS);
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "VOIDED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.IN_PROGRESS.name(), reason);
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_VOIDED");
+        broadcastJobEvent( "JOB_VOIDED");
         return result;
     }
 
@@ -1182,7 +1196,9 @@ public class ServiceJobService {
         if (job.getLines() != null) {
             for (ServiceJobLine line : job.getLines()) {
                 ServiceLineConfirmationStatus status = line.getConfirmationStatus();
-                if (status == ServiceLineConfirmationStatus.RECOMMENDED || status == ServiceLineConfirmationStatus.INSPECTING) {
+                if (status == ServiceLineConfirmationStatus.RECOMMENDED
+                        || status == ServiceLineConfirmationStatus.INSPECTING
+                        || status == ServiceLineConfirmationStatus.CUSTOMER_HOLD) {
                     line.setConfirmationStatus(ServiceLineConfirmationStatus.CUSTOMER_APPROVED);
                     if (line.getApprovedPrice() == null) {
                         line.setApprovedPrice(line.estimateUnitPrice());
@@ -1194,10 +1210,90 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "ESTIMATE_APPROVED", null, job.getStatus() != null ? job.getStatus().name() : null,
                 "Estimate " + job.getEstimatedCost());
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_ESTIMATE_APPROVED");
+        broadcastJobEvent( "JOB_ESTIMATE_APPROVED");
         return result;
     }
 
+    @Transactional
+    public ServiceJobDTO holdEstimate(Integer id, String reason) {
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
+            throw new IllegalStateException("Closed jobs cannot be put on estimate hold");
+        job.setEstimateApproved(false);
+        job.setEstimateApprovedAt(null);
+        job.setEstimateApprovedBy(null);
+        if (job.getLines() != null) {
+            for (ServiceJobLine line : job.getLines()) {
+                ServiceLineConfirmationStatus status = line.getConfirmationStatus();
+                if (status == ServiceLineConfirmationStatus.RECOMMENDED
+                        || status == ServiceLineConfirmationStatus.INSPECTING
+                        || status == ServiceLineConfirmationStatus.CUSTOMER_APPROVED) {
+                    line.setConfirmationStatus(ServiceLineConfirmationStatus.CUSTOMER_HOLD);
+                }
+            }
+        }
+        ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "ESTIMATE_HOLD", null, job.getStatus() != null ? job.getStatus().name() : null,
+                trimToNull(reason));
+        broadcastJobEvent( "JOB_ESTIMATE_HOLD");
+        return result;
+    }
+
+    @Transactional
+    public ServiceJobDTO rejectEstimate(Integer id, String reason) {
+        ServiceJob job = repo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        if (job.getStatus() == ServiceJobStatus.DELIVERED)
+            throw new IllegalStateException("Delivered jobs cannot reject estimate");
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
+            throw new IllegalStateException("Settled jobs cannot reject estimate");
+        ServiceJobStatus from = job.getStatus();
+        if (job.getLines() != null) {
+            for (ServiceJobLine line : job.getLines()) {
+                ServiceLineConfirmationStatus status = line.getConfirmationStatus();
+                if (status != ServiceLineConfirmationStatus.CUSTOMER_REJECTED
+                        && status != ServiceLineConfirmationStatus.COMPLETED) {
+                    line.setConfirmationStatus(ServiceLineConfirmationStatus.CUSTOMER_REJECTED);
+                    line.refreshCharge();
+                }
+            }
+        }
+        job.setEstimateApproved(false);
+        job.setEstimateApprovedAt(null);
+        job.setEstimateApprovedBy(null);
+        job.setStatus(ServiceJobStatus.CANCELLED);
+        ServiceJobDTO result = toDto(repo.save(job));
+        recordActivity(job, "ESTIMATE_REJECTED", from != null ? from.name() : null,
+                ServiceJobStatus.CANCELLED.name(), trimToNull(reason));
+        broadcastJobEvent( "JOB_ESTIMATE_REJECTED");
+        return result;
+    }
+
+    static void assertEditable(ServiceJob job) {
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
+            throw new IllegalStateException("Settled service jobs cannot be edited. Void the settlement first.");
+        if (job.getStatus() == ServiceJobStatus.COMPLETED)
+            throw new IllegalStateException("Completed service jobs cannot be edited. Return the final check for rework first.");
+        if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
+            throw new IllegalStateException("Delivered or cancelled service jobs cannot be edited");
+    }
+
+    static void assertReadyForSettlement(ServiceJob job) {
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
+            throw new IllegalStateException("This service job has already been settled");
+        if (job.getStatus() != ServiceJobStatus.COMPLETED)
+            throw new IllegalStateException("Job must be completed before settlement");
+        if (!Boolean.TRUE.equals(job.getLeadFinalCheckStatus()))
+            throw new IllegalStateException("Lead Technician final check is required before settlement");
+        if (!Boolean.TRUE.equals(job.getFinalApprovalStatus()))
+            throw new IllegalStateException("Supervisor final approval is required before settlement");
+    }
+
+    /**
+     * Records a customer notification in history. Delivery is delegated to
+     * {@link CustomerNotifier} (default: log-only; no SMS/Viber/Telegram provider yet).
+     */
     @Transactional
     public ServiceJobNotificationDTO notifyCustomer(Integer id, ServiceJobNotificationDTO dto) {
         ServiceJob job = repo.findById(id)
@@ -1212,6 +1308,7 @@ public class ServiceJobService {
             .build());
         job.setLastNotifiedAt(saved.getNotifiedAt());
         repo.save(job);
+        customerNotifier.dispatch(job, channel, dto.getNote(), currentUsername());
         recordActivity(job, "NOTIFY", null, job.getStatus() != null ? job.getStatus().name() : null,
                 channel + (dto.getNote() != null ? ": " + dto.getNote() : ""));
         ServiceJobNotificationDTO out = new ServiceJobNotificationDTO();
@@ -1220,7 +1317,7 @@ public class ServiceJobService {
         out.setNote(saved.getNote());
         out.setActor(saved.getActor());
         out.setNotifiedAt(saved.getNotifiedAt());
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_NOTIFICATION_ADDED");
+        broadcastJobEvent( "JOB_NOTIFICATION_ADDED");
         return out;
     }
 
@@ -1242,7 +1339,7 @@ public class ServiceJobService {
             .uploadedAt(LocalDateTime.now())
             .build());
         recordActivity(job, "ATTACHMENT", null, job.getStatus() != null ? job.getStatus().name() : null, saved.getFileName());
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_ATTACHMENT_ADDED");
+        broadcastJobEvent( "JOB_ATTACHMENT_ADDED");
         return toAttachmentDto(saved);
     }
 
@@ -1253,7 +1350,7 @@ public class ServiceJobService {
         if (!attachment.getServiceJob().getId().equals(jobId))
             throw new IllegalArgumentException("Attachment does not belong to this job");
         attachmentRepo.delete(attachment);
-        messagingTemplate.convertAndSend("/topic/service-jobs", "JOB_ATTACHMENT_DELETED");
+        broadcastJobEvent( "JOB_ATTACHMENT_DELETED");
     }
 
     @Transactional(readOnly = true)
@@ -1376,27 +1473,6 @@ public class ServiceJobService {
                 .build());
         }
         recalculateEstimatedCost(job);
-    }
-
-    private void reverseProductParts(ServiceJob job) {
-        if (job.getProductParts() == null) return;
-        for (ServiceJobPart part : job.getProductParts()) {
-            Product product = part.getProduct();
-            if (Boolean.TRUE.equals(product.getHasSerial())) {
-                for (String sn : splitSerials(part.getSerialNumbers())) {
-                    serialRepo.findBySerialNumber(sn).ifPresent(serial -> {
-                        if (serial.getStatus() == SerialStatus.Used_In_Service) {
-                            serial.setStatus(SerialStatus.Available);
-                            serialRepo.save(serial);
-                        }
-                    });
-                }
-            } else {
-                int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
-                product.setStockQty(currentQty + (part.getQty() != null ? part.getQty() : 0));
-                productRepo.save(product);
-            }
-        }
     }
 
     private void recalculateEstimatedCost(ServiceJob job) {
@@ -1683,9 +1759,13 @@ public class ServiceJobService {
         return max != null && value.compareTo(max) > 0;
     }
 
-    private String generateJobNo() {
-        int next = repo.findTopByOrderByIdDesc().map(j -> j.getId() + 1).orElse(1);
-        return String.format("SJ-%06d", next);
+    private String temporaryJobNo() {
+        return "TMP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    }
+
+    /** Stable job number derived from the persisted PK (same pattern as booking numbers). */
+    static String generateJobNo(Integer id) {
+        return String.format("SJ-%06d", id);
     }
 
     private String generateTxnNo() {
@@ -1897,5 +1977,9 @@ public class ServiceJobService {
             }).toList());
         }
         return dto;
+    }
+
+    private void broadcastJobEvent(Object event) {
+        dataEventPublisher.publishTopic("/topic/service-jobs", event);
     }
 }

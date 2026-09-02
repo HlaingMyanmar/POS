@@ -3,7 +3,6 @@ package com.sspd.servicemgmt.feature.booking
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -21,10 +20,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,6 +31,8 @@ import com.sspd.servicemgmt.core.network.BookingItemDTO
 import com.sspd.servicemgmt.core.network.BookingItemPhotoDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.displayNo
+import com.sspd.servicemgmt.core.ui.component.BookingItemPhotoThumb
+import com.sspd.servicemgmt.core.ui.component.BookingPhotoViewerDialog
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.util.ImageCodec
@@ -95,7 +95,7 @@ fun BookingDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text(state.booking?.displayNo() ?: "Booking အသေးစိတ်", fontWeight = FontWeight.ExtraBold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null, tint = Color.White) } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null, tint = OnPrimary) } },
                 actions = {
                     val b = state.booking
                     val canEdit = b != null && b.status?.uppercase() !in listOf("CANCELED", "CANCELLED") && b.fullyConverted != true
@@ -103,7 +103,7 @@ fun BookingDetailScreen(
                     if (!b?.items.isNullOrEmpty()) IconButton(onClick = onPrint) { Icon(Icons.Outlined.Print, null, tint = Color.White) }
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, null, tint = Color.White) }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary)
             )
         }
     ) { padding ->
@@ -258,6 +258,12 @@ private fun InfoRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label
 
 @Composable
 private fun BookingItemCard(item: BookingItemDTO, complaintFallback: String?, canRemove: Boolean, onRemove: () -> Unit) {
+    var viewerPhoto by remember { mutableStateOf<BookingItemPhotoDTO?>(null) }
+
+    if (viewerPhoto != null) {
+        BookingPhotoViewerDialog(photo = viewerPhoto!!, onDismiss = { viewerPhoto = null })
+    }
+
     Card(shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -279,20 +285,11 @@ private fun BookingItemCard(item: BookingItemDTO, complaintFallback: String?, ca
             Text(item.problemDesc ?: complaintFallback ?: "ပြဿနာဖော်ပြချက်မရှိ", fontSize = 12.sp, color = TextMain)
             item.photos?.takeIf { it.isNotEmpty() }?.let { photos ->
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    photos.forEach { photo -> ItemPhotoThumb(photo) }
+                    photos.forEach { photo ->
+                        BookingItemPhotoThumb(photo = photo, onClick = { viewerPhoto = photo })
+                    }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ItemPhotoThumb(photo: BookingItemPhotoDTO) {
-    val dataUrl = photo.dataUrl
-    val bmp = remember(dataUrl) { dataUrl?.let { ImageCodec.decodeDataUri(it) } }
-    if (bmp != null) {
-        Card(shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, BorderColor)) {
-            Image(bmp.asImageBitmap(), photo.fileName ?: "photo", contentScale = ContentScale.Crop, modifier = Modifier.size(80.dp))
         }
     }
 }
@@ -354,62 +351,209 @@ private fun ReceiveItemsSheet(complaintNote: String?, loading: Boolean, onDismis
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.padding(16.dp).navigationBarsPadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("ဆိုင်အပ်ပစ္စည်း လက်ခံရန်", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-            Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(10.dp)) {
-                Text("ပစ္စည်းတစ်ခုစီသည် Indoor convert လုပ်ချိန်တွင် Service Job တစ်ခုစီဖြစ်လာပါမည်။", Modifier.padding(12.dp), fontSize = 12.sp, color = Primary)
+        ReceiveItemsFormContent(
+            items = items,
+            onItemsChange = { items = it },
+            complaintNote = complaintNote,
+            loading = loading,
+            onPhotoClick = { index, slot -> photoTarget = index to slot; galleryLauncher.launch("image/*") },
+            onSubmit = {
+                onSubmit(items.filter { it.itemName.isNotBlank() }.map { d ->
+                    BookingItemDTO(
+                        itemName = d.itemName.trim(),
+                        deviceType = d.deviceType.trim().ifBlank { null },
+                        serialNo = d.serialNo.trim().ifBlank { null },
+                        color = d.color.trim().ifBlank { null },
+                        accessories = d.accessories.trim().ifBlank { null },
+                        itemCondition = d.itemCondition.trim().ifBlank { null },
+                        noticed = d.noticed.trim().ifBlank { null },
+                        problemDesc = d.problemDesc.trim().ifBlank { complaintNote },
+                        photos = d.photos
+                    )
+                })
+            },
+            modifier = Modifier.navigationBarsPadding(),
+        )
+    }
+}
+
+@Composable
+private fun ReceiveItemsFormContent(
+    items: List<ReceiveItemDraft>,
+    onItemsChange: (List<ReceiveItemDraft>) -> Unit,
+    complaintNote: String?,
+    loading: Boolean,
+    onPhotoClick: (itemIndex: Int, slot: Int) -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("ဆိုင်အပ်ပစ္စည်း လက်ခံရန်", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+        Surface(color = PrimaryLight, shape = RoundedCornerShape(10.dp)) {
+            Text(
+                "ပစ္စည်းတစ်ခုစီသည် Indoor convert လုပ်ချိန်တွင် Service Job တစ်ခုစီဖြစ်လာပါမည်။",
+                Modifier.padding(12.dp),
+                fontSize = 12.sp,
+                color = Primary,
+            )
+        }
+        complaintNote?.takeIf { it.isNotBlank() }?.let { note ->
+            Surface(color = Color(0xFFFFF8E7), shape = RoundedCornerShape(10.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("တိုင်ပင်ချက် (Booking)", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted)
+                    Text(note, fontSize = 12.sp, color = TextMain)
+                }
             }
-            items.forEachIndexed { index, draft ->
-                Card(shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, BorderColor)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("ပစ္စည်း ${index + 1}", fontWeight = FontWeight.Bold)
-                            if (items.size > 1) IconButton(onClick = { items = items.toMutableList().also { it.removeAt(index) } }) {
+        }
+        items.forEachIndexed { index, draft ->
+            Card(shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("ပစ္စည်း ${index + 1}", fontWeight = FontWeight.Bold)
+                        if (items.size > 1) {
+                            IconButton(onClick = {
+                                onItemsChange(items.toMutableList().also { it.removeAt(index) })
+                            }) {
                                 Icon(Icons.Outlined.Delete, null, tint = Danger)
                             }
                         }
-                        OutlinedTextField(draft.itemName, { v -> items = items.toMutableList().also { it[index] = it[index].copy(itemName = v) } }, label = { Text("ပစ္စည်းအမည် *") }, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(draft.deviceType, { v -> items = items.toMutableList().also { it[index] = it[index].copy(deviceType = v) } }, label = { Text("Device Type") }, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(draft.serialNo, { v -> items = items.toMutableList().also { it[index] = it[index].copy(serialNo = v) } }, label = { Text("Serial No") }, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(draft.problemDesc, { v -> items = items.toMutableList().also { it[index] = it[index].copy(problemDesc = v) } }, label = { Text("Problem") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(1, 2, 3).forEach { slot ->
-                                OutlinedButton(onClick = { photoTarget = index to slot; galleryLauncher.launch("image/*") }) {
-                                    Text("ပုံ $slot", fontSize = 11.sp)
-                                }
+                    }
+                    OutlinedTextField(
+                        draft.itemName,
+                        { v -> onItemsChange(items.toMutableList().also { it[index] = it[index].copy(itemName = v) }) },
+                        label = { Text("ပစ္စည်းအမည် *") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        draft.deviceType,
+                        { v -> onItemsChange(items.toMutableList().also { it[index] = it[index].copy(deviceType = v) }) },
+                        label = { Text("Device Type") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        draft.serialNo,
+                        { v -> onItemsChange(items.toMutableList().also { it[index] = it[index].copy(serialNo = v) }) },
+                        label = { Text("Serial No") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        draft.problemDesc,
+                        { v -> onItemsChange(items.toMutableList().also { it[index] = it[index].copy(problemDesc = v) }) },
+                        label = { Text("Problem") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 2, 3).forEach { slot ->
+                            val slotPhoto = draft.photos.firstOrNull { it.slot == slot }
+                            if (slotPhoto != null) {
+                                BookingItemPhotoThumb(photo = slotPhoto, size = 64.dp)
+                            }
+                            OutlinedButton(onClick = { onPhotoClick(index, slot) }) {
+                                Icon(
+                                    if (slotPhoto != null) Icons.Outlined.CheckCircle else Icons.Outlined.PhotoCamera,
+                                    null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("ပုံ $slot", fontSize = 11.sp)
                             }
                         }
                     }
                 }
             }
-            OutlinedButton(onClick = { items = items + ReceiveItemDraft() }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Outlined.Add, null)
-                Spacer(Modifier.width(6.dp))
-                Text("နောက်ထပ်ပစ္စည်း")
+        }
+        OutlinedButton(
+            onClick = { onItemsChange(items + ReceiveItemDraft()) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.Add, null)
+            Spacer(Modifier.width(6.dp))
+            Text("နောက်ထပ်ပစ္စည်း")
+        }
+        Button(
+            onClick = onSubmit,
+            enabled = !loading && items.any { it.itemName.isNotBlank() },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+        ) {
+            if (loading) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+            } else {
+                Text("ပစ္စည်းလက်ခံမည်", fontWeight = FontWeight.Bold)
             }
-            Button(
-                onClick = {
-                    onSubmit(items.filter { it.itemName.isNotBlank() }.map { d ->
-                        BookingItemDTO(
-                            itemName = d.itemName.trim(),
-                            deviceType = d.deviceType.trim().ifBlank { null },
-                            serialNo = d.serialNo.trim().ifBlank { null },
-                            color = d.color.trim().ifBlank { null },
-                            accessories = d.accessories.trim().ifBlank { null },
-                            itemCondition = d.itemCondition.trim().ifBlank { null },
-                            noticed = d.noticed.trim().ifBlank { null },
-                            problemDesc = d.problemDesc.trim().ifBlank { complaintNote },
-                            photos = d.photos
-                        )
-                    })
-                },
-                enabled = !loading && items.any { it.itemName.isNotBlank() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B))
-            ) {
-                if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                else Text("ပစ္စည်းလက်ခံမည်", fontWeight = FontWeight.Bold)
-            }
+        }
+    }
+}
+
+@Preview(name = "Receive — empty item", showBackground = true, widthDp = 390, heightDp = 820)
+@Composable
+private fun ReceiveItemsEmptyPreview() {
+    AppTheme {
+        Surface(color = ScreenBg) {
+            ReceiveItemsFormContent(
+                items = listOf(ReceiveItemDraft()),
+                onItemsChange = {},
+                complaintNote = "Screen flickering after update",
+                loading = false,
+                onPhotoClick = { _, _ -> },
+                onSubmit = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Receive — two items filled", showBackground = true, widthDp = 390, heightDp = 920)
+@Composable
+private fun ReceiveItemsFilledPreview() {
+    AppTheme {
+        Surface(color = ScreenBg) {
+            ReceiveItemsFormContent(
+                items = listOf(
+                    ReceiveItemDraft(
+                        itemName = "iPhone 14 Pro",
+                        deviceType = "Smartphone",
+                        serialNo = "SN-88421",
+                        problemDesc = "Battery drains fast, screen has lines",
+                    ),
+                    ReceiveItemDraft(
+                        itemName = "MacBook Air M2",
+                        deviceType = "Laptop",
+                        serialNo = "C02XYZ123",
+                        problemDesc = "Keyboard key stuck",
+                        photos = listOf(BookingItemPhotoDTO(slot = 1, contentType = "image/jpeg")),
+                    ),
+                ),
+                onItemsChange = {},
+                complaintNote = null,
+                loading = false,
+                onPhotoClick = { _, _ -> },
+                onSubmit = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Receive — submitting", showBackground = true, widthDp = 390, heightDp = 720)
+@Composable
+private fun ReceiveItemsLoadingPreview() {
+    AppTheme {
+        Surface(color = ScreenBg) {
+            ReceiveItemsFormContent(
+                items = listOf(
+                    ReceiveItemDraft(itemName = "Samsung A54", deviceType = "Smartphone", serialNo = "R58N001"),
+                ),
+                onItemsChange = {},
+                complaintNote = "Cannot charge",
+                loading = true,
+                onPhotoClick = { _, _ -> },
+                onSubmit = {},
+            )
         }
     }
 }

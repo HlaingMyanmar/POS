@@ -87,6 +87,9 @@ class ServiceJobFormViewModel(
                             selectedCustomer = customers.find { c -> c.id == j.customerId },
                             customerQuery    = j.customerName ?: "",
                             selectedStaff    = staffList.find { s -> s.id == j.assignedStaffId },
+                            primaryAssignedStaffId = j.assignedStaffId,
+                            canEditJob       = j.canEditJob != false,
+                            myAssignmentStatus = j.myAssignmentStatus,
                             selectedShelfLocation = shelfLocations.find { loc -> loc.id == j.shelfLocationId },
                             itemName         = j.itemName ?: "",
                             deviceType       = j.deviceType ?: "",
@@ -257,11 +260,9 @@ class ServiceJobFormViewModel(
                 val options = (if (res.isSuccessful) res.body()?.data ?: emptyList() else emptyList())
                     .filter { serial ->
                         val status = serial.status?.uppercase()
+                        val isAvailable = status == "AVAILABLE"
                         serial.serialNumber.isNotBlank() &&
-                            status != "SOLD" &&
-                            status != "USED" &&
-                            status != "DAMAGED" &&
-                            status != "LOST" &&
+                            isAvailable &&
                             !selectedElsewhere.contains(serial.serialNumber)
                     }
                 _uiState.update {
@@ -467,11 +468,24 @@ class ServiceJobFormViewModel(
                     _uiState.update { it.copy(saving = false, saveError = "စျေးပြောင်းရသည့်အကြောင်းပြချက် ဖြည့်ပါ") }
                     return@launch
                 }
+                if (jobId != null && !prefs.hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+                    && (s.canEditJob == false || s.myAssignmentStatus.equals("PENDING", true))) {
+                    _uiState.update {
+                        it.copy(
+                            saving = false,
+                            saveError = "Technician Assignment ကို လက်ခံပြီးမှသာ ဝန်ဆောင်မှု ပြင်ဆင်နိုင်ပါသည်။"
+                        )
+                    }
+                    return@launch
+                }
+                val canAssignLead = prefs.hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
                 val dto        = ServiceJobDTO(
                     id                  = jobId,
                     customerId          = s.selectedCustomer.id,
                     customerName        = s.selectedCustomer.name,
-                    assignedStaffId     = s.selectedStaff?.id,
+                    // Members must not overwrite primary lead; Hand Over is the transfer path.
+                    assignedStaffId     = if (canAssignLead || jobId == null) s.selectedStaff?.id
+                                          else s.primaryAssignedStaffId ?: s.selectedStaff?.id,
                     itemName            = s.itemName.ifBlank { null },
                     deviceType          = s.deviceType.ifBlank { null },
                     itemCondition       = s.itemCondition.ifBlank { null },
@@ -611,6 +625,10 @@ class ServiceJobFormViewModel(
         val creatingCustomer:    Boolean                 = false,
         val newCustomerError:    String?                 = null,
         val selectedStaff:       StaffDTO?               = null,
+        /** Locked lead id from server when editing — prevents Member save from changing Lead. */
+        val primaryAssignedStaffId: Int?                 = null,
+        val canEditJob:          Boolean                 = true,
+        val myAssignmentStatus:  String?                 = null,
         val selectedShelfLocation: ShelfLocationDTO?     = null,
         val itemName:            String                  = "",
         val deviceType:          String                  = "",

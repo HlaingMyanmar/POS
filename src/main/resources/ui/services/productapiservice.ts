@@ -1,6 +1,6 @@
 
 import { api, BASE_URL, getAccessToken } from './api';
-import { ProductDTO, ProductStockHistoryDTO, ApiResponse, PriceHistoryDTO, ReorderSuggestionDTO } from '../types';
+import { ProductDTO, ProductPhotoDTO, ProductStockHistoryDTO, ApiResponse, PriceHistoryDTO, ReorderSuggestionDTO } from '../types';
 
 type StockHistoryParams = { from?: string; to?: string; type?: string; search?: string; page?: number; size?: number };
 
@@ -49,6 +49,9 @@ export const productService = {
 
   updatePhoto: (id: number, photoBase64: string | null) =>
     api.put<any, ApiResponse<void>>(`/v1/products/${id}/photo`, { photoBase64 }).then((res: any) => res),
+
+  updatePhotos: (id: number, photos: ProductPhotoDTO[]) =>
+    api.put<any, ApiResponse<void>>(`/v1/products/${id}/photos`, photos).then((res: any) => res),
 
   exportExcel: async (): Promise<void> => {
     const token = getAccessToken();

@@ -57,7 +57,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
                 if (res.isSuccessful) {
                     val items = res.body()?.data?.content ?: emptyList()
                     _uiState.update {
-                        it.copy(items = if (scoped) items.filterOwnStaff(prefs.staffId) else items)
+                        it.copy(items = items)
                     }
                 }
             } catch (_: Exception) {}
@@ -124,8 +124,3 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
 
 private fun today(): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-
-private fun List<ServiceJobDTO>.filterOwnStaff(staffId: Int): List<ServiceJobDTO> =
-    filter { job ->
-        job.assignedStaffId == staffId || job.helperStaffId == staffId
-    }

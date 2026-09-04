@@ -861,6 +861,7 @@ fun DrawerContent(
             DrawerMenuItem("ပင်မ", Icons.Outlined.Home, Screen.Home.route, onNavigate)
             DrawerMenuItem("Jobs / Outdoor Visit", Icons.Outlined.NearMe, Screen.ServiceJobs.route, onNavigate)
             DrawerMenuItem("ကုန်ပစ္စည်း", Icons.Outlined.Inventory2, Screen.Products.route, onNavigate)
+            DrawerMenuItem("Serial Registry", Icons.Outlined.QrCode2, Screen.SerialRegistry.route, onNavigate)
             DrawerMenuItem("Customer History", Icons.Outlined.History, Screen.CustomerHistory.route, onNavigate)
             DrawerMenuItem("ဝန်ဆောင်မှု", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route, onNavigate)
             DrawerMenuItem("လေ့ကျင့်ရေး ဗီဒီယို", Icons.Outlined.VideoLibrary, Screen.Videos.route, onNavigate)

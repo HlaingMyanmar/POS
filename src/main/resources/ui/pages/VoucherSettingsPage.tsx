@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Swal from 'sweetalert2';
 import { BadgeCheck, ChevronDown, Eye, FileText, LayoutTemplate, Printer, ReceiptText, RefreshCw, RotateCcw, Ruler, Save, Settings2, SlidersHorizontal, Type } from 'lucide-react';
 import { DocumentType, VoucherSettingDto, voucherSettingService } from '../services/voucherSettingService';
+import { CompanySettings, getCachedCompanySettings, getCompanySettings } from '../utils/companySettings';
 
 type SectionKey = 'basic' | 'content' | 'layout' | 'text';
 type TabMeta = { type: DocumentType; label: string; short: string; description: string; defaultTitle: string; recommendedPaper: string };
@@ -48,14 +49,19 @@ const VoucherSettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [company, setCompany] = useState<CompanySettings>(() => getCachedCompanySettings());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const all = await voucherSettingService.getAll();
+      const [all] = await Promise.all([
+        voucherSettingService.getAll(),
+        getCompanySettings().catch(() => getCachedCompanySettings()),
+      ]);
       const map: Record<DocumentType, VoucherSettingDto | null> = { ...emptyMap };
       all.forEach((setting) => { map[setting.documentType as DocumentType] = setting; });
       setSettings(map);
+      setCompany(getCachedCompanySettings());
     } catch {
       Swal.fire('Error', 'Voucher settings ဖတ်လို့မရပါ', 'error');
     } finally {
@@ -137,7 +143,7 @@ const VoucherSettingsPage: React.FC = () => {
       {loading && <div className="flex h-64 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400"><RefreshCw size={22} className="mr-2 animate-spin" /> Settings ဖတ်နေသည်...</div>}
 
       {!loading && current && (
-        <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_390px] gap-5">
+        <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_440px] gap-5">
           <main className="min-w-0 space-y-5">
             <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-5">
               <nav className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm h-fit">
@@ -147,6 +153,10 @@ const VoucherSettingsPage: React.FC = () => {
                 <SectionButton active={activeSection === 'text'} icon={<Type size={15} />} label="စာသားနှင့် Font" hint="Footer, notice, font" onClick={() => setActiveSection('text')} />
               </nav>
               <div className="min-w-0 space-y-5">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <b>Live Preview</b> — ဘယ်ဘက်မှာ ပြင်တာများကို ညာဘက် Preview မှာ ချက်ချင်းမြင်ရပါမယ်။
+                  Settings <b>သိမ်းမည်</b> နှိပ်ပြီးမှ printer မှာ သုံးနိုင်ပါမယ် (WAR ပြန်တင်စရာ မလိုပါ — voucher settings က DB ထဲသိမ်းသည်)။
+                </div>
                 {activeSection === 'basic' && <>
                   <Panel icon={<FileText size={16} />} title="Voucher အမျိုးအစား" subtitle={activeMeta.description}>
                     <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-4">
@@ -227,17 +237,26 @@ const VoucherSettingsPage: React.FC = () => {
           <aside className="space-y-5">
             <div className="sticky top-4 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
-                <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Preview</p><h2 className="text-sm font-bold text-slate-800">{activeMeta.label}</h2><p className="mt-1 text-xs text-slate-500">{activeMeta.description}</p></div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Live Preview</p>
+                  <h2 className="text-sm font-bold text-slate-800">{activeMeta.label}</h2>
+                  <p className="mt-1 text-xs text-slate-500">Compose Preview လို — ပြင်ပြီးချက်ချင်းမြင်ရမည်</p>
+                </div>
                 <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${capacity.className}`}>{capacity.label}</span>
               </div>
-              <VoucherPreview setting={current} />
+              <VoucherPreview setting={current} company={company} defaultTitle={activeMeta.defaultTitle} />
               <div className="grid grid-cols-2 gap-2">
                 <Metric label="စက္ကူ" value={current.paperSize} />
                 <Metric label="ပထမစာမျက်နှာ" value={current.rowsOnFirstPage ?? '-'} />
                 <Metric label="နောက်စာမျက်နှာ" value={current.rowsOnContinuationPage ?? '-'} />
                 <Metric label="Row" value={px(current.rowHeightPx)} />
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-1"><p className="font-bold text-slate-700">Print အကျဉ်းချုပ်</p><p>{capacity.note}</p><p>Margin: {mm(current.marginTopMm)} / {mm(current.marginBottomMm)} / {mm(current.marginLeftMm)} / {mm(current.marginRightMm)}</p></div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-1">
+                <p className="font-bold text-slate-700">Print အကျဉ်းချုပ်</p>
+                <p>{capacity.note}</p>
+                <p>Margin: {mm(current.marginTopMm)} / {mm(current.marginBottomMm)} / {mm(current.marginLeftMm)} / {mm(current.marginRightMm)}</p>
+                <p className="text-[11px] text-slate-500">အစစ်အမှန် Sale voucher ကို Sale → Print Preview မှာလည်း ထပ်ကြည့်နိုင်ပါသည်။</p>
+              </div>
               {current.updatedBy && <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3"><BadgeCheck size={15} className="mt-0.5 text-emerald-600" /><p className="text-xs text-emerald-700">နောက်ဆုံးသိမ်းသူ <b>{current.updatedBy}</b>{current.updatedAt ? ` · ${new Date(current.updatedAt).toLocaleString()}` : ''}</p></div>}
             </div>
           </aside>
@@ -281,32 +300,224 @@ const Metric: React.FC<{ label: string; value: React.ReactNode }> = ({ label, va
   <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-sm font-bold text-slate-800">{value}</p></div>
 );
 
-const VoucherPreview: React.FC<{ setting: VoucherSettingDto }> = ({ setting }) => {
-  const rows = Array.from({ length: Math.min(Math.max(setting.rowsOnFirstPage || 5, 4), 8) });
+/** Fake QR pattern for live preview (not a real scannable code). */
+const PreviewQr: React.FC<{ size?: number }> = ({ size = 56 }) => (
+  <div
+    className="shrink-0 rounded border border-slate-200 bg-white p-0.5 shadow-sm"
+    style={{ width: size, height: size }}
+    title="QR preview"
+  >
+    <svg viewBox="0 0 40 40" width="100%" height="100%" aria-hidden>
+      <rect width="40" height="40" fill="#fff" />
+      <rect x="2" y="2" width="12" height="12" fill="#0f172a" />
+      <rect x="4" y="4" width="8" height="8" fill="#fff" />
+      <rect x="6" y="6" width="4" height="4" fill="#0f172a" />
+      <rect x="26" y="2" width="12" height="12" fill="#0f172a" />
+      <rect x="28" y="4" width="8" height="8" fill="#fff" />
+      <rect x="30" y="6" width="4" height="4" fill="#0f172a" />
+      <rect x="2" y="26" width="12" height="12" fill="#0f172a" />
+      <rect x="4" y="28" width="8" height="8" fill="#fff" />
+      <rect x="6" y="30" width="4" height="4" fill="#0f172a" />
+      <rect x="18" y="18" width="3" height="3" fill="#0f172a" />
+      <rect x="24" y="18" width="3" height="3" fill="#0f172a" />
+      <rect x="18" y="24" width="3" height="3" fill="#0f172a" />
+      <rect x="30" y="24" width="3" height="3" fill="#0f172a" />
+      <rect x="24" y="30" width="3" height="3" fill="#0f172a" />
+      <rect x="34" y="34" width="4" height="4" fill="#0f172a" />
+    </svg>
+  </div>
+);
+
+const VoucherPreview: React.FC<{
+  setting: VoucherSettingDto;
+  company: CompanySettings;
+  defaultTitle: string;
+}> = ({ setting, company, defaultTitle }) => {
+  const isPos = String(setting.paperSize || '').startsWith('POS');
+  const is58 = setting.paperSize === 'POS_58MM';
+  const isA5 = setting.paperSize === 'A5';
+  const title = setting.voucherTitle || defaultTitle || company.invoiceTitle || 'SALES INVOICE';
+  const companyName = company.companyName || 'SSPD Store';
+  const contact = [company.companyAddress, company.companyPhone].filter(Boolean).join(' · ');
+  const logoSrc = company.logoBase64 || '';
+  const headerFont = setting.headerFontFamily || 'Segoe UI, Arial, sans-serif';
+  const headerSize = Math.max(setting.headerFontSizePx || (isPos ? 13 : 16), 11);
+  const rowCount = Math.min(Math.max(setting.rowsOnFirstPage || 5, 3), isPos ? 5 : 7);
+  const rows = Array.from({ length: rowCount });
+  const paperWidth = is58 ? 200 : isPos ? 260 : isA5 ? 320 : 360;
+  const padX = isPos ? 10 : 14;
+
+  if (isPos) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-100 p-3">
+        <div
+          className="mx-auto overflow-hidden rounded-lg bg-white shadow-sm"
+          style={{ width: paperWidth, fontFamily: setting.tableDataFontFamily || 'Arial' }}
+        >
+          <div className="border-b border-dashed border-slate-300 px-3 py-3 text-center">
+            {setting.showLogo && logoSrc && (
+              <img src={logoSrc} alt="" className="mx-auto mb-2 max-h-10 max-w-[72px] object-contain" />
+            )}
+            {setting.showLogo && !logoSrc && (
+              <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded border border-slate-200 text-[9px] font-black text-slate-400">LOGO</div>
+            )}
+            <p className="font-black text-slate-900" style={{ fontFamily: headerFont, fontSize: headerSize }}>{companyName}</p>
+            {contact && <p className="mt-1 text-[9px] leading-4 text-slate-500">{contact}</p>}
+            <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-slate-700">{title}</p>
+            <p className="text-[9px] font-bold text-slate-400">CUSTOMER COPY</p>
+          </div>
+          <div className="space-y-1 border-b border-dashed border-slate-300 px-3 py-2 text-[10px] text-slate-600">
+            <div className="flex justify-between"><span>No</span><b>INV-000123</b></div>
+            <div className="flex justify-between"><span>Date</span><span>04 Sep 2026 14:30</span></div>
+            <div className="flex justify-between"><span>Customer</span><span>Walk-in</span></div>
+          </div>
+          <div className="px-3 py-2">
+            {rows.map((_, idx) => (
+              <div key={idx} className="border-b border-dashed border-slate-100 py-1.5 text-[10px] text-slate-700">
+                <div className="font-semibold">Product {idx + 1}</div>
+                {setting.showSerial && idx === 0 && <div className="text-[9px] text-slate-400">SN: ABC-2048</div>}
+                {idx === 0 && <div className="text-[9px] font-semibold text-indigo-600">WAR: 1 Year</div>}
+                <div className="mt-0.5 flex justify-between text-slate-500">
+                  <span>1 × 25,000</span>
+                  <b className="text-slate-800">25,000</b>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1 border-t border-dashed border-slate-300 px-3 py-2 text-[10px]">
+            <div className="flex justify-between"><span>Total</span><b>125,000</b></div>
+            <div className="flex justify-between"><span>Paid</span><b>100,000</b></div>
+            <div className="flex justify-between font-black"><span>Due</span><span>25,000</span></div>
+          </div>
+          {(setting.showQrCode || setting.footerNote) && (
+            <div className="border-t border-dashed border-slate-300 px-3 py-3 text-center">
+              {setting.showQrCode && <div className="mb-2 flex justify-center"><PreviewQr size={52} /></div>}
+              {setting.footerNote && <p className="text-[9px] text-slate-500">{setting.footerNote}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-100 p-3">
-      <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-lg bg-white shadow-sm" style={{ fontFamily: setting.tableDataFontFamily || 'Arial' }}>
-        <div className="border-b border-slate-200 px-4 py-3" style={{ minHeight: Math.max(setting.headerHeightPx || 68, 54) }}>
-          <div className="flex items-start gap-3">
-            {setting.showLogo && <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-50 text-[10px] font-black text-slate-400">LOGO</div>}
-            <div className="min-w-0 flex-1"><p className="truncate font-black text-slate-900" style={{ fontSize: Math.max(setting.headerFontSizePx || 16, 12) }}>SSPD Store</p><p className="mt-1 text-[10px] leading-4 text-slate-500">No. 12, Main Road • 09 123 456 789</p></div>
+      <div
+        className="mx-auto overflow-hidden rounded-lg bg-white shadow-sm"
+        style={{ width: paperWidth, fontFamily: setting.tableDataFontFamily || 'Arial' }}
+      >
+        {/* Print-like header: brand left · meta + QR right */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            minHeight: Math.max(setting.headerHeightPx || 78, 68),
+            background: 'linear-gradient(135deg, #0f2744 0%, #1e3a5f 55%, #16324f 100%)',
+            padding: `10px ${padX}px`,
+            fontFamily: headerFont,
+          }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-2.5">
+              {setting.showLogo && logoSrc && (
+                <img src={logoSrc} alt="" className="h-11 max-w-[64px] shrink-0 rounded bg-white object-contain p-0.5 shadow" />
+              )}
+              {setting.showLogo && !logoSrc && (
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded bg-white/10 text-[9px] font-black text-slate-300 ring-1 ring-white/20">LOGO</div>
+              )}
+              <div className="min-w-0">
+                <p className="truncate font-extrabold leading-tight text-white" style={{ fontSize: headerSize }}>{companyName}</p>
+                {contact && <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-slate-300">{contact}</p>}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+              <p className="text-[9px] font-black uppercase tracking-wide text-cyan-300">{title}</p>
+              <p className="text-[8px] font-bold text-slate-400">CUSTOMER COPY</p>
+              <p className="text-sm font-black text-white">INV-000123</p>
+              <p className="text-[9px] text-slate-300">04/09/2026 14:30</p>
+              {setting.showQrCode && <PreviewQr size={isA5 ? 48 : 56} />}
+            </div>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-cyan-400 via-indigo-400 to-cyan-400" />
+        </div>
+
+        <div
+          className="grid grid-cols-2 gap-2 border-b border-slate-100 text-[10px] text-slate-600"
+          style={{
+            minHeight: Math.max(setting.infoBlocksHeightPx || 56, 46),
+            padding: `10px ${padX}px`,
+            fontFamily: setting.infoFontFamily || 'Arial',
+            fontSize: Math.max(setting.infoFontSizePx || 11, 9),
+          }}
+        >
+          <div><b className="text-slate-800">Customer</b><br />Walk-in Customer</div>
+          <div><b className="text-slate-800">Cashier</b><br />Admin</div>
+          <div><b className="text-slate-800">Phone</b><br />09-123456789</div>
+          <div><b className="text-slate-800">Status</b><br />PAID</div>
+        </div>
+
+        <div style={{ padding: `8px ${padX}px 10px` }}>
+          <div
+            className="grid grid-cols-[1fr_40px_56px] border-b border-slate-300 pb-1 text-[10px] font-black uppercase text-slate-700"
+            style={{
+              fontFamily: setting.tableHeaderFontFamily || 'Arial',
+              fontSize: Math.max(setting.tableHeaderFontSizePx || 10, 9),
+              minHeight: Math.max(setting.tableHeaderHeightPx || 22, 18),
+            }}
+          >
+            <span>Item</span><span className="text-right">Qty</span><span className="text-right">Amount</span>
+          </div>
+          {rows.map((_, idx) => (
+            <div
+              key={idx}
+              className="grid grid-cols-[1fr_40px_56px] items-start border-b border-dashed border-slate-100 py-1 text-[10px] text-slate-600"
+              style={{ minHeight: Math.max(setting.rowHeightPx || 26, 20), fontSize: Math.max(setting.tableDataFontSizePx || 10, 9) }}
+            >
+              <div className="min-w-0 pr-1">
+                <div className="truncate font-medium text-slate-800">Product {idx + 1}</div>
+                {setting.showSerial && idx === 0 && <div className="text-[9px] text-slate-400">SN: ABC-2048</div>}
+                {idx === 0 && <div className="text-[9px] font-semibold text-indigo-600">Warranty: 1 Year</div>}
+              </div>
+              <span className="text-right">1</span>
+              <span className="text-right font-semibold text-slate-800">25,000</span>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="border-t border-slate-200 text-[10px] text-slate-700"
+          style={{ minHeight: Math.max(setting.totalsAreaHeightPx || 72, 54), padding: `10px ${padX}px` }}
+        >
+          <div className="ml-auto w-36 space-y-1">
+            <div className="flex justify-between"><span>Subtotal</span><b>125,000</b></div>
+            {setting.showPaymentHistory && <div className="flex justify-between text-slate-500"><span>Paid</span><b>100,000</b></div>}
+            <div className="flex justify-between border-t border-slate-200 pt-1 text-slate-900"><span>Balance</span><b>25,000</b></div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 border-b border-slate-100 px-4 py-3 text-[10px] text-slate-600" style={{ minHeight: Math.max(setting.infoBlocksHeightPx || 56, 46), fontFamily: setting.infoFontFamily || 'Arial', fontSize: Math.max(setting.infoFontSizePx || 11, 9) }}>
-          <div><b>Voucher</b><br />INV-000123</div><div><b>Date</b><br />2026-06-28</div><div><b>Customer</b><br />Walk-in</div><div><b>Cashier</b><br />Admin</div>
-        </div>
-        <div className="px-4 py-3">
-          <div className="grid grid-cols-[1fr_42px_58px] border-b border-slate-300 pb-1 text-[10px] font-black uppercase text-slate-700" style={{ fontFamily: setting.tableHeaderFontFamily || 'Arial', fontSize: Math.max(setting.tableHeaderFontSizePx || 10, 9), minHeight: Math.max(setting.tableHeaderHeightPx || 22, 18) }}><span>Item</span><span className="text-right">Qty</span><span className="text-right">Amount</span></div>
-          {rows.map((_, idx) => <div key={idx} className="grid grid-cols-[1fr_42px_58px] items-center border-b border-dashed border-slate-100 text-[10px] text-slate-600" style={{ minHeight: Math.max(setting.rowHeightPx || 26, 20), fontSize: Math.max(setting.tableDataFontSizePx || 10, 9) }}><span className="truncate">Product {idx + 1}{setting.showSerial && idx === 1 ? ' / SN-2048' : ''}</span><span className="text-right">1</span><span className="text-right">25,000</span></div>)}
-        </div>
-        <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-700" style={{ minHeight: Math.max(setting.totalsAreaHeightPx || 72, 54) }}>
-          <div className="ml-auto w-36 space-y-1"><div className="flex justify-between"><span>Subtotal</span><b>125,000</b></div><div className="flex justify-between"><span>Paid</span><b>100,000</b></div><div className="flex justify-between border-t border-slate-200 pt-1 text-slate-900"><span>Balance</span><b>25,000</b></div></div>
-        </div>
-        {(setting.footerNote || setting.customerNotice || setting.showSignatures) && <div className="border-t border-slate-100 px-4 py-3 text-center text-[10px] leading-4 text-slate-500" style={{ minHeight: Math.max(setting.footerHeightPx || 44, 32), fontFamily: setting.footerFontFamily || 'Arial', fontSize: Math.max(setting.footerFontSizePx || 10, 8) }}>
-          {setting.footerNote && <p className="font-semibold text-slate-600">{setting.footerNote}</p>}
-          {setting.customerNotice && <p className="mt-1" style={{ fontFamily: setting.noticeFontFamily || 'Arial', fontSize: Math.max(setting.noticeFontSizePx || 9, 8) }}>{setting.customerNotice}</p>}
-          {setting.showSignatures && <div className="mt-4 grid grid-cols-2 gap-6 text-slate-500"><span className="border-t border-slate-300 pt-1">{setting.sign1Label || 'Prepared By'}</span><span className="border-t border-slate-300 pt-1">{setting.sign2Label || 'Customer'}</span></div>}
-        </div>}
+
+        {(setting.footerNote || setting.customerNotice || setting.showSignatures) && (
+          <div
+            className="border-t border-slate-100 text-center text-[10px] leading-4 text-slate-500"
+            style={{
+              minHeight: Math.max(setting.footerHeightPx || 44, 32),
+              padding: `10px ${padX}px`,
+              fontFamily: setting.footerFontFamily || 'Arial',
+              fontSize: Math.max(setting.footerFontSizePx || 10, 8),
+            }}
+          >
+            {setting.footerNote && <p className="font-semibold text-slate-600">{setting.footerNote}</p>}
+            {setting.customerNotice && (
+              <p className="mt-1" style={{ fontFamily: setting.noticeFontFamily || 'Arial', fontSize: Math.max(setting.noticeFontSizePx || 9, 8) }}>
+                {setting.customerNotice}
+              </p>
+            )}
+            {setting.showSignatures && (
+              <div className="mt-4 grid grid-cols-2 gap-6 text-slate-500">
+                <span className="border-t border-slate-300 pt-1">{setting.sign1Label || 'Prepared By'}</span>
+                <span className="border-t border-slate-300 pt-1">{setting.sign2Label || 'Customer'}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

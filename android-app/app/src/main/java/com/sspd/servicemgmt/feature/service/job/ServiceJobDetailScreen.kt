@@ -41,6 +41,8 @@ import com.sspd.servicemgmt.core.network.ServiceJobPartDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.util.PreferenceManager
+import kotlinx.coroutines.launch
 import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
 
 import com.sspd.servicemgmt.core.util.fmtWarranty
@@ -91,7 +93,11 @@ fun ServiceJobDetailScreen(
     val visitMessage by visitVm.message.collectAsStateWithLifecycle()
     val pendingResume by VisitTracker.pendingResume.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val canAssignTechnician = remember {
+        PreferenceManager(context).hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+    }
     var pendingVisitAction by remember { mutableStateOf<String?>(null) }
     var showReasonDialog by remember { mutableStateOf(false) }
     val locationPermission = rememberLauncherForActivityResult(
@@ -415,7 +421,16 @@ fun ServiceJobDetailScreen(
                 },
                 actions = {
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) }
-                    IconButton(onClick = onEdit)       { Icon(Icons.Outlined.Edit,    "ပြင်ရန်", tint = Color.White) }
+                    IconButton(onClick = {
+                        val job = state.job
+                        if (!canAssignTechnician && (job?.canEditJob == false || job?.myAssignmentStatus.equals("PENDING", true))) {
+                            scope.launch {
+                                snackbar.showSnackbar("Assignment လက်ခံပြီးမှသာ Job ပြင်ဆင်နိုင်ပါသည်")
+                            }
+                        } else {
+                            onEdit()
+                        }
+                    }) { Icon(Icons.Outlined.Edit, "ပြင်ရန်", tint = Color.White) }
                     IconButton(onClick = onPrint)      { Icon(Icons.Outlined.Print,   "ပရင့်", tint = Color.White) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = OnPrimary)

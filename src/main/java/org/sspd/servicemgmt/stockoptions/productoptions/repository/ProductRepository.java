@@ -14,8 +14,11 @@ import java.math.BigDecimal;
 public interface ProductRepository extends JpaRepository<Product, Integer> {
 
 
-    @EntityGraph(attributePaths = {"category", "brand", "unit"})
+    @EntityGraph(attributePaths = {"category", "brand", "unit", "photos"})
     List<Product> findAll();
+
+    @EntityGraph(attributePaths = {"category", "brand", "unit", "photos"})
+    Optional<Product> findWithDetailsById(Integer id);
 
 
 

@@ -69,7 +69,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
                     }
                     _uiState.update {
                         it.copy(
-                            items = if (scoped) items.filterOwnStaff(prefs.staffId) else items,
+                            items = items,
                             sentHandovers = sentHandovers,
                             sentPendingCount = sentPending,
                         )
@@ -137,9 +137,3 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
 
 private fun today(): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-
-private fun List<ServiceJobDTO>.filterOwnStaff(staffId: Int): List<ServiceJobDTO> =
-    filter { job ->
-        job.pendingHandoverForMe == true ||
-        job.assignedStaffId == staffId || job.helperStaffId == staffId
-    }

@@ -1,9 +1,6 @@
 package com.sspd.servicemgmt.feature.product
 
-import android.graphics.BitmapFactory
-import android.util.Base64
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +30,8 @@ import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.component.AppSearchField
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.scanner.BarcodeScannerView
 import com.sspd.servicemgmt.feature.product.ProductListViewModel.ProductFilter
@@ -458,13 +456,8 @@ private fun ProductEmptyState(
 
 @Composable
 private fun ProductCard(p: ProductDTO, onClick: () -> Unit = {}) {
-    val imgBitmap = remember(p.photoBase64) {
-        if (p.photoBase64.isNullOrBlank()) null
-        else runCatching {
-            val raw = p.photoBase64.substringAfter("base64,", p.photoBase64)
-            val bytes = Base64.decode(raw, Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-        }.getOrNull()
+    val photoSource = remember(p.id, p.thumbnailPath, p.imagePath, p.photoBase64) {
+        ProductPhotoLoader.thumbSource(p)
     }
     val qty = p.displayQty()
     val stockColor = when {
@@ -497,24 +490,18 @@ private fun ProductCard(p: ProductDTO, onClick: () -> Unit = {}) {
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            ProductPhotoImage(
+                source = photoSource,
+                contentDescription = p.name,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(68.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(PrimaryLight),
-                contentAlignment = Alignment.Center
-            ) {
-                if (imgBitmap != null) {
-                    Image(
-                        bitmap = imgBitmap,
-                        contentDescription = p.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
+                placeholder = {
                     Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(28.dp))
                 }
-            }
+            )
 
             Spacer(Modifier.width(12.dp))
 

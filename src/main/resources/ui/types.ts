@@ -125,6 +125,7 @@ export interface ProductDTO {
   photoBase64?: string;
   imagePath?: string;
   thumbnailPath?: string;
+  photos?: ProductPhotoDTO[];
   imageMimeType?: string;
   originalFileName?: string;
   imageWidth?: number;
@@ -155,6 +156,18 @@ export interface ProductDTO {
   unitName?: string;
   availableSerialCount?: number;
   unlinkedQty?: number;
+}
+
+export interface ProductPhotoDTO {
+  id?: number;
+  slot?: number;
+  fileName?: string;
+  contentType?: string;
+  // When uploading from client; server stores to disk and typically returns paths.
+  dataUrl?: string;
+  imagePath?: string;
+  thumbnailPath?: string;
+  uploadedAt?: string;
 }
 
 export interface ReorderSuggestionDTO {
@@ -1059,6 +1072,7 @@ export interface ServiceJobDTO {
   voidReason?: string;
   voidedBy?: string;
   voidedAt?: string;
+  settledBy?: string;
   dueDate?: string;
   paymentStatus?: string;
   creditStatus?: string;
@@ -1081,6 +1095,17 @@ export interface ServiceJobDTO {
   parentJobNo?: string;
   reworkType?: string;
   remark?: string;
+  helperStaffId?: number;
+  helperStaffName?: string;
+  pendingHandoverForMe?: boolean;
+  pendingHandoverId?: number;
+  pendingHandoverFromStaffName?: string;
+  pendingHandoverRemainingWork?: string;
+  onTeamForMe?: boolean;
+  myAssignmentRole?: string;
+  myAssignmentStatus?: string;
+  /** False when technician must accept PENDING assignment before editing. */
+  canEditJob?: boolean;
   lines?: any[];
   productParts?: any[];
 }

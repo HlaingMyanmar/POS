@@ -504,6 +504,17 @@ handover.setStatus(HandoverStatus.REJECTED);
                 .toList();
         boolean matched = leads.stream().anyMatch(a -> desired.getId().equals(a.getStaff().getId()));
         if (matched) return;
+
+        // Accidental overwrite protection: if desired staff is already a non-lead member/helper
+        // and a lead already exists, do not cancel the lead (restore via syncLegacyFields).
+        boolean desiredIsNonLeadTeammate = assignmentRepository
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(job.getId(), CURRENT).stream()
+                .anyMatch(a -> desired.getId().equals(a.getStaff().getId())
+                        && a.getRole() != AssignmentRole.LEAD);
+        if (!leads.isEmpty() && desiredIsNonLeadTeammate) {
+            return;
+        }
+
         LocalDateTime now = LocalDateTime.now();
         for (ServiceJobAssignment lead : leads) {
             closeTimer(lead, now);

@@ -58,7 +58,13 @@ class ProductDetailViewModel(
                         serials = if (serialsRes.isSuccessful) serialsRes.body()?.data ?: emptyList() else emptyList(),
                         loading = false,
                         scannedSerial = incomingSerial,
-                        error = error
+                        error = error,
+                        canUploadProductPhoto = prefs.hasPermission("CAN_ACCESS_PRODUCT_UPDATE")
+                            || prefs.hasPermission("ROLE_ADMINISTRATOR"),
+                        canMutateSerial = prefs.hasPermission("CAN_ACCESS_PRODUCT_SERIAL_CREATE")
+                            || prefs.hasPermission("CAN_ACCESS_PRODUCT_SERIAL_UPDATE")
+                            || prefs.hasPermission("CAN_ACCESS_PRODUCT_SERIAL_DELETE")
+                            || prefs.hasPermission("ROLE_ADMINISTRATOR")
                     )
                 }
             } catch (e: Exception) {
@@ -68,6 +74,10 @@ class ProductDetailViewModel(
     }
 
     fun uploadSerialPhoto(serialId: Int, photoBase64: String) {
+        if (!_uiState.value.canMutateSerial) {
+            _uiState.update { it.copy(uploadError = "Serial ပုံပြင်ခွင့်မရှိပါ") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(uploadingSerialId = serialId) }
             try {
@@ -99,16 +109,41 @@ class ProductDetailViewModel(
         }
     }
 
-    fun uploadProductPhoto(photoBase64: String) {
+    fun uploadProductPhoto(photoBase64: String) = uploadProductPhotoSlot(1, photoBase64)
+
+    fun uploadProductPhotoSlot(slot: Int, photoBase64: String) {
+        if (!_uiState.value.canUploadProductPhoto) {
+            _uiState.update { it.copy(uploadError = "ပုံ upload ခွင့်မရှိပါ (CAN_ACCESS_PRODUCT_UPDATE)") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(uploadingProductPhoto = true) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
-                val res = ApiClient.service.updateProductPhoto(token, productId, mapOf("photoBase64" to photoBase64))
+                val currentPhotos = _uiState.value.product?.photos ?: emptyList()
+                val bySlot = currentPhotos.associateBy { it.slot ?: -1 }
+
+                val payload = (1..3).map { s ->
+                    val existing = bySlot[s]
+                    val dataUrl = if (s == slot) photoBase64 else null
+                    if (existing != null) {
+                        existing.copy(dataUrl = dataUrl)
+                    } else {
+                        com.sspd.servicemgmt.core.network.ProductPhotoDTO(
+                            slot = s,
+                            dataUrl = dataUrl
+                        )
+                    }
+                }
+
+                val res = ApiClient.service.updateProductPhotos(token, productId, payload)
                 if (res.isSuccessful) {
+                    val refreshed = runCatching {
+                        ApiClient.service.getProduct(token, productId).body()?.data
+                    }.getOrNull()
                     _uiState.update { state ->
                         state.copy(
-                            product = state.product?.copy(photoBase64 = photoBase64),
+                            product = refreshed ?: state.product,
                             uploadSuccess = -1,
                             uploadingProductPhoto = false
                         )
@@ -135,6 +170,10 @@ class ProductDetailViewModel(
     fun clearScanError()     = _uiState.update { it.copy(scanError = null) }
 
     fun addSerial(serialNumber: String) {
+        if (!_uiState.value.canMutateSerial) {
+            _uiState.update { it.copy(uploadError = "Serial ထည့်ခွင့်မရှိပါ") }
+            return
+        }
         val p = _uiState.value.product ?: return
         val sn = serialNumber.trim().uppercase()
         if (sn.isBlank()) {
@@ -165,6 +204,10 @@ class ProductDetailViewModel(
     }
 
     fun deleteSerial(serial: ProductSerialDTO) {
+        if (!_uiState.value.canMutateSerial) {
+            _uiState.update { it.copy(uploadError = "Serial ဖျက်ခွင့်မရှိပါ") }
+            return
+        }
         if (!serial.status.equals("AVAILABLE", ignoreCase = true)) {
             _uiState.update { it.copy(uploadError = "Available serial ကိုသာ ဖျက်နိုင်ပါသည်") }
             return
@@ -208,6 +251,8 @@ class ProductDetailViewModel(
         val addingSerial: Boolean = false,
         val deletingSerialId: Int? = null,
         val uploadSuccess: Int? = null,   // serialId, or -1 for product photo
-        val uploadError: String? = null
+        val uploadError: String? = null,
+        val canUploadProductPhoto: Boolean = false,
+        val canMutateSerial: Boolean = false
     )
 }

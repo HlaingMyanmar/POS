@@ -100,16 +100,37 @@ class ProductDetailViewModel(
         }
     }
 
-    fun uploadProductPhoto(photoBase64: String) {
+    fun uploadProductPhoto(photoBase64: String) = uploadProductPhotoSlot(1, photoBase64)
+
+    fun uploadProductPhotoSlot(slot: Int, photoBase64: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(uploadingProductPhoto = true) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
-                val res = ApiClient.service.updateProductPhoto(token, productId, mapOf("photoBase64" to photoBase64))
+                val currentPhotos = _uiState.value.product?.photos ?: emptyList()
+                val bySlot = currentPhotos.associateBy { it.slot ?: -1 }
+
+                val payload = (1..3).map { s ->
+                    val existing = bySlot[s]
+                    val dataUrl = if (s == slot) photoBase64 else null
+                    if (existing != null) {
+                        existing.copy(dataUrl = dataUrl)
+                    } else {
+                        com.sspd.servicemgmt.core.network.ProductPhotoDTO(
+                            slot = s,
+                            dataUrl = dataUrl
+                        )
+                    }
+                }
+
+                val res = ApiClient.service.updateProductPhotos(token, productId, payload)
                 if (res.isSuccessful) {
+                    val refreshed = runCatching {
+                        ApiClient.service.getProduct(token, productId).body()?.data
+                    }.getOrNull()
                     _uiState.update { state ->
                         state.copy(
-                            product = state.product?.copy(photoBase64 = photoBase64),
+                            product = refreshed ?: state.product,
                             uploadSuccess = -1,
                             uploadingProductPhoto = false
                         )

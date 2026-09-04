@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useWebsocket } from '../hooks/useWebsocket';
-import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw, Plus } from 'lucide-react';
+import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw, Plus, Camera, RefreshCw } from 'lucide-react';
 import { serviceJobService, serviceItemService, serviceJobTeamService, bookingService, resolveAssetUrl, companySettingsService } from '../services/api';
 import { staffService } from '../services/staffapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
@@ -13,6 +14,7 @@ import { creditTermService } from '../services/credittermapiservice';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import TechnicianAssignmentPanel from '../components/TechnicianAssignmentPanel';
+import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import { PaymentTransactionDTO } from '../types';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
@@ -363,8 +365,14 @@ const normalizePayments = (payments: PaymentTransactionDTO[]) =>
     .filter((p) => p.paymentMethodId > 0 && p.amount > 0);
 const paymentTotal = (payments: PaymentTransactionDTO[]) => normalizePayments(payments).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 const apiErrorMessage = (e: any) => e?.message || (typeof e === 'string' ? e : 'Operation failed');
+const isAvailableSerial = (s: any) => String(s?.status ?? '').toUpperCase() === 'AVAILABLE';
+const defaultEditStep = (status: string) => {
+  if (status === 'COMPLETED' || status === 'DELIVERED' || status === 'CANCELLED') return 3;
+  if (status === 'INSPECTING' || status === 'WAITING_PARTS' || status === 'IN_PROGRESS') return 2;
+  return 0;
+};
 
-/* ── SearchableSelect ─────────────────────────────────────────── */
+/* ── SearchableSelect (portaled so modal overflow cannot clip the list) ── */
 const SearchableSelect: React.FC<{
   items: any[];
   value: string;
@@ -372,31 +380,74 @@ const SearchableSelect: React.FC<{
   subField?: string;
   placeholder?: string;
   initialSearch?: string;
+  /** Shown when value is set but item is not (yet) in items */
+  fallbackLabel?: string;
   onChange: (item: any | null) => void;
-}> = ({ items, value, displayField = 'name', subField, placeholder = 'Search...', initialSearch, onChange }) => {
+}> = ({ items, value, displayField = 'name', subField, placeholder = 'Search...', initialSearch, fallbackLabel, onChange }) => {
   const [search, setSearch] = useState(initialSearch ?? '');
   const [open, setOpen] = useState(Boolean(initialSearch));
-  const ref = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const openDirRef = useRef<'up' | 'down' | null>(null);
   const safeItems = Array.isArray(items) ? items : [];
+  const selected = safeItems.find(i => i && String(i.id) === String(value));
+  const shownLabel = selected ? (selected[displayField] ?? '') : (value ? (fallbackLabel || '') : '');
 
   useEffect(() => {
-    if (value) {
-      const item = safeItems.find(i => i && String(i.id) === String(value));
-      setSearch(item ? (item[displayField] ?? '') : '');
-    } else if (initialSearch) {
-      setSearch(initialSearch);
-    } else {
-      setSearch('');
+    if (open) return;
+    if (value) setSearch(shownLabel);
+    else if (initialSearch) setSearch(initialSearch);
+    else setSearch('');
+  }, [value, shownLabel, initialSearch, open]);
+
+  useLayoutEffect(() => {
+    if (!open || !inputRef.current) {
+      openDirRef.current = null;
+      setMenuPos(null);
+      return;
     }
-  }, [value, items, displayField, initialSearch]);
+    const place = () => {
+      if (!inputRef.current) return;
+      const rect = inputRef.current.getBoundingClientRect();
+      const preferredMax = 224;
+      const width = Math.min(Math.max(rect.width, 280), window.innerWidth - 16);
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+      // Prefer below; only flip up when below is too tight AND above is clearly better.
+      // Lock direction for this open session so scroll/reflow won't flip the menu.
+      if (!openDirRef.current) {
+        openDirRef.current = (spaceBelow < 96 && spaceAbove > spaceBelow + 40) ? 'up' : 'down';
+      }
+      const openUp = openDirRef.current === 'up';
+      const available = openUp ? spaceAbove : spaceBelow;
+      const maxHeight = Math.min(preferredMax, Math.max(120, available));
+      setMenuPos({
+        top: openUp ? Math.max(8, rect.top - maxHeight - 4) : rect.bottom + 4,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        width,
+        maxHeight,
+      });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open, search, value]);
 
   useEffect(() => {
+    if (!open) return;
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (inputRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  }, []);
+  }, [open]);
 
   const txt = (search || '').toLowerCase();
   const itemSearchHaystack = (i: any) => {
@@ -425,30 +476,59 @@ const SearchableSelect: React.FC<{
   }).slice(0, 30);
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative min-w-0">
       <input
-        value={search}
-        onChange={e => { setSearch(e.target.value); setOpen(true); if (!e.target.value) onChange(null); }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
+        ref={inputRef}
+        value={open ? search : shownLabel}
+        onChange={e => {
+          setSearch(e.target.value);
+          setOpen(true);
+          // Do not call onChange(null) on empty search — focus clears the box for filtering
+          // and must keep the selected product (especially serial products).
+        }}
+        onFocus={() => {
+          setSearch('');
+          setOpen(true);
+        }}
+        placeholder={shownLabel || placeholder}
         className="w-full border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400"
       />
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border rounded-lg shadow-xl max-h-44 overflow-y-auto">
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            maxHeight: menuPos.maxHeight,
+            zIndex: 9999,
+          }}
+          className="overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl"
+        >
           {filtered.map(item => (
-            <div key={item.id}
-              onClick={() => { onChange(item); setSearch(item[displayField]); setOpen(false); }}
-              className="px-2.5 py-2 text-xs cursor-pointer hover:bg-indigo-50 flex justify-between items-center">
+            <button
+              key={item.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(item);
+                setSearch(item[displayField] ?? '');
+                setOpen(false);
+              }}
+              className={`flex w-full cursor-pointer items-center justify-between px-2.5 py-2 text-left text-xs hover:bg-indigo-50 ${String(item.id) === String(value) ? 'bg-indigo-50' : ''}`}
+            >
               <span className="font-medium text-slate-700">{item._deviceRecommended ? '★ ' : ''}{item[displayField]}</span>
               {subField && item[subField] && (
-                <span className="text-[10px] text-slate-400 ml-2">{item[subField]}</span>
+                <span className="ml-2 text-[10px] text-slate-400">{item[subField]}</span>
               )}
-            </div>
+            </button>
           ))}
           {filtered.length === 0 && (
-            <div className="px-2.5 py-2 text-xs text-slate-400 italic">ရှာမတွေ့ပါ</div>
+            <div className="px-2.5 py-2 text-xs italic text-slate-400">ရှာမတွေ့ပါ</div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -511,52 +591,199 @@ const PartRequestConvertPanel: React.FC<{
               </div>
             )}
             {showInlineSerials && converted && convertedPart?.hasSerial && convertedPart.productId && (
-              <div>
-                <label className="mb-1 block text-[10px] font-bold text-amber-600">
-                  Serial Numbers ({convertedPart.serialNumbers.length}/{convertedPart.qty})
-                  {convertedPart.serialNumbers.length !== convertedPart.qty && (
-                    <span className="ml-1 text-red-500">— {convertedPart.qty - convertedPart.serialNumbers.length} remaining</span>
-                  )}
-                </label>
-                {convertedPart.serialNumbers.length > 0 && (
-                  <div className="mb-1.5 flex flex-wrap gap-1">
-                    {convertedPart.serialNumbers.map((sn, si) => (
-                      <span key={si} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[10px] text-amber-800">
-                        {sn}
-                        <button type="button"
-                          onClick={() => onPatchConvertedPart(row.key, part => ({ ...part, serialNumbers: part.serialNumbers.filter((_: string, idx: number) => idx !== si) }))}
-                          className="font-bold leading-none text-amber-500 hover:text-red-600">x</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {convertedPart.serialNumbers.length < convertedPart.qty && (
-                  <div className="max-h-28 overflow-y-auto rounded-lg border bg-white">
-                    {(convertedPart.availableSerials || []).length === 0 ? (
-                      <div className="px-2 py-2 text-[10px] italic text-slate-400">Available serial မရှိပါ</div>
-                    ) : (
-                      (convertedPart.availableSerials || [])
-                        .filter((s: any) => s.status === 'Available' && !convertedPart.serialNumbers.includes(s.serialNumber))
-                        .map((s: any) => (
-                          <div key={s.id}
-                            onClick={() => {
-                              if (convertedPart.serialNumbers.length >= convertedPart.qty) return;
-                              onPatchConvertedPart(row.key, part => ({ ...part, serialNumbers: [...part.serialNumbers, s.serialNumber] }));
-                            }}
-                            className="flex cursor-pointer items-center justify-between border-b px-2.5 py-1.5 font-mono text-[11px] last:border-b-0 hover:bg-amber-50">
-                            <span>{s.serialNumber}</span>
-                            <span className="text-[9px] font-bold text-emerald-500">+ ရွေးပါ</span>
-                          </div>
-                        ))
-                    )}
-                  </div>
-                )}
-              </div>
+              <SerialNumberPicker
+                productId={convertedPart.productId}
+                productName={convertedPart.productName}
+                products={products}
+                selected={convertedPart.serialNumbers}
+                qty={convertedPart.qty}
+                availableSerials={convertedPart.availableSerials}
+                onAvailableLoaded={(serials) => onPatchConvertedPart(row.key, part => ({ ...part, availableSerials: serials, hasSerial: true }))}
+                onChangeSelected={(serialNumbers, nextQty) => onPatchConvertedPart(row.key, part => ({
+                  ...part,
+                  serialNumbers,
+                  ...(nextQty != null ? { qty: nextQty } : {}),
+                }))}
+              />
             )}
           </div>
         );
       })}
       <div className="text-[11px] text-amber-700">Technician စစ်ဆေးပြီးမှ Stock Part အဖြစ်ပြောင်းပါ။ Booking မူရင်းစာရင်း မပြောင်းပါ။</div>
+    </div>
+  );
+};
+
+const normalizeSerialCode = (value: unknown) => String(value ?? '').trim();
+
+/** Full available-serial list + manual entry + QR/camera scan for service job parts. */
+const SerialNumberPicker: React.FC<{
+  productId: string;
+  productName?: string;
+  products: any[];
+  selected: string[];
+  qty: number;
+  availableSerials: any[];
+  onChangeSelected: (serialNumbers: string[], nextQty?: number) => void;
+  onAvailableLoaded?: (serials: any[]) => void;
+}> = ({ productId, productName, products, selected, qty, availableSerials, onChangeSelected, onAvailableLoaded }) => {
+  const [filter, setFilter] = useState('');
+  const [manual, setManual] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const manualRef = useRef<HTMLInputElement>(null);
+
+  const prod: any = products.find((p: any) => String(p.id) === String(productId));
+  const slot1: any = prod?.photos?.find((ph: any) => ph?.slot === 1) || prod;
+  const thumb = resolveAssetUrl(slot1?.thumbnailPath || slot1?.imagePath);
+
+  const refresh = async () => {
+    if (!productId) return;
+    setLoading(true);
+    try {
+      const serials = await productSerialService.getByProductId(Number(productId));
+      onAvailableLoaded?.(serials ?? []);
+    } catch (err: any) {
+      void Swal.fire('Serial မရနိုင်ပါ', apiErrorMessage(err) || 'Product serial list ဖတ်မရပါ', 'warning');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!productId) return;
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId]);
+
+  const availablePool = (availableSerials || []).filter(isAvailableSerial);
+  const unselected = availablePool.filter((s: any) => !selected.includes(s.serialNumber));
+  const q = filter.trim().toLowerCase();
+  const filtered = q
+    ? unselected.filter((s: any) => String(s.serialNumber || '').toLowerCase().includes(q))
+    : unselected;
+
+  const tryAdd = (raw: string) => {
+    const code = normalizeSerialCode(raw);
+    if (!code) return;
+    if (selected.includes(code)) {
+      void Swal.fire('သတိ', `${code} ကို ရွေးပြီးသား ဖြစ်သည်`, 'info');
+      return;
+    }
+    const match = availablePool.find((s: any) => normalizeSerialCode(s.serialNumber).toLowerCase() === code.toLowerCase());
+    if (!match) {
+      const anyStatus = (availableSerials || []).find((s: any) => normalizeSerialCode(s.serialNumber).toLowerCase() === code.toLowerCase());
+      void Swal.fire(
+        'Serial မကိုက်ညီပါ',
+        anyStatus
+          ? `${code} သည် ဤ product ၏ serial ဖြစ်သော်လည်း Available မဟုတ်ပါ (status: ${anyStatus.status})`
+          : `${code} သည် ${productName || 'ဤ product'} ၏ Available serial မဟုတ်ပါ`,
+        'warning'
+      );
+      return;
+    }
+    const next = [...selected, match.serialNumber];
+    const nextQty = Math.max(qty, next.length);
+    onChangeSelected(next, nextQty !== qty ? nextQty : undefined);
+    setManual('');
+    setFilter('');
+  };
+
+  const removeAt = (index: number) => {
+    onChangeSelected(selected.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="mt-1 space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {thumb ? <img src={thumb} alt="" className="h-7 w-7 shrink-0 rounded border border-slate-200 bg-white object-cover" /> : null}
+        <label className="text-[10px] font-bold text-amber-700">
+          Serial Numbers ({selected.length}/{Math.max(qty, selected.length)})
+          {selected.length < qty && <span className="ml-1 text-red-500">— {qty - selected.length} လိုသေးသည်</span>}
+        </label>
+        <span className="ml-auto text-[10px] font-semibold text-slate-500">
+          Available {availablePool.length} · ကျန် {unselected.length}
+        </span>
+        <button type="button" onClick={() => void refresh()} disabled={loading}
+          className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+          title="Serial list ပြန်ဖတ်">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်
+        </button>
+      </div>
+
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selected.map((sn, si) => (
+            <span key={`${sn}-${si}`} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-white px-2 py-0.5 font-mono text-[10px] text-amber-900">
+              {sn}
+              <button type="button" onClick={() => removeAt(si)} className="font-bold leading-none text-amber-500 hover:text-red-600">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        <input
+          ref={manualRef}
+          value={manual}
+          onChange={e => setManual(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              tryAdd(manual);
+            }
+          }}
+          placeholder="Serial ရိုက် / scanner စာရိုက်ပြီး Enter"
+          className="min-h-9 flex-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 font-mono text-xs"
+        />
+        <button type="button" onClick={() => tryAdd(manual)}
+          className="shrink-0 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white hover:bg-amber-700">ထည့်</button>
+        <button type="button" onClick={() => setScanOpen(true)} title="QR / Barcode scan"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-violet-600 px-3 text-xs font-bold text-white hover:bg-violet-700">
+          <Camera size={14} /> Scan
+        </button>
+      </div>
+
+      <input
+        value={filter}
+        onChange={e => setFilter(e.target.value)}
+        placeholder="Available serial ရှာရန်..."
+        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+      />
+
+      <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+        {loading && availablePool.length === 0 ? (
+          <div className="px-2.5 py-3 text-[10px] italic text-slate-400">Serial list ဖတ်နေသည်...</div>
+        ) : availablePool.length === 0 ? (
+          <div className="px-2.5 py-3 text-[10px] italic text-slate-400">ဤ product အတွက် Available serial မရှိပါ</div>
+        ) : filtered.length === 0 ? (
+          <div className="px-2.5 py-3 text-[10px] italic text-amber-600">
+            {unselected.length === 0 ? 'Available serial အားလုံး ရွေးပြီးပါပြီ' : 'ရှာမတွေ့ပါ'}
+          </div>
+        ) : (
+          filtered.map((s: any) => (
+            <button
+              key={s.id ?? s.serialNumber}
+              type="button"
+              onClick={() => tryAdd(s.serialNumber)}
+              className="flex w-full items-center justify-between border-b border-slate-100 px-2.5 py-2 text-left font-mono text-[11px] last:border-b-0 hover:bg-amber-50"
+            >
+              <span className="text-slate-800">{s.serialNumber}</span>
+              <span className="text-[9px] font-bold text-emerald-600">+ ရွေးပါ</span>
+            </button>
+          ))
+        )}
+      </div>
+
+      {scanOpen && (
+        <BarcodeScannerCamera
+          onDetected={(code) => {
+            tryAdd(code);
+            setScanOpen(false);
+          }}
+          onClose={() => setScanOpen(false)}
+        />
+      )}
     </div>
   );
 };
@@ -569,17 +796,22 @@ const emptyProductPart = () => ({
 const ProductPartsEditor: React.FC<{
   products: any[];
   productParts: ReturnType<typeof emptyProductPart>[];
-  onChange: (productParts: ReturnType<typeof emptyProductPart>[]) => void;
+  onChange: (
+    productParts:
+      | ReturnType<typeof emptyProductPart>[]
+      | ((prev: ReturnType<typeof emptyProductPart>[]) => ReturnType<typeof emptyProductPart>[])
+  ) => void;
 }> = ({ products, productParts, onChange }) => {
+  // Always apply against latest parent state — serial fetch must not overwrite a fresh selection with stale props.
   const patch = (fn: (pp: ReturnType<typeof emptyProductPart>[]) => ReturnType<typeof emptyProductPart>[]) =>
-    onChange(fn(productParts));
+    onChange(prev => fn(Array.isArray(prev) ? prev : productParts));
 
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <label className="text-xs font-bold text-slate-500 uppercase">📦 အသုံးပြုပစ္စည်းများ</label>
         <button type="button"
-          onClick={() => onChange([...productParts, emptyProductPart()])}
+          onClick={() => onChange(prev => [...(Array.isArray(prev) ? prev : productParts), emptyProductPart()])}
           className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
       </div>
       {productParts.length > 0 ? (
@@ -589,7 +821,7 @@ const ProductPartsEditor: React.FC<{
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">ပစ္စည်း #{pi + 1}</span>
                 <button type="button"
-                  onClick={() => onChange(productParts.filter((_, idx) => idx !== pi))}
+                  onClick={() => onChange(prev => (Array.isArray(prev) ? prev : productParts).filter((_, idx) => idx !== pi))}
                   className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
               </div>
               <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${part.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
@@ -602,26 +834,29 @@ const ProductPartsEditor: React.FC<{
                 <SearchableSelect
                   items={products}
                   value={part.productId}
+                  fallbackLabel={part.productName}
                   displayField="name"
                   subField="productCode"
                   placeholder="ပစ္စည်း ရှာရန်..."
                   onChange={(prod) => {
                     if (prod) {
                       const hs = !!prod.hasSerial;
+                      const productId = String(prod.id);
                       patch(pp => {
                         const next = [...pp];
-                        next[pi] = { ...next[pi], productId: String(prod.id), productName: prod.name ?? '', unitPrice: Number(prod.sellingPrice ?? prod.price ?? 0), discountAmount: 0, hasSerial: hs, serialNumbers: [], availableSerials: [] };
+                        next[pi] = {
+                          ...next[pi],
+                          productId,
+                          productName: prod.name ?? '',
+                          unitPrice: Number(prod.sellingPrice ?? prod.price ?? 0),
+                          discountAmount: 0,
+                          hasSerial: hs,
+                          serialNumbers: [],
+                          availableSerials: [],
+                        };
                         return next;
                       });
-                      if (hs) {
-                        productSerialService.getByProductId(Number(prod.id)).then(serials => {
-                          patch(pp => {
-                            const next = [...pp];
-                            if (next[pi]) next[pi] = { ...next[pi], availableSerials: serials ?? [] };
-                            return next;
-                          });
-                        }).catch(() => {});
-                      }
+                      // SerialNumberPicker loads Available serials on productId change
                     } else {
                       patch(pp => {
                         const next = [...pp];
@@ -631,6 +866,9 @@ const ProductPartsEditor: React.FC<{
                     }
                   }}
                 />
+                {part.hasSerial && (
+                  <p className="mt-1 text-[10px] font-semibold text-amber-700">Serial-tracked product — အောက်တွင် serial အားလုံးမှ ရွေးပါ / Scan လုပ်ပါ</p>
+                )}
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div>
@@ -663,55 +901,26 @@ const ProductPartsEditor: React.FC<{
                 </div>
               </div>
               {part.hasSerial && part.productId && (
-                <div className="mt-1">
-                  <label className="block text-[10px] font-bold text-amber-600 mb-1">
-                    Serial Numbers ({part.serialNumbers.length}/{part.qty})
-                    {part.serialNumbers.length !== part.qty && (
-                      <span className="text-red-500 ml-1">— {part.qty - part.serialNumbers.length} remaining</span>
-                    )}
-                  </label>
-                  {part.serialNumbers.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-1.5">
-                      {part.serialNumbers.map((sn, si) => (
-                        <span key={si} className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-mono px-2 py-0.5 rounded-full">
-                          {sn}
-                          <button type="button"
-                            onClick={() => patch(pp => {
-                              const next = [...pp];
-                              next[pi] = { ...next[pi], serialNumbers: next[pi].serialNumbers.filter((_, idx) => idx !== si) };
-                              return next;
-                            })}
-                            className="text-amber-500 hover:text-red-600 font-bold leading-none">x</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {part.serialNumbers.length < part.qty && (
-                    <div className="max-h-28 overflow-y-auto border rounded-lg bg-white">
-                      {(part.availableSerials || []).length === 0 ? (
-                        <div className="px-2 py-2 text-[10px] text-slate-400 italic">Available serial မရှိပါ</div>
-                      ) : (
-                        (part.availableSerials || [])
-                          .filter((s: any) => s.status === 'Available' && !part.serialNumbers.includes(s.serialNumber))
-                          .map((s: any) => (
-                            <div key={s.id}
-                              onClick={() => {
-                                if (part.serialNumbers.length >= part.qty) return;
-                                patch(pp => {
-                                  const next = [...pp];
-                                  next[pi] = { ...next[pi], serialNumbers: [...next[pi].serialNumbers, s.serialNumber] };
-                                  return next;
-                                });
-                              }}
-                              className="px-2.5 py-1.5 text-[11px] font-mono cursor-pointer hover:bg-amber-50 border-b last:border-b-0 flex items-center justify-between">
-                              <span>{s.serialNumber}</span>
-                              <span className="text-[9px] text-emerald-500 font-bold">+ ရွေးပါ</span>
-                            </div>
-                          ))
-                      )}
-                    </div>
-                  )}
-                </div>
+                <SerialNumberPicker
+                  productId={part.productId}
+                  productName={part.productName}
+                  products={products}
+                  selected={part.serialNumbers}
+                  qty={part.qty}
+                  availableSerials={part.availableSerials}
+                  onAvailableLoaded={(serials) => patch(pp => pp.map((row, idx) =>
+                    idx === pi ? { ...row, availableSerials: serials, hasSerial: true } : row
+                  ))}
+                  onChangeSelected={(serialNumbers, nextQty) => patch(pp => {
+                    const next = [...pp];
+                    next[pi] = {
+                      ...next[pi],
+                      serialNumbers,
+                      ...(nextQty != null ? { qty: nextQty } : {}),
+                    };
+                    return next;
+                  })}
+                />
               )}
               {part.productName && (() => {
                 const gross = Number(part.qty || 1) * Number(part.unitPrice || 0);
@@ -998,7 +1207,7 @@ export default function ServiceJobManagement() {
   const [origStatus, setOrigStatus] = useState('');
   const [editStep, setEditStep] = useState(0);
   const [form, setForm]           = useState(emptyForm);
-  const [showAllServices, setShowAllServices] = useState(false);
+  const [showAllServices, setShowAllServices] = useState(true);
   const [convertedPartKeys, setConvertedPartKeys] = useState<string[]>([]);
   const [pickingPartKey, setPickingPartKey] = useState<string | null>(null);
 
@@ -1265,13 +1474,24 @@ export default function ServiceJobManagement() {
 
   /* ── Edit handlers ─────────────────────────────────────────── */
   const openEdit = (j: any) => {
+    if (!canAssignTechnician && (j.canEditJob === false || String(j.myAssignmentStatus || '').toUpperCase() === 'PENDING')) {
+      void Swal.fire({
+        icon: 'info',
+        title: 'Assignment လက်ခံရန် လိုအပ်သည်',
+        text: 'Technician Assignment ကို လက်ခံပြီးမှသာ ဝန်ဆောင်မှု ပြင်ဆင်နိုင်ပါသည်။',
+        confirmButtonText: 'Assignment ဖွင့်မည်',
+      }).then((result) => {
+        if (result.isConfirmed) setTeamJob(j);
+      });
+      return;
+    }
     setConvertedPartKeys([]);
     setPickingPartKey(null);
     setForm({
       customerId:          String(j.customerId ?? ''),
-      assignedStaffId:     canAssignTechnician
-        ? (j.assignedStaffId ? String(j.assignedStaffId) : '')
-        : myStaffId,
+      // Always keep the job's primary lead. Non-assigners must not default to myStaffId
+      // (that overwrote Lead when a Member saved the form).
+      assignedStaffId:     j.assignedStaffId ? String(j.assignedStaffId) : (canAssignTechnician ? '' : myStaffId),
       helperStaffId:       j.helperStaffId ? String(j.helperStaffId) : '',
       serialNo:            j.serialNo ?? '',
       color:               j.color ?? '',
@@ -1312,22 +1532,24 @@ export default function ServiceJobManagement() {
     setEditId(j.id);
     setEditJobNo(j.jobNo ?? '');
     setOrigStatus(j.status ?? 'RECEIVED');
-    setEditStep(0);
+    setEditStep(defaultEditStep(j.status ?? 'RECEIVED'));
     setShowEdit(true);
     // Fetch available serials for serial-tracked parts
-    (j.productParts ?? []).forEach((p: any, idx: number) => {
+    (j.productParts ?? []).forEach((p: any) => {
       if (!p.productId) return;
       const prod = products.find((pr: any) => String(pr.id) === String(p.productId));
       const isSerial = !!(prod?.hasSerial || (Array.isArray(p.serialNumbers) && p.serialNumbers.length > 0));
       if (isSerial) {
-        productSerialService.getByProductId(Number(p.productId)).then(serials => {
-          setForm(prev => {
-            const pp = [...prev.productParts];
-            if (pp[idx]) {
-              pp[idx] = { ...pp[idx], hasSerial: true, availableSerials: serials ?? [] };
-            }
-            return { ...prev, productParts: pp };
-          });
+        const productId = Number(p.productId);
+        productSerialService.getByProductId(productId).then(serials => {
+          setForm(prev => ({
+            ...prev,
+            productParts: prev.productParts.map(row =>
+              String(row.productId) === String(productId)
+                ? { ...row, hasSerial: true, availableSerials: serials ?? [] }
+                : row
+            ),
+          }));
         }).catch(() => {});
       }
     });
@@ -1914,7 +2136,9 @@ export default function ServiceJobManagement() {
           if (idx >= 0) pp[idx] = { ...pp[idx], availableSerials: serials ?? [] };
           return { ...p, productParts: pp };
         });
-      }).catch(() => {});
+      }).catch((err) => {
+        void Swal.fire('Serial မရနိုင်ပါ', apiErrorMessage(err) || 'Product serial list ဖတ်မရပါ', 'warning');
+      });
     }
   };
   const patchConvertedPart = (key: string, updater: (part: any) => any) => {
@@ -2495,7 +2719,10 @@ export default function ServiceJobManagement() {
               <ProductPartsEditor
                 products={products}
                 productParts={form.productParts}
-                onChange={(productParts) => setForm(p => ({ ...p, productParts }))}
+                onChange={(productParts) => setForm(p => ({
+                  ...p,
+                  productParts: typeof productParts === 'function' ? productParts(p.productParts) : productParts,
+                }))}
               />
             </div>
 
@@ -2553,7 +2780,7 @@ export default function ServiceJobManagement() {
               </section>
 
               <nav aria-label="Service Job ပြင်ဆင်ရန် အဆင့်များ" className="grid grid-cols-4 gap-1 rounded-xl border bg-white p-1">
-                {['လက်ခံ/တာဝန်ပေး', 'စစ်ဆေး/ခန့်မှန်း', 'ပြင်ဆင်/Parts', 'ပြီးစီး/သိမ်း'].map((label, index) => (
+                {['လက်ခံ/တာဝန်ပေး', 'စစ်ဆေး/ခန့်မှန်း', 'Service/Parts', 'ပြီးစီး/သိမ်း'].map((label, index) => (
                   <button key={label} type="button" onClick={() => setEditStep(index)} className={`min-h-11 rounded-lg px-1 py-2 text-center text-[10px] font-black ${editStep === index ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
                     <span className="block truncate">{index + 1}. {label}</span>
                   </button>
@@ -2637,17 +2864,95 @@ export default function ServiceJobManagement() {
                   className="w-full border rounded-xl px-3 py-2 text-sm resize-none" />
               </div>
               <div className={editStep === 2 ? '' : 'hidden'}>
-              <PartRequestConvertPanel
-                partRequests={form.partRequests}
-                products={products}
-                productParts={form.productParts}
-                convertedKeys={convertedPartKeys}
-                pickingKey={pickingPartKey}
-                onStartPick={setPickingPartKey}
-                onCancelPick={() => setPickingPartKey(null)}
-                onConvert={handleConvertPartRequest}
-                onPatchConvertedPart={patchConvertedPart}
-              />
+                {/* Service Lines — same tab as Parts so Service ထည့်ရန် မပျောက် */}
+                <div className="mb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
+                    <button type="button"
+                      onClick={() => setForm(p => ({ ...p, lines: [...p.lines, emptyServiceLine()] }))}
+                      className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
+                  </div>
+                  <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                    <span>{serviceFilterDeviceType ? (recommendedServiceCount ? `★ ${serviceFilterDeviceType} အတွက် အကြံပြု ${recommendedServiceCount} ခု` : `${serviceFilterDeviceType} အတွက် သတ်မှတ်ထားသော service မရှိသေးပါ`) : 'ပစ္စည်းအမျိုးအစားကို စစ်ဆေး tab တွင် ရွေးပါ (သို့) အားလုံးပြ'}</span>
+                    <label className="flex shrink-0 items-center gap-1"><input type="checkbox" checked={showAllServices} onChange={e => setShowAllServices(e.target.checked)} /> အားလုံးပြ</label>
+                  </div>
+                  {form.lines.length > 0 ? (
+                    <div className="space-y-2">
+                      {form.lines.map((line: any, li: number) => (
+                        <div key={li} className="min-w-0 space-y-2 rounded-xl border bg-slate-50 p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">ဝန်ဆောင်မှု #{li + 1}</span>
+                            <button type="button"
+                              onClick={() => setForm(p => ({ ...p, lines: p.lines.filter((_: any, idx: number) => idx !== li) }))}
+                              className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
+                          </div>
+                          <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${line.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                            <input type="checkbox" checked={Boolean(line.warrantyCovered)}
+                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], warrantyCovered: e.target.checked }; return { ...p, lines }; })} />
+                            Warranty အကျုံးဝင် — အခမဲ့
+                          </label>
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">အတည်ပြုမှု အခြေအနေ</label>
+                            <select value={line.confirmationStatus || 'RECOMMENDED'}
+                              onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], confirmationStatus: e.target.value }; return { ...p, lines }; })}
+                              className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>
+                              {LINE_CONFIRMATION_STATUS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                            </select>
+                            <p className="mt-1 rounded-md bg-white/70 px-2 py-1.5 text-[10px] font-semibold text-slate-600">{LINE_CONFIRMATION_HELP[line.confirmationStatus || 'RECOMMENDED']}</p>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
+                            <SearchableSelect
+                              items={filteredServiceItems}
+                              value={line.serviceItemId}
+                              displayField="item"
+                              subField="code"
+                              placeholder="ဝန်ဆောင်မှု ရှာရန်..."
+                              onChange={(si) => {
+                                setForm(p => {
+                                  const lines = [...p.lines];
+                                  lines[li] = applyServiceItem(lines[li], si);
+                                  return { ...p, lines };
+                                });
+                              }}
+                            />
+                          </div>
+                          <ServiceLinePriceFields
+                            line={line}
+                            canOverridePrice={canOverridePrice}
+                            onPatch={(patch) => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], ...patch }; return { ...p, lines }; })}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">ဝန်ဆောင်မှု မရှိသေးပါ — + ထည့်ရန် နှိပ်ပါ</p>
+                  )}
+                </div>
+
+                <PartRequestConvertPanel
+                  partRequests={form.partRequests}
+                  products={products}
+                  productParts={form.productParts}
+                  convertedKeys={convertedPartKeys}
+                  pickingKey={pickingPartKey}
+                  showInlineSerials
+                  onStartPick={setPickingPartKey}
+                  onCancelPick={() => setPickingPartKey(null)}
+                  onConvert={handleConvertPartRequest}
+                  onPatchConvertedPart={patchConvertedPart}
+                />
+
+                <div className="mt-5">
+                  <ProductPartsEditor
+                    products={products}
+                    productParts={form.productParts}
+                    onChange={(productParts) => setForm(p => ({
+                      ...p,
+                      productParts: typeof productParts === 'function' ? productParts(p.productParts) : productParts,
+                    }))}
+                  />
+                </div>
               </div>
 
               {/* Est. Completion + Est. Cost */}
@@ -2664,80 +2969,6 @@ export default function ServiceJobManagement() {
                     onChange={e => setForm(p => ({ ...p, estimatedCost: e.target.value }))}
                     placeholder="0" className="w-full border rounded-xl px-3 py-2 text-sm" />
                 </div>
-              </div>
-
-              {/* Service Lines */}
-              <div className={editStep === 2 ? '' : 'hidden'}>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">🔧 ဝန်ဆောင်မှု / လုပ်ခ</label>
-                  <button type="button"
-                    onClick={() => setForm(p => ({ ...p, lines: [...p.lines, emptyServiceLine()] }))}
-                    className="text-xs text-indigo-600 hover:underline font-bold">+ ထည့်ရန်</button>
-                </div>
-                <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-500">
-                  <span>{serviceFilterDeviceType ? (recommendedServiceCount ? `★ ${serviceFilterDeviceType} အတွက် အကြံပြု ${recommendedServiceCount} ခု` : `${serviceFilterDeviceType} အတွက် သတ်မှတ်ထားသော service မရှိသေးပါ`) : 'ပစ္စည်းအမျိုးအစားရွေးပါ'}</span>
-                  <label className="flex shrink-0 items-center gap-1"><input type="checkbox" checked={showAllServices} onChange={e => setShowAllServices(e.target.checked)} /> အားလုံးပြ</label>
-                </div>
-                {form.lines.length > 0 ? (
-                  <div className="space-y-2">
-                    {form.lines.map((line: any, li: number) => (
-                      <div key={li} className="min-w-0 space-y-2 rounded-xl border bg-slate-50 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">ဝန်ဆောင်မှု #{li + 1}</span>
-                          <button type="button"
-                            onClick={() => setForm(p => ({ ...p, lines: p.lines.filter((_: any, idx: number) => idx !== li) }))}
-                            className="text-xs text-red-400 hover:text-red-600 font-bold px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">ဖယ်ရန်</button>
-                        </div>
-                        <label className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-bold ${line.warrantyCovered ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
-                          <input type="checkbox" checked={Boolean(line.warrantyCovered)}
-                            onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], warrantyCovered: e.target.checked }; return { ...p, lines }; })} />
-                          Warranty အကျုံးဝင် — အခမဲ့
-                        </label>
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">အတည်ပြုမှု အခြေအနေ</label>
-                          <select value={line.confirmationStatus || 'RECOMMENDED'}
-                            onChange={e => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], confirmationStatus: e.target.value }; return { ...p, lines }; })}
-                            className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold ${lineConfirmationMeta(line.confirmationStatus).cls}`}>
-                            {LINE_CONFIRMATION_STATUS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
-                          </select>
-                          <p className="mt-1 rounded-md bg-white/70 px-2 py-1.5 text-[10px] font-semibold text-slate-600">{LINE_CONFIRMATION_HELP[line.confirmationStatus || 'RECOMMENDED']}</p>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">ဝန်ဆောင်မှု အမျိုးအစား</label>
-                          <SearchableSelect
-                            items={filteredServiceItems}
-                            value={line.serviceItemId}
-                            displayField="item"
-                            subField="code"
-                            placeholder="ဝန်ဆောင်မှု ရှာရန်..."
-                            onChange={(si) => {
-                              setForm(p => {
-                                const lines = [...p.lines];
-                                lines[li] = applyServiceItem(lines[li], si);
-                                return { ...p, lines };
-                              });
-                            }}
-                          />
-                        </div>
-                        <ServiceLinePriceFields
-                          line={line}
-                          canOverridePrice={canOverridePrice}
-                          onPatch={(patch) => setForm(p => { const lines = [...p.lines]; lines[li] = { ...lines[li], ...patch }; return { ...p, lines }; })}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">ဝန်ဆောင်မှု မရှိသေးပါ</p>
-                )}
-              </div>
-
-              <div className={editStep === 2 ? '' : 'hidden'}>
-                <ProductPartsEditor
-                  products={products}
-                  productParts={form.productParts}
-                  onChange={(productParts) => setForm(p => ({ ...p, productParts }))}
-                />
               </div>
 
               {/* Remark */}

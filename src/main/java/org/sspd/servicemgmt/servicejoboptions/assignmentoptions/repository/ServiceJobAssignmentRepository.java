@@ -19,6 +19,8 @@ public interface ServiceJobAssignmentRepository extends JpaRepository<ServiceJob
             Integer serviceJobId, Collection<AssignmentStatus> statuses);
     List<ServiceJobAssignment> findAllByStaffIdAndStatusInOrderByAssignedAtDesc(
             Integer staffId, Collection<AssignmentStatus> statuses);
+    List<ServiceJobAssignment> findAllByStaffIdAndServiceJobIdInAndStatusIn(
+            Integer staffId, Collection<Integer> serviceJobIds, Collection<AssignmentStatus> statuses);
     boolean existsByServiceJobIdAndStaffIdAndStatusIn(
             Integer serviceJobId, Integer staffId, Collection<AssignmentStatus> statuses);
     boolean existsByServiceJobIdAndRoleAndStatusIn(

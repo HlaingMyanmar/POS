@@ -70,7 +70,15 @@ class ServiceJobFormViewModel(
 
                 val customers      = custD.await().body()?.data  ?: emptyList()
                 val staffList      = staffD.await().body()?.data ?: emptyList()
-                val serviceItems   = itemsD.await().body()?.data ?: emptyList()
+                val itemsRes       = itemsD.await()
+                val serviceItems   = itemsRes.body()?.data ?: emptyList()
+                val serviceLoadError = when {
+                    !itemsRes.isSuccessful ->
+                        "ဝန်ဆောင်မှုစာရင်း မရပါ (HTTP ${itemsRes.code()}) — CAN_ACCESS_SERVICE_READ ခွင့်ပြုချက် စစ်ပါ"
+                    serviceItems.isEmpty() ->
+                        "Active ဝန်ဆောင်မှု မရှိသေးပါ — Service catalog တွင် ထည့်ပါ"
+                    else -> null
+                }
                 val paymentMethods = pmD.await().body()?.data    ?: emptyList()
                 val productList    = prodD.await().body()?.data  ?: emptyList()
                 val shelfLocations = shelfD.await().body()?.data ?: emptyList()
@@ -82,12 +90,16 @@ class ServiceJobFormViewModel(
                             customers        = customers,
                             staffList        = staffList,
                             serviceItems     = serviceItems,
+                            serviceLoadError = serviceLoadError,
                             paymentMethods   = paymentMethods,
                             productList      = productList,
                             shelfLocations   = shelfLocations,
                             selectedCustomer = customers.find { c -> c.id == j.customerId },
                             customerQuery    = j.customerName ?: "",
                             selectedStaff    = staffList.find { s -> s.id == j.assignedStaffId },
+                            primaryAssignedStaffId = j.assignedStaffId,
+                            canEditJob       = j.canEditJob != false,
+                            myAssignmentStatus = j.myAssignmentStatus,
                             selectedShelfLocation = shelfLocations.find { loc -> loc.id == j.shelfLocationId },
                             itemName         = j.itemName ?: "",
                             deviceType       = j.deviceType ?: "",
@@ -120,24 +132,44 @@ class ServiceJobFormViewModel(
                                 )
                             } ?: emptyList(),
                             parts            = j.productParts?.map { p ->
+                                val matched = productList.find { pr -> pr.id == p.productId }
+                                val serials = p.serialNumbers ?: emptyList()
+                                val product = when {
+                                    matched != null && serials.isNotEmpty() && matched.hasSerial != true ->
+                                        matched.copy(hasSerial = true)
+                                    matched != null -> matched
+                                    else -> ProductDTO(
+                                        id = p.productId ?: 0,
+                                        productCode = p.productCode ?: "",
+                                        name = p.productName ?: "",
+                                        stockQty = 0,
+                                        productType = "",
+                                        sellingPrice = p.unitPrice?.toDouble() ?: 0.0,
+                                        hasSerial = serials.isNotEmpty()
+                                    )
+                                }
                                 PartDraft(
-                                    product       = productList.find { pr -> pr.id == p.productId }
-                                        ?: ProductDTO(id = p.productId ?: 0, productCode = p.productCode ?: "", name = p.productName ?: "", stockQty = 0, productType = "", sellingPrice = p.unitPrice?.toDouble() ?: 0.0),
+                                    product       = product,
                                     qty           = p.qty?.toString() ?: "1",
                                     unitPrice     = p.unitPrice?.let { v -> String.format("%.0f", v) } ?: "",
                                     discount      = p.discountAmount?.let { v -> String.format("%.0f", v) } ?: "0",
-                                    serialNumbers = p.serialNumbers ?: emptyList()
+                                    serialNumbers = serials
                                 )
                             } ?: emptyList(),
                             remark           = j.remark ?: "",
                             loading          = false
                         ) }
+                        _uiState.value.parts.forEachIndexed { idx, part ->
+                            val prod = part.product
+                            if (prod != null && prod.hasSerial == true) loadSerialOptionsQuiet(idx, prod)
+                        }
                         return@launch
                     }
                 }
                 _uiState.update { it.copy(
                     customers = customers, staffList = staffList,
-                    serviceItems = serviceItems, paymentMethods = paymentMethods,
+                    serviceItems = serviceItems, serviceLoadError = serviceLoadError,
+                    paymentMethods = paymentMethods,
                     productList = productList, shelfLocations = shelfLocations, loading = false
                 ) }
             } catch (_: Exception) { _uiState.update { it.copy(loading = false) } }
@@ -275,6 +307,7 @@ class ServiceJobFormViewModel(
                     product = product,
                     unitPrice = String.format("%.0f", product.sellingPrice.toDouble()),
                     serialNumbers = emptyList(),
+                    availableSerials = emptyList(),
                     qty = "1"
                 )
                 s.copy(
@@ -282,8 +315,10 @@ class ServiceJobFormViewModel(
                     serialSelectPartIdx = partIdx,
                     serialSelectProduct = product,
                     serialSelectOptions = emptyList(),
+                    serialSelectFilter = "",
                     serialSelectLoading = true,
-                    serialSelectError = null
+                    serialSelectError = null,
+                    serialError = null
                 )
             }
             loadSerialOptions(partIdx, product)
@@ -294,35 +329,88 @@ class ServiceJobFormViewModel(
                     product = product,
                     unitPrice = String.format("%.0f", product.sellingPrice.toDouble()),
                     serialNumbers = emptyList(),
+                    availableSerials = emptyList(),
                     qty = "1"
                 )
             )
         }
     }
 
+    /** Reopen AVAILABLE list without clearing already-selected serials. */
+    fun openSerialSelector(partIdx: Int) {
+        if (partIdx !in _uiState.value.parts.indices) return
+        val part = _uiState.value.parts[partIdx]
+        val product = part.product ?: return
+        if (product.hasSerial != true) return
+        _uiState.update {
+            it.copy(
+                serialSelectPartIdx = partIdx,
+                serialSelectProduct = product,
+                serialSelectFilter = "",
+                serialSelectLoading = true,
+                serialSelectError = null,
+                serialError = null,
+                serialSelectOptions = part.availableSerials.filterNot { s ->
+                    part.serialNumbers.contains(s.serialNumber)
+                }
+            )
+        }
+        loadSerialOptions(partIdx, product)
+    }
+
+    fun setSerialSelectFilter(query: String) = _uiState.update { it.copy(serialSelectFilter = query) }
+
+    fun refreshSerialOptions() {
+        val partIdx = _uiState.value.serialSelectPartIdx ?: return
+        val product = _uiState.value.serialSelectProduct ?: return
+        _uiState.update { it.copy(serialSelectLoading = true, serialSelectError = null) }
+        loadSerialOptions(partIdx, product)
+    }
+
+    private fun isAvailableStatus(status: String?): Boolean =
+        status?.uppercase() == "AVAILABLE"
+
     private fun loadSerialOptions(partIdx: Int, product: ProductDTO) {
         viewModelScope.launch {
             try {
                 val res = ApiClient.service.getProductSerials(ApiClient.bearer(prefs.authToken), product.id)
-                val selectedElsewhere = _uiState.value.parts
+                // Ignore stale responses if user switched product/part
+                val current = _uiState.value
+                if (current.serialSelectPartIdx != partIdx || current.serialSelectProduct?.id != product.id) return@launch
+
+                if (!res.isSuccessful) {
+                    val msg = when (res.code()) {
+                        403 -> "Serial ဖတ်ခွင့်မရှိပါ (CAN_ACCESS_PRODUCT_SERIAL_READ)"
+                        else -> "Serial list မရပါ (HTTP ${res.code()})"
+                    }
+                    _uiState.update {
+                        it.copy(serialSelectLoading = false, serialSelectError = msg, serialSelectOptions = emptyList())
+                    }
+                    return@launch
+                }
+
+                val pool = (res.body()?.data ?: emptyList()).filter { serial ->
+                    serial.serialNumber.isNotBlank() && isAvailableStatus(serial.status)
+                }
+                val selectedElsewhere = current.parts
                     .filterIndexed { idx, _ -> idx != partIdx }
                     .flatMap { it.serialNumbers }
                     .toSet()
-                val options = (if (res.isSuccessful) res.body()?.data ?: emptyList() else emptyList())
-                    .filter { serial ->
-                        val status = serial.status?.uppercase()
-                        serial.serialNumber.isNotBlank() &&
-                            status != "SOLD" &&
-                            status != "USED" &&
-                            status != "DAMAGED" &&
-                            status != "LOST" &&
-                            !selectedElsewhere.contains(serial.serialNumber)
+                val selectedHere = current.parts.getOrNull(partIdx)?.serialNumbers?.toSet().orEmpty()
+                val options = pool.filter { serial ->
+                    !selectedElsewhere.contains(serial.serialNumber) &&
+                        !selectedHere.contains(serial.serialNumber)
+                }
+                _uiState.update { s ->
+                    val parts = s.parts.toMutableList()
+                    if (partIdx in parts.indices && parts[partIdx].product?.id == product.id) {
+                        parts[partIdx] = parts[partIdx].copy(availableSerials = pool)
                     }
-                _uiState.update {
-                    it.copy(
+                    s.copy(
+                        parts = parts,
                         serialSelectOptions = options,
                         serialSelectLoading = false,
-                        serialSelectError = if (options.isEmpty()) "အသုံးပြုနိုင်သော Serial number မရှိပါ" else null
+                        serialSelectError = if (pool.isEmpty()) "အသုံးပြုနိုင်သော Serial number မရှိပါ" else null
                     )
                 }
             } catch (e: Exception) {
@@ -339,7 +427,13 @@ class ServiceJobFormViewModel(
     fun selectSerialForPart(serial: ProductSerialDTO) {
         val partIdx = _uiState.value.serialSelectPartIdx ?: return
         addSerialToPart(partIdx, serial.serialNumber)
-        dismissSerialSelector()
+        // Keep sheet open for multi-select; refresh remaining options
+        _uiState.update { s ->
+            val part = s.parts.getOrNull(partIdx)
+            val remaining = (part?.availableSerials ?: s.serialSelectOptions)
+                .filter { isAvailableStatus(it.status) && it.serialNumber !in (part?.serialNumbers ?: emptyList()) }
+            s.copy(serialSelectOptions = remaining, serialError = null)
+        }
     }
 
     fun dismissSerialSelector() = _uiState.update {
@@ -347,6 +441,7 @@ class ServiceJobFormViewModel(
             serialSelectPartIdx = null,
             serialSelectProduct = null,
             serialSelectOptions = emptyList(),
+            serialSelectFilter = "",
             serialSelectLoading = false,
             serialSelectError = null
         )
@@ -392,8 +487,12 @@ class ServiceJobFormViewModel(
             val idx     = parts.indexOfFirst { it.product?.id == product.id }
             if (idx >= 0) {
                 val p = parts[idx]
-                if (product.hasSerial == true && serial != null && !p.serialNumbers.contains(serial)) {
-                    parts[idx] = p.copy(serialNumbers = p.serialNumbers + serial, qty = (p.serialNumbers.size + 1).toString())
+                if (product.hasSerial == true && serial != null) {
+                    val err = validateSerialForPart(p, serial)
+                    if (err != null) return@update s.copy(partScanError = err)
+                    if (!p.serialNumbers.contains(serial)) {
+                        parts[idx] = p.copy(serialNumbers = p.serialNumbers + serial, qty = (p.serialNumbers.size + 1).toString())
+                    }
                 } else if (product.hasSerial != true) {
                     parts[idx] = p.copy(qty = ((p.qty.toIntOrNull() ?: 1) + 1).toString())
                 }
@@ -406,6 +505,29 @@ class ServiceJobFormViewModel(
             }
             s.copy(parts = parts)
         }
+        if (product.hasSerial == true) {
+            val idx = _uiState.value.parts.indexOfFirst { it.product?.id == product.id }
+            if (idx >= 0) loadSerialOptionsQuiet(idx, product)
+        }
+    }
+
+    /** Background refresh of AVAILABLE pool without opening the sheet. */
+    private fun loadSerialOptionsQuiet(partIdx: Int, product: ProductDTO) {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.service.getProductSerials(ApiClient.bearer(prefs.authToken), product.id)
+                if (!res.isSuccessful) return@launch
+                val pool = (res.body()?.data ?: emptyList()).filter {
+                    it.serialNumber.isNotBlank() && isAvailableStatus(it.status)
+                }
+                _uiState.update { s ->
+                    if (partIdx !in s.parts.indices || s.parts[partIdx].product?.id != product.id) return@update s
+                    val parts = s.parts.toMutableList()
+                    parts[partIdx] = parts[partIdx].copy(availableSerials = pool)
+                    s.copy(parts = parts)
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     fun showSerialScanner(partIdx: Int) = _uiState.update { it.copy(serialScanPartIdx = partIdx) }
@@ -416,17 +538,40 @@ class ServiceJobFormViewModel(
         addSerialToPart(partIdx, serial)
     }
 
+    private fun validateSerialForPart(part: PartDraft, raw: String): String? {
+        val code = raw.trim()
+        if (code.isBlank()) return "Serial number ဖြည့်ပါ"
+        if (part.serialNumbers.any { it.equals(code, ignoreCase = true) })
+            return "\"$code\" ထပ်နေသည်"
+        if (part.product?.hasSerial != true) return null
+        val pool = part.availableSerials
+        if (pool.isEmpty()) {
+            return "Available serial စာရင်း မရှိသေးပါ — Refresh နှိပ်ပြီး ထပ်ကြိုးစားပါ"
+        }
+        val match = pool.find { it.serialNumber.equals(code, ignoreCase = true) }
+            ?: return "\"$code\" သည် ${part.product?.name ?: "ဤ product"} ၏ Available serial မဟုတ်ပါ"
+        if (!isAvailableStatus(match.status)) {
+            return "\"$code\" သည် Available မဟုတ်ပါ (${match.status})"
+        }
+        return null
+    }
+
     fun addSerialToPart(partIdx: Int, serial: String) {
         _uiState.update { s ->
             val parts = s.parts.toMutableList()
             val part  = parts.getOrNull(partIdx) ?: return@update s
-            if (part.serialNumbers.contains(serial))
-                return@update s.copy(serialError = "\"$serial\" ထပ်နေသည်")
+            val code = serial.trim()
+            val err = validateSerialForPart(part, code)
+            if (err != null) return@update s.copy(serialError = err)
+            val canonical = part.availableSerials
+                .find { it.serialNumber.equals(code, ignoreCase = true) }
+                ?.serialNumber
+                ?: code
             parts[partIdx] = part.copy(
-                serialNumbers = part.serialNumbers + serial,
+                serialNumbers = part.serialNumbers + canonical,
                 qty           = (part.serialNumbers.size + 1).toString()
             )
-            s.copy(parts = parts)
+            s.copy(parts = parts, serialError = null)
         }
     }
 
@@ -436,7 +581,13 @@ class ServiceJobFormViewModel(
             val part      = parts.getOrNull(partIdx) ?: return@update s
             val newSerials = part.serialNumbers.filter { it != serial }
             parts[partIdx] = part.copy(serialNumbers = newSerials, qty = maxOf(1, newSerials.size).toString())
-            s.copy(parts = parts)
+            // If selector open for this part, put serial back into options
+            val refreshedOptions = if (s.serialSelectPartIdx == partIdx) {
+                part.availableSerials.filter {
+                    isAvailableStatus(it.status) && it.serialNumber !in newSerials
+                }
+            } else s.serialSelectOptions
+            s.copy(parts = parts, serialSelectOptions = refreshedOptions)
         }
     }
 
@@ -545,11 +696,24 @@ class ServiceJobFormViewModel(
                     _uiState.update { it.copy(saving = false, saveError = "စျေးပြောင်းရသည့်အကြောင်းပြချက် ဖြည့်ပါ") }
                     return@launch
                 }
+                if (jobId != null && !prefs.hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+                    && (s.canEditJob == false || s.myAssignmentStatus.equals("PENDING", true))) {
+                    _uiState.update {
+                        it.copy(
+                            saving = false,
+                            saveError = "Technician Assignment ကို လက်ခံပြီးမှသာ ဝန်ဆောင်မှု ပြင်ဆင်နိုင်ပါသည်။"
+                        )
+                    }
+                    return@launch
+                }
+                val canAssignLead = prefs.hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
                 val dto        = ServiceJobDTO(
                     id                  = jobId,
                     customerId          = s.selectedCustomer.id,
                     customerName        = s.selectedCustomer.name,
-                    assignedStaffId     = s.selectedStaff?.id,
+                    // Members must not overwrite primary lead; Hand Over is the transfer path.
+                    assignedStaffId     = if (canAssignLead || jobId == null) s.selectedStaff?.id
+                                          else s.primaryAssignedStaffId ?: s.selectedStaff?.id,
                     itemName            = s.itemName.ifBlank { null },
                     deviceType          = s.deviceType.ifBlank { null },
                     itemCondition       = s.itemCondition.ifBlank { null },
@@ -664,11 +828,13 @@ class ServiceJobFormViewModel(
     )
 
     data class PartDraft(
-        val product:       ProductDTO?  = null,
-        val qty:           String       = "1",
-        val unitPrice:     String       = "",
-        val discount:      String       = "0",
-        val serialNumbers: List<String> = emptyList()
+        val product:          ProductDTO?           = null,
+        val qty:              String                = "1",
+        val unitPrice:        String                = "",
+        val discount:         String                = "0",
+        val serialNumbers:    List<String>          = emptyList(),
+        /** Full AVAILABLE serial pool for this product (for validate + reopen). */
+        val availableSerials: List<ProductSerialDTO> = emptyList()
     )
 
     data class UiState(
@@ -676,6 +842,7 @@ class ServiceJobFormViewModel(
         val staffList:           List<StaffDTO>          = emptyList(),
         val shelfLocations:      List<ShelfLocationDTO>  = emptyList(),
         val serviceItems:        List<ServiceItemDTO>    = emptyList(),
+        val serviceLoadError:    String?                 = null,
         val productList:         List<ProductDTO>        = emptyList(),
         val paymentMethods:      List<PaymentMethodDTO>  = emptyList(),
         val loading:             Boolean                 = true,
@@ -696,6 +863,10 @@ class ServiceJobFormViewModel(
         val creatingCustomer:    Boolean                 = false,
         val newCustomerError:    String?                 = null,
         val selectedStaff:       StaffDTO?               = null,
+        /** Locked lead id from server when editing — prevents Member save from changing Lead. */
+        val primaryAssignedStaffId: Int?                 = null,
+        val canEditJob:          Boolean                 = true,
+        val myAssignmentStatus:  String?                 = null,
         val selectedShelfLocation: ShelfLocationDTO?     = null,
         val itemName:            String                  = "",
         val deviceType:          String                  = "",
@@ -720,6 +891,7 @@ class ServiceJobFormViewModel(
         val serialSelectPartIdx: Int?                    = null,
         val serialSelectProduct: ProductDTO?             = null,
         val serialSelectOptions: List<ProductSerialDTO>  = emptyList(),
+        val serialSelectFilter:  String                  = "",
         val serialSelectLoading: Boolean                 = false,
         val serialSelectError:   String?                 = null,
         val serialScanPartIdx:   Int?                    = null,

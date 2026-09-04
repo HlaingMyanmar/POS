@@ -205,6 +205,10 @@ public class ServiceJob {
     @Column(name = "voided_at")
     private LocalDateTime voidedAt;
 
+    /** Display name (or username) of the user who settled payment — static on voucher. */
+    @Column(name = "settled_by", length = 120)
+    private String settledBy;
+
     @Builder.Default
     @Column(name = "estimate_approved")
     private Boolean estimateApproved = Boolean.FALSE;

@@ -105,17 +105,34 @@ export const buildServiceVoucherHtml = ({
     return t;
   };
 
+  const fmtPartWarranty = (p: any) => {
+    if (p?.warrantyCovered) return 'Warranty Covered (FREE)';
+    const terms = String(p?.warrantyTerms || '').trim();
+    if (terms) return `${terms} Warranty`;
+    const m = Number(p?.warrantyMonths ?? p?.productWarrantyMonths) || 0;
+    if (m <= 0) return '';
+    if (m % 12 === 0) { const y = m / 12; return `${y} Year${y > 1 ? 's' : ''} Warranty`; }
+    return `${m} Month${m > 1 ? 's' : ''} Warranty`;
+  };
+
   const partRowsHtml = partLines.length
     ? partLines.map((p: any, i: number) => {
         const serialStr = Array.isArray(p.serialNumbers) ? p.serialNumbers.join(', ') : (p.serialNo || '');
+        const warrantyTxt = fmtPartWarranty(p);
+        const covered = Boolean(p.warrantyCovered);
+        const lineDisc = Number(p.discountAmount || 0);
         return `
         <tr>
           <td class="center">${i + 1}</td>
-          <td>${escapeHtml(p.productName || p.name || '-')}</td>
+          <td>
+            <div>${escapeHtml(p.productName || p.name || '-')}</div>
+            ${warrantyTxt ? `<div style="font-size:10px;color:#4f46e5;margin-top:2px;">🛡 ${escapeHtml(warrantyTxt)}</div>` : ''}
+            ${lineDisc > 0 ? `<div style="font-size:10px;color:#b45309;margin-top:2px;">Discount: ${escapeHtml(money(lineDisc))}</div>` : ''}
+          </td>
           <td style="font-size:${compact ? '7px' : isA5 ? '8.5px' : '9px'};color:#64748b;">${escapeHtml(serialStr)}</td>
           <td class="num">${Number(p.qty) || 1}</td>
-          <td class="num">${money(p.unitPrice ?? p.price)}</td>
-          <td class="num">${money(p.subtotal ?? (Number(p.qty || 1) * Number(p.unitPrice ?? p.price ?? 0)))}</td>
+          <td class="num">${covered ? 'FREE' : money(p.unitPrice ?? p.price)}</td>
+          <td class="num">${covered ? 'FREE' : money(p.subtotal ?? (Number(p.qty || 1) * Number(p.unitPrice ?? p.price ?? 0)))}</td>
         </tr>
       `;}).join('')
     : '<tr><td colspan="6" class="center" style="padding:12px;color:#94a3b8;">No parts used</td></tr>';

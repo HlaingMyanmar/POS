@@ -18,4 +18,6 @@ public class ServiceJobPartDTO {
     private BigDecimal subtotal;
     private List<String> serialNumbers;
     private Boolean warrantyCovered;
+    /** Product catalog warranty duration (months), for voucher display. */
+    private Integer warrantyMonths;
 }

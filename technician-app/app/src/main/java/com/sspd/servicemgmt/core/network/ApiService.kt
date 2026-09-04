@@ -1114,4 +1114,11 @@ interface ApiService {
         @Path("id") id: Int,
         @Body body: Map<String, String>
     ): Response<ApiResponse<Void>>
+
+    @PUT("products/{id}/photos")
+    suspend fun updateProductPhotos(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Body photos: List<ProductPhotoDTO>
+    ): Response<ApiResponse<Void>>
 }

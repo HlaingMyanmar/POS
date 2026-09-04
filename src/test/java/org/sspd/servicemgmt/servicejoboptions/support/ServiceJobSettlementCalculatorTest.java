@@ -77,10 +77,19 @@ class ServiceJobSettlementCalculatorTest {
     }
 
     @Test
-    void rejectsOverallDiscountAboveGross() {
-        ServiceJob job = jobWithBalances(new BigDecimal("10000"), new BigDecimal("5000"));
-        assertThrows(IllegalArgumentException.class, () -> ServiceJobSettlementCalculator.compute(
-                job, new BigDecimal("20000"), DiscountAllocationMethod.PRO_RATA, false));
+    void overallPartsDiscount_matchesProRataShareForInternalSale() {
+        ServiceJob job = jobWithBalances(new BigDecimal("5000"), new BigDecimal("80000"));
+        ServiceJobSettlementBreakdown breakdown = ServiceJobSettlementCalculator.compute(
+                job, new BigDecimal("5000"), DiscountAllocationMethod.PRO_RATA, false);
+
+        BigDecimal partsBalance = breakdown.partsBalance();
+        BigDecimal partsNet = breakdown.partsNet();
+        BigDecimal saleHeaderDiscount = partsBalance.subtract(partsNet);
+        BigDecimal saleNet = partsBalance.subtract(saleHeaderDiscount);
+
+        assertEquals(new BigDecimal("4705.88"), saleHeaderDiscount);
+        assertEquals(0, partsNet.compareTo(saleNet));
+        assertEquals(new BigDecimal("75294.12"), saleNet);
     }
 
     private static ServiceJob jobWithBalances(BigDecimal labor, BigDecimal parts) {

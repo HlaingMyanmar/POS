@@ -584,6 +584,7 @@ const SaleManagement: React.FC = () => {
       changeDetail(rowIndex, {
         productId: exact.id,
         unitPrice: Number(exact.sellingPrice) || 0,
+        warrantyMonths: Number(exact.warrantyMonths) || 0,
         serialNumbers: serialRequired ? fitSerialCount(details[rowIndex]?.serialNumbers, qty) : []
       });
       setProductSearches((prev) => {
@@ -637,6 +638,7 @@ const SaleManagement: React.FC = () => {
         ...emptyDetail(),
         productId: product.id,
         unitPrice: Number(product.sellingPrice) || 0,
+        warrantyMonths: Number(product.warrantyMonths) || 0,
         qty: 1,
         serialNumbers: [code],
         subtotal: Number(product.sellingPrice) || 0
@@ -653,6 +655,7 @@ const SaleManagement: React.FC = () => {
         ...emptyDetail(),
         productId: productByCode.id,
         unitPrice: Number(productByCode.sellingPrice) || 0,
+        warrantyMonths: Number(productByCode.warrantyMonths) || 0,
         qty: 1,
         serialNumbers: isSerialProduct(productByCode.id) ? [''] : [],
         subtotal: Number(productByCode.sellingPrice) || 0
@@ -855,19 +858,24 @@ const SaleManagement: React.FC = () => {
         paymentMethodId: effectivePaid > 0 ? (normalizedSalePayments[0]?.paymentMethodId || paymentMethodId) : undefined,
         payments: normalizedSalePayments.length > 0 ? normalizedSalePayments : undefined,
         remark: remark.trim() || undefined,
-        details: details.map((d) => ({
-          productId: d.productId,
-          qty: d.qty,
-          unitPrice: d.unitPrice,
-          customVoucherPrice: d.customVoucherPrice == null || d.customVoucherPrice === 0
-            ? undefined : Number(d.customVoucherPrice),
-          subtotal: Number((Math.max(0, Boolean((d as any).foc) ? 0 : ((d.qty * d.unitPrice) - Number((d as any).discountAmount || 0)))).toFixed(2)),
-          discountAmount: (d as any).discountAmount || 0,
-          foc: !!(d as any).foc,
-          serialNumbers: isSerialProduct(d.productId)
-            ? d.serialNumbers.map((sn) => normalizeSerial(sn)).filter(Boolean)
-            : []
-        }))
+        details: details.map((d) => {
+          const product = products.find((p) => p.id === d.productId);
+          const warrantyMonths = Number(d.warrantyMonths ?? product?.warrantyMonths ?? 0) || 0;
+          return {
+            productId: d.productId,
+            qty: d.qty,
+            unitPrice: d.unitPrice,
+            customVoucherPrice: d.customVoucherPrice == null || d.customVoucherPrice === 0
+              ? undefined : Number(d.customVoucherPrice),
+            subtotal: Number((Math.max(0, Boolean((d as any).foc) ? 0 : ((d.qty * d.unitPrice) - Number((d as any).discountAmount || 0)))).toFixed(2)),
+            discountAmount: (d as any).discountAmount || 0,
+            foc: !!(d as any).foc,
+            warrantyMonths: warrantyMonths > 0 ? warrantyMonths : undefined,
+            serialNumbers: isSerialProduct(d.productId)
+              ? d.serialNumbers.map((sn) => normalizeSerial(sn)).filter(Boolean)
+              : []
+          };
+        })
       };
 
       await saleApiService.create(payload);

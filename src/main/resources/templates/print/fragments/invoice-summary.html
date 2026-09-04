@@ -4,8 +4,8 @@
   FRAGMENT: invoice-summary
   Customer notice (left) + totals summary box (right).
   Rendered on the last page only.
-  Used by: SALE, SERVICE_DONE, PURCHASE.
-  Not included by booking or service-job page templates.
+  Used by: SALE, SERVICE_JOB, SERVICE_DONE, PURCHASE.
+  Labels: Total · Overall Discount · Grand Total · Paid · Balance
 -->
 <head><title>fragment</title></head>
 <body>
@@ -56,11 +56,11 @@
   <div class="inv-summary-col">
     <div class="inv-summary-box">
       <div class="inv-summary-row">
-        <span class="inv-summary-row__label">Subtotal</span>
+        <span class="inv-summary-row__label">Total</span>
         <span class="inv-summary-row__value" th:text="${inv.subtotal}">0</span>
       </div>
       <div class="inv-summary-row">
-        <span class="inv-summary-row__label">Discount</span>
+        <span class="inv-summary-row__label">Overall Discount</span>
         <span class="inv-summary-row__value" th:text="${inv.discount}">0</span>
       </div>
       <div class="inv-summary-row" th:if="${not #strings.isEmpty(inv.tax) and inv.tax != '0.00' and inv.tax != '0'}">
@@ -72,7 +72,7 @@
         <span class="inv-summary-row__value" th:text="${inv.otherCharges}">0</span>
       </div>
       <div class="inv-summary-row inv-summary-row--sub">
-        <span class="inv-summary-row__label">Net Amount</span>
+        <span class="inv-summary-row__label">Grand Total</span>
         <span class="inv-summary-row__value" th:text="${inv.netAmount}">0</span>
       </div>
       <div class="inv-summary-row">
@@ -80,7 +80,7 @@
         <span class="inv-summary-row__value" th:text="${inv.paid}">0</span>
       </div>
       <div class="inv-summary-row inv-summary-row--highlight">
-        <span class="inv-summary-row__label">Balance Due</span>
+        <span class="inv-summary-row__label">Balance</span>
         <span class="inv-summary-row__value" th:text="${inv.balanceDue}">0</span>
       </div>
     </div>

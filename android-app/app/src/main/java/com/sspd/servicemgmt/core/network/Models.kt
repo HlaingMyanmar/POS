@@ -735,6 +735,7 @@ data class AssignmentDTO(
     val status: String? = null,
     val taskDescription: String? = null,
     val completionNote: String? = null,
+    val rejectionReason: String? = null,
     val assignedBy: String? = null,
     val assignedAt: String? = null,
     val acceptedAt: String? = null,

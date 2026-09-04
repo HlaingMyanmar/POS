@@ -182,6 +182,17 @@ const AccountingDashboard: React.FC = () => {
       return Swal.fire('Validation', 'From နှင့် To မတူသင့်ပါ။', 'warning');
     if (!amount || amount <= 0)
       return Swal.fire('Validation', 'Amount ထည့်ပေးပါ။', 'warning');
+    const fromMethod = cashAndBankMethods.find(m => m.id === transferForm.fromPaymentMethodId)
+      || paymentMethods.find(m => m.id === transferForm.fromPaymentMethodId);
+    const fromBalance = cashAndBankMethods.find(m => m.id === transferForm.fromPaymentMethodId)?.currentBalance
+      ?? (fromMethod?.accountId ? Number(balanceByAccountId.get(fromMethod.accountId)?.currentBalance) || 0 : null);
+    if (fromBalance != null && amount > fromBalance + 0.0001) {
+      return Swal.fire(
+        'လက်ကျန်မလောက်ပါ',
+        `${fromMethod?.methodName || 'From'} တွင် ကျန်ငွေ ${money(fromBalance)} Ks သာရှိပါသည်။ Minus ထွက်လို့မရပါ။`,
+        'warning'
+      );
+    }
     setTransferSaving(true);
     try {
       await accountingApiService.transferPaymentMethodBalance({
@@ -442,7 +453,10 @@ const AccountingDashboard: React.FC = () => {
               className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
             >
               <option value={0}>From — မှ</option>
-              {paymentMethods.map(m => <option key={m.id} value={m.id}>{m.methodName}</option>)}
+              {paymentMethods.map(m => {
+                const bal = m.accountId ? Number(balanceByAccountId.get(m.accountId)?.currentBalance) || 0 : 0;
+                return <option key={m.id} value={m.id}>{m.methodName} ({money(bal)} Ks)</option>;
+              })}
             </select>
             <select
               value={transferForm.toPaymentMethodId}
@@ -471,6 +485,18 @@ const AccountingDashboard: React.FC = () => {
               <Save size={14} /> {transferSaving ? 'Saving...' : 'Transfer'}
             </button>
           </div>
+          {!!transferForm.fromPaymentMethodId && (() => {
+            const from = paymentMethods.find(m => m.id === transferForm.fromPaymentMethodId);
+            const bal = from?.accountId ? Number(balanceByAccountId.get(from.accountId)?.currentBalance) || 0 : 0;
+            const amt = Number(transferForm.amount) || 0;
+            const short = amt > 0 && amt > bal;
+            return (
+              <p className={`text-xs ${short ? 'text-rose-600 font-bold' : 'text-slate-500'}`}>
+                ပေးမည့်အကောင့် ကျန်ငွေ: {money(bal)} Ks
+                {short ? ' — လက်ကျန်မလောက်သဖြင့် Transfer မလုပ်နိုင်ပါ (minus မရ)' : ''}
+              </p>
+            );
+          })()}
           <input
             value={transferForm.note}
             onChange={e => setTransferForm(f => ({ ...f, note: e.target.value }))}

@@ -2,8 +2,8 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <!--
   FRAGMENT: service-job-table
-  Columns (toggleable): # · Service / Part · Type · Qty · Est. Price · Est. Amount
-  showSerial toggles the Type column.
+  Columns: # · Service / Part · Serial · Warranty · Dis · Qty · Unit Price · Amount
+  (aligned with sale / service-done voucher)
 -->
 <head><title>fragment</title></head>
 <body>
@@ -12,12 +12,14 @@
   <table class="inv-table">
     <thead>
       <tr>
-        <th th:if="${inv.showColRowNo}" class="inv-table__col-center" style="width:5%">#</th>
+        <th th:if="${inv.showColRowNo}" class="inv-table__col-center" style="width:4%">#</th>
         <th th:if="${inv.showColItem}">Service / Part</th>
-        <th th:if="${inv.showSerial}">Type</th>
+        <th th:if="${inv.showSerial}" style="width:16%">Serial</th>
+        <th th:if="${inv.showColWarranty}" style="width:10%">Warranty</th>
+        <th th:if="${inv.showColLineDiscount}" class="inv-table__col-right" style="width:10%">Dis</th>
         <th th:if="${inv.showColQty}" class="inv-table__col-center" style="width:7%">Qty</th>
-        <th th:if="${inv.showColUnitPrice}" class="inv-table__col-right" style="width:11%">Est. Price</th>
-        <th th:if="${inv.showColAmount}" class="inv-table__col-right" style="width:12%">Est. Amount</th>
+        <th th:if="${inv.showColUnitPrice}" class="inv-table__col-right" style="width:12%">Unit Price</th>
+        <th th:if="${inv.showColAmount}" class="inv-table__col-right" style="width:12%">Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -27,12 +29,16 @@
             th:text="${item.rowNo}">1</td>
         <td th:if="${inv.showColItem}">
           <div style="font-weight:500;" th:text="${item.productName}">Service Name</div>
-          <div th:if="${not #strings.isEmpty(item.warrantyLabel)}"
-               class="inv-table__sub" style="color:#4f46e5;"
-               th:text="${'Warranty: ' + item.warrantyLabel}"></div>
+          <th:block th:with="infoLine=${item.getSerialInfoLine(false, !inv.showColWarranty, !inv.showColLineDiscount)}">
+            <div th:if="${!inv.showSerial and infoLine != '—'}"
+                 class="inv-table__sub"
+                 th:text="${infoLine}"></div>
+          </th:block>
         </td>
-        <td th:if="${inv.showSerial}" class="inv-table__sub"
-            th:text="${not #strings.isEmpty(item.serialInfo) ? item.serialInfo : '—'}">Service</td>
+        <td th:if="${inv.showSerial}" class="inv-table__sub" th:text="${item.serialDisplay}">SN</td>
+        <td th:if="${inv.showColWarranty}" class="inv-table__sub" th:text="${item.warrantyDisplay}">1Year</td>
+        <td th:if="${inv.showColLineDiscount}" class="inv-table__col-right inv-table__sub"
+            th:text="${item.discountDisplay}">5,000</td>
         <td th:if="${inv.showColQty}" class="inv-table__col-center" style="font-weight:600;" th:text="${item.qty}">1</td>
         <td th:if="${inv.showColUnitPrice}" class="inv-table__col-right" th:text="${item.unitPrice}">0</td>
         <td th:if="${inv.showColAmount}" class="inv-table__col-right" style="font-weight:600;" th:text="${item.subtotal}">0</td>

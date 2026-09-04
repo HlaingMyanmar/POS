@@ -12,13 +12,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Chat
@@ -26,6 +31,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MiscellaneousServices
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,12 +50,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -70,6 +79,7 @@ import com.sspd.servicemgmt.core.network.AuthEventBus
 import com.sspd.servicemgmt.core.realtime.DataEventBus
 import com.sspd.servicemgmt.core.tracking.VisitTracker
 import com.sspd.servicemgmt.core.ui.theme.Primary
+import com.sspd.servicemgmt.core.ui.theme.PrimaryDark
 import com.sspd.servicemgmt.core.ui.theme.PrimaryLight
 import com.sspd.servicemgmt.core.ui.theme.BorderColor
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
@@ -92,6 +102,7 @@ import com.sspd.servicemgmt.feature.service.job.ServiceJobDetailScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobFormScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobListScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobPrintScreen
+import com.sspd.servicemgmt.feature.sale.SalePrintScreen
 import com.sspd.servicemgmt.feature.settings.SoftwareUpdateScreen
 import android.widget.Toast
 import com.sspd.servicemgmt.feature.video.VideoListScreen
@@ -118,56 +129,135 @@ private val technicianNavItems = listOf(
     BottomNavItem(Screen.Chat.route,            Icons.Default.Chat,                  "Chat")
 )
 
+private val centerNavRoute = Screen.Products.route
+
 @Composable
 private fun TechnicianBottomNav(
     items: List<BottomNavItem>,
     currentRoute: String?,
     onNavigate: (String) -> Unit
 ) {
-    Surface(
-        color = Color.White,
-        shadowElevation = 10.dp,
-        tonalElevation = 0.dp
-    ) {
-        Column {
-            HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
-            NavigationBar(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().height(72.dp),
-                containerColor = Color.White,
-                tonalElevation = 0.dp
-            ) {
-            items.forEach { item ->
-                val selected = currentRoute == item.route
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = { onNavigate(item.route) },
-                    icon = {
-                        Icon(
-                            item.icon,
-                            contentDescription = item.label,
-                            modifier = Modifier.size(23.dp)
+    val sideItems = items.filter { it.route != centerNavRoute }
+    val centerItem = items.firstOrNull { it.route == centerNavRoute }
+    val leftItems = sideItems.take(sideItems.size / 2)
+    val rightItems = sideItems.drop(sideItems.size / 2)
+    val productsSelected = currentRoute == centerNavRoute
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            color = Color.White,
+            shadowElevation = 10.dp,
+            tonalElevation = 0.dp,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Column {
+                HorizontalDivider(color = BorderColor, thickness = 0.5.dp)
+                NavigationBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .height(72.dp),
+                    containerColor = Color.White,
+                    tonalElevation = 0.dp
+                ) {
+                    leftItems.forEach { item ->
+                        BottomNavSideItem(
+                            item = item,
+                            selected = currentRoute == item.route,
+                            onClick = { onNavigate(item.route) }
                         )
-                    },
-                    label = {
-                        Text(
-                            item.label,
-                            fontSize = 10.sp,
-                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
+                    }
+                    // Center hole under the raised Products FAB
+                    Spacer(Modifier.width(72.dp))
+                    rightItems.forEach { item ->
+                        BottomNavSideItem(
+                            item = item,
+                            selected = currentRoute == item.route,
+                            onClick = { onNavigate(item.route) }
                         )
-                    },
-                    alwaysShowLabel = true,
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Primary,
-                        selectedTextColor = Primary,
-                        indicatorColor = PrimaryLight,
-                        unselectedIconColor = TextMuted,
-                        unselectedTextColor = TextMuted
-                    )
-                )
+                    }
+                }
             }
+        }
+
+        if (centerItem != null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .offset(y = (-28).dp)
+                    .zIndex(2f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                FloatingActionButton(
+                    onClick = { onNavigate(centerItem.route) },
+                    shape = CircleShape,
+                    containerColor = if (productsSelected) PrimaryDark else Primary,
+                    contentColor = Color.White,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 10.dp,
+                        pressedElevation = 14.dp,
+                        hoveredElevation = 12.dp,
+                    ),
+                    modifier = Modifier
+                        .size(62.dp)
+                        .shadow(
+                            elevation = 12.dp,
+                            shape = CircleShape,
+                            ambientColor = Primary.copy(alpha = 0.35f),
+                            spotColor = Primary.copy(alpha = 0.45f),
+                        )
+                ) {
+                    Icon(
+                        centerItem.icon,
+                        contentDescription = centerItem.label,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Text(
+                    centerItem.label,
+                    fontSize = 10.sp,
+                    fontWeight = if (productsSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                    color = if (productsSelected) Primary else TextMuted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
     }
+}
+
+@Composable
+private fun RowScope.BottomNavSideItem(
+    item: BottomNavItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = {
+            Icon(
+                item.icon,
+                contentDescription = item.label,
+                modifier = Modifier.size(23.dp)
+            )
+        },
+        label = {
+            Text(
+                item.label,
+                fontSize = 10.sp,
+                fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
+            )
+        },
+        alwaysShowLabel = true,
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = Primary,
+            selectedTextColor = Primary,
+            indicatorColor = PrimaryLight,
+            unselectedIconColor = TextMuted,
+            unselectedTextColor = TextMuted
+        )
+    )
 }
 
 private fun NavGraphBuilder.screen(
@@ -356,27 +446,13 @@ fun TechnicianAppNavigation() {
                         ServiceJobListScreen(
                             onBack = { nav.popBackStack() },
                             onJobClick = { id -> nav.navigate(Screen.ServiceJobDetail.createRoute(id)) },
-                            onNewJob = { nav.navigate(Screen.NewServiceJob.route) }
                         )
                     }
                     screen(Screen.CustomerHistory.route) {
                         CustomerHistoryScreen(
                             onBack = { nav.popBackStack() },
-                            onJobClick = { id -> nav.navigate(Screen.ServiceJobDetail.createRoute(id)) }
-                        )
-                    }
-                    screen(Screen.NewServiceJob.route) {
-                        ServiceJobFormScreen(
-                            onBack = { nav.popBackStack() },
-                            onSuccess = { job ->
-                                job.id?.let { jobId ->
-                                    nav.navigate(Screen.ServiceJobDetail.createRoute(jobId)) {
-                                        popUpTo(Screen.NewServiceJob.route) { inclusive = true }
-                                    }
-                                } ?: nav.navigate(Screen.ServiceJobs.route) {
-                                    popUpTo(Screen.NewServiceJob.route) { inclusive = true }
-                                }
-                            }
+                            onJobClick = { id -> nav.navigate(Screen.ServiceJobPrint.createRoute(id)) },
+                            onSaleClick = { id -> nav.navigate(Screen.SalePrint.createRoute(id)) },
                         )
                     }
                     composable(
@@ -414,6 +490,12 @@ fun TechnicianAppNavigation() {
                         arguments = listOf(navArgument("jobId") { type = NavType.IntType })
                     ) {
                         ServiceJobPrintScreen(onBack = { nav.popBackStack() })
+                    }
+                    composable(
+                        route = Screen.SalePrint.route,
+                        arguments = listOf(navArgument("saleId") { type = NavType.IntType })
+                    ) {
+                        SalePrintScreen(onBack = { nav.popBackStack() })
                     }
 
                     screen(Screen.Bookings.route) {

@@ -69,7 +69,8 @@ import java.time.LocalDate
 @Composable
 fun CustomerHistoryScreen(
     onBack: () -> Unit,
-    onJobClick: (Int) -> Unit
+    onJobClick: (Int) -> Unit,
+    onSaleClick: (Int) -> Unit = {},
 ) {
     val vm: CustomerHistoryViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
@@ -92,7 +93,7 @@ fun CustomerHistoryScreen(
             if (state.selected == null) {
                 CustomerSearchContent(state, vm)
             } else {
-                CustomerDetailContent(state, vm, onJobClick)
+                CustomerDetailContent(state, vm, onJobClick, onSaleClick)
             }
         }
     }
@@ -152,7 +153,8 @@ private fun CustomerCard(customer: CustomerDTO, onClick: () -> Unit) {
 private fun CustomerDetailContent(
     state: CustomerHistoryViewModel.State,
     vm: CustomerHistoryViewModel,
-    onJobClick: (Int) -> Unit
+    onJobClick: (Int) -> Unit,
+    onSaleClick: (Int) -> Unit,
 ) {
     val customer = state.selected ?: return
     LazyColumn(
@@ -176,6 +178,16 @@ private fun CustomerDetailContent(
                         Text("Sale စုစုပေါင်း ${state.sales.size} ခု", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SaleColor)
                     }
                 }
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Outlined.Build, null, tint = Primary)
+                Text("Service History", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
             }
         }
         when {
@@ -202,7 +214,9 @@ private fun CustomerDetailContent(
             when {
                 state.saleError != null -> item { ErrorBlock(state.saleError) { vm.selectCustomer(customer) } }
                 state.sales.isEmpty() -> item { EmptyBlock("Sale history မရှိသေးပါ") }
-                else -> items(state.sales, key = { it.id ?: it.hashCode() }) { sale -> SaleHistoryCard(sale) }
+                else -> items(state.sales, key = { it.id ?: it.hashCode() }) { sale ->
+                    SaleHistoryCard(sale) { sale.id?.let(onSaleClick) }
+                }
             }
         }
     }
@@ -234,9 +248,9 @@ private fun SalePermissionLocked() {
 }
 
 @Composable
-private fun SaleHistoryCard(sale: SaleDTO) {
+private fun SaleHistoryCard(sale: SaleDTO, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, SaleBorder),
         shape = RoundedCornerShape(14.dp)
@@ -259,6 +273,7 @@ private fun SaleHistoryCard(sale: SaleDTO) {
                     color = TextMain
                 )
             }
+            Text("နှိပ်ပြီး Invoice Preview ကြည့်ရန်", fontSize = 11.sp, color = SaleColor, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -328,6 +343,7 @@ private fun JobHistoryCard(job: ServiceJobDTO, onClick: () -> Unit) {
                 val amount = job.netAmount ?: job.finalCost ?: job.estimatedCost
                 amount?.let { Text("${NumberFormat.getNumberInstance().format(it)} Ks", fontWeight = FontWeight.Bold, color = TextMain) }
             }
+            Text("နှိပ်ပြီး Invoice Preview ကြည့်ရန်", fontSize = 11.sp, color = Primary, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -503,7 +519,7 @@ private fun CustomerHistoryPreview() {
                 item { Text("Service History (${jobs.size})", fontWeight = FontWeight.ExtraBold, color = TextMain) }
                 items(jobs) { job -> JobHistoryCard(job, onClick = {}) }
                 item { Text("Sale History", fontWeight = FontWeight.ExtraBold, color = TextMain) }
-                item { SaleHistoryCard(previewSale) }
+                item { SaleHistoryCard(previewSale, onClick = {}) }
             }
         }
     }

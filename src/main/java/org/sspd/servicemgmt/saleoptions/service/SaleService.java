@@ -272,7 +272,7 @@ public class SaleService {
                 .anyMatch(granted -> authority.equals(granted.getAuthority()));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_READ','CAN_ACCESS_SERVICE_JOB_READ','CAN_ACCESS_CUSTOMER_READ')")
     @Transactional(readOnly = true)
     public java.util.List<SaleDTO> findByCustomerId(Integer customerId) {
         return saleRepository.findByCustomerIdOrderBySaleDateDescIdDesc(customerId).stream()

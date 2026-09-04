@@ -51,7 +51,8 @@ class PaymentTransactionServiceReversedTest {
                 mock(SaleRepository.class),
                 mock(SaleReturnRepository.class),
                 mock(ServiceJobRepository.class),
-                mock(JournalWriter.class)
+                mock(JournalWriter.class),
+                mock(org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentBalanceValidator.class)
         );
 
         PaymentTransactionDTO dto = new PaymentTransactionDTO();

@@ -61,11 +61,11 @@ export const InvoiceSummary: React.FC<InvoiceSummaryProps> = ({
         {/* Summary box */}
         <div className={`inv-summary-box${isCompact ? ' inv-summary-box--sm' : ''}`}>
           <div className="inv-summary-row">
-            <span className="inv-summary-row__label">Subtotal</span>
+            <span className="inv-summary-row__label">Total</span>
             <span className="inv-summary-row__value">{data.subtotal}</span>
           </div>
           <div className="inv-summary-row">
-            <span className="inv-summary-row__label">Discount</span>
+            <span className="inv-summary-row__label">Overall Discount</span>
             <span className="inv-summary-row__value">{data.discount}</span>
           </div>
           {data.tax && data.tax !== '0.00' && data.tax !== '0' && (
@@ -81,7 +81,7 @@ export const InvoiceSummary: React.FC<InvoiceSummaryProps> = ({
             </div>
           )}
           <div className="inv-summary-row inv-summary-row--sub">
-            <span className="inv-summary-row__label">Net Amount</span>
+            <span className="inv-summary-row__label">Grand Total</span>
             <span className="inv-summary-row__value">{data.netAmount}</span>
           </div>
           <div className="inv-summary-row">
@@ -89,7 +89,7 @@ export const InvoiceSummary: React.FC<InvoiceSummaryProps> = ({
             <span className="inv-summary-row__value">{data.paid}</span>
           </div>
           <div className="inv-summary-row inv-summary-row--highlight">
-            <span className="inv-summary-row__label">Balance Due</span>
+            <span className="inv-summary-row__label">Balance</span>
             <span className="inv-summary-row__value">{data.balanceDue}</span>
           </div>
         </div>

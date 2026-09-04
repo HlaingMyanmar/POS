@@ -175,7 +175,7 @@ public class ServiceJobController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Estimate on hold", service.holdEstimate(id, reason)));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_UPDATE')")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_SERVICE_JOB_REJECT')")
     @PostMapping("/{id}/reject-estimate")
     ResponseEntity<ApiResponse<ServiceJobDTO>> rejectEstimate(@PathVariable Integer id,
             @RequestBody(required = false) java.util.Map<String, Object> body) {

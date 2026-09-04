@@ -32,8 +32,8 @@ public class PaymentBalanceValidator {
 
         if (balance.compareTo(amount) < 0) {
             throw new RuntimeException(
-                "Insufficient balance in " + paymentMethod.getMethodName() +
-                ". Available: " + balance + ", Required: " + amount
+                paymentMethod.getMethodName() + " တွင် လက်ကျန်မလောက်ပါ။ " +
+                "ကျန်ငွေ: " + balance.toPlainString() + " Ks၊ လွှဲမည့်ပမာဏ: " + amount.toPlainString() + " Ks"
             );
         }
     }

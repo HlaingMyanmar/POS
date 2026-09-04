@@ -225,19 +225,22 @@ class ServiceJobTeamServiceTest {
     }
 
     @Test
-    void acceptHandover_rejectsSecondLeadWhenAnotherLeadIsCurrent() {
+    void acceptHandover_makesReceiverSoleLeadAndDemotesOtherLiveLead() {
         ServiceJob job = openJob(8);
-        ServiceJobAssignment currentLead = assignment(30, staff(5, "Lead Tech"), AssignmentRole.LEAD, AssignmentStatus.ACTIVE);
+        Staff previousLead = staff(5, "Lead Tech");
+        Staff sender = staff(6, "Outgoing Tech");
+        Staff receiver = staff(7, "Incoming Lead");
+        ServiceJobAssignment currentLead = assignment(30, previousLead, AssignmentRole.LEAD, AssignmentStatus.ACTIVE);
         currentLead.setServiceJob(job);
-        ServiceJobAssignment source = assignment(31, staff(6, "Current Lead"), AssignmentRole.LEAD, AssignmentStatus.ACTIVE);
+        ServiceJobAssignment source = assignment(31, sender, AssignmentRole.MEMBER, AssignmentStatus.ACTIVE);
         source.setServiceJob(job);
         org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobHandover handover =
                 org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobHandover.builder()
                         .id(40)
                         .serviceJob(job)
                         .fromAssignment(source)
-                        .toStaff(staff(7, "Replacement Lead"))
-                        .role(AssignmentRole.LEAD)
+                        .toStaff(receiver)
+                        .role(AssignmentRole.MEMBER)
                         .remainingWork("Finish testing")
                         .status(org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING)
                         .requestedBy("manager")
@@ -247,11 +250,88 @@ class ServiceJobTeamServiceTest {
         when(jobRepository.findByIdForUpdate(8)).thenReturn(Optional.of(job));
         when(handoverRepository.findForUpdate(8, 40)).thenReturn(Optional.of(handover));
         when(assignmentRepository.findForUpdate(8, 31)).thenReturn(Optional.of(source));
+        when(assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(eq(8), eq(7), any()))
+                .thenReturn(false);
         when(assignmentRepository.findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(eq(8), any()))
                 .thenReturn(List.of(currentLead, source));
+        when(assignmentRepository.save(any(ServiceJobAssignment.class))).thenAnswer(invocation -> {
+            ServiceJobAssignment saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(99);
+                when(assignmentRepository.findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(eq(8), any()))
+                        .thenReturn(List.of(currentLead, saved));
+            }
+            return saved;
+        });
+        when(handoverRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(logRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activityRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(jobRepository.save(job)).thenReturn(job);
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> service.acceptHandover(8, 40));
-        assertTrue(ex.getMessage().contains("current lead already exists"));
+        var result = service.acceptHandover(8, 40);
+
+        assertEquals(AssignmentStatus.HANDED_OVER, source.getStatus());
+        assertEquals(AssignmentRole.MEMBER, currentLead.getRole());
+        assertEquals(AssignmentRole.LEAD, result.getRole());
+        assertEquals(7, job.getAssignedStaff().getId());
+        ArgumentCaptor<ServiceJobAssignment> saved = ArgumentCaptor.forClass(ServiceJobAssignment.class);
+        verify(assignmentRepository, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+        assertTrue(saved.getAllValues().stream().anyMatch(a ->
+                a.getStaff() != null && a.getStaff().getId() == 7 && a.getRole() == AssignmentRole.LEAD));
+    }
+
+    @Test
+    void acceptHandover_leadToLead_setsReceiverAsAssignedStaff() {
+        ServiceJob job = openJob(88);
+        Staff sender = staff(6, "Outgoing Lead");
+        Staff receiver = staff(7, "Incoming Lead");
+        ServiceJobAssignment source = assignment(31, sender, AssignmentRole.LEAD, AssignmentStatus.ACTIVE);
+        source.setServiceJob(job);
+        org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobHandover handover =
+                org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobHandover.builder()
+                        .id(41)
+                        .serviceJob(job)
+                        .fromAssignment(source)
+                        .toStaff(receiver)
+                        .role(AssignmentRole.LEAD)
+                        .remainingWork("Continue repair")
+                        .status(org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus.PENDING)
+                        .requestedBy("lead")
+                        .requestedAt(java.time.LocalDateTime.now())
+                        .build();
+
+        when(jobRepository.findByIdForUpdate(88)).thenReturn(Optional.of(job));
+        when(handoverRepository.findForUpdate(88, 41)).thenReturn(Optional.of(handover));
+        when(assignmentRepository.findForUpdate(88, 31)).thenReturn(Optional.of(source));
+        when(assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(eq(88), eq(7), any()))
+                .thenReturn(false);
+        when(assignmentRepository.findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(eq(88), any()))
+                .thenAnswer(invocation -> {
+                    if (source.getStatus() == AssignmentStatus.HANDED_OVER) {
+                        return List.of();
+                    }
+                    return List.of(source);
+                });
+        when(assignmentRepository.save(any(ServiceJobAssignment.class))).thenAnswer(invocation -> {
+            ServiceJobAssignment saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(100);
+                // After successor save, syncLegacyFields query should see the new lead
+                when(assignmentRepository.findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(eq(88), any()))
+                        .thenReturn(List.of(saved));
+            }
+            return saved;
+        });
+        when(handoverRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(logRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activityRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(jobRepository.save(job)).thenReturn(job);
+
+        var result = service.acceptHandover(88, 41);
+
+        assertEquals(AssignmentStatus.HANDED_OVER, source.getStatus());
+        assertEquals(AssignmentRole.LEAD, result.getRole());
+        assertEquals(7, job.getAssignedStaff().getId());
     }
 
     @Test

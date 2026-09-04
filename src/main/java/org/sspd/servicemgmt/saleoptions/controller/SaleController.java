@@ -40,7 +40,7 @@ public class SaleController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Sale stats", insightService.stats(dateFrom, dateTo)));
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_READ','CAN_ACCESS_SERVICE_JOB_READ','CAN_ACCESS_CUSTOMER_READ')")
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<ApiResponse<java.util.List<SaleDTO>>> getByCustomer(@PathVariable Integer customerId) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Customer sale history", service.findByCustomerId(customerId)));

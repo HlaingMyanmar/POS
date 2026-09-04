@@ -723,6 +723,7 @@ data class AssignmentDTO(
     val approvalStatus: String? = null,
     val taskDescription: String? = null,
     val completionNote: String? = null,
+    val rejectionReason: String? = null,
     val assignedBy: String? = null,
     val assignedAt: String? = null,
     val acceptedAt: String? = null,
@@ -1327,8 +1328,28 @@ data class StockAdjustmentDTO(
 
 data class PrintPreviewRequest(
     val documentType: String,
-    val documentId:   Int,
-    val paperSize:    String = "A4"
+    val documentId: Int,
+    val paperSize: String = "A5",
+    val showLogo: Boolean = true,
+    val showSerial: Boolean = true,
+    val showPaymentHistory: Boolean = true,
+    val showSignatures: Boolean = true,
+    val showQrCode: Boolean = false,
+    val sign1Label: String = "Prepared By",
+    val sign2Label: String = "Received By",
+    val copyType: String = "CUSTOMER",
+)
+
+/** Subset of voucher-settings used to align mobile print with web defaults. */
+data class VoucherSettingDTO(
+    val documentType: String? = null,
+    val paperSize: String? = null,
+    val showLogo: Boolean? = null,
+    val showSerial: Boolean? = null,
+    val showSignatures: Boolean? = null,
+    val showQrCode: Boolean? = null,
+    val showPaymentHistory: Boolean? = null,
+    val voucherTitle: String? = null,
 )
 
 // ─── Chat ────────────────────────────────────────────────────────────────────

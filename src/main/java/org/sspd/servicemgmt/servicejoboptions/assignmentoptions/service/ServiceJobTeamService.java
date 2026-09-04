@@ -35,6 +35,9 @@ public class ServiceJobTeamService {
     private static final EnumSet<AssignmentStatus> CURRENT = EnumSet.of(
             AssignmentStatus.PENDING, AssignmentStatus.ACTIVE,
             AssignmentStatus.PAUSED, AssignmentStatus.COMPLETED);
+    /** Live ownership statuses — excludes COMPLETED so an old lead does not stay "current". */
+    private static final EnumSet<AssignmentStatus> LIVE = EnumSet.of(
+            AssignmentStatus.PENDING, AssignmentStatus.ACTIVE, AssignmentStatus.PAUSED);
     private static final Set<HandoverStatus> SENT_HANDOVER_STATUSES = EnumSet.of(
             HandoverStatus.PENDING, HandoverStatus.ACCEPTED, HandoverStatus.REJECTED);
 
@@ -202,11 +205,14 @@ public class ServiceJobTeamService {
         assignment.setStatus(AssignmentStatus.REJECTED);
         assignment.setEndedAt(now);
         assignment.setLastActionAt(now);
-        assignment.setCompletionNote(request == null ? null : trimToNull(request.getReason()));
+        String reason = request == null ? null : trimToNull(request.getReason());
+        if (reason == null)
+            throw new IllegalArgumentException("Assignment ငြင်းပယ်ရသည့် အကြောင်းရင်း လိုအပ်သည်");
+        assignment.setCompletionNote(reason);
         assignmentRepository.save(assignment);
         syncLegacyFields(assignment.getServiceJob());
         recordActivity(assignment.getServiceJob(), "ASSIGNMENT_REJECTED",
-                assignment.getStaff().getName() + noteSuffix(assignment.getCompletionNote()));
+                assignment.getStaff().getName() + noteSuffix(reason));
         broadcast("JOB_TEAM_CHANGED");
         return toDto(assignment);
     }
@@ -318,15 +324,6 @@ public class ServiceJobTeamService {
         ServiceJobAssignment source = requireAssignment(jobId, handover.getFromAssignment().getId());
         if (source.getStatus() != AssignmentStatus.ACTIVE && source.getStatus() != AssignmentStatus.PAUSED)
             throw new IllegalStateException("Source assignment is no longer active");
-        if (handover.getRole() == AssignmentRole.LEAD) {
-            List<ServiceJobAssignment> currentLeads = assignmentRepository
-                    .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT).stream()
-                    .filter(a -> a.getRole() == AssignmentRole.LEAD)
-                    .filter(a -> !a.getId().equals(source.getId()))
-                    .toList();
-            if (!currentLeads.isEmpty())
-                throw new IllegalStateException("A current lead already exists; use Hand Over to change the lead");
-        }
         if (assignmentRepository.existsByServiceJobIdAndStaffIdAndStatusIn(
                 jobId, handover.getToStaff().getId(), CURRENT))
             throw new IllegalStateException("Target technician already belongs to this job");
@@ -339,22 +336,36 @@ public class ServiceJobTeamService {
         assignmentRepository.save(source);
         addLog(source, AssignmentWorkAction.NOTE, "Handed over to " + handover.getToStaff().getName());
 
+        // Hand Over လက်ခံသူသည် sole lead ဖြစ်ရမည် — အခြား live lead များကို MEMBER သို့ ချပါ
+        for (ServiceJobAssignment otherLead : assignmentRepository
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, LIVE).stream()
+                .filter(a -> a.getRole() == AssignmentRole.LEAD)
+                .filter(a -> !a.getId().equals(source.getId()))
+                .toList()) {
+            otherLead.setRole(AssignmentRole.MEMBER);
+            otherLead.setLastActionAt(now);
+            assignmentRepository.save(otherLead);
+            addLog(otherLead, AssignmentWorkAction.NOTE,
+                    "Demoted from Lead after Hand Over to " + handover.getToStaff().getName());
+        }
+
         ServiceJobAssignment successor = assignmentRepository.save(ServiceJobAssignment.builder()
-                .serviceJob(job).staff(handover.getToStaff()).role(handover.getRole())
+                .serviceJob(job).staff(handover.getToStaff()).role(AssignmentRole.LEAD)
                 .status(AssignmentStatus.ACTIVE).taskDescription(handover.getRemainingWork())
                 .assignedBy(handover.getRequestedBy()).assignedAt(now).acceptedAt(now)
                 .lastActionAt(now).build());
         addLog(successor, AssignmentWorkAction.NOTE,
-                "Hand Over accepted from " + source.getStaff().getName());
+                "Hand Over accepted from " + source.getStaff().getName() + " — now Lead");
 
         handover.setStatus(HandoverStatus.ACCEPTED);
+        handover.setRole(AssignmentRole.LEAD);
         handover.setActedBy(currentUsername());
         handover.setActedAt(now);
         handover.setSuccessorAssignment(successor);
         handoverRepository.save(handover);
         syncLegacyFields(job);
         recordActivity(job, "HANDOVER_ACCEPTED",
-                source.getStaff().getName() + " -> " + successor.getStaff().getName());
+                source.getStaff().getName() + " -> " + successor.getStaff().getName() + " (Lead)");
         broadcastHandover("JOB_HANDOVER_ACCEPTED");
         return toDto(handover);
     }
@@ -418,20 +429,16 @@ handover.setStatus(HandoverStatus.REJECTED);
         syncFromJob(job);
         if (!evaluateCanComplete(jobId))
             throw new IllegalStateException(evaluateCompletionBlockReason(jobId));
-        ServiceJobAssignment lead = assignmentRepository
-                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT).stream()
-                .filter(a -> a.getRole() == AssignmentRole.LEAD)
-                .findFirst().orElseThrow(() -> new IllegalStateException("A current lead technician is required"));
+        ServiceJobAssignment lead = findCurrentLead(jobId)
+                .orElseThrow(() -> new IllegalStateException("A current lead technician is required"));
         requireSelfOrManager(lead.getStaff().getId());
     }
 
     @Transactional
     public void reopenLeadForRework(Integer jobId, String reason) {
         ServiceJob job = requireOpenJobForUpdate(jobId);
-        ServiceJobAssignment lead = assignmentRepository
-                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT).stream()
-                .filter(a -> a.getRole() == AssignmentRole.LEAD)
-                .findFirst().orElseThrow(() -> new IllegalStateException("A current lead technician is required"));
+        ServiceJobAssignment lead = findCurrentLead(jobId)
+                .orElseThrow(() -> new IllegalStateException("A current lead technician is required"));
         lead.setStatus(AssignmentStatus.ACTIVE);
         lead.setCompletionNote(null);
         lead.setCompletedAt(null);
@@ -499,7 +506,7 @@ handover.setStatus(HandoverStatus.REJECTED);
         Staff desired = job.getAssignedStaff();
         if (desired == null) return;
         List<ServiceJobAssignment> leads = assignmentRepository
-                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(job.getId(), CURRENT).stream()
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(job.getId(), LIVE).stream()
                 .filter(a -> a.getRole() == AssignmentRole.LEAD)
                 .toList();
         boolean matched = leads.stream().anyMatch(a -> desired.getId().equals(a.getStaff().getId()));
@@ -508,7 +515,7 @@ handover.setStatus(HandoverStatus.REJECTED);
         // Accidental overwrite protection: if desired staff is already a non-lead member/helper
         // and a lead already exists, do not cancel the lead (restore via syncLegacyFields).
         boolean desiredIsNonLeadTeammate = assignmentRepository
-                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(job.getId(), CURRENT).stream()
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(job.getId(), LIVE).stream()
                 .anyMatch(a -> desired.getId().equals(a.getStaff().getId())
                         && a.getRole() != AssignmentRole.LEAD);
         if (!leads.isEmpty() && desiredIsNonLeadTeammate) {
@@ -550,6 +557,9 @@ handover.setStatus(HandoverStatus.REJECTED);
         dto.setApprovedAt(assignment.getApprovedAt());
         dto.setTaskDescription(assignment.getTaskDescription());
         dto.setCompletionNote(assignment.getCompletionNote());
+        if (assignment.getStatus() == AssignmentStatus.REJECTED) {
+            dto.setRejectionReason(assignment.getCompletionNote());
+        }
         dto.setAssignedBy(assignment.getAssignedBy());
         dto.setAssignedAt(assignment.getAssignedAt());
         dto.setAcceptedAt(assignment.getAcceptedAt());
@@ -613,13 +623,35 @@ handover.setStatus(HandoverStatus.REJECTED);
                 .assignedAt(now).acceptedAt(now).lastActionAt(now).build();
     }
 
+    private Optional<ServiceJobAssignment> findCurrentLead(Integer jobId) {
+        List<ServiceJobAssignment> current = assignmentRepository
+                .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(jobId, CURRENT);
+        Optional<ServiceJobAssignment> live = current.stream()
+                .filter(a -> a.getRole() == AssignmentRole.LEAD)
+                .filter(a -> LIVE.contains(a.getStatus()))
+                .findFirst();
+        if (live.isPresent()) return live;
+        return current.stream().filter(a -> a.getRole() == AssignmentRole.LEAD).findFirst();
+    }
+
     private void syncLegacyFields(ServiceJob job) {
         List<ServiceJobAssignment> current = assignmentRepository
                 .findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(job.getId(), CURRENT);
-        job.setAssignedStaff(current.stream().filter(a -> a.getRole() == AssignmentRole.LEAD)
-                .map(ServiceJobAssignment::getStaff).findFirst().orElse(null));
-        job.setHelperStaff(current.stream().filter(a -> a.getRole() == AssignmentRole.HELPER)
-                .map(ServiceJobAssignment::getStaff).findFirst().orElse(null));
+        // Live lead first — COMPLETED lead must not keep job.assignedStaff stuck on the previous tech
+        job.setAssignedStaff(current.stream()
+                .filter(a -> a.getRole() == AssignmentRole.LEAD)
+                .filter(a -> LIVE.contains(a.getStatus()))
+                .map(ServiceJobAssignment::getStaff).findFirst()
+                .orElseGet(() -> current.stream()
+                        .filter(a -> a.getRole() == AssignmentRole.LEAD)
+                        .map(ServiceJobAssignment::getStaff).findFirst().orElse(null)));
+        job.setHelperStaff(current.stream()
+                .filter(a -> a.getRole() == AssignmentRole.HELPER)
+                .filter(a -> LIVE.contains(a.getStatus()))
+                .map(ServiceJobAssignment::getStaff).findFirst()
+                .orElseGet(() -> current.stream()
+                        .filter(a -> a.getRole() == AssignmentRole.HELPER)
+                        .map(ServiceJobAssignment::getStaff).findFirst().orElse(null)));
         jobRepository.save(job);
     }
 

@@ -93,7 +93,6 @@ sealed class Screen(val route: String) {
     }
     object Report          : Screen("report")
     object IncomeReport    : Screen("income_report")
-    object NewServiceJob   : Screen("new_service_job")
     object EditServiceJob  : Screen("edit_service_job/{jobId}") {
         fun createRoute(id: Int) = "edit_service_job/$id"
     }

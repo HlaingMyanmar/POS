@@ -22,6 +22,8 @@ public class AssignmentDTO {
     private LocalDateTime approvedAt;
     private String taskDescription;
     private String completionNote;
+    /** Populated when status is REJECTED (same value as completionNote). */
+    private String rejectionReason;
     private String assignedBy;
     private LocalDateTime assignedAt;
     private LocalDateTime acceptedAt;

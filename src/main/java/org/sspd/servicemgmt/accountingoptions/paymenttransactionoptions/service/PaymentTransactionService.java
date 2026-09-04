@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
+import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentBalanceValidator;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.AccountTransferDTO;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.PaymentTransactionDTO;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.mapper.PaymentTransactionMapper;
@@ -46,6 +47,7 @@ public class PaymentTransactionService {
     private final SaleReturnRepository saleReturnRepository;
     private final ServiceJobRepository serviceJobRepository;
     private final JournalWriter journalWriter;
+    private final PaymentBalanceValidator paymentBalanceValidator;
 
     private static final String TRANSACTION_TOPIC = "/topic/payment-transaction";
 
@@ -131,6 +133,9 @@ public class PaymentTransactionService {
         if (from.getAccount() == null || to.getAccount() == null) {
             throw new RuntimeException("Payment methods must have linked cash/bank accounts.");
         }
+
+        // ပေးမည့်အကောင့်တွင် လက်ကျန်မလောက်ရင် transfer မလုပ်ရ — minus မဖြစ်ရ
+        paymentBalanceValidator.validateSufficientBalance(from, amount);
 
         String txNo = dto.getTransactionNo() == null || dto.getTransactionNo().isBlank()
                 ? generateTransactionNo()

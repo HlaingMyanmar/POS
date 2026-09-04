@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { accountingApiService } from '../services/accountingapiservice';
 import { paymentMethodService } from '../services/paymentmethodapiservice';
@@ -148,6 +148,8 @@ const PaymentTransactionManagement: React.FC = () => {
       });
       setTransferForm({ fromPaymentMethodId: 0, toPaymentMethodId: 0, amount: '', transactionNo: '', note: '' });
       await fetchData();
+    } catch (err: any) {
+      alert(err?.message || 'Transfer မအောင်မြင်ပါ။ ပေးမည့်အကောင့်တွင် လက်ကျန်မလောက်နိုင်ပါသည်။');
     } finally {
       setTransferSaving(false);
     }

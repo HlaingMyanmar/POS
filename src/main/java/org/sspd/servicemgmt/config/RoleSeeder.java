@@ -37,7 +37,8 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_STAFF_READ",
             "CAN_ACCESS_TECHNICIAN_VISIT_START",
             "CAN_ACCESS_CUSTOMER_LOCATION_UPDATE",
-            "CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN"
+            "CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN",
+            "CAN_ACCESS_SALE_READ"
     );
 
     private static final List<String> CASHIER_PERMISSIONS = List.of(
@@ -82,6 +83,8 @@ public class RoleSeeder implements CommandLineRunner {
         fillIfEmpty("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
         fillIfEmpty("CASHIER", CASHIER_PERMISSIONS, allPermissions);
         ensurePermissions("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
+        ensurePermissions("TECHNICIAN", List.of("CAN_ACCESS_SALE_READ"), allPermissions);
+        ensureSaleReadForTechnicianRoles(allPermissions);
         ensurePermissions("CASHIER", List.of("CAN_ACCESS_TECHNICIAN_LOCATION_READ"), allPermissions);
         ensurePermissions("TECHNICIAN", List.of("CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN"), allPermissions);
         ensurePermissions("ADMIN", List.of(
@@ -113,6 +116,25 @@ public class RoleSeeder implements CommandLineRunner {
             if (!removed) continue;
             repository.save(role);
             log.info("Removed CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN from technician role {}", role.getName());
+        }
+    }
+
+    private void ensureSaleReadForTechnicianRoles(List<Permission> allPermissions) {
+        Permission saleRead = allPermissions.stream()
+                .filter(p -> "CAN_ACCESS_SALE_READ".equals(p.getName()))
+                .findFirst()
+                .orElse(null);
+        if (saleRead == null) return;
+        for (Role role : repository.findAll()) {
+            String name = role.getName() == null ? "" : role.getName().toUpperCase();
+            if (!name.contains("TECH") && !name.equals("TECH")) continue;
+            if (role.getPermissions() == null) role.setPermissions(new HashSet<>());
+            boolean have = role.getPermissions().stream()
+                    .anyMatch(p -> "CAN_ACCESS_SALE_READ".equals(p.getName()));
+            if (have) continue;
+            role.getPermissions().add(saleRead);
+            repository.save(role);
+            log.info("Added CAN_ACCESS_SALE_READ to technician-like role {}", role.getName());
         }
     }
 

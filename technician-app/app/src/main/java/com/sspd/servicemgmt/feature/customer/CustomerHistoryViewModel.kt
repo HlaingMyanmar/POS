@@ -17,8 +17,7 @@ import kotlinx.coroutines.launch
 
 class CustomerHistoryViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = PreferenceManager(application)
-    private val canViewSales = prefs.hasPermission(SALE_READ_PERMISSION)
-    private val _state = MutableStateFlow(State(canViewSales = canViewSales))
+    private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
     init {
@@ -52,8 +51,9 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
                 jobs = emptyList(),
                 sales = emptyList(),
                 historyLoading = true,
+                canViewSales = true,
                 error = null,
-                saleError = null
+                saleError = null,
             )
         }
         viewModelScope.launch {
@@ -71,21 +71,39 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
                 _state.update { it.copy(error = error.message ?: "Service History ရယူ၍မရပါ") }
             }
 
-            // Do not call the sales endpoint unless the authenticated session
-            // explicitly contains the permission assigned by an administrator.
-            if (canViewSales) {
-                try {
-                    val response = ApiClient.service.getSalesByCustomer(auth, customerId)
-                    if (response.isSuccessful) {
+            try {
+                val response = ApiClient.service.getSalesByCustomer(auth, customerId)
+                when {
+                    response.isSuccessful -> {
                         val sales = response.body()?.data.orEmpty()
                             .filter { it.voided != true }
                             .sortedByDescending { it.saleDate.orEmpty() }
-                        _state.update { it.copy(sales = sales) }
-                    } else {
-                        _state.update { it.copy(saleError = "Sale History ရယူ၍မရပါ (${response.code()})") }
+                        _state.update { it.copy(sales = sales, canViewSales = true, saleError = null) }
                     }
-                } catch (error: Exception) {
-                    _state.update { it.copy(saleError = error.message ?: "Sale History ရယူ၍မရပါ") }
+                    response.code() == 403 -> {
+                        _state.update {
+                            it.copy(
+                                canViewSales = false,
+                                saleError = null,
+                                sales = emptyList(),
+                            )
+                        }
+                    }
+                    else -> {
+                        _state.update {
+                            it.copy(
+                                canViewSales = true,
+                                saleError = "Sale History ရယူ၍မရပါ (${response.code()})",
+                            )
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                _state.update {
+                    it.copy(
+                        canViewSales = true,
+                        saleError = error.message ?: "Sale History ရယူ၍မရပါ",
+                    )
                 }
             }
             _state.update { it.copy(historyLoading = false) }
@@ -102,11 +120,11 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
         val selected: CustomerDTO? = null,
         val jobs: List<ServiceJobDTO> = emptyList(),
         val sales: List<SaleDTO> = emptyList(),
-        val canViewSales: Boolean = false,
+        val canViewSales: Boolean = true,
         val loading: Boolean = true,
         val historyLoading: Boolean = false,
         val error: String? = null,
-        val saleError: String? = null
+        val saleError: String? = null,
     ) {
         val filteredCustomers: List<CustomerDTO>
             get() {
@@ -118,9 +136,5 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
                         it.address.orEmpty().contains(query, ignoreCase = true)
                 }
             }
-    }
-
-    private companion object {
-        const val SALE_READ_PERMISSION = "CAN_ACCESS_SALE_READ"
     }
 }

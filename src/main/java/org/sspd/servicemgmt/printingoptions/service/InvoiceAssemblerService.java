@@ -135,6 +135,14 @@ public class InvoiceAssemblerService {
                 data.setCustomerNotice(setting.getCustomerNotice());
         }
 
+        // Prefer Service Job Voucher title (retire SERVICE DONE VOUCHER wording).
+        if ("SERVICE_JOB".equals(data.getDocumentType()) || "SERVICE_DONE".equals(data.getDocumentType())) {
+            String t = data.getInvoiceTitle() != null ? data.getInvoiceTitle() : "";
+            if (t.isBlank() || t.toUpperCase().contains("SERVICE DONE") || "SERVICE VOUCHER".equalsIgnoreCase(t)) {
+                data.setInvoiceTitle("SERVICE JOB VOUCHER");
+            }
+        }
+
         return data;
     }
 
@@ -362,7 +370,7 @@ public class InvoiceAssemblerService {
                 .logoBase64(safe(cs.getLogoBase64()))
                 .footerNote(safe(cs.getFooterNote()))
                 .headerColor("#1e3a5f")
-                .invoiceTitle("SERVICE VOUCHER")
+                .invoiceTitle("SERVICE JOB VOUCHER")
                 .invoiceNo(safe(job.getJobNo()))
                 .invoiceDate(job.getReceivedDate() != null ? job.getReceivedDate().format(DT_FMT) : "")
                 .dueDate(job.getCompletedDate() != null ? job.getCompletedDate().format(DT_FMT) : "")
@@ -377,8 +385,8 @@ public class InvoiceAssemblerService {
                 .subtotal(fmt(gross))
                 .discount(fmt(discount))
                 .netAmount(fmt(net))
-                .paid(fmt(job.getPaidAmount()))
-                .balanceDue(fmt(job.getDueAmount()))
+                .paid(fmt(nz(job.getPaidAmount())))
+                .balanceDue(fmt(nz(job.getDueAmount())))
                 .remark(safe(job.getRemark()))
                 .itemName(safe(job.getItemName()))
                 .problemDesc(safe(job.getProblemDesc()))
@@ -459,9 +467,8 @@ public class InvoiceAssemblerService {
     // ── Service Done ──────────────────────────────────────────────────────────
 
     private PrintInvoiceData assembleServiceDone(Integer jobId, CompanySettingsDTO cs) {
-        PrintInvoiceData data = assembleServiceJob(jobId, cs);
-        data.setInvoiceTitle("SERVICE DONE VOUCHER");
-        return data;
+        // Legacy alias — print Service Job Voucher (same content/title).
+        return assembleServiceJob(jobId, cs);
     }
 
     // ── Purchase ──────────────────────────────────────────────────────────────

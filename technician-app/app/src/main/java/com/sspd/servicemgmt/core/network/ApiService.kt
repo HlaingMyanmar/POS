@@ -1073,11 +1073,17 @@ interface ApiService {
         @Body body: PrintPreviewRequest
     ): Response<ResponseBody>
 
+    @GET("voucher-settings/{type}")
+    suspend fun getVoucherSetting(
+        @Header("Authorization") auth: String,
+        @Path("type") type: String
+    ): Response<ApiResponse<VoucherSettingDTO>>
+
     @GET("print/preview/service-job/{id}")
     suspend fun getServiceJobPrintHtml(
         @Header("Authorization") auth: String,
         @Path("id") id: Int,
-        @Query("paper") paper: String = "A4"
+        @Query("paper") paper: String = "A5"
     ): Response<ResponseBody>
 
     @GET("print/preview/sale/{id}")

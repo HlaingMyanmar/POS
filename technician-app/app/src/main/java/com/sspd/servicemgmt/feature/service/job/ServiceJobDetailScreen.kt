@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,6 +110,7 @@ private fun technicianNextAction(job: ServiceJobDTO): String = when (job.status?
 private fun TechnicianJobWorkflowGuide(
     job: ServiceJobDTO,
     loading: Boolean,
+    canRejectJob: Boolean,
     onApproveEstimate: () -> Unit,
     onHoldEstimate: () -> Unit,
     onRejectEstimate: () -> Unit
@@ -155,6 +157,7 @@ private fun TechnicianJobWorkflowGuide(
                         EstimateActionSection(
                             isOnHold = jobHasEstimateHold(job),
                             loading = loading,
+                            canRejectJob = canRejectJob,
                             onApprove = onApproveEstimate,
                             onHoldEstimate = onHoldEstimate,
                             onRejectEstimate = onRejectEstimate
@@ -186,6 +189,9 @@ fun ServiceJobDetailScreen(
     val context = LocalContext.current
     val canAssignTechnician = remember {
         PreferenceManager(context).hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+    }
+    val canRejectJob = remember {
+        PreferenceManager(context).hasPermission("CAN_ACCESS_SERVICE_JOB_REJECT")
     }
     var pendingVisitAction by remember { mutableStateOf<String?>(null) }
     var showReasonDialog by remember { mutableStateOf(false) }
@@ -386,21 +392,27 @@ fun ServiceJobDetailScreen(
         var reason by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showEstimateRejectDialog = false },
-            title = { Text("Estimate ငြင်းပယ်", fontWeight = FontWeight.ExtraBold) },
+            title = { Text("Job တစ်ခုလုံး ငြင်းပယ်", fontWeight = FontWeight.ExtraBold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Customer မလုပ်ဘူးဟု ဆုံးဖြတ်ပါက Job ကို ပယ်ဖျက်မည်", fontSize = 12.sp, color = TextMuted)
                     OutlinedTextField(
                         value = reason, onValueChange = { reason = it },
-                        label = { Text("အကြောင်းရင်း") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("အကြောင်းရင်း *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = reason.isBlank()
                     )
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { vm.rejectEstimate(reason); showEstimateRejectDialog = false },
-                    enabled = !state.actionLoading,
+                    onClick = {
+                        val r = reason.trim()
+                        if (r.isBlank()) return@Button
+                        vm.rejectEstimate(r)
+                        showEstimateRejectDialog = false
+                    },
+                    enabled = !state.actionLoading && reason.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(containerColor = Danger)
                 ) { Text("ငြင်းပယ်မည်") }
             },
@@ -676,6 +688,7 @@ fun ServiceJobDetailScreen(
                 TechnicianJobWorkflowGuide(
                     job = job,
                     loading = state.actionLoading,
+                    canRejectJob = canRejectJob,
                     onApproveEstimate = { vm.approveEstimate() },
                     onHoldEstimate = { showEstimateHoldDialog = true },
                     onRejectEstimate = { showEstimateRejectDialog = true }
@@ -1104,6 +1117,7 @@ private fun lineConfirmationColor(status: String?) = when (status) {
 private fun EstimateActionSection(
     isOnHold: Boolean,
     loading: Boolean,
+    canRejectJob: Boolean,
     onApprove: () -> Unit,
     onHoldEstimate: () -> Unit,
     onRejectEstimate: () -> Unit
@@ -1133,13 +1147,22 @@ private fun EstimateActionSection(
                 shape = RoundedCornerShape(12.dp),
                 enabled = !loading
             ) { Text("Hold", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-            OutlinedButton(
-                onClick = onRejectEstimate,
-                modifier = Modifier.weight(1f).height(46.dp),
-                shape = RoundedCornerShape(12.dp),
-                enabled = !loading,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
-            ) { Text("ငြင်းပယ်", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+            if (canRejectJob) {
+                OutlinedButton(
+                    onClick = onRejectEstimate,
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !loading,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
+                ) { Text("ငြင်းပယ်", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+            }
+        }
+        if (!canRejectJob) {
+            Text(
+                "Job တစ်ခုလုံး ငြင်းပယ်ရန် CAN_ACCESS_SERVICE_JOB_REJECT လိုအပ်သည်",
+                fontSize = 10.sp,
+                color = TextMuted
+            )
         }
     }
 }
@@ -1194,14 +1217,16 @@ private fun SettleDialog(
     var txnNo       by remember { mutableStateOf("") }
     var selectedPm  by remember { mutableStateOf<PaymentMethodDTO?>(null) }
     var splitPayments by remember { mutableStateOf<List<PaymentTransactionDTO>>(emptyList()) }
+    var splitEnabled by remember { mutableStateOf(false) }
     var showSheet   by remember { mutableStateOf(false) }
     var showDuePicker by remember { mutableStateOf(false) }
     var dueDate     by remember { mutableStateOf("") }
     var error       by remember { mutableStateOf("") }
 
+    val validSplits = splitPayments.filter { (it.paymentMethodId ?: 0) > 0 && (it.amount ?: 0.0) > 0.0 }
     val net     = ((costStr.toDoubleOrNull() ?: 0.0) - (discountStr.toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0)
-    val splitPaid = splitPayments.sumOf { it.amount ?: 0.0 }
-    val paid    = if (foc) 0.0 else if (splitPayments.isNotEmpty()) splitPaid else (paidStr.toDoubleOrNull() ?: 0.0)
+    val splitPaid = validSplits.sumOf { it.amount ?: 0.0 }
+    val paid    = if (foc) 0.0 else if (splitEnabled && validSplits.isNotEmpty()) splitPaid else (paidStr.toDoubleOrNull() ?: 0.0)
     val balance = (net - paid).coerceAtLeast(0.0)
 
     // Due date picker
@@ -1253,7 +1278,13 @@ private fun SettleDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
 
                 // ── Cost & Discount ───────────────────────────────────────────
                 OutlinedTextField(
@@ -1306,30 +1337,45 @@ private fun SettleDialog(
                     // ── Quick-fill buttons ────────────────────────────────────
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = { paidStr = String.format("%.0f", net); error = "" },
+                            onClick = {
+                                paidStr = String.format("%.0f", net)
+                                if (splitEnabled && splitPayments.isNotEmpty()) {
+                                    val first = splitPayments.first()
+                                    splitPayments = listOf(first.copy(amount = net)) + splitPayments.drop(1).map { it.copy(amount = 0.0) }
+                                }
+                                error = ""
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(1.dp, Success)
                         ) { Text("အပြည့်", fontSize = 12.sp, color = Success, fontWeight = FontWeight.Bold) }
                         OutlinedButton(
-                            onClick = { paidStr = "0"; selectedPm = null; txnNo = "" },
+                            onClick = {
+                                paidStr = "0"
+                                selectedPm = null
+                                txnNo = ""
+                                splitPayments = emptyList()
+                                splitEnabled = false
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(1.dp, Warning)
                         ) { Text("အကြွေး", fontSize = 12.sp, color = Warning, fontWeight = FontWeight.Bold) }
                     }
 
-                    // ── Paid amount ───────────────────────────────────────────
-                    OutlinedTextField(
-                        value = paidStr, onValueChange = { paidStr = it; error = "" },
-                        label = { Text("ပေးချေမည့် ပမာဏ (Ks)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(), singleLine = true,
-                        shape = RoundedCornerShape(10.dp), isError = error.isNotBlank()
-                    )
+                    // ── Paid amount (single-pay mode) ─────────────────────────
+                    if (!splitEnabled) {
+                        OutlinedTextField(
+                            value = paidStr, onValueChange = { paidStr = it; error = "" },
+                            label = { Text("ပေးချေမည့် ပမာဏ (Ks)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            shape = RoundedCornerShape(10.dp), isError = error.isNotBlank()
+                        )
+                    }
 
                     // Balance info
-                    if (paid > 0 || paidStr.isNotBlank()) {
+                    if (paid > 0 || paidStr.isNotBlank() || splitEnabled) {
                         val balColor = if (balance > 0.01) Danger else Success
                         Surface(color = if (balance > 0.01) DangerBg else SuccessBg, shape = RoundedCornerShape(6.dp)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1343,8 +1389,58 @@ private fun SettleDialog(
                         }
                     }
 
-                    // ── Payment method (only when paid > 0) ───────────────────
-                    if (paid > 0.0) {
+                    // ── Split Payment toggle (web-style editor) ───────────────
+                    Surface(
+                        color = if (splitEnabled) PrimaryLight else ScreenBg,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, if (splitEnabled) Primary else BorderColor)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Split Payment", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                                Text("Cash / KPay / Wave စသည်ဖြင့် ခွဲပေးရန်", fontSize = 10.sp, color = TextMuted)
+                            }
+                            Switch(
+                                checked = splitEnabled,
+                                onCheckedChange = { enabled ->
+                                    splitEnabled = enabled
+                                    error = ""
+                                    if (enabled) {
+                                        if (splitPayments.isEmpty()) {
+                                            val seedAmt = paidStr.toDoubleOrNull()?.takeIf { it > 0 } ?: 0.0
+                                            splitPayments = listOf(
+                                                PaymentTransactionDTO(
+                                                    paymentMethodId = selectedPm?.id,
+                                                    paymentMethodName = selectedPm?.methodName,
+                                                    amount = seedAmt,
+                                                    transactionNo = txnNo.ifBlank { null }
+                                                )
+                                            )
+                                        }
+                                    } else {
+                                        paidStr = if (splitPaid > 0) splitPaid.formatDialogMoney() else paidStr
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    if (splitEnabled) {
+                        SplitPaymentEditor(
+                            methods = paymentMethods,
+                            payments = splitPayments,
+                            onChange = { next ->
+                                splitPayments = next
+                                paidStr = next.sumOf { it.amount ?: 0.0 }.takeIf { it > 0 }?.formatDialogMoney() ?: ""
+                                error = ""
+                            }
+                        )
+                    } else if (paid > 0.0) {
+                        // ── Single payment method ─────────────────────────────
                         OutlinedCard(
                             modifier = Modifier.fillMaxWidth().clickable { showSheet = true },
                             shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderColor)
@@ -1357,44 +1453,12 @@ private fun SettleDialog(
                                 Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(16.dp))
                             }
                         }
-
-                        // ── Transaction No ────────────────────────────────────
                         OutlinedTextField(
                             value = txnNo, onValueChange = { txnNo = it },
                             label = { Text("Transaction No (optional)") },
                             leadingIcon = { Icon(Icons.Outlined.Receipt, null, modifier = Modifier.size(16.dp)) },
                             modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp)
                         )
-                        Button(
-                            onClick = {
-                                val method = selectedPm ?: return@Button
-                                val amount = paidStr.toDoubleOrNull() ?: 0.0
-                                if (amount > 0.0) {
-                                    val next = splitPayments + PaymentTransactionDTO(
-                                        paymentMethodId = method.id,
-                                        paymentMethodName = method.methodName,
-                                        amount = amount,
-                                        transactionNo = txnNo.ifBlank { null }
-                                    )
-                                    splitPayments = next
-                                    paidStr = next.sumOf { it.amount ?: 0.0 }.formatDialogMoney()
-                                    txnNo = ""
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Add split payment")
-                        }
-                        splitPayments.forEachIndexed { index, payment ->
-                            SplitPaymentRow(payment = payment, onRemove = {
-                                val next = splitPayments.filterIndexed { i, _ -> i != index }
-                                splitPayments = next
-                                paidStr = if (next.isEmpty()) "" else next.sumOf { it.amount ?: 0.0 }.formatDialogMoney()
-                            })
-                        }
                     }
 
                     // ── Due date (when balance > 0) ───────────────────────────
@@ -1430,19 +1494,24 @@ private fun SettleDialog(
                 onClick = {
                     val cost    = costStr.toDoubleOrNull()
                     val disc    = discountStr.toDoubleOrNull() ?: 0.0
-                    val paidVal = if (foc) 0.0 else if (splitPayments.isNotEmpty()) splitPayments.sumOf { it.amount ?: 0.0 } else paidStr.toDoubleOrNull()
+                    val usingSplit = !foc && splitEnabled && validSplits.isNotEmpty()
+                    val paidVal = if (foc) 0.0 else if (usingSplit) splitPaid else paidStr.toDoubleOrNull()
                     val needPm  = !foc && (paidVal ?: 0.0) > 0
                     when {
-                        cost == null || cost < 0     -> error = "ကိုန် မှန်ကန်စွာ ရိုက်ပါ"
-                        !foc && paidVal == null      -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ပါ"
-                        needPm && selectedPm == null -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
+                        cost == null || cost < 0 -> error = "ကိုန် မှန်ကန်စွာ ရိုက်ပါ"
+                        !foc && paidVal == null -> error = "ပမာဏ မှန်ကန်စွာ ရိုက်ပါ"
+                        splitEnabled && needPm && validSplits.isEmpty() ->
+                            error = "Split Payment — နည်းလမ်းနှင့် ပမာဏ ထည့်ပါ"
+                        splitEnabled && splitPayments.any { (it.amount ?: 0.0) > 0 && (it.paymentMethodId ?: 0) <= 0 } ->
+                            error = "Split တိုင်း Payment Method ရွေးပါ"
+                        needPm && !usingSplit && selectedPm == null -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
                         else -> onSettle(
                             cost, disc, foc,
                             paidVal ?: 0.0,
-                            selectedPm?.id,
-                            txnNo.ifBlank { null },
+                            if (usingSplit) validSplits.firstOrNull()?.paymentMethodId else selectedPm?.id,
+                            if (usingSplit) null else txnNo.ifBlank { null },
                             dueDate.ifBlank { null },
-                            splitPayments.ifEmpty { null },
+                            if (usingSplit) validSplits else null,
                             allocMethod
                         )
                     }
@@ -1474,10 +1543,13 @@ private fun JobPayDueDialog(
     var discountNote by remember { mutableStateOf("") }
     var selectedPm by remember { mutableStateOf<PaymentMethodDTO?>(null) }
     var splitPayments by remember { mutableStateOf<List<PaymentTransactionDTO>>(emptyList()) }
+    var splitEnabled by remember { mutableStateOf(false) }
     var txnNo      by remember { mutableStateOf("") }
     var note       by remember { mutableStateOf("") }
     var showSheet  by remember { mutableStateOf(false) }
     var error      by remember { mutableStateOf("") }
+    val validSplits = splitPayments.filter { (it.paymentMethodId ?: 0) > 0 && (it.amount ?: 0.0) > 0.0 }
+    val splitPaid = validSplits.sumOf { it.amount ?: 0.0 }
 
     if (showSheet) {
         ModalBottomSheet(onDismissRequest = { showSheet = false }) {
@@ -1546,54 +1618,72 @@ private fun JobPayDueDialog(
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     shape = RoundedCornerShape(10.dp)
                 )
-                OutlinedCard(
-                    modifier = Modifier.fillMaxWidth().clickable { showSheet = true },
-                    shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderColor)
+
+                Surface(
+                    color = if (splitEnabled) PrimaryLight else ScreenBg,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, if (splitEnabled) Primary else BorderColor)
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp),
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(selectedPm?.methodName ?: "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ",
-                            color = if (selectedPm != null) TextMain else TextMuted, fontSize = 13.sp)
-                        Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Split Payment", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                            Text("Cash / KPay / Wave စသည်ဖြင့် ခွဲပေးရန်", fontSize = 10.sp, color = TextMuted)
+                        }
+                        Switch(
+                            checked = splitEnabled,
+                            onCheckedChange = { enabled ->
+                                splitEnabled = enabled
+                                error = ""
+                                if (enabled && splitPayments.isEmpty()) {
+                                    splitPayments = listOf(
+                                        PaymentTransactionDTO(
+                                            paymentMethodId = selectedPm?.id,
+                                            paymentMethodName = selectedPm?.methodName,
+                                            amount = amountStr.toDoubleOrNull() ?: 0.0,
+                                            transactionNo = txnNo.ifBlank { null }
+                                        )
+                                    )
+                                } else if (!enabled && splitPaid > 0) {
+                                    amountStr = splitPaid.formatDialogMoney()
+                                }
+                            }
+                        )
                     }
                 }
-                OutlinedTextField(
-                    value = txnNo, onValueChange = { txnNo = it },
-                    label = { Text("Transaction No (optional)") },
-                    leadingIcon = { Icon(Icons.Outlined.Receipt, null, modifier = Modifier.size(16.dp)) },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp)
-                )
-                Button(
-                    onClick = {
-                        val method = selectedPm ?: return@Button
-                        val amount = amountStr.toDoubleOrNull() ?: 0.0
-                        if (amount > 0.0) {
-                            val next = splitPayments + PaymentTransactionDTO(
-                                paymentMethodId = method.id,
-                                paymentMethodName = method.methodName,
-                                amount = amount,
-                                transactionNo = txnNo.ifBlank { null }
-                            )
+
+                if (splitEnabled) {
+                    SplitPaymentEditor(
+                        methods = paymentMethods,
+                        payments = splitPayments,
+                        onChange = { next ->
                             splitPayments = next
-                            amountStr = next.sumOf { it.amount ?: 0.0 }.formatDialogMoney()
-                            txnNo = ""
+                            amountStr = next.sumOf { it.amount ?: 0.0 }.takeIf { it > 0 }?.formatDialogMoney() ?: ""
+                            error = ""
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Danger),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Add split payment")
-                }
-                splitPayments.forEachIndexed { index, payment ->
-                    SplitPaymentRow(payment = payment, onRemove = {
-                        val next = splitPayments.filterIndexed { i, _ -> i != index }
-                        splitPayments = next
-                        amountStr = if (next.isEmpty()) "" else next.sumOf { it.amount ?: 0.0 }.formatDialogMoney()
-                    })
+                    )
+                } else {
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth().clickable { showSheet = true },
+                        shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(selectedPm?.methodName ?: "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ",
+                                color = if (selectedPm != null) TextMain else TextMuted, fontSize = 13.sp)
+                            Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    OutlinedTextField(
+                        value = txnNo, onValueChange = { txnNo = it },
+                        label = { Text("Transaction No (optional)") },
+                        leadingIcon = { Icon(Icons.Outlined.Receipt, null, modifier = Modifier.size(16.dp)) },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp)
+                    )
                 }
                 OutlinedTextField(
                     value = note, onValueChange = { note = it },
@@ -1608,15 +1698,31 @@ private fun JobPayDueDialog(
             Button(
                 onClick = {
                     val discount = discountStr.toDoubleOrNull() ?: 0.0
-                    val amt = if (splitPayments.isNotEmpty()) splitPayments.sumOf { it.amount ?: 0.0 } else amountStr.toDoubleOrNull()
+                    val usingSplit = splitEnabled && validSplits.isNotEmpty()
+                    val amt = if (usingSplit) splitPaid else amountStr.toDoubleOrNull()
                     when {
                         amt == null || (amt <= 0 && discount <= 0) -> error = "ပေးချေငွေ သို့မဟုတ် discount ထည့်ပါ"
                         amt != null && amt + discount > dueAmount + 0.01 -> error = "ပေးချေငွေနှင့် discount သည် ကျန်ငွေထက် မကျော်ရပါ"
                         discount > 0 && discountNote.isBlank() -> error = "Discount approval note လိုအပ်သည်"
-                        amt != null && amt > 0 && selectedPm == null && splitPayments.isEmpty() -> error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
+                        splitEnabled && (amt ?: 0.0) > 0 && validSplits.isEmpty() ->
+                            error = "Split Payment — နည်းလမ်းနှင့် ပမာဏ ထည့်ပါ"
+                        amt != null && amt > 0 && !usingSplit && selectedPm == null ->
+                            error = "ငွေပေးချေမှု နည်းလမ်း ရွေးပါ"
                         else -> {
-                            val methodId = selectedPm?.id ?: splitPayments.firstOrNull()?.paymentMethodId ?: 0
-                            onPay(amt ?: 0.0, methodId, txnNo.ifBlank { null }, note.ifBlank { null }, splitPayments.ifEmpty { null }, discount, discountNote.ifBlank { null })
+                            val methodId = if (usingSplit) {
+                                validSplits.firstOrNull()?.paymentMethodId ?: 0
+                            } else {
+                                selectedPm?.id ?: 0
+                            }
+                            onPay(
+                                amt ?: 0.0,
+                                methodId,
+                                if (usingSplit) null else txnNo.ifBlank { null },
+                                note.ifBlank { null },
+                                if (usingSplit) validSplits else null,
+                                discount,
+                                discountNote.ifBlank { null }
+                            )
                         }
                     }
                 },
@@ -1631,20 +1737,171 @@ private fun JobPayDueDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SplitPaymentRow(payment: PaymentTransactionDTO, onRemove: () -> Unit) {
-    Surface(color = CardBg, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, BorderColor)) {
-        Row(
-            Modifier.fillMaxWidth().padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(payment.paymentMethodName ?: "Payment", color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text("${String.format("%,.0f", payment.amount ?: 0.0)} Ks", color = Primary, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+private fun SplitPaymentEditor(
+    methods: List<PaymentMethodDTO>,
+    payments: List<PaymentTransactionDTO>,
+    onChange: (List<PaymentTransactionDTO>) -> Unit,
+) {
+    val rows = if (payments.isEmpty()) {
+        listOf(PaymentTransactionDTO(paymentMethodId = null, amount = 0.0, transactionNo = null))
+    } else {
+        payments
+    }
+    val total = rows.sumOf { it.amount ?: 0.0 }
+    var pickerIndex by remember { mutableStateOf<Int?>(null) }
+
+    fun update(index: Int, patch: PaymentTransactionDTO.() -> PaymentTransactionDTO) {
+        val base = if (payments.isEmpty()) rows else payments
+        onChange(base.mapIndexed { i, row -> if (i == index) row.patch() else row })
+    }
+
+    pickerIndex?.let { index ->
+        ModalBottomSheet(onDismissRequest = { pickerIndex = null }) {
+            Column(Modifier.padding(16.dp)) {
+                Text("ငွေပေးချေမှု နည်းလမ်း", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                Spacer(Modifier.height(8.dp))
+                if (methods.isEmpty()) {
+                    Text("Payment method စာရင်း မရပါ", fontSize = 13.sp, color = Danger)
+                } else {
+                    methods.forEach { pm ->
+                        val selected = rows.getOrNull(index)?.paymentMethodId == pm.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    update(index) {
+                                        copy(paymentMethodId = pm.id, paymentMethodName = pm.methodName)
+                                    }
+                                    pickerIndex = null
+                                }
+                                .padding(vertical = 13.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(pm.methodName.ifBlank { "Method #${pm.id}" }, fontSize = 14.sp, color = TextMain, fontWeight = FontWeight.SemiBold)
+                            if (selected) Icon(Icons.Outlined.Check, null, tint = Primary, modifier = Modifier.size(18.dp))
+                        }
+                        HorizontalDivider(color = BorderColor)
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
             }
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Outlined.Delete, null, tint = Danger)
+        }
+    }
+
+    Surface(
+        color = ScreenBg,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, BorderColor),
+    ) {
+        Column(
+            Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Split Payment", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                    Text("နည်းလမ်းတစ်ခုချင်း ပမာဏခွဲထည့်ပါ", fontSize = 10.sp, color = TextMuted)
+                }
+                TextButton(
+                    onClick = {
+                        onChange(rows + PaymentTransactionDTO(paymentMethodId = null, amount = 0.0))
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            rows.forEachIndexed { index, row ->
+                val methodLabel = methods.firstOrNull { it.id == row.paymentMethodId }?.methodName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: row.paymentMethodName?.takeIf { it.isNotBlank() }
+                    ?: "Payment Method ရွေးပါ"
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(CardBg, RoundedCornerShape(10.dp))
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedCard(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { pickerIndex = index },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, BorderColor),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    methodLabel,
+                                    color = if (row.paymentMethodId != null) TextMain else TextMuted,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                )
+                                Icon(Icons.Outlined.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        OutlinedTextField(
+                            value = row.amount?.takeIf { it > 0 }?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "",
+                            onValueChange = { raw ->
+                                val amt = raw.toDoubleOrNull() ?: 0.0
+                                update(index) { copy(amount = amt) }
+                            },
+                            label = { Text("Amount", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.width(110.dp),
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMain),
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        IconButton(
+                            onClick = {
+                                val next = rows.filterIndexed { i, _ -> i != index }
+                                onChange(if (next.isEmpty()) listOf(PaymentTransactionDTO(amount = 0.0)) else next)
+                            },
+                            enabled = rows.size > 1,
+                        ) {
+                            Icon(Icons.Outlined.Delete, null, tint = if (rows.size > 1) Danger else TextMuted)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = row.transactionNo.orEmpty(),
+                        onValueChange = { update(index) { copy(transactionNo = it.ifBlank { null }) } },
+                        label = { Text("Transaction No", fontSize = 10.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = TextMain),
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                }
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    "Total: ${String.format("%,.0f", total)} Ks",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Primary,
+                )
             }
         }
     }
@@ -1961,4 +2218,91 @@ private fun LongStopReasonDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("နောက်မှ") } }
     )
+}
+
+private fun previewJob(
+    status: String = "INSPECTING",
+    estimatedCost: Double? = 85000.0,
+    estimateApproved: Boolean? = false,
+    estimateHold: Boolean = false,
+): ServiceJobDTO = ServiceJobDTO(
+    id = 4,
+    jobNo = "SJ-000004",
+    customerName = "U Aung Kyaw",
+    itemName = "iPhone 14 Pro",
+    status = status,
+    estimatedCost = estimatedCost,
+    estimateApproved = estimateApproved,
+    problemDesc = "Battery drains fast",
+    lines = if (estimateHold) listOf(
+        ServiceJobLineDTO(id = 1, confirmationStatus = "CUSTOMER_HOLD")
+    ) else null,
+)
+
+@Preview(name = "Job workflow — estimate actions", showBackground = true, widthDp = 390)
+@Composable
+private fun TechnicianJobWorkflowEstimatePreview() {
+    AppTheme {
+        Box(Modifier.background(ScreenBg).padding(12.dp)) {
+            TechnicianJobWorkflowGuide(
+                job = previewJob(),
+                loading = false,
+                canRejectJob = true,
+                onApproveEstimate = {},
+                onHoldEstimate = {},
+                onRejectEstimate = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Job workflow — in progress", showBackground = true, widthDp = 390)
+@Composable
+private fun TechnicianJobWorkflowInProgressPreview() {
+    AppTheme {
+        Box(Modifier.background(ScreenBg).padding(12.dp)) {
+            TechnicianJobWorkflowGuide(
+                job = previewJob(status = "IN_PROGRESS", estimateApproved = true),
+                loading = false,
+                canRejectJob = false,
+                onApproveEstimate = {},
+                onHoldEstimate = {},
+                onRejectEstimate = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Job workflow — estimate hold", showBackground = true, widthDp = 390)
+@Composable
+private fun TechnicianJobWorkflowHoldPreview() {
+    AppTheme {
+        Box(Modifier.background(ScreenBg).padding(12.dp)) {
+            TechnicianJobWorkflowGuide(
+                job = previewJob(estimateHold = true),
+                loading = false,
+                canRejectJob = true,
+                onApproveEstimate = {},
+                onHoldEstimate = {},
+                onRejectEstimate = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Estimate actions — no reject perm", showBackground = true, widthDp = 390)
+@Composable
+private fun EstimateActionNoRejectPreview() {
+    AppTheme {
+        Box(Modifier.background(ScreenBg).padding(12.dp)) {
+            EstimateActionSection(
+                isOnHold = false,
+                loading = false,
+                canRejectJob = false,
+                onApprove = {},
+                onHoldEstimate = {},
+                onRejectEstimate = {},
+            )
+        }
+    }
 }

@@ -222,6 +222,7 @@ public enum PermissionName {
     CAN_ACCESS_SERVICE_JOB_PRICE_EDIT("Service Job ဈေးနှုန်းပြင်ဆင်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_PRICE_OVERRIDE("Min/Max ကျော်သော ဝန်ဆောင်မှုစျေး Manager အတည်ပြုခွင့်"),
     CAN_ACCESS_SERVICE_JOB_REWORK("Service Job rework ဖန်တီးခွင့်"),
+    CAN_ACCESS_SERVICE_JOB_REJECT("Service Job တစ်ခုလုံး (Estimate) ငြင်းပယ် / ပယ်ဖျက်ခွင့်"),
     CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN("ပြုပြင်သူ အားလုံးကို ရွေးခွင့် (မရှိရင် မိမိ Staff သာ)"),
     CAN_ACCESS_SERVICE_JOB_WORK_LOG("Technician assignment လက်ခံ၊ ငြင်းပယ်ပြီး work log တင်ခွင့်"),
     CAN_ACCESS_SERVICE_JOB_HANDOVER("မိမိ Service Job assignment ကို အခြား Technician ထံ Hand Over လွှဲခွင့်"),

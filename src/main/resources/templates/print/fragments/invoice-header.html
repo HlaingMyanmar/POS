@@ -34,10 +34,16 @@
            class="inv-header__qr"
            alt="QR"/>
       <div class="inv-header__meta-text">
-        <div class="inv-header__meta-title" th:text="${inv.invoiceTitle}">SALES INVOICE</div>
+        <div class="inv-header__meta-title"
+             th:unless="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}"
+             th:text="${inv.invoiceTitle}">SALES INVOICE</div>
         <div class="inv-header__copy-label" th:text="${inv.copyLabel}">CUSTOMER COPY</div>
-        <div class="inv-header__meta-number" th:text="${inv.invoiceNo}">#0001</div>
-        <div class="inv-header__meta-date"   th:text="${inv.invoiceDate}">01/01/2025</div>
+        <div class="inv-header__meta-number"
+             th:unless="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}"
+             th:text="${inv.invoiceNo}">#0001</div>
+        <div class="inv-header__meta-date"
+             th:unless="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}"
+             th:text="${inv.invoiceDate}">01/01/2025</div>
       </div>
     </div>
   </div>
@@ -48,6 +54,10 @@
 <div th:fragment="cont(inv, layout)">
   <div class="inv-cont-header">
     <span class="inv-cont-header__title"
+          th:if="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}"
+          th:text="${'SERVICE JOB VOUCHER - ' + inv.invoiceNo}">Service Job Voucher</span>
+    <span class="inv-cont-header__title"
+          th:unless="${inv.documentType == 'SERVICE_JOB' or inv.documentType == 'SERVICE_DONE'}"
           th:text="${inv.invoiceTitle + ' - ' + inv.invoiceNo}">Invoice</span>
     <span class="inv-cont-header__page"
           th:text="${'Page ' + inv.currentPage + ' of ' + inv.totalPages}">Page 2 of 3</span>

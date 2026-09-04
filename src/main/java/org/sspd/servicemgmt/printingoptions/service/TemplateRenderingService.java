@@ -178,8 +178,7 @@ public class TemplateRenderingService {
      * <p>Template resolution:
      * <pre>
      *   BOOKING      + A4/A5  → print/booking-a4  / print/booking-a5
-     *   SERVICE_JOB  + A4/A5  → print/service-job-a4 / print/service-job-a5
-     *   SERVICE_DONE + A4/A5  → print/service-done-a4 / print/service-done-a5
+     *   SERVICE_JOB / SERVICE_DONE + A4/A5  → print/service-job-a4 / print/service-job-a5
      *   SALE/PURCHASE+ A4/A5  → print/invoice-a4 / print/invoice-a5
      *   POS_80MM/58MM (any)   → print/invoice-pos
      * </pre>
@@ -192,14 +191,12 @@ public class TemplateRenderingService {
             case "POS_80MM", "POS_58MM" -> "print/invoice-pos";
             case "A5" -> switch (dt) {
                 case "BOOKING"      -> "print/booking-a5";
-                case "SERVICE_JOB"  -> "print/service-job-a5";
-                case "SERVICE_DONE" -> "print/service-done-a5";
+                case "SERVICE_JOB", "SERVICE_DONE" -> "print/service-job-a5";
                 default             -> "print/invoice-a5";
             };
             default -> switch (dt) { // A4 is the default paper size
                 case "BOOKING"      -> "print/booking-a4";
-                case "SERVICE_JOB"  -> "print/service-job-a4";
-                case "SERVICE_DONE" -> "print/service-done-a4";
+                case "SERVICE_JOB", "SERVICE_DONE" -> "print/service-job-a4";
                 default             -> "print/invoice-a4";
             };
         };

@@ -148,8 +148,8 @@ public class VoucherSettingService {
     private String defaultTitleFor(DocumentType type) {
         return switch (type) {
             case SALE         -> "SALES INVOICE";
-            case SERVICE_JOB  -> "SERVICE VOUCHER";
-            case SERVICE_DONE -> "SERVICE DONE VOUCHER";
+            case SERVICE_JOB  -> "SERVICE JOB VOUCHER";
+            case SERVICE_DONE -> "SERVICE JOB VOUCHER";
             case BOOKING      -> "DEVICE INTAKE RECEIPT";
             case PURCHASE     -> "PURCHASE ORDER";
         };

@@ -1338,6 +1338,9 @@ public class ServiceJobService {
     public ServiceJobDTO rejectEstimate(Integer id, String reason) {
         ServiceJob job = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        String cleanReason = trimToNull(reason);
+        if (cleanReason == null)
+            throw new IllegalArgumentException("Job ငြင်းပယ်ရသည့် အကြောင်းရင်း လိုအပ်သည်");
         if (job.getStatus() == ServiceJobStatus.DELIVERED)
             throw new IllegalStateException("Delivered jobs cannot reject estimate");
         if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
@@ -1359,7 +1362,7 @@ public class ServiceJobService {
         job.setStatus(ServiceJobStatus.CANCELLED);
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "ESTIMATE_REJECTED", from != null ? from.name() : null,
-                ServiceJobStatus.CANCELLED.name(), trimToNull(reason));
+                ServiceJobStatus.CANCELLED.name(), cleanReason);
         broadcastJobEvent( "JOB_ESTIMATE_REJECTED");
         return result;
     }

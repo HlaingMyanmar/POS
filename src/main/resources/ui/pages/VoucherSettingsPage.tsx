@@ -9,8 +9,8 @@ type TabMeta = { type: DocumentType; label: string; short: string; description: 
 
 const TABS: TabMeta[] = [
   { type: 'SALE', label: 'အရောင်းဘောင်ချာ', short: 'Sale', description: 'Customer ကိုပေးမည့် အရောင်း invoice', defaultTitle: 'SALES INVOICE', recommendedPaper: 'A4 / 80mm' },
-  { type: 'SERVICE_JOB', label: 'Service လက်ခံဘောင်ချာ', short: 'Intake', description: 'ဖုန်း/Computer လက်ခံချိန် ပေးသော receipt', defaultTitle: 'DEVICE INTAKE RECEIPT', recommendedPaper: 'A5' },
-  { type: 'SERVICE_DONE', label: 'Service ပြီးဘောင်ချာ', short: 'Done', description: 'ပြင်ပြီးချိန် ငွေရှင်း/အပ်နှံသော voucher', defaultTitle: 'SERVICE DONE VOUCHER', recommendedPaper: 'A5' },
+  { type: 'SERVICE_JOB', label: 'Service Job Voucher', short: 'Job', description: 'Service Job လက်ခံ/အလုပ်ဘောင်ချာ', defaultTitle: 'SERVICE JOB VOUCHER', recommendedPaper: 'A5' },
+  { type: 'SERVICE_DONE', label: 'Service Job Voucher (legacy)', short: 'Done', description: 'အဟောင်း alias — Service Job Voucher နဲ့ တူညီ', defaultTitle: 'SERVICE JOB VOUCHER', recommendedPaper: 'A5' },
   { type: 'BOOKING', label: 'Booking Receipt', short: 'Booking', description: 'ကြိုတင်လက်ခံ/Booking receipt', defaultTitle: 'BOOKING RECEIPT', recommendedPaper: 'A5' },
   { type: 'PURCHASE', label: 'ဝယ်ယူမှုဘောင်ချာ', short: 'Purchase', description: 'Supplier ဝယ်ယူမှု မှတ်တမ်း', defaultTitle: 'PURCHASE VOUCHER', recommendedPaper: 'A4' },
 ];

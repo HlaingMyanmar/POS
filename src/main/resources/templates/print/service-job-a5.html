@@ -7,7 +7,8 @@
   Customise this document type by editing:
     • Intake Sheet sections → fragments/service-job-body.html  ← main body here
     • Bill To / Invoice     → fragments/invoice-info-blocks.html
-    • Service lines + Parts → fragments/invoice-table.html
+    • Service lines + Parts → fragments/service-job-table.html
+    • Financial totals      → fragments/invoice-summary.html
     • Signatures / Footer   → fragments/invoice-footer.html :: last
   ══════════════════════════════════════════════════════════════════════════
 -->
@@ -33,8 +34,9 @@
     <!-- Service lines + Parts table (all pages) -->
     <div th:replace="~{print/fragments/service-job-table :: render(${inv})}"></div>
 
-    <!-- No financial summary — intake form, not a payment receipt -->
-
+    <!-- Last page: financial totals (Subtotal / Discount / Net) -->
+    <div th:if="${inv.currentPage == inv.totalPages}"
+         th:replace="~{print/fragments/invoice-summary :: render(${inv})}"></div>
 
     <!-- Last page: remark + signatures + footer bar -->
     <div th:if="${inv.currentPage == inv.totalPages}"

@@ -34,7 +34,7 @@ class ServiceJobPrintViewModel(
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.getPrintPreviewHtml(
                     token,
-                    PrintPreviewRequest(documentType = "SERVICE_DONE", documentId = jobId, paperSize = paper)
+                    PrintPreviewRequest(documentType = "SERVICE_JOB", documentId = jobId, paperSize = paper)
                 )
                 if (res.isSuccessful) {
                     val html = res.body()?.string()

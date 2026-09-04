@@ -3533,9 +3533,9 @@ export default function ServiceJobManagement() {
       {/* Print Preview */}
       {printId && (
         <InvoicePrintPreview
-          documentType="SERVICE_DONE"
+          documentType="SERVICE_JOB"
           documentId={printId}
-          title="ဝန်ဆောင်မှုပြေစာ"
+          title="Service Job Voucher"
           onClose={() => setPrintId(null)}
         />
       )}

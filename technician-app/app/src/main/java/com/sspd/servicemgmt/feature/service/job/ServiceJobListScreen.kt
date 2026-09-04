@@ -17,12 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
 import com.sspd.servicemgmt.core.network.HandoverDTO
+import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
@@ -36,7 +38,6 @@ import java.util.*
 fun ServiceJobListScreen(
     onBack:     () -> Unit,
     onJobClick: (Int) -> Unit = {},
-    onNewJob:   () -> Unit    = {}
 ) {
     val vm: ServiceJobListViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
@@ -153,15 +154,6 @@ fun ServiceJobListScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
             )
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNewJob,
-                containerColor = Primary,
-                contentColor = Color.White,
-                icon = { Icon(Icons.Outlined.Add, null) },
-                text = { Text("Job အသစ်", fontWeight = FontWeight.Bold) }
-            )
-        }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
             OutlinedTextField(
@@ -337,20 +329,11 @@ fun ServiceJobListScreen(
                         }
                         Text("Job မရှိသေးပါ", color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                         Text(
-                            "ဖုန်း၊ Laptop၊ Printer စတဲ့ပြင်ဆင်မှုအသစ်တွေကို ဒီနေရာကနေ မှတ်တမ်းတင်ပါ။",
+                            "သင့်ထံ assign လုပ်ထားသော အလုပ်များ ဒီမှာ ပေါ်ပါမည်။",
                             color = TextMuted,
                             fontSize = 13.sp,
                             lineHeight = 20.sp
                         )
-                        Button(
-                            onClick = onNewJob,
-                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Job အသစ်ယူမည်", fontWeight = FontWeight.Bold)
-                        }
                     }
                 }
             } else {
@@ -377,77 +360,7 @@ fun ServiceJobListScreen(
                         }
                     }
                     items(filtered) { job ->
-                        Card(
-                            shape    = RoundedCornerShape(12.dp),
-                            colors   = CardDefaults.cardColors(containerColor = CardBg),
-                            border   = BorderStroke(1.dp, BorderColor),
-                            modifier = Modifier.fillMaxWidth().clickable { job.id?.let { onJobClick(it) } }
-                        ) {
-                            Column(Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(job.jobNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
-                                            ServiceModeChip(job.serviceMode)
-                                        }
-                                        Text(job.customerName ?: "-", fontSize = 13.sp, color = TextMain)
-                                    }
-                                    JobStatusBadge(job.status)
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                if (!job.itemName.isNullOrBlank()) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Icon(Icons.Outlined.Devices, null, tint = TextMuted, modifier = Modifier.size(12.dp))
-                                        Text(job.itemName, fontSize = 11.sp, color = TextMuted)
-                                    }
-                                }
-                                if (!job.shelfLocationCode.isNullOrBlank()) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(12.dp))
-                                        Text(
-                                            listOfNotNull(
-                                                job.shelfLocationCode,
-                                                job.shelfLocationLabel?.takeIf { it.isNotBlank() }
-                                            ).joinToString(" - "),
-                                            fontSize = 11.sp,
-                                            color = Primary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                                if (!job.problemDesc.isNullOrBlank()) {
-                                    Text(job.problemDesc, fontSize = 11.sp, color = TextMuted, maxLines = 1)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Outlined.Person, null, tint = TextMuted, modifier = Modifier.size(12.dp))
-                                        Text(job.assignedStaffName ?: "-", fontSize = 11.sp, color = TextMuted)
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        if ((job.dueAmount ?: 0.0) > 0) {
-                                            Surface(color = DangerBg, shape = RoundedCornerShape(6.dp)) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(Icons.Outlined.CreditCard, null, tint = Danger, modifier = Modifier.size(10.dp))
-                                                    Text("ကြွေး ${String.format("%,.0f", job.dueAmount)} Ks", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Danger)
-                                                }
-                                            }
-                                        }
-                                        Text(
-                                            "${String.format("%,.0f", job.netAmount ?: 0.0)} Ks",
-                                            fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        ServiceJobListCard(job = job, onClick = { job.id?.let { onJobClick(it) } })
                     }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
@@ -471,6 +384,81 @@ private fun SummaryMetricCard(label: String, value: String) {
         ) {
             Text(label, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+        }
+    }
+}
+
+@Composable
+private fun ServiceJobListCard(job: ServiceJobDTO, onClick: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, BorderColor),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(job.jobNo ?: "-", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+                        ServiceModeChip(job.serviceMode)
+                    }
+                    Text(job.customerName ?: "-", fontSize = 13.sp, color = TextMain)
+                }
+                JobStatusBadge(job.status)
+            }
+            Spacer(Modifier.height(6.dp))
+            if (!job.itemName.isNullOrBlank()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Outlined.Devices, null, tint = TextMuted, modifier = Modifier.size(12.dp))
+                    Text(job.itemName, fontSize = 11.sp, color = TextMuted)
+                }
+            }
+            if (!job.shelfLocationCode.isNullOrBlank()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(12.dp))
+                    Text(
+                        listOfNotNull(
+                            job.shelfLocationCode,
+                            job.shelfLocationLabel?.takeIf { it.isNotBlank() }
+                        ).joinToString(" - "),
+                        fontSize = 11.sp,
+                        color = Primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            if (!job.problemDesc.isNullOrBlank()) {
+                Text(job.problemDesc, fontSize = 11.sp, color = TextMuted, maxLines = 1)
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Person, null, tint = TextMuted, modifier = Modifier.size(12.dp))
+                    Text(job.assignedStaffName ?: "-", fontSize = 11.sp, color = TextMuted)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if ((job.dueAmount ?: 0.0) > 0) {
+                        Surface(color = DangerBg, shape = RoundedCornerShape(6.dp)) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Outlined.CreditCard, null, tint = Danger, modifier = Modifier.size(10.dp))
+                                Text("ကြွေး ${String.format("%,.0f", job.dueAmount)} Ks", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Danger)
+                            }
+                        }
+                    }
+                    Text(
+                        "${String.format("%,.0f", job.netAmount ?: 0.0)} Ks",
+                        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Primary
+                    )
+                }
+            }
         }
     }
 }
@@ -555,6 +543,114 @@ private fun SentHandoverListCard(handover: HandoverDTO, onOpen: () -> Unit) {
                 Text("ငြင်းပယ်ရသည့်အကြောင်း: $it", fontSize = 11.sp, color = Danger)
             }
             Text("Hand Over History ကြည့်ရန်", fontSize = 11.sp, color = Primary, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private fun sampleJobs(): List<ServiceJobDTO> = listOf(
+    ServiceJobDTO(
+        id = 1,
+        jobNo = "SJ-000004",
+        customerName = "U Aung Kyaw",
+        itemName = "iPhone 14 Pro",
+        problemDesc = "Battery drains fast",
+        status = "IN_PROGRESS",
+        serviceMode = "INDOOR",
+        assignedStaffName = "ကိုမင်း",
+        netAmount = 85000.0,
+        dueAmount = 25000.0,
+        shelfLocationCode = "A-01",
+        shelfLocationLabel = "Front Shelf",
+    ),
+    ServiceJobDTO(
+        id = 2,
+        jobNo = "SJ-000005",
+        customerName = "Daw May Thu",
+        itemName = "Acer Aspire 5",
+        problemDesc = "No power",
+        status = "RECEIVED",
+        serviceMode = "OUTDOOR",
+        assignedStaffName = "မောင်လတ်",
+        netAmount = 45000.0,
+    ),
+    ServiceJobDTO(
+        id = 3,
+        jobNo = "SJ-000006",
+        customerName = "Ko Min Htet",
+        itemName = "Samsung A54",
+        status = "COMPLETED",
+        serviceMode = "INDOOR",
+        assignedStaffName = "ကိုမင်း",
+        netAmount = 32000.0,
+    ),
+)
+
+@Preview(name = "Job list — cards", showBackground = true, widthDp = 390, heightDp = 720)
+@Composable
+private fun ServiceJobListCardsPreview() {
+    AppTheme {
+        Column(
+            Modifier.background(ScreenBg).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SummaryMetricCard("Total", "12")
+                SummaryMetricCard("Active", "5")
+                SummaryMetricCard("Payment", "2")
+            }
+            sampleJobs().forEach { ServiceJobListCard(job = it, onClick = {}) }
+        }
+    }
+}
+
+@Preview(name = "Job list — empty", showBackground = true, widthDp = 390, heightDp = 420)
+@Composable
+private fun ServiceJobListEmptyPreview() {
+    AppTheme {
+        Box(Modifier.fillMaxSize().background(ScreenBg).padding(28.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(color = PrimaryLight, shape = RoundedCornerShape(18.dp)) {
+                    Icon(Icons.Outlined.Build, null, tint = Primary, modifier = Modifier.padding(18.dp).size(34.dp))
+                }
+                Text("Job မရှိသေးပါ", color = TextMain, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "သင့်ထံ assign လုပ်ထားသော အလုပ်များ ဒီမှာ ပေါ်ပါမည်။",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                )
+            }
+        }
+    }
+}
+
+@Preview(name = "Job card — outdoor credit", showBackground = true, widthDp = 390)
+@Composable
+private fun ServiceJobCardOutdoorPreview() {
+    AppTheme {
+        Box(Modifier.background(ScreenBg).padding(12.dp)) {
+            ServiceJobListCard(job = sampleJobs()[1], onClick = {})
+        }
+    }
+}
+
+@Preview(name = "Sent handover card", showBackground = true, widthDp = 390)
+@Composable
+private fun SentHandoverCardPreview() {
+    AppTheme {
+        Box(Modifier.background(ScreenBg).padding(12.dp)) {
+            SentHandoverListCard(
+                handover = HandoverDTO(
+                    id = 1,
+                    serviceJobId = 4,
+                    jobNo = "SJ-000004",
+                    fromStaffName = "ကိုမင်း",
+                    toStaffName = "မောင်လတ်",
+                    status = "PENDING",
+                    remainingWork = "Screen assembly ကျန်",
+                ),
+                onOpen = {},
+            )
         }
     }
 }

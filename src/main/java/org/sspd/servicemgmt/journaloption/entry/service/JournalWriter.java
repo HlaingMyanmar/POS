@@ -42,8 +42,29 @@ public class JournalWriter {
 
     private static final String ACCOUNTING_TOPIC = "/topic/accounting";
 
+    /**
+     * True when a non-reversed original journal exists under the given reference prefix
+     * (e.g. {@code SJ-001-SETTLE}). Reversal rows ({@code *-REV} / {@code reversalOf != null}) are ignored.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActiveReferencePrefix(String referencePrefix) {
+        if (referencePrefix == null || referencePrefix.isBlank()) return false;
+        return journalRepository.findAllByReferenceNoStartingWith(referencePrefix).stream()
+                .anyMatch(journal -> journal.getReversalOf() == null
+                        && !"REVERSED".equals(journal.getStatus()));
+    }
+
     @Transactional
     public JournalEntryDTO write(JournalEntryDTO dto) {
+        if (dto.getReferenceNo() != null && !dto.getReferenceNo().isBlank()) {
+            journalRepository.findByReferenceNo(dto.getReferenceNo()).ifPresent(existing -> {
+                if (existing.getReversalOf() == null && !"REVERSED".equals(existing.getStatus())) {
+                    throw new IllegalStateException(
+                            "Journal already posted for reference: " + dto.getReferenceNo());
+                }
+            });
+        }
+
         BigDecimal totalDebit  = dto.getDetails().stream()
                 .map(d -> d.getDebit()  != null ? d.getDebit()  : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);

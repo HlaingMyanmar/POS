@@ -36,6 +36,8 @@ import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
 import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
 import com.sspd.servicemgmt.feature.service.catalog.ServiceItemPickerContent
 import com.sspd.servicemgmt.feature.service.catalog.rememberFilteredServiceItems
 
@@ -250,6 +252,15 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                 Text("Serial number ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
                 Spacer(Modifier.height(4.dp))
                 Text(serialProduct.name, fontSize = 12.sp, color = TextMuted)
+                Spacer(Modifier.height(6.dp))
+                val thumb = remember(serialProduct) { ProductPhotoLoader.thumbSource(serialProduct) }
+                if (thumb != null) {
+                    ProductPhotoImage(
+                        source = thumb,
+                        contentDescription = serialProduct.name,
+                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp))
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
 
                 when {
@@ -384,7 +395,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             .height(52.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                        enabled = !state.saving
+                        enabled = !state.saving && state.canEditJob
                     ) {
                         if (state.saving) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -392,7 +403,8 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (vm.isEdit) "Job ပြင်ဆင်မှု သိမ်းဆည်းမည်" else "Job သိမ်းဆည်းမည်",
+                                if (!state.canEditJob) "Assignment လက်ခံရန် လိုအပ်သည်"
+                                else if (vm.isEdit) "Job ပြင်ဆင်မှု သိမ်းဆည်းမည်" else "Job သိမ်းဆည်းမည်",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )

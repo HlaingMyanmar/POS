@@ -29,6 +29,7 @@ import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 
@@ -57,6 +58,7 @@ public class InvoiceAssemblerService {
     private final SaleRepository saleRepository;
     private final BookingRepository bookingRepository;
     private final ServiceJobRepository serviceJobRepository;
+    private final ServiceJobActivityRepository serviceJobActivityRepository;
     private final PurchaseRepository purchaseRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final CompanySettingsService companySettingsService;
@@ -163,7 +165,7 @@ public class InvoiceAssemblerService {
                         .subtotal(fmt(displaySubtotal))
                         .discount(fmt(d.getDiscountAmount()))
                         .foc(Boolean.TRUE.equals(d.getFoc()))
-                        .warrantyLabel(fmtWarrantyLabel(d.getWarrantyMonths(), d.getWarrantyExpiryDate()))
+                        .warrantyLabel(resolveSaleWarrantyLabel(d))
                         .build());
             }
         }
@@ -288,6 +290,7 @@ public class InvoiceAssemblerService {
         if (serviceDeviceInfo.isBlank()) serviceDeviceInfo = "Device not specified";
         if (job.getLines() != null) {
             for (ServiceJobLine l : job.getLines()) {
+                boolean covered = Boolean.TRUE.equals(l.getWarrantyCovered());
                 items.add(PrintLineItem.builder()
                         .rowNo(i++)
                         .productName(l.getServiceItem() != null ? l.getServiceItem().getItem() : "")
@@ -295,22 +298,28 @@ public class InvoiceAssemblerService {
                         .qty(l.getQty() != null ? l.getQty() : 0)
                         .unitPrice(fmt(l.getPrice()))
                         .subtotal(fmt(l.getSubtotal()))
-                        .discount("0")
-                        .warrantyLabel(fmtWarrantyLabel(l.getWarrantyMonths(), null))
+                        .discount(fmt(l.getDiscountAmount()))
+                        .warrantyLabel(covered
+                                ? "Warranty Covered (FREE)"
+                                : fmtWarrantyLabel(l.getWarrantyMonths(), null))
                         .build());
             }
         }
         if (job.getProductParts() != null) {
             for (ServiceJobPart p : job.getProductParts()) {
+                boolean covered = Boolean.TRUE.equals(p.getWarrantyCovered());
+                Integer productWarrantyMonths = p.getProduct() != null ? p.getProduct().getWarrantyMonths() : null;
                 items.add(PrintLineItem.builder()
                         .rowNo(i++)
                         .productName(p.getProduct() != null ? p.getProduct().getName() : "")
                         .serialInfo(safe(p.getSerialNumbers()))
                         .qty(p.getQty() != null ? p.getQty() : 0)
                         .unitPrice(fmt(p.getUnitPrice()))
-                        .subtotal(fmt(p.getSubtotal()))
-                        .discount("0")
-                        .warrantyLabel("")
+                        .subtotal(fmt(covered ? BigDecimal.ZERO : p.getSubtotal()))
+                        .discount(fmt(p.getDiscountAmount()))
+                        .warrantyLabel(covered
+                                ? "Warranty Covered (FREE)"
+                                : fmtWarrantyLabel(productWarrantyMonths, null))
                         .build());
             }
         }
@@ -321,7 +330,11 @@ public class InvoiceAssemblerService {
         BigDecimal partsTotal = job.getProductParts() == null ? BigDecimal.ZERO :
                 job.getProductParts().stream().map(ServiceJobPart::getSubtotal)
                         .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal gross = laborTotal.add(partsTotal);
+        BigDecimal gross = job.getFinalCost() != null && job.getFinalCost().signum() > 0
+                ? job.getFinalCost()
+                : laborTotal.add(partsTotal);
+        BigDecimal discount = nz(job.getDiscountAmount());
+        BigDecimal net = job.getNetAmount() != null ? job.getNetAmount() : gross.subtract(discount).max(BigDecimal.ZERO);
 
         List<PrintInvoiceData.PaymentEntry> payments = new ArrayList<>(buildPayments(jobId, ReferenceType.Service));
         if (job.getSaleId() != null) {
@@ -349,14 +362,14 @@ public class InvoiceAssemblerService {
                 .paymentStatus(job.getPaymentStatus() != null ? job.getPaymentStatus().name() : "")
                 .customerName(job.getCustomer() != null ? job.getCustomer().getName() : "")
                 .customerPhone(job.getCustomer() != null ? safe(job.getCustomer().getPhone()) : "")
-                .cashierName(currentCashierName())
+                .cashierName(resolveServiceCashierName(job))
                 .technicianName(staffName(job.getAssignedStaff()))
                 .helperStaffName(staffName(job.getHelperStaff()))
                 .lineItems(items)
                 .payments(payments)
                 .subtotal(fmt(gross))
-                .discount(fmt(job.getDiscountAmount()))
-                .netAmount(fmt(job.getNetAmount()))
+                .discount(fmt(discount))
+                .netAmount(fmt(net))
                 .paid(fmt(job.getPaidAmount()))
                 .balanceDue(fmt(job.getDueAmount()))
                 .remark(safe(job.getRemark()))
@@ -561,7 +574,33 @@ public class InvoiceAssemblerService {
         return staff != null ? safe(staff.getName()) : "";
     }
 
-    /** Logged-in staff (or user name) who printed / collected payment — not the technician. */
+    /**
+     * Cashier on service voucher must be who settled (static), not who prints.
+     * Fallback: SETTLED activity actor, then current user only when not yet settled.
+     */
+    private String resolveServiceCashierName(ServiceJob job) {
+        String stored = resolveStoredActorName(job.getSettledBy());
+        if (!stored.isBlank()) return stored;
+
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided())) {
+            String fromActivity = serviceJobActivityRepository
+                    .findFirstByServiceJobIdAndEventTypeOrderByOccurredAtDescIdDesc(job.getId(), "SETTLED")
+                    .map(a -> resolveStoredActorName(a.getActor()))
+                    .orElse("");
+            if (!fromActivity.isBlank()) return fromActivity;
+        }
+        return currentCashierName();
+    }
+
+    /** Prefer display name when value is a username; otherwise keep as stored. */
+    private String resolveStoredActorName(String stored) {
+        if (stored == null || stored.isBlank()) return "";
+        return userRepository.findByUsernameOrEmail(stored, stored)
+                .map(this::userDisplayName)
+                .orElse(stored.trim());
+    }
+
+    /** Logged-in staff (or user name) — used for booking / unsettled job preview. */
     private String currentCashierName() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getName() == null
@@ -580,6 +619,15 @@ public class InvoiceAssemblerService {
         }
         if (!safe(user.getName()).isBlank()) return user.getName();
         return safe(user.getUsername());
+    }
+
+    /** Sale line warranty: detail first, then product catalog fallback (older rows / omitted payload). */
+    private String resolveSaleWarrantyLabel(org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail d) {
+        Integer months = d.getWarrantyMonths();
+        if (months == null || months <= 0) {
+            months = d.getProduct() != null ? d.getProduct().getWarrantyMonths() : null;
+        }
+        return fmtWarrantyLabel(months, d.getWarrantyExpiryDate());
     }
 
     /** Converts warranty months → "N Year(s)" / "N Month(s)", optionally appending expiry. */

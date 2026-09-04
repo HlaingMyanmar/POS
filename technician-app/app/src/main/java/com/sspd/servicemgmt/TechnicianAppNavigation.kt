@@ -85,6 +85,7 @@ import com.sspd.servicemgmt.feature.chat.ChatScreen
 import com.sspd.servicemgmt.feature.customer.CustomerHistoryScreen
 import com.sspd.servicemgmt.feature.home.HomeScreen
 import com.sspd.servicemgmt.feature.product.ProductDetailScreen
+import com.sspd.servicemgmt.feature.inventory.SerialRegistryScreen
 import com.sspd.servicemgmt.feature.product.ProductListScreen
 import com.sspd.servicemgmt.feature.service.catalog.ServiceManagementScreen
 import com.sspd.servicemgmt.feature.service.job.ServiceJobDetailScreen
@@ -341,6 +342,14 @@ fun TechnicianAppNavigation() {
                         )
                     ) {
                         ProductDetailScreen(onBack = { nav.popBackStack() })
+                    }
+                    screen(Screen.SerialRegistry.route) {
+                        SerialRegistryScreen(
+                            onBack = { nav.popBackStack() },
+                            onProductClick = { id, serial ->
+                                nav.navigate(Screen.ProductDetail.createRoute(id, serial))
+                            }
+                        )
                     }
 
                     screen(Screen.ServiceJobs.route) {

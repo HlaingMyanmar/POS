@@ -96,6 +96,7 @@ public class ServiceJobDTO {
     private String voidReason;
     private String voidedBy;
     private String voidedAt;
+    private String settledBy;
     private Boolean estimateApproved;
     private String estimateApprovedAt;
     private String estimateApprovedBy;
@@ -127,4 +128,14 @@ public class ServiceJobDTO {
     private Integer pendingHandoverId;
     private String pendingHandoverFromStaffName;
     private String pendingHandoverRemainingWork;
+    /** True when the authenticated staff has a current team assignment (LEAD/MEMBER/HELPER). */
+    private Boolean onTeamForMe;
+    private String myAssignmentRole;
+    /** PENDING / ACTIVE / PAUSED / COMPLETED — current assignment status for authenticated staff. */
+    private String myAssignmentStatus;
+    /**
+     * False when the authenticated technician still has a PENDING assignment and must accept
+     * before editing the job. Managers with assign permission are always true.
+     */
+    private Boolean canEditJob;
 }

@@ -9,7 +9,7 @@ import { categoryService } from '../services/categoryapiservice';
 import { unitService } from '../services/unitapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { purchaseApiService } from '../services/purchaseapiservice';
-import { AppRoute, ProductDTO, BrandDTO, CategoryDTO, UnitDTO, ProductType, ProductSerialDTO, SerialStatus, ProductStockHistoryDTO, ProductStockHistoryMovementDTO, AdjustmentType, StockAdjustmentDTO, PriceHistoryDTO, ReorderSuggestionDTO } from '../types';
+import { AppRoute, ProductDTO, ProductPhotoDTO, BrandDTO, CategoryDTO, UnitDTO, ProductType, ProductSerialDTO, SerialStatus, ProductStockHistoryDTO, ProductStockHistoryMovementDTO, AdjustmentType, StockAdjustmentDTO, PriceHistoryDTO, ReorderSuggestionDTO } from '../types';
 import {
   Loader2, Plus, Search, Trash2, Edit2, X,
   Box, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
@@ -351,14 +351,22 @@ const ProductManagement: React.FC = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
-  const [formPhoto, setFormPhoto] = useState<string | undefined>(undefined);
+  const [formPhotos, setFormPhotos] = useState<ProductPhotoDTO[]>([]);
   const [photoChanged, setPhotoChanged] = useState(false);
   const [viewFormPhoto, setViewFormPhoto] = useState<string | null>(null);
 
-  const productPhotoUrl = (product?: Partial<ProductDTO> | null) =>
-    resolveAssetUrl(product?.thumbnailPath || product?.imagePath || product?.photoBase64);
+  const productThumbUrl = (product?: Partial<ProductDTO> | null) => {
+    const slot1 = product?.photos?.find(p => p.slot === 1) || product?.photos?.[0];
+    return resolveAssetUrl(slot1?.thumbnailPath || slot1?.imagePath || product?.thumbnailPath || product?.imagePath || product?.photoBase64);
+  };
 
-  const compressImage = (file: File, maxDim = 320, quality = 0.85): Promise<string> =>
+  const productFullUrl = (product?: Partial<ProductDTO> | null) => {
+    const slot1 = product?.photos?.find(p => p.slot === 1) || product?.photos?.[0];
+    return resolveAssetUrl(slot1?.imagePath || slot1?.thumbnailPath || product?.imagePath || product?.thumbnailPath || product?.photoBase64);
+  };
+
+  /** Keep enough resolution for server full image (≤1600); thumbnails are generated server-side. */
+  const compressImage = (file: File, maxDim = 1600, quality = 0.9): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -372,7 +380,7 @@ const ProductManagement: React.FC = () => {
           }
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/webp', quality));
+          resolve(canvas.toDataURL('image/jpeg', quality));
         };
         img.onerror = reject;
         img.src = e.target!.result as string;
@@ -381,17 +389,27 @@ const ProductManagement: React.FC = () => {
       reader.readAsDataURL(file);
     });
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const photoPreviewUrl = (photo?: ProductPhotoDTO | null) =>
+    photo?.dataUrl ? photo.dataUrl : resolveAssetUrl(photo?.thumbnailPath || photo?.imagePath);
+
+  const uploadProductPhotoSlot = async (slot: number, file?: File | null) => {
     if (!file) return;
     try {
       const compressed = await compressImage(file);
-      setFormPhoto(compressed);
+      setFormPhotos(prev => {
+        const next = prev.filter(p => p.slot !== slot);
+        next.push({
+          slot,
+          dataUrl: compressed,
+          fileName: file.name,
+          contentType: file.type || 'image/jpeg',
+        });
+        return next.sort((a, b) => (a.slot || 0) - (b.slot || 0));
+      });
       setPhotoChanged(true);
     } catch {
       Swal.fire('Error', 'Failed to process image', 'error');
     }
-    e.target.value = '';
   };
 
   const [brandSearch, setBrandSearch] = useState('');
@@ -838,7 +856,22 @@ const ProductManagement: React.FC = () => {
         brandId: product.brandId,
         unitId: product.unitId
       });
-      setFormPhoto(productPhotoUrl(product) || undefined);
+      const initialPhotos =
+        (product.photos || []).filter(p => p?.slot != null && p.slot >= 1 && p.slot <= 3);
+      if (initialPhotos.length > 0) {
+        setFormPhotos(initialPhotos);
+      } else {
+        const slot1DataUrl = (!product.imagePath && !product.thumbnailPath) ? product.photoBase64 : undefined;
+        const slot1: ProductPhotoDTO = {
+          slot: 1,
+          imagePath: product.imagePath,
+          thumbnailPath: product.thumbnailPath,
+          fileName: product.originalFileName,
+          contentType: product.imageMimeType,
+          dataUrl: slot1DataUrl,
+        };
+        setFormPhotos((slot1.imagePath || slot1.thumbnailPath || slot1.dataUrl) ? [slot1] : []);
+      }
       // Initialize warranty display state from existing data
       const wm = product.warrantyMonths ?? 0;
       if (wm > 0 && wm % 12 === 0) {
@@ -869,7 +902,7 @@ const ProductManagement: React.FC = () => {
         brandId: undefined,
         unitId: undefined
       });
-      setFormPhoto(undefined);
+      setFormPhotos([]);
     }
     setPhotoChanged(false);
     setBrandSearch('');
@@ -1193,7 +1226,17 @@ const ProductManagement: React.FC = () => {
       }
       // Upload photo if changed
       if (photoChanged && savedId) {
-        await productService.updatePhoto(savedId, formPhoto ?? null);
+        const photosPayload: ProductPhotoDTO[] = formPhotos
+          .filter(p => p && p.slot != null)
+          .map(p => ({
+            slot: p.slot,
+            dataUrl: p.dataUrl,
+            fileName: p.fileName,
+            contentType: p.contentType,
+            imagePath: p.imagePath,
+            thumbnailPath: p.thumbnailPath,
+          }));
+        await productService.updatePhotos(savedId, photosPayload);
       }
       setShowForm(false);
       fetchData();
@@ -1653,39 +1696,74 @@ const ProductManagement: React.FC = () => {
               <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
                 <Camera size={13} className="text-indigo-500" />
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ကုန်ပစ္စည်း ဓာတ်ပုံ</span>
-                <span className="ml-auto text-[9px] text-slate-400 font-bold">အလိုအလျောက်ချုံ့ · အများဆုံး ၃၂၀×၃၂၀</span>
+                <span className="ml-auto text-[9px] text-slate-400 font-bold">အလိုအလျောက်ချုံ့ · အများဆုံး ၃ ပုံ (Slot 1-3)</span>
               </div>
               <div className="p-5">
-                {formPhoto ? (
-                  <div className="flex items-start gap-4">
-                    <img src={formPhoto} alt="product" className="w-28 h-28 object-contain rounded-xl border border-slate-200 bg-slate-50" />
-                    <div className="flex flex-col gap-2 pt-1">
-                      <label className="inline-flex items-center gap-2 px-3 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-indigo-100 transition-all">
-                        <Camera size={13} /> ဓာတ်ပုံ ပြောင်းရန်
-                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-                      </label>
-                      <button type="button" onClick={() => setViewFormPhoto(formPhoto)}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-all">
-                        <Eye size={13} /> ဓာတ်ပုံ ကြည့်ရန်
-                      </button>
-                      <button type="button" onClick={() => { setFormPhoto(undefined); setPhotoChanged(true); }}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-100 transition-all">
-                        <X size={13} /> ဖယ်ရှားရန်
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
-                      <Camera size={22} className="text-indigo-400" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-slate-600">ဓာတ်ပုံတင်ရန် နှိပ်ပါ</p>
-                      <p className="text-xs text-slate-400 mt-1">JPG, PNG, WEBP — ~30KB အထိ အလိုအလျောက်ချုံ့</p>
-                    </div>
-                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-                  </label>
-                )}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {[1, 2, 3].map((slot) => {
+                    const photo = formPhotos.find(p => p.slot === slot);
+                    const src = photoPreviewUrl(photo);
+                    return (
+                      <div key={slot} className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-2">
+                        <div className="mb-2 text-center text-[11px] font-semibold text-slate-500">ပုံ {slot}</div>
+                        {src ? (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setViewFormPhoto(src)}
+                              className="group relative block w-full overflow-hidden rounded-lg border bg-white"
+                              title="ပုံကြီးကြည့်ရန်"
+                            >
+                              <img
+                                src={src}
+                                alt={`Product photo ${slot}`}
+                                className="h-24 w-full object-contain rounded-lg bg-slate-50"
+                              />
+                            </button>
+                            <div className="flex flex-col gap-2">
+                              <label className="inline-flex items-center justify-center gap-2 px-3 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-indigo-100 transition-all">
+                                <Camera size={13} /> ပြောင်းရန်
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    void uploadProductPhotoSlot(slot, e.target.files?.[0]);
+                                    e.currentTarget.value = '';
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormPhotos(prev => prev.filter(p => p.slot !== slot));
+                                  setPhotoChanged(true);
+                                }}
+                                className="inline-flex items-center justify-center gap-2 px-3 py-1.5 border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-100 transition-all"
+                              >
+                                <X size={13} /> ဖယ်ရှားရန်
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="flex h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border bg-white text-xs font-semibold text-blue-700 hover:bg-blue-50">
+                            <Camera size={18} />
+                            <span>ရွေးပါ</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                void uploadProductPhotoSlot(slot, e.target.files?.[0]);
+                                e.currentTarget.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -2225,7 +2303,7 @@ const ProductManagement: React.FC = () => {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           {(() => {
-                            const anyPhoto = group.products.find(p => productPhotoUrl(p)) ? productPhotoUrl(group.products.find(p => productPhotoUrl(p))) : undefined;
+                            const anyPhoto = group.products.find(p => productThumbUrl(p)) ? productThumbUrl(group.products.find(p => productThumbUrl(p))) : undefined;
                             return anyPhoto
                               ? <img src={anyPhoto} alt="" className="w-9 h-9 rounded-md object-contain border border-slate-200 bg-slate-50 shrink-0" />
                               : <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${isExpanded ? 'bg-indigo-600 text-white' : hasLowStock ? 'bg-amber-100 text-amber-600 border border-amber-200' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`}><Package size={18} /></div>;
@@ -2411,8 +2489,8 @@ const ProductManagement: React.FC = () => {
                                       <tr key={p.id} className="hover:bg-slate-50 group/row">
                                         <td className="px-4 py-3">
                                           <div className="flex items-center gap-2">
-                                            {productPhotoUrl(p)
-                                              ? <img src={productPhotoUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
+                                            {productThumbUrl(p)
+                                              ? <img src={productThumbUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
                                               : <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={13} className="text-slate-400" /></div>}
                                             <span className="font-bold text-indigo-700 text-xs">{p.productCode}</span>
                                           </div>
@@ -2469,8 +2547,8 @@ const ProductManagement: React.FC = () => {
                                       <tr key={p.id} className="hover:bg-slate-50 group/row">
                                         <td className="px-4 py-3">
                                           <div className="flex items-center gap-2">
-                                            {productPhotoUrl(p)
-                                              ? <img src={productPhotoUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
+                                            {productThumbUrl(p)
+                                              ? <img src={productThumbUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
                                               : <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={13} className="text-slate-400" /></div>}
                                             <span className="font-bold text-indigo-700 text-xs">{p.productCode}</span>
                                           </div>
@@ -2515,8 +2593,8 @@ const ProductManagement: React.FC = () => {
                                       <td className="px-4 py-3">
                                         {idx === 0 ? (
                                           <div className="flex items-center gap-2">
-                                            {productPhotoUrl(p)
-                                              ? <img src={productPhotoUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
+                                            {productThumbUrl(p)
+                                              ? <img src={productThumbUrl(p)} alt="" className="w-8 h-8 rounded object-contain border border-slate-100 bg-white shrink-0" />
                                               : <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={13} className="text-slate-400" /></div>}
                                             <span className="font-black text-indigo-600 text-[11px]">{p.productCode}</span>
                                           </div>
@@ -2719,8 +2797,8 @@ const ProductManagement: React.FC = () => {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
-                                {productPhotoUrl(product)
-                                  ? <img src={productPhotoUrl(product)} alt="" className="w-7 h-7 rounded object-contain border border-slate-100 bg-slate-50 shrink-0" />
+                                {productThumbUrl(product)
+                                  ? <img src={productThumbUrl(product)} alt="" className="w-7 h-7 rounded object-contain border border-slate-100 bg-slate-50 shrink-0" />
                                   : <div className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center shrink-0"><Package size={12} className="text-slate-400" /></div>}
                                 <div>
                                   <p className="font-bold text-indigo-700">{product.productCode}</p>
@@ -3081,7 +3159,7 @@ const ProductManagement: React.FC = () => {
           <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50 p-5">
               <div className="flex min-w-0 items-center gap-3">
-                {productPhotoUrl(detailProduct) ? <img src={productPhotoUrl(detailProduct)} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain" /> : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500"><Package size={24} /></div>}
+                {productFullUrl(detailProduct) ? <img src={productFullUrl(detailProduct)} alt="" className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain" /> : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500"><Package size={24} /></div>}
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-black text-slate-800">{detailProduct.name}</h3>
                   <p className="truncate text-xs font-bold text-slate-400">{detailProduct.productCode}</p>

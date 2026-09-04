@@ -49,4 +49,5 @@ public class ProductDTO {
     private String openingBatch;
     private java.time.LocalDate openingExpiry;
     private String shelfLocation;
+    private java.util.List<ProductPhotoDTO> photos = new java.util.ArrayList<>();
 }

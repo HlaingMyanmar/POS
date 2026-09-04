@@ -80,6 +80,16 @@ data class RecentSaleDTO(
 
 // ─── Products / Stock ────────────────────────────────────────────────────────
 
+data class ProductPhotoDTO(
+    val id: Int? = null,
+    val slot: Int? = null,
+    val fileName: String? = null,
+    val contentType: String? = null,
+    val dataUrl: String? = null,
+    val imagePath: String? = null,
+    val thumbnailPath: String? = null,
+)
+
 data class ProductDTO(
     val id: Int = 0,
     val productCode: String = "",
@@ -103,7 +113,10 @@ data class ProductDTO(
     val warrantyMonths: Int? = null,
     val warrantyTerms: String? = null,
     val remark: String? = null,
-    val photoBase64: String? = null
+    val photoBase64: String? = null,
+    val imagePath: String? = null,
+    val thumbnailPath: String? = null,
+    val photos: List<ProductPhotoDTO> = emptyList()
 )
 
 data class BrandDTO(
@@ -675,7 +688,11 @@ data class ServiceJobDTO(
     val pendingHandoverForMe: Boolean? = null,
     val pendingHandoverId: Int? = null,
     val pendingHandoverFromStaffName: String? = null,
-    val pendingHandoverRemainingWork: String? = null
+    val pendingHandoverRemainingWork: String? = null,
+    val onTeamForMe: Boolean? = null,
+    val myAssignmentRole: String? = null,
+    val myAssignmentStatus: String? = null,
+    val canEditJob: Boolean? = null,
 )
 
 data class TeamSnapshotDTO(
@@ -703,6 +720,7 @@ data class AssignmentDTO(
     val staffName: String? = null,
     val role: String? = null,
     val status: String? = null,
+    val approvalStatus: String? = null,
     val taskDescription: String? = null,
     val completionNote: String? = null,
     val assignedBy: String? = null,

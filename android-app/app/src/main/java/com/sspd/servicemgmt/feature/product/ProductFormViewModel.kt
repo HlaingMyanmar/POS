@@ -73,6 +73,8 @@ class ProductFormViewModel(
                             selectedCategory = categories.find { it.id == product.categoryId || it.name == product.categoryName },
                             selectedUnit = units.find { it.id == product.unitId || unitLabel(it) == product.unitName },
                             photoBase64 = product.photoBase64,
+                            imagePath = product.imagePath,
+                            thumbnailPath = product.thumbnailPath,
                             loading = false
                         )
                     } else {
@@ -114,7 +116,9 @@ class ProductFormViewModel(
     fun selectBrand(v: BrandDTO) = _uiState.update { it.copy(selectedBrand = v) }
     fun selectCategory(v: CategoryDTO) = _uiState.update { it.copy(selectedCategory = v) }
     fun selectUnit(v: UnitDTO) = _uiState.update { it.copy(selectedUnit = v) }
-    fun setPhotoBase64(v: String?) = _uiState.update { it.copy(photoBase64 = v, photoChanged = true) }
+    fun setPhotoBase64(v: String?) = _uiState.update {
+        it.copy(photoBase64 = v, imagePath = null, thumbnailPath = null, photoChanged = true)
+    }
     fun clearError() = _uiState.update { it.copy(error = null) }
 
     fun createBrand(name: String, onCreated: () -> Unit = {}) {
@@ -267,6 +271,8 @@ class ProductFormViewModel(
         val selectedCategory: CategoryDTO? = null,
         val selectedUnit: UnitDTO? = null,
         val photoBase64: String? = null,
+        val imagePath: String? = null,
+        val thumbnailPath: String? = null,
         val photoChanged: Boolean = false
     )
 }

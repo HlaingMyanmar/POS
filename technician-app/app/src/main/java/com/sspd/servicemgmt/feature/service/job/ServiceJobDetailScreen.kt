@@ -43,7 +43,9 @@ import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 
+import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.util.fmtWarranty
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 
 private fun formatPartRequests(value: String?): String {
@@ -101,122 +103,6 @@ private fun technicianNextAction(job: ServiceJobDTO): String = when (job.status?
     "DELIVERED" -> "Job ပြီးဆုံးပြီး ပစ္စည်းပြန်ပေးထားပါပြီ"
     "CANCELLED" -> "Job ပယ်ဖျက်ထားပါသည်"
     else -> "Job အချက်အလက်ကို စစ်ဆေးပါ"
-}
-
-@Composable
-private fun TechnicianTeamSection(
-    team: TeamSnapshotDTO?,
-    loading: Boolean,
-    onAccept: (Int) -> Unit,
-    onWork: (Int, String, String?, String?, String?, String?) -> Unit
-) {
-    val assignments = team?.assignments.orEmpty()
-    if (assignments.isEmpty()) return
-    var completeTarget by remember { mutableStateOf<AssignmentDTO?>(null) }
-    completeTarget?.let { target ->
-        CompleteWorkDialog(
-            assignment = target,
-            onDismiss = { completeTarget = null },
-            onConfirm = { work, service, parts, note ->
-                completeTarget = null
-                target.id?.let { onWork(it, "COMPLETE", work, service, parts, note) }
-            }
-        )
-    }
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
-        border = BorderStroke(1.dp, Color(0xFFBBF7D0))
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Technician Team", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF14532D))
-            team?.completionBlockReason?.takeIf { it.isNotBlank() }?.let {
-                Text(it, fontSize = 12.sp, color = Warning)
-            }
-            assignments.forEach { assignment ->
-                val roleLabel = when (assignment.role?.uppercase()) {
-                    "LEAD" -> "Lead"
-                    "MEMBER" -> "Member"
-                    "HELPER" -> "Helper"
-                    else -> assignment.role.orEmpty()
-                }
-                val statusLabel = when (assignment.status?.uppercase()) {
-                    "PENDING" -> "စောင့်ဆိုင်း"
-                    "ACTIVE" -> "လုပ်ဆောင်"
-                    "PAUSED" -> "ရပ်နား"
-                    "COMPLETED" -> "ပြီးစီး"
-                    else -> assignment.status.orEmpty()
-                }
-                Column(
-                    Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(assignment.staffName.orEmpty(), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("$roleLabel · $statusLabel", fontSize = 11.sp, color = TextMuted)
-                    }
-                    assignment.taskDescription?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, fontSize = 12.sp, color = TextMuted)
-                    }
-                    Text("အချိန်: ${assignment.accumulatedMinutes ?: 0} မိနစ်", fontSize = 11.sp, color = TextMuted)
-                    assignment.logs.orEmpty().filter { it.action == "COMPLETE" || it.action == "NOTE" }.takeLast(2).forEach { log ->
-                        log.completedWork?.takeIf { it.isNotBlank() }?.let {
-                            Text("လုပ်ပြီးသောအလုပ်: $it", fontSize = 11.sp, color = TextMain)
-                        }
-                        log.serviceDetails?.takeIf { it.isNotBlank() }?.let {
-                            Text("Service: $it", fontSize = 10.sp, color = TextMuted)
-                        }
-                        log.partsDetails?.takeIf { it.isNotBlank() }?.let {
-                            Text("Parts: $it", fontSize = 10.sp, color = TextMuted)
-                        }
-                    }
-                    if (assignment.mine && !loading) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            when (assignment.status?.uppercase()) {
-                                "PENDING" -> Button(
-                                    onClick = { assignment.id?.let(onAccept) },
-                                    modifier = Modifier.height(32.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp)
-                                ) { Text("လက်ခံ", fontSize = 11.sp) }
-                                "ACTIVE" -> {
-                                    if (assignment.workStartedAt.isNullOrBlank()) {
-                                        OutlinedButton(
-                                            onClick = { assignment.id?.let { onWork(it, "START", null, null, null, null) } },
-                                            modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp)
-                                        ) { Text("စတင်", fontSize = 11.sp) }
-                                    } else {
-                                        OutlinedButton(
-                                            onClick = { assignment.id?.let { onWork(it, "PAUSE", null, null, null, null) } },
-                                            modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp)
-                                        ) { Text("ရပ်", fontSize = 11.sp) }
-                                    }
-                                    Button(
-                                        onClick = { completeTarget = assignment },
-                                        modifier = Modifier.height(32.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp)
-                                    ) { Text("ပြီးစီး", fontSize = 11.sp) }
-                                }
-                                "PAUSED" -> {
-                                    OutlinedButton(
-                                        onClick = { assignment.id?.let { onWork(it, "RESUME", null, null, null, null) } },
-                                        modifier = Modifier.height(32.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp)
-                                    ) { Text("ဆက်", fontSize = 11.sp) }
-                                    Button(
-                                        onClick = { completeTarget = assignment },
-                                        modifier = Modifier.height(32.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp)
-                                    ) { Text("ပြီးစီး", fontSize = 11.sp) }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -296,7 +182,11 @@ fun ServiceJobDetailScreen(
     val visitMessage by visitVm.message.collectAsStateWithLifecycle()
     val pendingResume by VisitTracker.pendingResume.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val canAssignTechnician = remember {
+        PreferenceManager(context).hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
+    }
     var pendingVisitAction by remember { mutableStateOf<String?>(null) }
     var showReasonDialog by remember { mutableStateOf(false) }
     val locationPermission = rememberLauncherForActivityResult(
@@ -620,7 +510,16 @@ fun ServiceJobDetailScreen(
                 },
                 actions = {
                     IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) }
-                    IconButton(onClick = onEdit)       { Icon(Icons.Outlined.Edit,    "ပြင်ရန်", tint = Color.White) }
+                    IconButton(onClick = {
+                        val job = state.job
+                        if (!canAssignTechnician && (job?.canEditJob == false || job?.myAssignmentStatus.equals("PENDING", true))) {
+                            scope.launch {
+                                snackbar.showSnackbar("Assignment လက်ခံပြီးမှသာ Job ပြင်ဆင်နိုင်ပါသည်")
+                            }
+                        } else {
+                            onEdit()
+                        }
+                    }) { Icon(Icons.Outlined.Edit, "ပြင်ရန်", tint = Color.White) }
                     IconButton(onClick = onPrint)      { Icon(Icons.Outlined.Print,   "ပရင့်", tint = Color.White) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
@@ -783,10 +682,13 @@ fun ServiceJobDetailScreen(
                 )
             }
             item {
-                TechnicianTeamSection(
+                TechnicianAssignmentSection(
                     team = state.team,
+                    teamError = state.teamError,
+                    myStaffId = vm.myStaffId,
                     loading = state.actionLoading,
                     onAccept = vm::acceptAssignment,
+                    onReject = vm::rejectAssignment,
                     onWork = { id, action, work, service, parts, note ->
                         vm.recordWork(id, action, note, work, service, parts)
                     }

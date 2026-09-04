@@ -25,6 +25,7 @@ public class RoleSeeder implements CommandLineRunner {
     private static final List<String> TECHNICIAN_PERMISSIONS = List.of(
             "CAN_ACCESS_CUSTOMER_READ",
             "CAN_ACCESS_PRODUCT_READ",
+            "CAN_ACCESS_PRODUCT_SERIAL_READ",
             "CAN_ACCESS_SERVICE_READ",
             "CAN_ACCESS_SERVICE_JOB_READ",
             "CAN_ACCESS_SERVICE_JOB_UPDATE",
@@ -43,6 +44,7 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_CUSTOMER_CREATE",
             "CAN_ACCESS_CUSTOMER_READ",
             "CAN_ACCESS_PRODUCT_READ",
+            "CAN_ACCESS_PRODUCT_SERIAL_READ",
             "CAN_ACCESS_SERVICE_READ",
             "CAN_ACCESS_SERVICE_JOB_READ",
             "CAN_ACCESS_SERVICE_JOB_CREATE",

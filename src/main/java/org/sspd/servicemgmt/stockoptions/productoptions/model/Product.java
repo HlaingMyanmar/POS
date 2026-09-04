@@ -65,6 +65,11 @@ public class Product {
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<ProductSerial> serials;
 
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("slot ASC")
+    @Builder.Default
+    private java.util.List<ProductPhoto> photos = new java.util.ArrayList<>();
+
     @Column(name = "has_serial")
     private Boolean hasSerial = Boolean.TRUE;
 

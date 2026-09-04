@@ -34,11 +34,15 @@ import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.sspd.servicemgmt.core.tracking.LocationPermission
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPickerSheet
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
 import com.sspd.servicemgmt.core.ui.util.rememberIsTablet
 
 import com.sspd.servicemgmt.core.util.fmtWarranty
@@ -67,7 +71,6 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     var showLineItemSheet by rememberSaveable { mutableIntStateOf(-1) }
     var showPartSheet     by rememberSaveable { mutableStateOf(-1) }
     var convertRowKey     by rememberSaveable { mutableStateOf("") }
-    var serviceSearchQuery by rememberSaveable { mutableStateOf("") }
     var partSearchQuery   by rememberSaveable { mutableStateOf("") }
     // date-time picker for estimatedCompletion (date step → time step)
     var showDatePicker    by rememberSaveable { mutableStateOf(false) }
@@ -281,35 +284,26 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     // Service item picker sheet
     if (showLineItemSheet >= 0) {
         val lineIdx = showLineItemSheet
-        val filteredServices = remember(state.serviceItems, serviceSearchQuery) {
-            val q = serviceSearchQuery.trim()
-            if (q.isBlank()) state.serviceItems
-            else state.serviceItems.filter { si ->
-                si.item.contains(q, true) ||
-                    si.code.orEmpty().contains(q, true) ||
-                    si.serviceTypeName.orEmpty().contains(q, true) ||
-                    si.subServiceTypeName.orEmpty().contains(q, true)
-            }
-        }
-        ModalBottomSheet(
-            onDismissRequest = { showLineItemSheet = -1; serviceSearchQuery = "" },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            ServiceItemPickerContent(
-                items = filteredServices,
-                search = serviceSearchQuery,
-                onSearch = { serviceSearchQuery = it },
-                onSelect = { si ->
-                    vm.selectServiceItem(lineIdx, si)
-                    showLineItemSheet = -1
-                    serviceSearchQuery = ""
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .navigationBarsPadding()
-            )
-        }
+        AppPickerSheet(
+            title = "ဝန်ဆောင်မှု ရွေးပါ",
+            items = state.serviceItems,
+            label = { it.item },
+            subtitle = { si ->
+                buildString {
+                    if (!si.code.isNullOrBlank()) append(si.code).append(" · ")
+                    if (!si.serviceTypeName.isNullOrBlank()) append(si.serviceTypeName).append(" · ")
+                    append("ပုံမှန် ${String.format("%,.0f", si.price)} Ks")
+                    append(" · အနည်းဆုံး ${si.minPrice?.let { String.format("%,.0f", it) } ?: "—"}")
+                    append(" · အများဆုံး ${si.maxPrice?.let { String.format("%,.0f", it) } ?: "—"}")
+                }
+            },
+            onSelect = { si ->
+                vm.selectServiceItem(lineIdx, si)
+                showLineItemSheet = -1
+            },
+            onDismiss = { showLineItemSheet = -1 },
+            key = { _, si -> si.id ?: si.item }
+        )
     }
 
     // Product part picker sheet
@@ -404,25 +398,75 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
     }
 
     val serialProduct = state.serialSelectProduct
-    if (state.serialSelectPartIdx != null && serialProduct != null) {
+    val serialPartIdx = state.serialSelectPartIdx
+    if (serialPartIdx != null && serialProduct != null) {
         val serialError = state.serialSelectError
+        val selectedSerials = state.parts.getOrNull(serialPartIdx)?.serialNumbers.orEmpty()
+        val filter = state.serialSelectFilter.trim()
+        val filteredOptions = state.serialSelectOptions.filter {
+            filter.isBlank() || it.serialNumber.contains(filter, ignoreCase = true) ||
+                (it.condition?.contains(filter, ignoreCase = true) == true)
+        }
         ModalBottomSheet(
             onDismissRequest = { vm.dismissSerialSelector() },
-            modifier = Modifier.fillMaxHeight(0.82f)
+            modifier = Modifier.fillMaxHeight(0.88f)
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text("Serial number ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
-                Spacer(Modifier.height(4.dp))
-                Text(serialProduct.name, fontSize = 12.sp, color = TextMuted)
-                Spacer(Modifier.height(12.dp))
-
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Available Serial ရွေးပါ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                        Spacer(Modifier.height(2.dp))
+                        Text(serialProduct.name, fontSize = 12.sp, color = TextMuted)
+                        Text("ရွေးပြီး ${selectedSerials.size} · ကျန် ${state.serialSelectOptions.size}", fontSize = 11.sp, color = TextMuted)
+                    }
+                    IconButton(onClick = { vm.refreshSerialOptions() }) {
+                        Icon(Icons.Outlined.Refresh, "ပြန်ဖတ်", tint = Primary)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                val thumb = remember(serialProduct) { ProductPhotoLoader.thumbSource(serialProduct) }
+                if (thumb != null) {
+                    ProductPhotoImage(
+                        source = thumb,
+                        contentDescription = serialProduct.name,
+                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp))
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (selectedSerials.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        selectedSerials.forEach { sn ->
+                            Surface(color = SuccessBg, shape = RoundedCornerShape(20.dp)) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(sn, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Success)
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Outlined.Close, null, tint = Success,
+                                        modifier = Modifier.size(14.dp).clickable { vm.removeSerialFromPart(serialPartIdx, sn) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                OutlinedTextField(
+                    value = state.serialSelectFilter,
+                    onValueChange = { vm.setSerialSelectFilter(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Serial ရှာရန်...", fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(Modifier.height(8.dp))
                 when {
                     state.serialSelectLoading -> {
                         Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = Primary)
                         }
                     }
-                    serialError != null -> {
+                    serialError != null && filteredOptions.isEmpty() -> {
                         Surface(color = DangerBg, shape = RoundedCornerShape(12.dp)) {
                             Row(
                                 Modifier.fillMaxWidth().padding(12.dp),
@@ -434,9 +478,17 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             }
                         }
                     }
+                    filteredOptions.isEmpty() -> {
+                        Text(
+                            if (state.serialSelectOptions.isEmpty()) "Available serial မကျန်တော့ပါ / မရှိပါ"
+                            else "ရှာမတွေ့ပါ",
+                            fontSize = 13.sp, color = TextMuted,
+                            modifier = Modifier.padding(vertical = 16.dp)
+                        )
+                    }
                     else -> {
-                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                            state.serialSelectOptions.forEach { serial ->
+                        Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                            filteredOptions.forEach { serial ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -460,7 +512,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                                         if (sub.isNotBlank()) Text(sub, fontSize = 11.sp, color = TextMuted)
                                     }
                                     Surface(color = SuccessBg, shape = RoundedCornerShape(8.dp)) {
-                                        Text("ရွေးမည်", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Success)
+                                        Text("+ ရွေးမည်", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Success)
                                     }
                                 }
                                 HorizontalDivider(color = BorderColor)
@@ -468,11 +520,27 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                         }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                TextButton(
-                    onClick = { vm.dismissSerialSelector() },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("နောက်မှရွေးမည်", color = TextMuted) }
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { vm.showSerialScanner(serialPartIdx) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Violet)
+                    ) {
+                        Icon(Icons.Outlined.QrCodeScanner, null, tint = Violet, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Scan QR", fontWeight = FontWeight.Bold, color = Violet)
+                    }
+                    Button(
+                        onClick = { vm.dismissSerialSelector() },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    ) {
+                        Text("ပြီးပါပြီ (${selectedSerials.size})", fontWeight = FontWeight.Bold)
+                    }
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -548,7 +616,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             .height(52.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                        enabled = !state.saving
+                        enabled = !state.saving && state.canEditJob
                     ) {
                         if (state.saving) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -556,7 +624,8 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (vm.isEdit) "Job ပြင်ဆင်မှု သိမ်းဆည်းမည်" else "Job သိမ်းဆည်းမည်",
+                                if (!state.canEditJob) "Assignment လက်ခံရန် လိုအပ်သည်"
+                                else if (vm.isEdit) "Job ပြင်ဆင်မှု သိမ်းဆည်းမည်" else "Job သိမ်းဆည်းမည်",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )
@@ -833,6 +902,9 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                     Text("ထည့်ရန်", fontSize = 12.sp, color = Primary)
                 }
             }
+            state.serviceLoadError?.let { err ->
+                Text(err, fontSize = 11.sp, color = Danger, modifier = Modifier.fillMaxWidth())
+            }
 
             state.lines.forEachIndexed { i, line ->
                 ServiceLineDraftCard(
@@ -897,7 +969,8 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                     onRemove      = { vm.removePart(i) },
                     onSerialScan  = { vm.showSerialScanner(i) },
                     onSerialAdd   = { sn -> vm.addSerialToPart(i, sn) },
-                    onSerialRemove = { sn -> vm.removeSerialFromPart(i, sn) }
+                    onSerialRemove = { sn -> vm.removeSerialFromPart(i, sn) },
+                    onOpenSerialList = { vm.openSerialSelector(i) }
                 )
             }
 
@@ -1173,7 +1246,8 @@ private fun PartDraftCard(
     onRemove:       () -> Unit,
     onSerialScan:   () -> Unit,
     onSerialAdd:    (String) -> Unit,
-    onSerialRemove: (String) -> Unit
+    onSerialRemove: (String) -> Unit,
+    onOpenSerialList: () -> Unit = {}
 ) {
     var serialInput by rememberSaveable { mutableStateOf("") }
     val isSerialTracked = part.product?.hasSerial == true
@@ -1262,9 +1336,11 @@ private fun PartDraftCard(
             if (isSerialTracked) {
                 Surface(color = ScreenBg, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, BorderColor)) {
                     Column(Modifier.fillMaxWidth().padding(8.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("SERIAL (${part.serialNumbers.size} ခု)", fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "SERIAL (${part.serialNumbers.size}/${part.availableSerials.size.coerceAtLeast(part.serialNumbers.size)})",
+                                fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted, letterSpacing = 0.5.sp
+                            )
                             if (part.serialNumbers.isEmpty())
                                 Text("⚠ Required", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Danger)
                         }
@@ -1287,6 +1363,18 @@ private fun PartDraftCard(
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onOpenSerialList,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Primary),
+                            contentPadding = PaddingValues(vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Outlined.List, null, tint = Primary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Available Serial List (${part.availableSerials.size})", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Primary)
+                        }
+                        Spacer(Modifier.height(6.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             OutlinedTextField(
@@ -1313,7 +1401,7 @@ private fun PartDraftCard(
                         ) {
                             Icon(Icons.Outlined.QrCodeScanner, "ဘားကုဒ် ဖတ်ရန်", tint = Violet, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("📷  Scan Serial Number", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Violet)
+                            Text("📷  Scan Serial / QR", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Violet)
                         }
                     }
                 }

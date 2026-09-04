@@ -115,6 +115,15 @@ public class ProductController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Photo updated", null));
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")
+    @PutMapping("/{id}/photos")
+    public ResponseEntity<ApiResponse<Void>> updatePhotos(
+            @PathVariable Integer id,
+            @RequestBody List<org.sspd.servicemgmt.stockoptions.productoptions.dto.ProductPhotoDTO> photos) {
+        service.updatePhotos(id, photos);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Photos updated", null));
+    }
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
     @GetMapping("/export")
     public ResponseEntity<byte[]> exportExcel() throws IOException {

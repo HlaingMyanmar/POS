@@ -36,6 +36,7 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobPartDTO;
 import org.sspd.servicemgmt.servicejoboptions.dto.SettleDTO;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.HandoverStatus;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobAssignment;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobAssignmentRepository;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobHandoverRepository;
 import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobHandover;
@@ -61,6 +62,7 @@ import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobAttachmentRep
 import org.sspd.servicemgmt.servicejoboptions.support.CustomerNotifier;
 import org.sspd.servicemgmt.servicejoboptions.support.ServiceJobSettlementBreakdown;
 import org.sspd.servicemgmt.servicejoboptions.support.ServiceJobSettlementCalculator;
+import org.sspd.servicemgmt.servicejoboptions.support.ServiceJobSettlementJournalBuilder;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobNotificationRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ReworkPartResolutionRepository;
 import org.sspd.servicemgmt.shelflocationoptions.repository.ShelfLocationRepository;
@@ -95,6 +97,7 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -153,6 +156,7 @@ public class ServiceJobService {
             Page<ServiceJobDTO> jobPage = repo.findBySearchAndDateForStaff(search, from, to, scopedStaffId, VISIBLE_ASSIGNMENT_STATUSES, pageable)
                     .map(this::toDto);
             enrichPendingHandovers(jobPage.getContent(), scopedStaffId);
+            enrichTeamFlags(jobPage.getContent(), scopedStaffId);
             return jobPage;
         }
         return repo.findBySearchAndDate(search, from, to, pageable).map(this::toDto);
@@ -286,6 +290,7 @@ public class ServiceJobService {
         BigDecimal previousEstimate = job.getEstimatedCost() != null ? job.getEstimatedCost() : BigDecimal.ZERO;
 
         assertEditable(job);
+        assertAssignmentAcceptedForEdit(job.getId());
 
         if (dto.getCustomerId() != null)
             job.setCustomer(customerRepo.findById(dto.getCustomerId())
@@ -296,7 +301,13 @@ public class ServiceJobService {
             }
             job.setServiceMode(dto.getServiceMode());
         }
-        job.setAssignedStaff(resolveAssignedTechnician(dto.getAssignedStaffId(), job.getAssignedStaff()));
+        // Only managers with assign permission may change primary lead via job form.
+        // Technicians must use Hand Over; otherwise Member save was overwriting Lead and hiding the job.
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) {
+            job.setAssignedStaff(resolveAssignedTechnician(dto.getAssignedStaffId(), job.getAssignedStaff()));
+            if (dto.getHelperStaffId() != null)
+                job.setHelperStaff(staffRepo.findById(dto.getHelperStaffId()).orElse(null));
+        }
         job.setShelfLocation(dto.getShelfLocationId() != null
             ? shelfLocationRepo.findById(dto.getShelfLocationId()).orElse(null)
             : null);
@@ -317,8 +328,6 @@ public class ServiceJobService {
             job.setPriority(dto.getPriority());
         }
         if (dto.getHoldReason() != null)       job.setHoldReason(dto.getHoldReason());
-        if (dto.getHelperStaffId() != null)
-            job.setHelperStaff(staffRepo.findById(dto.getHelperStaffId()).orElse(null));
         if (dto.getEstimatedCompletion() != null && !dto.getEstimatedCompletion().isBlank())
             job.setEstimatedCompletion(LocalDateTime.parse(dto.getEstimatedCompletion(), FMT));
 
@@ -369,6 +378,8 @@ public class ServiceJobService {
             throw new IllegalStateException("Cancelled jobs cannot change status.");
         if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
             throw new IllegalStateException("This job has already been settled. Status cannot be changed after payment is recorded.");
+
+        assertAssignmentAcceptedForEdit(id);
 
         ServiceJobStatus from = job.getStatus();
         validateStatusTransition(from, status);
@@ -616,6 +627,52 @@ public class ServiceJobService {
         }
     }
 
+    private void enrichTeamFlags(List<ServiceJobDTO> dtos, Integer staffId) {
+        if (dtos.isEmpty() || staffId == null || staffId <= 0) return;
+        boolean canAssign = hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN");
+        List<Integer> jobIds = dtos.stream().map(ServiceJobDTO::getId).filter(java.util.Objects::nonNull).toList();
+        if (jobIds.isEmpty()) return;
+        Map<Integer, ServiceJobAssignment> byJob = assignmentRepository
+                .findAllByStaffIdAndServiceJobIdInAndStatusIn(staffId, jobIds, VISIBLE_ASSIGNMENT_STATUSES)
+                .stream()
+                .collect(Collectors.toMap(a -> a.getServiceJob().getId(), a -> a, (left, right) -> left));
+        for (ServiceJobDTO dto : dtos) {
+            ServiceJobAssignment assignment = byJob.get(dto.getId());
+            if (assignment == null) {
+                if (staffId.equals(dto.getAssignedStaffId()) || staffId.equals(dto.getHelperStaffId())) {
+                    dto.setOnTeamForMe(true);
+                    dto.setMyAssignmentRole(staffId.equals(dto.getAssignedStaffId()) ? "LEAD" : "HELPER");
+                }
+                // No PENDING assignment row → already allowed (legacy sync creates ACTIVE).
+                dto.setCanEditJob(true);
+                continue;
+            }
+            dto.setOnTeamForMe(true);
+            dto.setMyAssignmentRole(assignment.getRole() != null ? assignment.getRole().name() : null);
+            dto.setMyAssignmentStatus(assignment.getStatus() != null ? assignment.getStatus().name() : null);
+            dto.setCanEditJob(canAssign || assignment.getStatus() != AssignmentStatus.PENDING);
+        }
+    }
+
+    /**
+     * Technicians must accept their PENDING assignment before editing the job form/status.
+     * Managers with technician-assign permission are exempt.
+     */
+    private void assertAssignmentAcceptedForEdit(Integer jobId) {
+        if (hasAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")) return;
+        Staff mine = currentUserStaff();
+        if (mine == null || jobId == null) return;
+        boolean pending = assignmentRepository
+                .findAllByStaffIdAndServiceJobIdInAndStatusIn(
+                        mine.getId(), List.of(jobId), EnumSet.of(AssignmentStatus.PENDING))
+                .stream()
+                .anyMatch(a -> a.getStatus() == AssignmentStatus.PENDING);
+        if (pending) {
+            throw new IllegalStateException(
+                    "Technician Assignment ကို လက်ခံပြီးမှသာ ဝန်ဆောင်မှု ပြင်ဆင်နိုင်ပါသည်။");
+        }
+    }
+
     @Transactional
     public ServiceJobDTO settle(Integer id, SettleDTO dto) {
         ServiceJob job = repo.findByIdForUpdate(id)
@@ -637,10 +694,25 @@ public class ServiceJobService {
         BigDecimal netAmt = breakdown.net();
 
         if (grossAmount.compareTo(BigDecimal.ZERO) <= 0 && !isFoc) {
-            grossAmount = dto.getFinalCost() != null ? dto.getFinalCost() : nz(job.getEstimatedCost());
-            netAmt = grossAmount.subtract(discount).max(BigDecimal.ZERO);
-            laborNet = netAmt;
-            partsNet = BigDecimal.ZERO;
+            BigDecimal fallback = dto.getFinalCost() != null ? dto.getFinalCost() : nz(job.getEstimatedCost());
+            if (fallback.signum() > 0) {
+                grossAmount = fallback;
+                netAmt = grossAmount.subtract(discount).max(BigDecimal.ZERO);
+                boolean hasLabor = job.getLines() != null && job.getLines().stream()
+                        .anyMatch(org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine::isBillable);
+                boolean hasParts = job.getProductParts() != null && !job.getProductParts().isEmpty();
+                if (hasParts && !hasLabor) {
+                    partsNet = netAmt;
+                    laborNet = BigDecimal.ZERO;
+                    breakdown = new ServiceJobSettlementBreakdown(
+                            BigDecimal.ZERO, grossAmount, discount, laborNet, partsNet, grossAmount, netAmt);
+                } else {
+                    laborNet = netAmt;
+                    partsNet = BigDecimal.ZERO;
+                    breakdown = new ServiceJobSettlementBreakdown(
+                            grossAmount, BigDecimal.ZERO, discount, laborNet, partsNet, grossAmount, netAmt);
+                }
+            }
         }
 
         BigDecimal paid = paymentTotal(dto.getPayments(), dto.getPaidAmount() != null ? dto.getPaidAmount() : netAmt).min(netAmt);
@@ -680,6 +752,7 @@ public class ServiceJobService {
         job.setVoidReason(null);
         job.setVoidedBy(null);
         job.setVoidedAt(null);
+        job.setSettledBy(currentActorDisplayName());
 
         PaymentMethod pm = null;
         if (dto.getPaymentMethodId() != null)
@@ -689,7 +762,7 @@ public class ServiceJobService {
         boolean hasProducts = job.getProductParts() != null && !job.getProductParts().isEmpty();
 
         if (hasProducts) {
-            SaleDTO saleDto = createSaleFromServiceJob(job, dto, netAmt);
+            SaleDTO saleDto = createSaleFromServiceJob(job, dto);
             SaleDTO createdSale = saleService.save(saleDto);
             job.setSaleId(createdSale.getId());
         }
@@ -698,7 +771,7 @@ public class ServiceJobService {
 
         // Journal covers both cash and credit portions (revenue recognised at settlement)
         if (!isFoc && netAmt.compareTo(BigDecimal.ZERO) > 0) {
-            createJournalEntry(saved, dto.getPaymentAccountId(), pm, paid, due, laborNet, partsNet, dto.getPayments());
+            createJournalEntry(saved, dto.getPaymentAccountId(), pm, paid, due, breakdown, dto.getPayments());
         }
         // Payment transaction only for money actually received
         if (paid.compareTo(BigDecimal.ZERO) > 0) {
@@ -853,37 +926,54 @@ public class ServiceJobService {
         return result;
     }
 
-    private SaleDTO createSaleFromServiceJob(ServiceJob job, SettleDTO dto, BigDecimal totalAmount) {
+    /**
+     * Internal inventory sale for job parts. Selling totals use part subtots (after line discounts);
+     * overall settlement discount allocated to parts (pro-rata / parts-first / labor-first share)
+     * is applied as the sale header discount so Sale net = partsNetAmount.
+     */
+    private SaleDTO createSaleFromServiceJob(ServiceJob job, SettleDTO dto) {
         SaleDTO saleDto = new SaleDTO();
         saleDto.setCustomerId(job.getCustomer().getId());
         saleDto.setStaffId(job.getAssignedStaff() != null ? job.getAssignedStaff().getId() : null);
         saleDto.setSaleDate(LocalDateTime.now());
 
         List<SaleDetailDTO> details = new ArrayList<>();
-        BigDecimal productTotal = BigDecimal.ZERO;
+        BigDecimal partsBalance = BigDecimal.ZERO;
         for (ServiceJobPart part : job.getProductParts()) {
             SaleDetailDTO detail = new SaleDetailDTO();
             detail.setProductId(part.getProduct().getId());
             detail.setProductName(part.getProduct().getName());
             detail.setQty(part.getQty());
             boolean covered = Boolean.TRUE.equals(part.getWarrantyCovered());
+            BigDecimal lineDiscount = covered ? BigDecimal.ZERO
+                    : (part.getDiscountAmount() != null ? part.getDiscountAmount() : BigDecimal.ZERO);
+            BigDecimal subtotal = part.getSubtotal() != null
+                    ? part.getSubtotal().max(BigDecimal.ZERO)
+                    : ServiceJobSettlementCalculator.partBalance(part);
             detail.setUnitPrice(covered ? BigDecimal.ZERO : part.getUnitPrice());
-            detail.setDiscountAmount(covered ? BigDecimal.ZERO : (part.getDiscountAmount() != null ? part.getDiscountAmount() : BigDecimal.ZERO));
-            detail.setSubtotal(part.getSubtotal());
+            detail.setDiscountAmount(lineDiscount);
+            detail.setSubtotal(covered ? BigDecimal.ZERO : subtotal);
             List<String> serialNumbers = splitSerials(part.getSerialNumbers());
             if (Boolean.TRUE.equals(part.getProduct().getHasSerial()) && serialNumbers.isEmpty()) {
                 throw new RuntimeException("Serial numbers are required for product: " + part.getProduct().getName());
             }
             detail.setSerialNumbers(serialNumbers);
             details.add(detail);
-            productTotal = productTotal.add(part.getSubtotal());
+            if (!covered) partsBalance = partsBalance.add(nz(detail.getSubtotal()));
         }
 
+        BigDecimal partsNet = job.getPartsNetAmount() != null ? job.getPartsNetAmount() : partsBalance;
+        BigDecimal overallPartsDiscount = partsBalance.subtract(partsNet).max(BigDecimal.ZERO);
+
         saleDto.setDetails(details);
+        saleDto.setDiscountAmount(overallPartsDiscount);
         saleDto.setPaidAmount(BigDecimal.ZERO);
         saleDto.setPaymentMethodId(dto.getPaymentMethodId());
         saleDto.setPaymentAccountId(dto.getPaymentAccountId());
-        saleDto.setRemark("Service Job: " + job.getJobNo());
+        saleDto.setRemark("Service Job: " + job.getJobNo()
+                + (overallPartsDiscount.signum() > 0
+                ? " | Parts overall discount " + overallPartsDiscount.toPlainString()
+                : ""));
         saleDto.setServiceJobSale(true); // inventory-only; payment & journals handled at job level
 
         return saleDto;
@@ -1163,7 +1253,10 @@ public class ServiceJobService {
             paymentTransactionRepo.save(tx);
         });
         String actor = currentUsername();
+        // Legacy settlements used bare jobNo; current settlements use jobNo-SETTLE-*
         journalWriter.reverseByReferenceNo(job.getJobNo(), actor, reason.trim());
+        journalWriter.reverseByReferencePrefix(
+                ServiceJobSettlementJournalBuilder.settlementReferencePrefix(job.getJobNo()), actor, reason.trim());
         journalWriter.reverseByReferencePrefix(job.getJobNo() + "-PAY", actor, reason.trim());
         journalWriter.reverseByReferenceNo(job.getJobNo() + "-RETURN-COST", actor, reason.trim());
 
@@ -1171,6 +1264,7 @@ public class ServiceJobService {
         job.setVoidReason(reason.trim());
         job.setVoidedBy(currentUsername());
         job.setVoidedAt(LocalDateTime.now());
+        job.setSettledBy(null);
         job.setPaidAmount(BigDecimal.ZERO);
         job.setDueAmount(BigDecimal.ZERO);
         job.setNetAmount(BigDecimal.ZERO);
@@ -1381,6 +1475,22 @@ public class ServiceJobService {
         return authentication != null ? authentication.getName() : "system";
     }
 
+    /** Prefer staff name, then user name, then username — stored on settle for voucher. */
+    private String currentActorDisplayName() {
+        String username = currentUsername();
+        if (username == null || username.isBlank() || "system".equals(username)) return username;
+        return userRepository.findByUsernameOrEmail(username, username)
+                .map(user -> {
+                    if (user.getStaff() != null && user.getStaff().getName() != null
+                            && !user.getStaff().getName().isBlank()) {
+                        return user.getStaff().getName();
+                    }
+                    if (user.getName() != null && !user.getName().isBlank()) return user.getName();
+                    return user.getUsername() != null ? user.getUsername() : username;
+                })
+                .orElse(username);
+    }
+
     private ServiceJobAttachmentDTO toAttachmentDto(ServiceJobAttachment a) {
         ServiceJobAttachmentDTO dto = new ServiceJobAttachmentDTO();
         dto.setId(a.getId());
@@ -1536,82 +1646,46 @@ public class ServiceJobService {
 
     private void createJournalEntry(ServiceJob job, Integer paymentAccountId,
                                     PaymentMethod pm, BigDecimal paid, BigDecimal due,
-                                    BigDecimal laborNet, BigDecimal partsNet,
+                                    ServiceJobSettlementBreakdown breakdown,
                                     List<PaymentTransactionDTO> payments) {
-        BigDecimal revenueAmt = nz(laborNet).add(nz(partsNet));
-        if (revenueAmt.compareTo(BigDecimal.ZERO) <= 0) return;
-        BigDecimal laborGross = ServiceJobSettlementCalculator.laborGross(job);
-        BigDecimal partsGross = ServiceJobSettlementCalculator.partsGross(job);
-        if (laborGross.add(partsGross).signum() <= 0) {
-            laborGross = nz(laborNet);
-            partsGross = nz(partsNet);
+        if (breakdown == null || nz(breakdown.net()).signum() <= 0) return;
+
+        String settlePrefix = ServiceJobSettlementJournalBuilder.settlementReferencePrefix(job.getJobNo());
+        if (journalWriter.hasActiveReferencePrefix(settlePrefix)) {
+            throw new IllegalStateException("Settlement journal already exists for " + job.getJobNo());
         }
-        BigDecimal laborDiscount = laborGross.subtract(nz(laborNet)).max(BigDecimal.ZERO);
-        BigDecimal partsDiscount = partsGross.subtract(nz(partsNet)).max(BigDecimal.ZERO);
 
-        BigDecimal cashPortion = paid;
-        BigDecimal arPortion  = due;
-
-        List<JournalDetailDTO> details = new ArrayList<>();
-
-        // DR Cash / Bank (only when money was actually received)
-        if (cashPortion.compareTo(BigDecimal.ZERO) > 0) {
-            for (PaymentLine line : resolvePaymentLines(payments, cashPortion, pm)) {
-                JournalDetailDTO drCash = new JournalDetailDTO();
-                drCash.setAccountId(resolveCashAccount(line.method(), paymentAccountId));
-                drCash.setDebit(line.amount());
-                drCash.setCredit(BigDecimal.ZERO);
-                details.add(drCash);
+        List<ServiceJobSettlementJournalBuilder.PaymentSlice> slices = new ArrayList<>();
+        if (nz(paid).signum() > 0) {
+            for (PaymentLine line : resolvePaymentLines(payments, paid, pm)) {
+                slices.add(new ServiceJobSettlementJournalBuilder.PaymentSlice(
+                        resolveCashAccount(line.method(), paymentAccountId), line.amount()));
             }
         }
 
-        // DR Accounts Receivable (credit portion not yet paid)
-        if (arPortion.compareTo(BigDecimal.ZERO) > 0) {
-            JournalDetailDTO drAr = new JournalDetailDTO();
-            drAr.setAccountId(accountResolver.receivable().getId());
-            drAr.setDebit(arPortion);
-            drAr.setCredit(BigDecimal.ZERO);
-            details.add(drAr);
-        }
+        ServiceJobSettlementJournalBuilder.AccountIds accounts = new ServiceJobSettlementJournalBuilder.AccountIds(
+                accountResolver.serviceRevenue().getId(),
+                accountResolver.sales().getId(),
+                accountResolver.laborDiscount().getId(),
+                accountResolver.partsDiscount().getId(),
+                accountResolver.receivable().getId()
+        );
 
-        if (laborDiscount.signum() > 0) {
-            JournalDetailDTO drLaborDiscount = new JournalDetailDTO();
-            drLaborDiscount.setAccountId(accountResolver.laborDiscount().getId());
-            drLaborDiscount.setDebit(laborDiscount);
-            drLaborDiscount.setCredit(BigDecimal.ZERO);
-            details.add(drLaborDiscount);
-        }
-        if (partsDiscount.signum() > 0) {
-            JournalDetailDTO drPartsDiscount = new JournalDetailDTO();
-            drPartsDiscount.setAccountId(accountResolver.partsDiscount().getId());
-            drPartsDiscount.setDebit(partsDiscount);
-            drPartsDiscount.setCredit(BigDecimal.ZERO);
-            details.add(drPartsDiscount);
-        }
-
-        if (laborGross.compareTo(BigDecimal.ZERO) > 0) {
-            JournalDetailDTO crLabor = new JournalDetailDTO();
-            crLabor.setAccountId(accountResolver.serviceRevenue().getId());
-            crLabor.setDebit(BigDecimal.ZERO);
-            crLabor.setCredit(laborGross);
-            details.add(crLabor);
-        }
-
-        if (partsGross.compareTo(BigDecimal.ZERO) > 0) {
-            JournalDetailDTO crParts = new JournalDetailDTO();
-            crParts.setAccountId(accountResolver.sales().getId());
-            crParts.setDebit(BigDecimal.ZERO);
-            crParts.setCredit(partsGross);
-            details.add(crParts);
+        ServiceJobSettlementJournalBuilder.BuiltJournal built =
+                ServiceJobSettlementJournalBuilder.build(breakdown, slices, paid, due, accounts);
+        if (built.details().isEmpty()) return;
+        if (!built.isBalanced()) {
+            throw new IllegalStateException("Settlement journal is not balanced for " + job.getJobNo()
+                    + " (DR " + built.totalDebit() + " / CR " + built.totalCredit() + ")");
         }
 
         JournalEntryDTO entry = new JournalEntryDTO();
-        entry.setReferenceNo(job.getJobNo());
+        entry.setReferenceNo(ServiceJobSettlementJournalBuilder.settlementReference(job.getJobNo()));
         entry.setEntryDate(LocalDateTime.now());
         entry.setDescription("Service Job Settlement - " + job.getJobNo()
             + (job.getSaleId() != null ? " [Sale: " + job.getSaleId() + "]" : ""));
         entry.setStaffId(job.getAssignedStaff() != null ? job.getAssignedStaff().getId() : null);
-        entry.setDetails(details);
+        entry.setDetails(built.details());
 
         journalWriter.write(entry);
     }
@@ -1915,12 +1989,14 @@ public class ServiceJobService {
             pd.setSubtotal(p.getSubtotal());
             pd.setSerialNumbers(splitSerials(p.getSerialNumbers()));
             pd.setWarrantyCovered(Boolean.TRUE.equals(p.getWarrantyCovered()));
+            pd.setWarrantyMonths(p.getProduct() != null ? p.getProduct().getWarrantyMonths() : null);
             return pd;
         }).toList());
         dto.setVoided(Boolean.TRUE.equals(j.getVoided()));
         dto.setVoidReason(j.getVoidReason());
         dto.setVoidedBy(j.getVoidedBy());
         dto.setVoidedAt(j.getVoidedAt() != null ? j.getVoidedAt().toString() : null);
+        dto.setSettledBy(j.getSettledBy());
         dto.setEstimateApproved(Boolean.TRUE.equals(j.getEstimateApproved()));
         dto.setEstimateApprovedAt(j.getEstimateApprovedAt() != null ? j.getEstimateApprovedAt().toString() : null);
         dto.setEstimateApprovedBy(j.getEstimateApprovedBy());
@@ -1975,6 +2051,11 @@ public class ServiceJobService {
                 nd.setNotifiedAt(n.getNotifiedAt());
                 return nd;
             }).toList());
+        }
+        Integer mine = Optional.ofNullable(currentUserStaff()).map(Staff::getId).orElse(null);
+        if (mine != null && j.getId() != null) {
+            enrichTeamFlags(List.of(dto), mine);
+            enrichPendingHandovers(List.of(dto), mine);
         }
         return dto;
     }

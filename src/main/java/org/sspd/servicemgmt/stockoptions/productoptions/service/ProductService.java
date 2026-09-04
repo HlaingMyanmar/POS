@@ -16,9 +16,11 @@ import org.sspd.servicemgmt.categoryoptions.repository.CategoryRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.stockoptions.productoptions.dto.ImportResultDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.dto.ProductDTO;
+import org.sspd.servicemgmt.stockoptions.productoptions.dto.ProductPhotoDTO;
 import org.sspd.servicemgmt.stockoptions.productoptions.enums.ProductType;
 import org.sspd.servicemgmt.stockoptions.productoptions.mapper.ProductMapper;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
+import org.sspd.servicemgmt.stockoptions.productoptions.model.ProductPhoto;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.ProductSerialRepository;
@@ -39,14 +41,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class ProductService {
     private final SimpMessagingTemplate messagingTemplate;
     private static final String PRODUCT_TOPIC = "/topic/product";
+    private static final int MAX_PHOTOS_PER_PRODUCT = 3;
     private final ProductRepository productRepository;
     private final ProductMapper mapper;
     private final CategoryRepository categoryRepository;
@@ -128,7 +134,7 @@ public class ProductService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_READ')")
     @Transactional(readOnly = true)
     public ProductDTO findById(Integer id){
-        Product entity = productRepository.findById(id)
+        Product entity = productRepository.findWithDetailsById(id)
                 .orElseThrow(()->new ResourceNotFoundException("Product Not Found with id " + id));
         return toDtoWithAvailability(entity);
 
@@ -316,7 +322,64 @@ public class ProductService {
         dto.setReorderLevel(reorderLevel);
         int stock = dto.getStockQty() != null ? dto.getStockQty() : 0;
         dto.setShortageQty(Math.max(0, reorderLevel - stock));
+        if (entity.getPhotos() != null && !entity.getPhotos().isEmpty()) {
+            dto.setPhotos(entity.getPhotos().stream().map(this::toPhotoDto).toList());
+        } else if (entity.getImagePath() != null && entity.getThumbnailPath() != null) {
+            ProductPhotoDTO legacy = new ProductPhotoDTO();
+            legacy.setSlot(1);
+            legacy.setImagePath(entity.getImagePath());
+            legacy.setThumbnailPath(entity.getThumbnailPath());
+            legacy.setContentType(entity.getImageMimeType());
+            dto.setPhotos(List.of(legacy));
+        }
         return dto;
+    }
+
+    private ProductPhotoDTO toPhotoDto(ProductPhoto photo) {
+        ProductPhotoDTO dto = new ProductPhotoDTO();
+        dto.setId(photo.getId());
+        dto.setSlot(photo.getSlot());
+        dto.setFileName(photo.getFileName());
+        dto.setContentType(photo.getContentType());
+        dto.setDataUrl(photo.getDataUrl());
+        dto.setImagePath(photo.getImagePath());
+        dto.setThumbnailPath(photo.getThumbnailPath());
+        dto.setUploadedAt(photo.getUploadedAt());
+        return dto;
+    }
+
+    private void syncLegacyPrimaryPhoto(Product product) {
+        ProductPhoto primary = product.getPhotos().stream()
+                .filter(photo -> photo.getSlot() != null)
+                .min(Comparator.comparing(ProductPhoto::getSlot))
+                .orElse(null);
+        if (primary != null) {
+            product.setImagePath(primary.getImagePath());
+            product.setThumbnailPath(primary.getThumbnailPath());
+            product.setImageMimeType(primary.getContentType());
+            product.setPhotoBase64(null);
+            return;
+        }
+        product.setImagePath(null);
+        product.setThumbnailPath(null);
+        product.setImageMimeType(null);
+        product.setOriginalFileName(null);
+        product.setImageWidth(null);
+        product.setImageHeight(null);
+        product.setPhotoBase64(null);
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Product ensurePhotosLoaded(Product product) {
+        if (product.getPhotos() == null) {
+            product.setPhotos(new ArrayList<>());
+        }
+        return product;
     }
 
     private boolean shouldMigrateLegacyPhoto(Product entity) {
@@ -330,8 +393,8 @@ public class ProductService {
         productPhotoStorageService.deleteExisting(entity.getImagePath(), entity.getThumbnailPath());
         entity.setImagePath(stored.imagePath());
         entity.setThumbnailPath(stored.thumbnailPath());
-        entity.setImageMimeType("image/webp");
-        entity.setOriginalFileName("product-" + entity.getId() + ".webp");
+        entity.setImageMimeType("image/jpeg");
+        entity.setOriginalFileName("product-" + entity.getId() + ".jpg");
         entity.setImageWidth(stored.width());
         entity.setImageHeight(stored.height());
         entity.setPhotoBase64(null);
@@ -395,32 +458,104 @@ public class ProductService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")
     @Transactional
     public void updatePhoto(Integer id, String photoBase64) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
-
         if (photoBase64 == null || photoBase64.isBlank()) {
-            productPhotoStorageService.deleteExisting(product.getImagePath(), product.getThumbnailPath());
-            product.setPhotoBase64(null);
-            product.setImagePath(null);
-            product.setThumbnailPath(null);
-            product.setImageMimeType(null);
-            product.setOriginalFileName(null);
-            product.setImageWidth(null);
-            product.setImageHeight(null);
-            productRepository.save(product);
-            messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_UPDATE");
+            updatePhotos(id, List.of());
             return;
         }
+        ProductPhotoDTO slot1 = new ProductPhotoDTO();
+        slot1.setSlot(1);
+        slot1.setDataUrl(photoBase64);
+        updatePhotos(id, List.of(slot1));
+    }
 
-        ProductPhotoStorageService.StoredPhoto stored = productPhotoStorageService.store(photoBase64, product.getId());
-        productPhotoStorageService.deleteExisting(product.getImagePath(), product.getThumbnailPath());
-        product.setPhotoBase64(null);
-        product.setImagePath(stored.imagePath());
-        product.setThumbnailPath(stored.thumbnailPath());
-        product.setImageMimeType("image/webp");
-        product.setOriginalFileName("product-" + product.getId() + ".webp");
-        product.setImageWidth(stored.width());
-        product.setImageHeight(stored.height());
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_UPDATE')")
+    @Transactional
+    public void updatePhotos(Integer id, List<ProductPhotoDTO> photos) {
+        Product product = productRepository.findWithDetailsById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
+        ensurePhotosLoaded(product);
+        List<ProductPhotoDTO> incoming = photos == null ? List.of() : photos;
+        if (incoming.size() > MAX_PHOTOS_PER_PRODUCT) {
+            throw new IllegalArgumentException("Each product can have at most " + MAX_PHOTOS_PER_PRODUCT + " photos");
+        }
+
+        Set<Integer> keepSlots = new HashSet<>();
+        for (ProductPhotoDTO photoDto : incoming) {
+            Integer slot = photoDto.getSlot();
+            if (slot == null || slot < 1 || slot > MAX_PHOTOS_PER_PRODUCT) {
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + MAX_PHOTOS_PER_PRODUCT);
+            }
+            if (!keepSlots.add(slot)) {
+                throw new IllegalArgumentException("Duplicate photo slot: " + slot);
+            }
+        }
+
+        List<ProductPhoto> removed = product.getPhotos().stream()
+                .filter(photo -> photo.getSlot() != null && !keepSlots.contains(photo.getSlot()))
+                .toList();
+        for (ProductPhoto photo : removed) {
+            productPhotoStorageService.deleteExisting(photo.getImagePath(), photo.getThumbnailPath());
+            product.getPhotos().remove(photo);
+        }
+
+        for (ProductPhotoDTO photoDto : incoming) {
+            int slot = photoDto.getSlot();
+            String dataUrl = trimToNull(photoDto.getDataUrl());
+            ProductPhoto existing = product.getPhotos().stream()
+                    .filter(photo -> Objects.equals(photo.getSlot(), slot))
+                    .findFirst()
+                    .orElse(null);
+
+            if (dataUrl != null) {
+                ProductPhotoStorageService.StoredPhoto stored = productPhotoStorageService.store(dataUrl, id, slot);
+                if (existing != null) {
+                    productPhotoStorageService.deleteExisting(existing.getImagePath(), existing.getThumbnailPath());
+                    existing.setFileName(trimToNull(photoDto.getFileName()));
+                    existing.setContentType("image/jpeg");
+                    existing.setDataUrl(null);
+                    existing.setImagePath(stored.imagePath());
+                    existing.setThumbnailPath(stored.thumbnailPath());
+                } else {
+                    product.getPhotos().add(ProductPhoto.builder()
+                            .product(product)
+                            .slot(slot)
+                            .fileName(trimToNull(photoDto.getFileName()))
+                            .contentType("image/jpeg")
+                            .imagePath(stored.imagePath())
+                            .thumbnailPath(stored.thumbnailPath())
+                            .build());
+                }
+                if (slot == 1) {
+                    product.setImageWidth(stored.width());
+                    product.setImageHeight(stored.height());
+                    product.setOriginalFileName(trimToNull(photoDto.getFileName()));
+                }
+                continue;
+            }
+
+            if (existing != null) {
+                if (photoDto.getImagePath() != null) existing.setImagePath(photoDto.getImagePath());
+                if (photoDto.getThumbnailPath() != null) existing.setThumbnailPath(photoDto.getThumbnailPath());
+                if (photoDto.getFileName() != null) existing.setFileName(trimToNull(photoDto.getFileName()));
+                if (photoDto.getContentType() != null) existing.setContentType(photoDto.getContentType());
+                continue;
+            }
+
+            String imagePath = trimToNull(photoDto.getImagePath());
+            String thumbnailPath = trimToNull(photoDto.getThumbnailPath());
+            if (imagePath != null && thumbnailPath != null) {
+                product.getPhotos().add(ProductPhoto.builder()
+                        .product(product)
+                        .slot(slot)
+                        .fileName(trimToNull(photoDto.getFileName()))
+                        .contentType(trimToNull(photoDto.getContentType()))
+                        .imagePath(imagePath)
+                        .thumbnailPath(thumbnailPath)
+                        .build());
+            }
+        }
+
+        syncLegacyPrimaryPhoto(product);
         productRepository.save(product);
         messagingTemplate.convertAndSend(PRODUCT_TOPIC, "PRODUCT_UPDATE");
     }

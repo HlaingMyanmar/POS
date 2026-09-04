@@ -1,16 +1,6 @@
 package com.sspd.servicemgmt.feature.product
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
-import android.util.Base64
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -27,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -37,11 +26,23 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.util.WarrantyUnit
 import com.sspd.servicemgmt.core.util.toWarrantyMonths
+import com.sspd.servicemgmt.core.util.ImageCodec
 
 import java.io.ByteArrayOutputStream
+import android.util.Base64
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -177,7 +178,12 @@ fun ProductFormScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ProductPhotoBox(state.photoBase64, onClick = { imageLauncher.launch("image/*") })
+            ProductPhotoBox(
+                photoBase64 = state.photoBase64,
+                imagePath = state.imagePath,
+                thumbnailPath = state.thumbnailPath,
+                onClick = { imageLauncher.launch("image/*") }
+            )
             ProductTextField(state.name, vm::setName, "ကုန်ပစ္စည်းအမည် *")
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -249,15 +255,38 @@ fun ProductFormScreen(
 }
 
 @Composable
-private fun ProductPhotoBox(photoBase64: String?, onClick: () -> Unit) {
-    val bmp = remember(photoBase64) { photoBase64?.let { decodeDataUri(it) } }
+private fun ProductPhotoBox(
+    photoBase64: String?,
+    imagePath: String?,
+    thumbnailPath: String?,
+    onClick: () -> Unit
+) {
+    val source = remember(photoBase64, imagePath, thumbnailPath) {
+        when {
+            !photoBase64.isNullOrBlank() -> photoBase64
+            else -> ProductPhotoLoader.resolveSource(thumbnailPath)
+                ?: ProductPhotoLoader.resolveSource(imagePath)
+        }
+    }
     Box(
         Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(14.dp))
             .background(PrimaryLight).clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        if (bmp != null) {
-            Image(bitmap = bmp.asImageBitmap(), contentDescription = "Product photo", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        if (source != null) {
+            ProductPhotoImage(
+                source = source,
+                contentDescription = "Product photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                placeholder = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.AddAPhoto, null, tint = Primary, modifier = Modifier.size(34.dp))
+                        Spacer(Modifier.height(6.dp))
+                        Text("ကုန်ပစ္စည်းပုံ ထည့်ရန်", color = Primary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
             Surface(color = Color.Black.copy(0.55f), shape = RoundedCornerShape(10.dp), modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)) {
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.PhotoCamera, null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -389,19 +418,6 @@ private fun <T> PickerSheet(
     }
 }
 
-private fun bitmapToDataUri(bitmap: Bitmap): String {
-    val maxDim = 500
-    val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
-        val ratio = maxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
-        Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
-    } else bitmap
-    val out = ByteArrayOutputStream()
-    scaled.compress(Bitmap.CompressFormat.JPEG, 76, out)
-    return "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-}
+private fun bitmapToDataUri(bitmap: Bitmap): String = ImageCodec.bitmapToDataUri(bitmap)
 
-private fun decodeDataUri(uri: String): Bitmap? = runCatching {
-    val raw = uri.substringAfter("base64,", uri)
-    val bytes = Base64.decode(raw, Base64.DEFAULT)
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-}.getOrNull()
+private fun decodeDataUri(uri: String): Bitmap? = ImageCodec.decodeDataUri(uri)

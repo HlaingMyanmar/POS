@@ -1,10 +1,11 @@
 /** OSM-based Carto raster tiles — shared with Android OSMDroid (Carto Voyager). */
+const CARTO_KEY = 'cb1_2u3y_1_b3d4615afe0884a3e637745e';
 
 export const CARTO_VOYAGER_TILE =
-  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+  `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${CARTO_KEY}`;
 
 export const CARTO_POSITRON_TILE =
-  'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png';
+  `https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png?key=${CARTO_KEY}`;
 
 export const CARTO_ATTR =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';

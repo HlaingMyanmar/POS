@@ -25,6 +25,10 @@ public class ProductPhotoStorageService {
     }
 
     public StoredPhoto store(String dataUrl, Integer productId) {
+        return store(dataUrl, productId, 1);
+    }
+
+    public StoredPhoto store(String dataUrl, Integer productId, int slot) {
         try {
             Files.createDirectories(storageRoot);
             if (dataUrl == null || dataUrl.isBlank()) {
@@ -47,11 +51,11 @@ public class ProductPhotoStorageService {
             }
             Files.createDirectories(folder);
 
-            String name = UUID.randomUUID().toString();
-            Path imageFile = folder.resolve(name + ".webp");
-            Path thumbnailFile = folder.resolve(name + "-thumb.webp");
-            writeWebp(resize(source, MAX_IMAGE_SIZE), imageFile);
-            writeWebp(resize(source, THUMBNAIL_SIZE), thumbnailFile);
+            String name = "slot-" + slot + "-" + UUID.randomUUID();
+            Path imageFile = folder.resolve(name + ".jpg");
+            Path thumbnailFile = folder.resolve(name + "-thumb.jpg");
+            writeJpeg(resize(source, MAX_IMAGE_SIZE), imageFile, 0.90f);
+            writeJpeg(resize(source, THUMBNAIL_SIZE), thumbnailFile, 0.82f);
 
             return new StoredPhoto(
                     "/uploads/product-photos/" + directory + "/" + imageFile.getFileName(),
@@ -95,9 +99,22 @@ public class ProductPhotoStorageService {
         return result;
     }
 
-    private static void writeWebp(BufferedImage image, Path target) throws IOException {
-        if (!ImageIO.write(image, "webp", target.toFile())) {
-            throw new IOException("WebP writer is unavailable");
+    private static void writeJpeg(BufferedImage image, Path target, float quality) throws IOException {
+        var writers = ImageIO.getImageWritersByFormatName("jpg");
+        if (!writers.hasNext()) {
+            throw new IOException("JPEG writer is unavailable");
+        }
+        var writer = writers.next();
+        try (var out = ImageIO.createImageOutputStream(target.toFile())) {
+            writer.setOutput(out);
+            var params = writer.getDefaultWriteParam();
+            if (params.canWriteCompressed()) {
+                params.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+                params.setCompressionQuality(quality);
+            }
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), params);
+        } finally {
+            writer.dispose();
         }
     }
 

@@ -363,3 +363,4 @@ Subscribe to `/topic/...`. Send chat to `/app/chat.send`.
 - Frontend `POST /v1/auth/refresh` has no backend mapping.
 - Several mutating routes are JWT-authenticated without a permission flag (company save, print, manufacturing, export, chat, voucher settings, barcode, app-version-settings).
 - Expense/income controllers expose create+read only; update/delete if they exist are **not** on these controllers (check `ExpenseService` before assuming they are missing entirely).
+- MySQL/Flyway integration tests: see [TESTING.md](TESTING.md).

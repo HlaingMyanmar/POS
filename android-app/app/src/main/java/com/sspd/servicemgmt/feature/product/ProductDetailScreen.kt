@@ -45,7 +45,9 @@ import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
-
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
+import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
+import com.sspd.servicemgmt.core.util.ImageCodec
 import com.sspd.servicemgmt.core.util.fmtWarranty
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
@@ -63,6 +65,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
 
     var pendingUploadSerial  by remember { mutableStateOf<ProductSerialDTO?>(null) }
     var pendingProductPhoto  by remember { mutableStateOf(false) }
+    var pendingProductPhotoSlot by remember { mutableStateOf(1) }
     var viewingPhoto         by remember { mutableStateOf<String?>(null) }   // data-uri string
     var showSourceSheet      by remember { mutableStateOf(false) }
     var showAddSerialDialog  by remember { mutableStateOf(false) }
@@ -71,7 +74,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
     fun handleBitmap(bitmap: Bitmap) {
         val b64 = bitmapToBase64(bitmap)
         if (pendingProductPhoto) {
-            vm.uploadProductPhoto(b64)
+            vm.uploadProductPhotoSlot(pendingProductPhotoSlot, b64)
             pendingProductPhoto = false
         } else {
             pendingUploadSerial?.id?.let { vm.uploadSerialPhoto(it, b64) }
@@ -109,7 +112,8 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
     LaunchedEffect(state.uploadSuccess){ state.uploadSuccess?.let{ snackbarHostState.showSnackbar("ပုံ upload အောင်မြင်ပါသည်"); vm.clearUploadSuccess() } }
 
     // Full-screen photo viewer
-    if (viewingPhoto != null) {
+    val selectedPhoto = viewingPhoto
+    if (selectedPhoto != null) {
         Dialog(
             onDismissRequest = { viewingPhoto = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -117,11 +121,16 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.88f)).clickable { viewingPhoto = null },
                 contentAlignment = Alignment.Center
             ) {
-                val bmp = remember(viewingPhoto) { decodeDataUri(viewingPhoto!!) }
+                var bmp by remember(selectedPhoto) { mutableStateOf<Bitmap?>(null) }
+                LaunchedEffect(selectedPhoto) {
+                    bmp = ProductPhotoLoader.loadBitmap(selectedPhoto)
+                }
                 if (bmp != null) {
-                    Image(bitmap = bmp.asImageBitmap(), contentDescription = state.product?.name ?: "Product photo",
+                    Image(bitmap = bmp!!.asImageBitmap(), contentDescription = state.product?.name ?: "Product photo",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.55f))
+                } else {
+                    CircularProgressIndicator(color = Color.White)
                 }
                 Text("Tap anywhere to close",
                     color = Color.White.copy(0.5f), fontSize = 11.sp,
@@ -261,23 +270,31 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                         AppLoading()
                                     }
                                 } else {
-                                    val photoUri = p.photoBase64
-                                    val bmp = remember(photoUri) { photoUri?.let { decodeDataUri(it) } }
+                                    val photoSource = remember(p.id, p.imagePath, p.thumbnailPath, p.photoBase64) {
+                                        ProductPhotoLoader.fullSource(p)
+                                    }
+                                    var bmp by remember(photoSource) { mutableStateOf<Bitmap?>(null) }
+                                    var photoLoading by remember(photoSource) { mutableStateOf(photoSource != null) }
+                                    LaunchedEffect(photoSource) {
+                                        photoLoading = photoSource != null
+                                        bmp = ProductPhotoLoader.loadBitmap(photoSource)
+                                        photoLoading = false
+                                    }
                                     if (bmp != null) {
-                                        Image(bitmap = bmp.asImageBitmap(), contentDescription = p.name,
+                                        Image(bitmap = bmp!!.asImageBitmap(), contentDescription = p.name,
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier.fillMaxSize())
                                         // Overlay buttons row — camera | view | share
                                         Row(Modifier.fillMaxWidth().height(34.dp)) {
                                             Box(Modifier.weight(1f).fillMaxHeight()
                                                 .background(Color.Black.copy(0.50f))
-                                                .clickable { pendingProductPhoto = true; showSourceSheet = true },
+                                                .clickable { pendingProductPhotoSlot = 1; pendingProductPhoto = true; showSourceSheet = true },
                                                 contentAlignment = Alignment.Center) {
                                                 Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                             }
                                             Box(Modifier.weight(1f).fillMaxHeight()
                                                 .background(Color(0xCC6366F1))
-                                                .clickable { viewingPhoto = photoUri },
+                                                .clickable { viewingPhoto = photoSource },
                                                 contentAlignment = Alignment.Center) {
                                                 Icon(Icons.Outlined.Visibility, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                             }
@@ -285,22 +302,130 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                                 .background(Color(0xCC16A34A))
                                                 .clickable {
                                                     val shareText = "${p.name}\nCode: ${p.productCode}\n${p.sellingPrice.fmt()} Ks"
-                                                    shareContent(context, bmp, shareText)
+                                                    shareContent(context, bmp!!, shareText)
                                                 },
                                                 contentAlignment = Alignment.Center) {
                                                 Icon(Icons.Outlined.Share, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                             }
                                         }
+                                    } else if (photoLoading) {
+                                        Box(Modifier.fillMaxSize().background(ScreenBg), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                                        }
                                     } else {
                                         Box(Modifier.fillMaxSize()
                                             .background(ScreenBg, RoundedCornerShape(12.dp))
-                                            .clickable { pendingProductPhoto = true; showSourceSheet = true },
+                                            .clickable { pendingProductPhotoSlot = 1; pendingProductPhoto = true; showSourceSheet = true },
                                             contentAlignment = Alignment.Center) {
                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                 Icon(Icons.Outlined.CameraAlt, null, tint = TextMuted, modifier = Modifier.size(28.dp))
                                                 Text("ကုန်ပစ္စည်းပုံ ထည့်ရန်", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
                                             }
                                         }
+                                    }
+                                }
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                val thumb1 = ProductPhotoLoader.thumbSourceForSlot(p, 1)
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(ScreenBg)
+                                        .clickable { ProductPhotoLoader.fullSourceForSlot(p, 1)?.let { viewingPhoto = it } },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (thumb1 != null) {
+                                        ProductPhotoImage(
+                                            source = thumb1,
+                                            contentDescription = p.name,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp)
+                                            .size(24.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.45f))
+                                            .clickable {
+                                                pendingProductPhotoSlot = 1
+                                                pendingProductPhoto = true
+                                                showSourceSheet = true
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+
+                                val thumb2 = ProductPhotoLoader.thumbSourceForSlot(p, 2)
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(ScreenBg)
+                                        .clickable { ProductPhotoLoader.fullSourceForSlot(p, 2)?.let { viewingPhoto = it } },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (thumb2 != null) {
+                                        ProductPhotoImage(
+                                            source = thumb2,
+                                            contentDescription = p.name,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp)
+                                            .size(24.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.45f))
+                                            .clickable {
+                                                pendingProductPhotoSlot = 2
+                                                pendingProductPhoto = true
+                                                showSourceSheet = true
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+
+                                val thumb3 = ProductPhotoLoader.thumbSourceForSlot(p, 3)
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(ScreenBg)
+                                        .clickable { ProductPhotoLoader.fullSourceForSlot(p, 3)?.let { viewingPhoto = it } },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (thumb3 != null) {
+                                        ProductPhotoImage(
+                                            source = thumb3,
+                                            contentDescription = p.name,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp)
+                                            .size(24.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.45f))
+                                            .clickable {
+                                                pendingProductPhotoSlot = 3
+                                                pendingProductPhoto = true
+                                                showSourceSheet = true
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             }
@@ -501,22 +626,9 @@ private fun shareContent(context: Context, bitmap: Bitmap?, text: String) {
     context.startActivity(Intent.createChooser(intent, "Share via"))
 }
 
-private fun bitmapToBase64(bitmap: Bitmap): String {
-    val maxDim = 400
-    val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
-        val ratio = maxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
-        Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
-    } else bitmap
-    val out = ByteArrayOutputStream()
-    scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
-    return "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-}
+private fun bitmapToBase64(bitmap: Bitmap): String = ImageCodec.bitmapToDataUri(bitmap)
 
-private fun decodeDataUri(uri: String): Bitmap? = runCatching {
-    val raw = uri.substringAfter("base64,", uri)
-    val bytes = Base64.decode(raw, Base64.DEFAULT)
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-}.getOrNull()
+private fun decodeDataUri(uri: String): Bitmap? = ImageCodec.decodeDataUri(uri)
 
 // ── Sub-composables ──────────────────────────────────────────────────────────
 

@@ -60,6 +60,13 @@ class ServiceJobDetailViewModel(
                 val staffD  = async { ApiClient.service.getActiveStaff(token) }
                 val settingsD = async { ApiClient.service.getCompanySettings(token) }
                 val jobData = jobD.await().body()?.data
+                val teamRes = teamD.await()
+                val teamData = teamRes.body()?.data
+                val teamError = when {
+                    !teamRes.isSuccessful ->
+                        "Assignment မရပါ (HTTP ${teamRes.code()}) — CAN_ACCESS_SERVICE_JOB_READ စစ်ပါ"
+                    else -> null
+                }
                 val allSerials = (jobData?.productParts ?: emptyList()).flatMap { it.serialNumbers ?: emptyList() }
                 val snMap: Map<String, ProductSerialDTO> = if (allSerials.isNotEmpty()) {
                     runCatching {
@@ -70,7 +77,8 @@ class ServiceJobDetailViewModel(
                 _uiState.update {
                     it.copy(
                         job               = jobData,
-                        team              = teamD.await().body()?.data,
+                        team              = teamData,
+                        teamError         = teamError,
                         paymentMethods    = pmD.await().body()?.data ?: emptyList(),
                         staff             = staffD.await().body()?.data ?: emptyList(),
                         serialWarrantyMap = snMap,
@@ -105,8 +113,14 @@ class ServiceJobDetailViewModel(
     }
 
     fun acceptAssignment(assignmentId: Int) {
-        runTeamAction {
+        runTeamAction("တာဝန်လက်ခံပြီးပါပြီ") {
             ApiClient.service.acceptServiceJobAssignment(it, jobId, assignmentId)
+        }
+    }
+
+    fun rejectAssignment(assignmentId: Int, reason: String?) {
+        runTeamAction("Assignment ငြင်းပယ်ပြီးပါပြီ") {
+            ApiClient.service.rejectServiceJobAssignment(it, jobId, assignmentId, AssignmentDecisionRequest(reason))
         }
     }
 
@@ -151,7 +165,12 @@ class ServiceJobDetailViewModel(
         serviceDetails: String? = null,
         partsDetails: String? = null
     ) {
-        runTeamAction {
+        val success = when (action.uppercase()) {
+            "COMPLETE" -> "လုပ်ငန်းပြီးစီးမှတ်တမ်း သိမ်းပြီး"
+            "NOTE" -> "လုပ်ငန်းမှတ်တမ်း တင်ပြီး"
+            else -> "မှတ်တမ်း သိမ်းပြီး"
+        }
+        runTeamAction(success) {
             ApiClient.service.recordServiceJobWork(
                 it, jobId, assignmentId,
                 AssignmentActionRequest(
@@ -219,7 +238,10 @@ class ServiceJobDetailViewModel(
         }
     }
 
-    private fun runTeamAction(call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<AssignmentDTO>>) {
+    private fun runTeamAction(
+        successMsg: String = "မှတ်တမ်း သိမ်းပြီး",
+        call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<AssignmentDTO>>
+    ) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
@@ -227,7 +249,7 @@ class ServiceJobDetailViewModel(
                 val res = call(token)
                 if (res.isSuccessful && res.body()?.data != null) {
                     load()
-                    _uiState.update { it.copy(actionLoading = false, actionSuccess = "မှတ်တမ်း သိမ်းပြီး") }
+                    _uiState.update { it.copy(actionLoading = false, actionSuccess = successMsg) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
@@ -626,6 +648,7 @@ class ServiceJobDetailViewModel(
     data class UiState(
         val job:               ServiceJobDTO?               = null,
         val team:              TeamSnapshotDTO?             = null,
+        val teamError:         String?                      = null,
         val paymentMethods:    List<PaymentMethodDTO>        = emptyList(),
         val staff:             List<StaffDTO>                = emptyList(),
         val serialWarrantyMap: Map<String, ProductSerialDTO> = emptyMap(),

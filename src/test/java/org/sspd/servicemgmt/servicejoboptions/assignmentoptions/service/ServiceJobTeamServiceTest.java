@@ -109,6 +109,33 @@ class ServiceJobTeamServiceTest {
     }
 
     @Test
+    void syncFromJob_doesNotCancelLeadWhenAssignedStaffAccidentallySetToMember() {
+        Staff lead = staff(5, "Lead Tech");
+        Staff member = staff(8, "Member Tech");
+        // Accidental overwrite: job.assignedStaff was set to the member (e.g. member saved the form).
+        ServiceJob job = job(10, member, null);
+        ServiceJobAssignment leadAssignment = assignment(50, lead, AssignmentRole.LEAD, AssignmentStatus.ACTIVE);
+        leadAssignment.setServiceJob(job);
+        ServiceJobAssignment memberAssignment = assignment(51, member, AssignmentRole.MEMBER, AssignmentStatus.ACTIVE);
+        memberAssignment.setServiceJob(job);
+
+        when(jobRepository.findByIdForUpdate(10)).thenReturn(Optional.of(job));
+        when(assignmentRepository.findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(eq(10), any()))
+                .thenReturn(List.of(leadAssignment, memberAssignment));
+        when(jobRepository.save(job)).thenReturn(job);
+
+        service.syncFromJob(10);
+
+        // Lead must remain; do not cancel lead or promote member to LEAD.
+        org.mockito.Mockito.verify(assignmentRepository, org.mockito.Mockito.never())
+                .save(any(ServiceJobAssignment.class));
+        assertEquals(AssignmentStatus.ACTIVE, leadAssignment.getStatus());
+        assertEquals(AssignmentRole.LEAD, leadAssignment.getRole());
+        // syncLegacyFields restores job.assignedStaff from the LEAD assignment.
+        assertEquals(5, job.getAssignedStaff().getId());
+    }
+
+    @Test
     void assign_rejectsSecondLead() {
         ServiceJob job = openJob(3);
         when(jobRepository.findByIdForUpdate(3)).thenReturn(Optional.of(job));

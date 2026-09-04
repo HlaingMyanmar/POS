@@ -74,11 +74,11 @@ private val mapLocationPermissions = arrayOf(
 )
 
 private val streetTiles = XYTileSource(
-    "CartoVoyager",
+    "CartoVoyagerKeyed",
     1,
     19,
     256,
-    ".png",
+    ".png?key=cb1_2u3y_1_b3d4615afe0884a3e637745e",
     arrayOf(
         "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
         "https://b.basemaps.cartocdn.com/rastertiles/voyager/",

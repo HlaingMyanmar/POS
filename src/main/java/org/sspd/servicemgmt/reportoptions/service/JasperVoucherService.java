@@ -19,6 +19,7 @@ import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobActivityRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 
 import java.io.InputStream;
@@ -34,6 +35,7 @@ public class JasperVoucherService {
 
     private final SaleRepository saleRepository;
     private final ServiceJobRepository serviceJobRepository;
+    private final ServiceJobActivityRepository serviceJobActivityRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final CompanySettingsService companySettingsService;
     private final UserRepository userRepository;
@@ -139,13 +141,25 @@ public class JasperVoucherService {
             int i = 1;
             for (ServiceJobPart p : job.getProductParts()) {
                 String serialInfo = p.getSerialNumbers() != null ? p.getSerialNumbers() : "";
+                boolean covered = Boolean.TRUE.equals(p.getWarrantyCovered());
+                String productName = p.getProduct() != null ? p.getProduct().getName() : "";
+                if (covered) {
+                    productName = productName + " [Warranty Covered]";
+                } else if (p.getProduct() != null && p.getProduct().getWarrantyMonths() != null
+                        && p.getProduct().getWarrantyMonths() > 0) {
+                    int m = p.getProduct().getWarrantyMonths();
+                    String duration = (m % 12 == 0)
+                            ? ((m / 12) + ((m / 12) == 1 ? " Year" : " Years"))
+                            : (m + (m == 1 ? " Month" : " Months"));
+                    productName = productName + " [" + duration + " Warranty]";
+                }
                 serviceParts.add(new ServicePartRow(
                         i++,
-                        p.getProduct() != null ? p.getProduct().getName() : "",
+                        productName,
                         serialInfo,
                         p.getQty(),
                         formatMoney(p.getUnitPrice()),
-                        formatMoney(p.getSubtotal())
+                        formatMoney(covered ? BigDecimal.ZERO : p.getSubtotal())
                 ));
             }
         }
@@ -179,7 +193,7 @@ public class JasperVoucherService {
         params.put("DIAGNOSIS_NOTES", nullSafe(job.getDiagnosisNotes()));
         params.put("TECHNICIAN",      job.getAssignedStaff() != null ? job.getAssignedStaff().getName() : "");
         params.put("HELPER",          job.getHelperStaff() != null ? job.getHelperStaff().getName() : "");
-        params.put("CASHIER_NAME",    currentCashierName());
+        params.put("CASHIER_NAME",    resolveServiceCashierName(job));
         params.put("ESTIMATED_COST",  job.getEstimatedCost() != null ? formatMoney(job.getEstimatedCost()) : "");
         params.put("DEVICE_CONDITIONS", formatConditionsText(job.getDeviceConditions()));
         String accessories = nullSafe(job.getAccessories());
@@ -239,6 +253,10 @@ public class JasperVoucherService {
         int i = 1;
         for (SaleDetail d : sale.getDetails()) {
             String productName = d.getProduct() != null ? d.getProduct().getName() : "";
+            String warranty = formatSaleWarranty(d);
+            if (!warranty.isEmpty()) {
+                productName = productName + " [" + warranty + "]";
+            }
             String serial = d.getSerialNumber() != null ? d.getSerialNumber() : "";
             boolean useCustomVoucherPrice = d.getCustomVoucherPrice() != null
                     && d.getCustomVoucherPrice().compareTo(BigDecimal.ZERO) > 0;
@@ -250,6 +268,22 @@ public class JasperVoucherService {
                     formatMoney(displayUnitPrice), formatMoney(displaySubtotal)));
         }
         return rows;
+    }
+
+    private String formatSaleWarranty(SaleDetail d) {
+        Integer months = d.getWarrantyMonths();
+        if (months == null || months <= 0) {
+            months = d.getProduct() != null ? d.getProduct().getWarrantyMonths() : null;
+        }
+        int m = months != null ? months : 0;
+        if (m <= 0) return "";
+        String duration = (m % 12 == 0)
+                ? ((m / 12) + ((m / 12) == 1 ? " Year" : " Years"))
+                : (m + (m == 1 ? " Month" : " Months"));
+        if (d.getWarrantyExpiryDate() != null) {
+            return duration + " Warranty exp " + d.getWarrantyExpiryDate().format(D_FMT);
+        }
+        return duration + " Warranty";
     }
 
     private boolean hasCustomVoucherPrice(Sale sale) {
@@ -328,6 +362,27 @@ public class JasperVoucherService {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private String resolveServiceCashierName(ServiceJob job) {
+        String stored = resolveStoredActorName(job.getSettledBy());
+        if (!stored.isBlank()) return stored;
+
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided())) {
+            String fromActivity = serviceJobActivityRepository
+                    .findFirstByServiceJobIdAndEventTypeOrderByOccurredAtDescIdDesc(job.getId(), "SETTLED")
+                    .map(a -> resolveStoredActorName(a.getActor()))
+                    .orElse("");
+            if (!fromActivity.isBlank()) return fromActivity;
+        }
+        return currentCashierName();
+    }
+
+    private String resolveStoredActorName(String stored) {
+        if (stored == null || stored.isBlank()) return "";
+        return userRepository.findByUsernameOrEmail(stored, stored)
+                .map(this::userDisplayName)
+                .orElse(stored.trim());
     }
 
     private String currentCashierName() {

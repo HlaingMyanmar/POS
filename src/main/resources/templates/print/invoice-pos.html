@@ -120,16 +120,12 @@
         <td th:text="${item.rowNo}">1</td>
         <td>
           <div th:text="${item.productName}">Product</div>
-          <div th:if="${inv.showSerial and not #strings.isEmpty(item.serialInfo)}"
-               style="font-size:9px; color:#666;"
-               th:text="${'SN: ' + item.serialInfo}">SN</div>
           <div th:if="${item.foc}" style="font-size:9px; font-weight:bold;">FOC</div>
-          <div th:if="${!item.foc and item.discount != null and item.discount != '0' and item.discount != '0.00'}"
-               style="font-size:9px;"
-               th:text="${'Disc: ' + item.discount}">Disc: 0</div>
-          <div th:if="${not #strings.isEmpty(item.warrantyLabel)}"
-               style="font-size:9px; color:#4f46e5;"
-               th:text="${'WAR: ' + item.warrantyLabel}">WAR</div>
+          <th:block th:with="infoLine=${item.getSerialInfoLine(inv.showSerial)}">
+            <div th:if="${infoLine != '—'}"
+                 style="font-size:9px; color:#666;"
+                 th:text="${infoLine}">SN:ABC-2048,Warranty:1Year,Dis 5,000</div>
+          </th:block>
         </td>
         <td class="r" th:text="${item.qty}">1</td>
         <td class="r" th:text="${item.unitPrice}">0</td>

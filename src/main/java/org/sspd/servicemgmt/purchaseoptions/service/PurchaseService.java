@@ -422,52 +422,104 @@ public class PurchaseService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
     @Transactional
     public PaymentTransactionDTO payPurchaseDebt(PaymentTransactionDTO dto) {
+        List<PaymentTransactionDTO> results = payPurchaseDebtBatch(List.of(dto));
+        return results.isEmpty() ? null : results.get(0);
+    }
 
-        Purchase purchase = purchaseRepository.findById(dto.getReferenceId())
+    /**
+     * Apply one or more debt-payment lines to a purchase in a single transaction.
+     * Avoids optimistic-lock failures from concurrent split-payment requests.
+     */
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
+    @Transactional
+    public List<PaymentTransactionDTO> payPurchaseDebtBatch(List<PaymentTransactionDTO> lines) {
+        if (lines == null || lines.isEmpty()) {
+            throw new IllegalArgumentException("At least one payment line is required.");
+        }
+        Integer purchaseId = lines.get(0).getReferenceId();
+        if (purchaseId == null) {
+            throw new IllegalArgumentException("Purchase referenceId is required.");
+        }
+        for (PaymentTransactionDTO line : lines) {
+            if (line.getReferenceId() == null || !purchaseId.equals(line.getReferenceId())) {
+                throw new IllegalArgumentException("All split payment lines must target the same purchase.");
+            }
+        }
+
+        Purchase purchase = purchaseRepository.findById(purchaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
         periodGuard.assertOpen(LocalDateTime.now(), "record purchase debt payment");
-        if (purchase.isCancelled() || purchase.isDraft())
+        if (purchase.isCancelled() || purchase.isDraft()) {
             throw new IllegalStateException("Only confirmed purchases can receive debt payments.");
-        PaymentMethod method = paymentMethodRepository.findById(dto.getPaymentMethodId())
-                .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
+        }
 
-        BigDecimal payingAmount = dto.getAmount();
-        paymentBalanceValidator.validateSufficientBalance(method, payingAmount);
+        BigDecimal totalPaying = lines.stream()
+                .map(PaymentTransactionDTO::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalPaying.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Payment amount must be greater than zero.");
+        }
+        BigDecimal due = purchase.getDueAmount() != null ? purchase.getDueAmount() : BigDecimal.ZERO;
+        if (totalPaying.compareTo(due) > 0) {
+            throw new RuntimeException("Paying amount exceeds due! Due: " + due);
+        }
 
-        if (payingAmount.compareTo(purchase.getDueAmount()) > 0)
-            throw new RuntimeException("Paying amount exceeds due! Due: " + purchase.getDueAmount());
+        List<PaymentLineWork> work = new ArrayList<>();
+        for (PaymentTransactionDTO line : lines) {
+            BigDecimal amount = line.getAmount() != null ? line.getAmount() : BigDecimal.ZERO;
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (line.getPaymentMethodId() == null) {
+                throw new RuntimeException("Payment Method is required for each payment line.");
+            }
+            PaymentMethod method = paymentMethodRepository.findById(line.getPaymentMethodId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
+            paymentBalanceValidator.validateSufficientBalance(method, amount);
+            work.add(new PaymentLineWork(method, amount, line.getTransactionNo()));
+        }
+        if (work.isEmpty()) {
+            throw new RuntimeException("No valid payment lines to record.");
+        }
 
-        purchase.setPaidAmount(purchase.getPaidAmount().add(payingAmount));
-        purchase.setDueAmount(purchase.getDueAmount().subtract(payingAmount));
-
-        if (purchase.getDueAmount().compareTo(BigDecimal.ZERO) <= 0)
+        BigDecimal paid = purchase.getPaidAmount() != null ? purchase.getPaidAmount() : BigDecimal.ZERO;
+        purchase.setPaidAmount(paid.add(totalPaying));
+        purchase.setDueAmount(due.subtract(totalPaying));
+        if (purchase.getDueAmount().compareTo(BigDecimal.ZERO) <= 0) {
             purchase.setPaymentStatus(PaymentStatus.Paid);
-        else
+        } else {
             purchase.setPaymentStatus(PaymentStatus.Partial);
+        }
         purchaseRepository.save(purchase);
 
         Supplier supplier = purchase.getSupplier();
         syncSupplierBalance(supplier);
 
-        PaymentTransaction paymentTx = new PaymentTransaction();
-        paymentTx.setReferenceId(purchase.getId());
-        paymentTx.setReferenceType(ReferenceType.Purchase);
-        paymentTx.setPaymentMethod(method);
-        paymentTx.setAmount(payingAmount);
-        paymentTx.setPaymentDate(LocalDateTime.now());
-        String txnNo = (dto.getTransactionNo() == null || dto.getTransactionNo().isEmpty())
-                ? generateTransactionNo() : dto.getTransactionNo();
-        paymentTx.setTransactionNo(txnNo);
-        PaymentTransaction savedEntity = paymentTransactionRepository.save(paymentTx);
-        if (isCashMethod(method))
-            cashDrawerService.recordPurchaseCashOut(payingAmount, "Purchase debt payment " + purchase.getPurchaseCode());
-
-        // ✅ Debt Payment Journal
-        createDebtPaymentJournal(savedEntity, supplier.getName(), purchase.getStaff().getId());
+        List<PaymentTransactionDTO> results = new ArrayList<>();
+        for (PaymentLineWork line : work) {
+            PaymentTransaction paymentTx = new PaymentTransaction();
+            paymentTx.setReferenceId(purchase.getId());
+            paymentTx.setReferenceType(ReferenceType.Purchase);
+            paymentTx.setPaymentMethod(line.method());
+            paymentTx.setAmount(line.amount());
+            paymentTx.setPaymentDate(LocalDateTime.now());
+            String txnNo = (line.transactionNo() == null || line.transactionNo().isBlank())
+                    ? generateTransactionNo()
+                    : line.transactionNo();
+            paymentTx.setTransactionNo(txnNo);
+            PaymentTransaction savedEntity = paymentTransactionRepository.save(paymentTx);
+            if (isCashMethod(line.method())) {
+                cashDrawerService.recordPurchaseCashOut(line.amount(),
+                        "Purchase debt payment " + purchase.getPurchaseCode());
+            }
+            createDebtPaymentJournal(savedEntity, supplier.getName(), purchase.getStaff().getId());
+            results.add(mapper.toDto(savedEntity));
+        }
 
         messagingTemplate.convertAndSend("/topic/payment-transaction", "DEBT_PAID");
-        return mapper.toDto(savedEntity);
+        return results;
     }
+
+    private record PaymentLineWork(PaymentMethod method, BigDecimal amount, String transactionNo) {}
 
     /**
      * ✅ Debt Payment Journal

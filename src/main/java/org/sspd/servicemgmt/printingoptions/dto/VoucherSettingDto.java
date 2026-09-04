@@ -42,6 +42,13 @@ public record VoucherSettingDto(
         Boolean showSignatures,
         Boolean showPaymentHistory,
         Boolean showSerial,
+        Boolean showColRowNo,
+        Boolean showColItem,
+        Boolean showColQty,
+        Boolean showColUnitPrice,
+        Boolean showColAmount,
+        Boolean showColWarranty,
+        Boolean showColLineDiscount,
 
         // ── Labels & content ───────────────────────────────────────────────
         String  sign1Label,

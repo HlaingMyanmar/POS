@@ -365,8 +365,8 @@ const ProductManagement: React.FC = () => {
     return resolveAssetUrl(slot1?.imagePath || slot1?.thumbnailPath || product?.imagePath || product?.thumbnailPath || product?.photoBase64);
   };
 
-  /** Keep enough resolution for server full image (≤1600); thumbnails are generated server-side. */
-  const compressImage = (file: File, maxDim = 1600, quality = 0.9): Promise<string> =>
+  /** Keep enough resolution for server full image (≤2048); thumbnails are generated server-side. */
+  const compressImage = (file: File, maxDim = 2048, quality = 0.92): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -389,8 +389,13 @@ const ProductManagement: React.FC = () => {
       reader.readAsDataURL(file);
     });
 
+  /** Small grid / list thumbs. */
   const photoPreviewUrl = (photo?: ProductPhotoDTO | null) =>
     photo?.dataUrl ? photo.dataUrl : resolveAssetUrl(photo?.thumbnailPath || photo?.imagePath);
+
+  /** Full-size for lightbox / zoom — never prefer thumbnail. */
+  const photoFullUrl = (photo?: ProductPhotoDTO | null) =>
+    photo?.dataUrl ? photo.dataUrl : resolveAssetUrl(photo?.imagePath || photo?.thumbnailPath);
 
   const uploadProductPhotoSlot = async (slot: number, file?: File | null) => {
     if (!file) return;
@@ -1710,7 +1715,7 @@ const ProductManagement: React.FC = () => {
                           <div className="space-y-2">
                             <button
                               type="button"
-                              onClick={() => setViewFormPhoto(src)}
+                              onClick={() => setViewFormPhoto(photoFullUrl(photo))}
                               className="group relative block w-full overflow-hidden rounded-lg border bg-white"
                               title="ပုံကြီးကြည့်ရန်"
                             >
@@ -1796,7 +1801,7 @@ const ProductManagement: React.FC = () => {
               src={viewFormPhoto}
               alt="Product photo"
               className="rounded-xl object-contain shadow-2xl"
-              style={{ maxHeight: '50vh', maxWidth: '90vw' }}
+              style={{ maxHeight: '85vh', maxWidth: '92vw' }}
             />
             <button
               onClick={() => setViewFormPhoto(null)}

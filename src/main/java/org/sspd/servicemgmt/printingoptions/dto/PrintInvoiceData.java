@@ -121,12 +121,33 @@ public class PrintInvoiceData {
     private PrintPageConfig pageConfig;
     private boolean showLogo;
     private boolean showSerial;
+    private boolean showColRowNo = true;
+    private boolean showColItem = true;
+    private boolean showColQty = true;
+    private boolean showColUnitPrice = true;
+    private boolean showColAmount = true;
+    private boolean showColWarranty = true;
+    private boolean showColLineDiscount = true;
     private boolean showPaymentHistory;
     private boolean showSignatures;
     private boolean showQrCode;
     private String qrCodeBase64;
     private String sign1Label;
     private String sign2Label;
+
+    /** Visible line-item column count for empty-state colspan. */
+    public int getTableColSpan() {
+        int n = 0;
+        if (showColRowNo) n++;
+        if (showColItem) n++;
+        if (showSerial) n++;
+        if (showColWarranty) n++;
+        if (showColLineDiscount) n++;
+        if (showColQty) n++;
+        if (showColUnitPrice) n++;
+        if (showColAmount) n++;
+        return Math.max(n, 1);
+    }
 
     // ── Typography ───────────────────────────────────────────────────────────
     private String  headerFontFamily;      private Integer headerFontSizePx;

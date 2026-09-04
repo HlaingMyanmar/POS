@@ -18,6 +18,13 @@ public class PrintRequest {
 
     private boolean showLogo = true;
     private boolean showSerial = true;
+    private boolean showColRowNo = true;
+    private boolean showColItem = true;
+    private boolean showColQty = true;
+    private boolean showColUnitPrice = true;
+    private boolean showColAmount = true;
+    private boolean showColWarranty = true;
+    private boolean showColLineDiscount = true;
     private boolean showPaymentHistory = true;
     private boolean showSignatures = false;
     private boolean showQrCode = false;

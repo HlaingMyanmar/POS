@@ -16,8 +16,8 @@ import java.util.UUID;
 
 @Service
 public class BookingPhotoStorageService {
-    private static final int MAX_IMAGE_SIZE = 1600;
-    private static final int THUMBNAIL_SIZE = 320;
+    private static final int MAX_IMAGE_SIZE = 2048;
+    private static final int THUMBNAIL_SIZE = 640;
     private final Path storageRoot;
 
     public BookingPhotoStorageService(@Value("${app.booking-photo.storage-dir}") String storageDir) {

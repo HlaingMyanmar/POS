@@ -57,6 +57,8 @@ export const MultiPageInvoice = React.forwardRef<HTMLDivElement, MultiPageInvoic
               <InvoiceTable
                 items={page.items}
                 showSerial={showSerial ?? true}
+                showWarranty={options.showWarranty ?? true}
+                showLineDiscount={options.showLineDiscount ?? true}
               />
 
               {/* Totals + footer on last page only */}

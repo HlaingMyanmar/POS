@@ -96,6 +96,13 @@ public class InvoiceAssemblerService {
         data.setPageConfig(pageCfg);
         data.setShowLogo(req.isShowLogo());
         data.setShowSerial(req.isShowSerial());
+        data.setShowColRowNo(req.isShowColRowNo());
+        data.setShowColItem(req.isShowColItem());
+        data.setShowColQty(req.isShowColQty());
+        data.setShowColUnitPrice(req.isShowColUnitPrice());
+        data.setShowColAmount(req.isShowColAmount());
+        data.setShowColWarranty(req.isShowColWarranty());
+        data.setShowColLineDiscount(req.isShowColLineDiscount());
         data.setShowPaymentHistory(req.isShowPaymentHistory());
         data.setShowSignatures(req.isShowSignatures());
         data.setShowQrCode(req.isShowQrCode());

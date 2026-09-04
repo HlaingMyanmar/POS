@@ -42,6 +42,8 @@ public class VoucherSettingController {
                 dto.headerHeightPx(), dto.contHeaderHeightPx(), dto.infoBlocksHeightPx(), dto.tableHeaderHeightPx(),
                 dto.rowHeightPx(), dto.totalsAreaHeightPx(), dto.footerHeightPx(), dto.safetyMarginPx(),
                 dto.showLogo(), dto.showQrCode(), dto.showSignatures(), dto.showPaymentHistory(), dto.showSerial(),
+                dto.showColRowNo(), dto.showColItem(), dto.showColQty(), dto.showColUnitPrice(), dto.showColAmount(),
+                dto.showColWarranty(), dto.showColLineDiscount(),
                 dto.sign1Label(), dto.sign2Label(), dto.voucherTitle(), dto.footerNote(), dto.customerNotice(),
                 dto.headerFontFamily(),      dto.headerFontSizePx(),
                 dto.infoFontFamily(),        dto.infoFontSizePx(),

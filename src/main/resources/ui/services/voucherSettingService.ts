@@ -25,6 +25,13 @@ export interface VoucherSettingDto {
   showSignatures: boolean;
   showPaymentHistory: boolean;
   showSerial: boolean;
+  showColRowNo?: boolean;
+  showColItem?: boolean;
+  showColQty?: boolean;
+  showColUnitPrice?: boolean;
+  showColAmount?: boolean;
+  showColWarranty?: boolean;
+  showColLineDiscount?: boolean;
 
   sign1Label: string;
   sign2Label: string;

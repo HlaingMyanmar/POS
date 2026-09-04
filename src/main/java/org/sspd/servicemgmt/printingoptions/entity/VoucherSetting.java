@@ -72,7 +72,15 @@ public class VoucherSetting {
     @Builder.Default @Column(name = "show_qr_code")          private Boolean showQrCode          = false;
     @Builder.Default @Column(name = "show_signatures")        private Boolean showSignatures      = false;
     @Builder.Default @Column(name = "show_payment_history")  private Boolean showPaymentHistory  = true;
+    /** Serial / Info (or Type) table column */
     @Builder.Default @Column(name = "show_serial")           private Boolean showSerial          = true;
+    @Builder.Default @Column(name = "show_col_row_no")       private Boolean showColRowNo        = true;
+    @Builder.Default @Column(name = "show_col_item")         private Boolean showColItem         = true;
+    @Builder.Default @Column(name = "show_col_qty")          private Boolean showColQty          = true;
+    @Builder.Default @Column(name = "show_col_unit_price")   private Boolean showColUnitPrice    = true;
+    @Builder.Default @Column(name = "show_col_amount")       private Boolean showColAmount       = true;
+    @Builder.Default @Column(name = "show_col_warranty")     private Boolean showColWarranty     = true;
+    @Builder.Default @Column(name = "show_col_line_discount") private Boolean showColLineDiscount = true;
 
     // ── Signature labels ──────────────────────────────────────────────────────
 

@@ -2,13 +2,7 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <!--
   FRAGMENT: sale-table
-  ═══════════════════════════════════════════════════════════════════════════
-  SALES INVOICE / PURCHASE — Items table
-  Used by: invoice-a4.html · invoice-a5.html · invoice-pos.html
-
-  Columns: # · Item/Description · Serial/Info · Qty · Unit Price · Amount
-  Customise this file to change the sales invoice table layout only.
-  ═══════════════════════════════════════════════════════════════════════════
+  Columns: # · Service / Part · Serial · Warranty · Dis · Qty · Unit Price · Amount
 -->
 <head><title>fragment</title></head>
 <body>
@@ -17,38 +11,41 @@
   <table class="inv-table">
     <thead>
       <tr>
-        <th class="inv-table__col-center" style="width:5%">#</th>
-        <th th:style="${inv.showSerial} ? 'width:38%' : 'width:60%'">Item / Description</th>
-        <th th:if="${inv.showSerial}" style="width:21%">Serial / Info</th>
-        <th class="inv-table__col-center" style="width:7%">Qty</th>
-        <th class="inv-table__col-right"  style="width:14%">Unit Price</th>
-        <th class="inv-table__col-right"  style="width:15%">Amount</th>
+        <th th:if="${inv.showColRowNo}" class="inv-table__col-center" style="width:4%">#</th>
+        <th th:if="${inv.showColItem}">Service / Part</th>
+        <th th:if="${inv.showSerial}" style="width:16%">Serial</th>
+        <th th:if="${inv.showColWarranty}" style="width:10%">Warranty</th>
+        <th th:if="${inv.showColLineDiscount}" class="inv-table__col-right" style="width:10%">Dis</th>
+        <th th:if="${inv.showColQty}" class="inv-table__col-center" style="width:7%">Qty</th>
+        <th th:if="${inv.showColUnitPrice}" class="inv-table__col-right" style="width:12%">Unit Price</th>
+        <th th:if="${inv.showColAmount}" class="inv-table__col-right" style="width:12%">Amount</th>
       </tr>
     </thead>
     <tbody>
       <tr th:each="item : ${inv.pageItems}" class="inv-table__row">
-        <td class="inv-table__col-center"
+        <td th:if="${inv.showColRowNo}" class="inv-table__col-center"
             style="color:#94a3b8; font-weight:600; font-size:11px;"
             th:text="${item.rowNo}">1</td>
-        <td>
+        <td th:if="${inv.showColItem}">
           <div style="font-weight:500;" th:text="${item.productName}">Product Name</div>
           <div th:if="${item.foc}"
                class="inv-table__sub" style="color:#047857; font-weight:700;">FOC</div>
-          <div th:if="${!item.foc and item.discount != null and item.discount != '0' and item.discount != '0.00'}"
-               class="inv-table__sub" style="color:#b45309; font-weight:600;"
-               th:text="${'Line Discount: ' + item.discount}">Line Discount: 0</div>
-          <div th:if="${not #strings.isEmpty(item.warrantyLabel)}"
-               class="inv-table__sub" style="color:#4f46e5;"
-               th:text="${'Warranty: ' + item.warrantyLabel}"></div>
+          <th:block th:with="infoLine=${item.getSerialInfoLine(false, !inv.showColWarranty, !inv.showColLineDiscount)}">
+            <div th:if="${!inv.showSerial and infoLine != '—'}"
+                 class="inv-table__sub"
+                 th:text="${infoLine}"></div>
+          </th:block>
         </td>
-        <td th:if="${inv.showSerial}" class="inv-table__sub"
-            th:text="${not #strings.isEmpty(item.serialInfo) ? item.serialInfo : '—'}">SN</td>
-        <td class="inv-table__col-center" style="font-weight:600;" th:text="${item.qty}">1</td>
-        <td class="inv-table__col-right"  th:text="${item.unitPrice}">0</td>
-        <td class="inv-table__col-right"  style="font-weight:600;" th:text="${item.subtotal}">0</td>
+        <td th:if="${inv.showSerial}" class="inv-table__sub" th:text="${item.serialDisplay}">SN:ABC-2048</td>
+        <td th:if="${inv.showColWarranty}" class="inv-table__sub" th:text="${item.warrantyDisplay}">1Year</td>
+        <td th:if="${inv.showColLineDiscount}" class="inv-table__col-right inv-table__sub"
+            th:text="${item.discountDisplay}">5,000</td>
+        <td th:if="${inv.showColQty}" class="inv-table__col-center" style="font-weight:600;" th:text="${item.qty}">1</td>
+        <td th:if="${inv.showColUnitPrice}" class="inv-table__col-right" th:text="${item.unitPrice}">0</td>
+        <td th:if="${inv.showColAmount}" class="inv-table__col-right" style="font-weight:600;" th:text="${item.subtotal}">0</td>
       </tr>
       <tr th:if="${#lists.isEmpty(inv.pageItems)}">
-        <td th:colspan="${inv.showSerial ? 6 : 5}" class="inv-table__empty">No items on this page</td>
+        <td th:colspan="${inv.tableColSpan}" class="inv-table__empty">No items on this page</td>
       </tr>
     </tbody>
   </table>

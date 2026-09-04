@@ -96,6 +96,8 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
     design: 'STANDARD',
     showLogo: voucherSetting?.showLogo ?? true,
     showSerial: voucherSetting?.showSerial ?? true,
+    showWarranty: voucherSetting?.showColWarranty ?? true,
+    showLineDiscount: voucherSetting?.showColLineDiscount ?? true,
     showPaymentHistory: voucherSetting?.showPaymentHistory ?? true,
     showSignatures: voucherSetting?.showSignatures ?? false,
     showQrCode: voucherSetting?.showQrCode ?? false,

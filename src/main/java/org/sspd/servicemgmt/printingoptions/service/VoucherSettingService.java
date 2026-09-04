@@ -119,6 +119,13 @@ public class VoucherSettingService {
                 .showSignatures(type == DocumentType.SERVICE_JOB || type == DocumentType.SERVICE_DONE)
                 .showPaymentHistory(type != DocumentType.BOOKING)
                 .showSerial(type == DocumentType.SALE || type == DocumentType.SERVICE_JOB || type == DocumentType.SERVICE_DONE)
+                .showColRowNo(true)
+                .showColItem(true)
+                .showColQty(true)
+                .showColUnitPrice(true)
+                .showColAmount(true)
+                .showColWarranty(true)
+                .showColLineDiscount(true)
                 .sign1Label("Prepared By")
                 .sign2Label("Received By")
                 .voucherTitle(defaultTitleFor(type))
@@ -164,7 +171,14 @@ public class VoucherSettingService {
                 s.getFooterHeightPx(), s.getSafetyMarginPx(),
                 s.getShowLogo(),            s.getShowQrCode(),
                 s.getShowSignatures(),      s.getShowPaymentHistory(),
-                s.getShowSerial(),
+                boolOrTrue(s.getShowSerial()),
+                boolOrTrue(s.getShowColRowNo()),
+                boolOrTrue(s.getShowColItem()),
+                boolOrTrue(s.getShowColQty()),
+                boolOrTrue(s.getShowColUnitPrice()),
+                boolOrTrue(s.getShowColAmount()),
+                boolOrTrue(s.getShowColWarranty()),
+                boolOrTrue(s.getShowColLineDiscount()),
                 s.getSign1Label(),  s.getSign2Label(),
                 s.getVoucherTitle(),
                 s.getFooterNote(),  s.getCustomerNotice(),
@@ -198,7 +212,14 @@ public class VoucherSettingService {
         s.setShowQrCode(dto.showQrCode());
         s.setShowSignatures(dto.showSignatures());
         s.setShowPaymentHistory(dto.showPaymentHistory());
-        s.setShowSerial(dto.showSerial());
+        s.setShowSerial(boolOrTrue(dto.showSerial()));
+        s.setShowColRowNo(boolOrTrue(dto.showColRowNo()));
+        s.setShowColItem(boolOrTrue(dto.showColItem()));
+        s.setShowColQty(boolOrTrue(dto.showColQty()));
+        s.setShowColUnitPrice(boolOrTrue(dto.showColUnitPrice()));
+        s.setShowColAmount(boolOrTrue(dto.showColAmount()));
+        s.setShowColWarranty(boolOrTrue(dto.showColWarranty()));
+        s.setShowColLineDiscount(boolOrTrue(dto.showColLineDiscount()));
         s.setSign1Label(dto.sign1Label());
         s.setSign2Label(dto.sign2Label());
         s.setVoucherTitle(dto.voucherTitle());
@@ -216,5 +237,9 @@ public class VoucherSettingService {
         s.setFooterFontSizePx(dto.footerFontSizePx());
         s.setNoticeFontFamily(dto.noticeFontFamily());
         s.setNoticeFontSizePx(dto.noticeFontSizePx());
+    }
+
+    private static boolean boolOrTrue(Boolean v) {
+        return v == null || v;
     }
 }

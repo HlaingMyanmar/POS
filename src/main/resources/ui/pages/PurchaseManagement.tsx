@@ -1867,13 +1867,15 @@ const PurchaseManagement: React.FC = () => {
     setPaymentSaving(true);
     try {
       if (normalizedPaymentFormPayments.length > 0) {
-        await Promise.all(normalizedPaymentFormPayments.map((payment) => accountingApiService.createPaymentTransaction({
-          referenceId: paymentForm.purchaseId,
-          referenceType: 'Purchase',
-          paymentMethodId: payment.paymentMethodId!,
-          amount: payment.amount || 0,
-          transactionNo: payment.transactionNo || undefined
-        })));
+        await accountingApiService.createPaymentTransactions(
+          normalizedPaymentFormPayments.map((payment) => ({
+            referenceId: paymentForm.purchaseId,
+            referenceType: 'Purchase',
+            paymentMethodId: payment.paymentMethodId!,
+            amount: payment.amount || 0,
+            transactionNo: payment.transactionNo || undefined,
+          }))
+        );
       } else {
         await accountingApiService.createPaymentTransaction({
           referenceId: paymentForm.purchaseId,

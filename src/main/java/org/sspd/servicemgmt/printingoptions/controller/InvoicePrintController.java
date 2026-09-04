@@ -150,6 +150,13 @@ public class InvoicePrintController {
         }
         if (s.getShowLogo()           != null) req.setShowLogo(s.getShowLogo());
         if (s.getShowSerial()         != null) req.setShowSerial(s.getShowSerial());
+        if (s.getShowColRowNo()       != null) req.setShowColRowNo(s.getShowColRowNo());
+        if (s.getShowColItem()        != null) req.setShowColItem(s.getShowColItem());
+        if (s.getShowColQty()         != null) req.setShowColQty(s.getShowColQty());
+        if (s.getShowColUnitPrice()   != null) req.setShowColUnitPrice(s.getShowColUnitPrice());
+        if (s.getShowColAmount()      != null) req.setShowColAmount(s.getShowColAmount());
+        if (s.getShowColWarranty()    != null) req.setShowColWarranty(s.getShowColWarranty());
+        if (s.getShowColLineDiscount()!= null) req.setShowColLineDiscount(s.getShowColLineDiscount());
         if (s.getShowPaymentHistory() != null) req.setShowPaymentHistory(s.getShowPaymentHistory());
         if (s.getShowSignatures()     != null) req.setShowSignatures(s.getShowSignatures());
         if (s.getShowQrCode()         != null) req.setShowQrCode(s.getShowQrCode());
@@ -178,6 +185,13 @@ public class InvoicePrintController {
                 : (s != null ? s.getPaperSize() : "A4"));
         r.setShowLogo(s != null && s.getShowLogo() != null ? s.getShowLogo() : true);
         r.setShowSerial(s != null && s.getShowSerial() != null ? s.getShowSerial() : true);
+        r.setShowColRowNo(s != null && s.getShowColRowNo() != null ? s.getShowColRowNo() : true);
+        r.setShowColItem(s != null && s.getShowColItem() != null ? s.getShowColItem() : true);
+        r.setShowColQty(s != null && s.getShowColQty() != null ? s.getShowColQty() : true);
+        r.setShowColUnitPrice(s != null && s.getShowColUnitPrice() != null ? s.getShowColUnitPrice() : true);
+        r.setShowColAmount(s != null && s.getShowColAmount() != null ? s.getShowColAmount() : true);
+        r.setShowColWarranty(s != null && s.getShowColWarranty() != null ? s.getShowColWarranty() : true);
+        r.setShowColLineDiscount(s != null && s.getShowColLineDiscount() != null ? s.getShowColLineDiscount() : true);
         r.setShowPaymentHistory(s != null && s.getShowPaymentHistory() != null ? s.getShowPaymentHistory() : true);
         r.setShowSignatures(s != null && s.getShowSignatures() != null ? s.getShowSignatures() : false);
         r.setShowQrCode(s != null && s.getShowQrCode() != null ? s.getShowQrCode() : false);

@@ -80,4 +80,16 @@ public class PaymentTransactionController {
                 new ApiResponse<>(true, "Debt Payment Successful", result)
         );
     }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
+    @PostMapping("/pay-purchase-debt/batch")
+    public ResponseEntity<ApiResponse<List<PaymentTransactionDTO>>> payDebtBatch(
+            @Valid @RequestBody List<PaymentTransactionDTO> lines) {
+
+        List<PaymentTransactionDTO> results = purchaseService.payPurchaseDebtBatch(lines);
+
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, "Debt Payment Successful", results)
+        );
+    }
 }

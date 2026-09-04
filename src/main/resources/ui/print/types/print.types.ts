@@ -95,6 +95,8 @@ export interface PrintOptions {
   design: PrintDesign;
   showLogo?: boolean;
   showSerial?: boolean;
+  showWarranty?: boolean;
+  showLineDiscount?: boolean;
   showPaymentHistory?: boolean;
   showSignatures?: boolean;
   showQrCode?: boolean;
@@ -110,6 +112,8 @@ export const DEFAULT_PRINT_OPTIONS: Required<PrintOptions> = {
   design: 'STANDARD',
   showLogo: true,
   showSerial: true,
+  showWarranty: true,
+  showLineDiscount: true,
   showPaymentHistory: true,
   showSignatures: false,
   showQrCode: false,

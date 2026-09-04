@@ -178,7 +178,9 @@ const VoucherSettingsPage: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                     <SwitchCard label="Logo ပြမည်" description="Company logo ကို header မှာထည့်မည်" checked={current.showLogo} onChange={(v) => update({ showLogo: v })} />
                     <SwitchCard label="QR Code ပြမည်" description="ဘောင်ချာကို scan/check လုပ်ရန်" checked={current.showQrCode} onChange={(v) => update({ showQrCode: v })} />
-                    <SwitchCard label="Serial နံပါတ်ပြမည်" description="Serial product များအတွက်လိုအပ်" checked={current.showSerial} onChange={(v) => update({ showSerial: v })} />
+                    <SwitchCard label="Serial နံပါတ်ပြမည်" description="Serial column ပြမည်" checked={current.showSerial} onChange={(v) => update({ showSerial: v })} />
+                    <SwitchCard label="Warranty column ပြမည်" description="Warranty သီးခြား column" checked={current.showColWarranty !== false} onChange={(v) => update({ showColWarranty: v })} />
+                    <SwitchCard label="Dis column ပြမည်" description="Line discount သီးခြား column" checked={current.showColLineDiscount !== false} onChange={(v) => update({ showColLineDiscount: v })} />
                     <SwitchCard label="Payment History ပြမည်" description="Paid / partial payment မှတ်တမ်း" checked={current.showPaymentHistory} onChange={(v) => update({ showPaymentHistory: v })} />
                     <SwitchCard label="လက်မှတ်နေရာ ပြမည်" description="Prepared / Customer signature" checked={current.showSignatures} onChange={(v) => update({ showSignatures: v })} />
                   </div>
@@ -375,8 +377,12 @@ const VoucherPreview: React.FC<{
             {rows.map((_, idx) => (
               <div key={idx} className="border-b border-dashed border-slate-100 py-1.5 text-[10px] text-slate-700">
                 <div className="font-semibold">Product {idx + 1}</div>
-                {setting.showSerial && idx === 0 && <div className="text-[9px] text-slate-400">SN: ABC-2048</div>}
-                {idx === 0 && <div className="text-[9px] font-semibold text-indigo-600">WAR: 1 Year</div>}
+                {setting.showSerial && idx === 0 && (
+                  <div className="text-[9px] text-slate-400">SN:ABC-2048,Warranty:1Year,Dis 5,000</div>
+                )}
+                {idx === 0 && !setting.showSerial && (
+                  <div className="text-[9px] text-slate-400">Warranty:1Year,Dis 5,000</div>
+                )}
                 <div className="mt-0.5 flex justify-between text-slate-500">
                   <span>1 × 25,000</span>
                   <b className="text-slate-800">25,000</b>
@@ -406,39 +412,40 @@ const VoucherPreview: React.FC<{
         className="mx-auto overflow-hidden rounded-lg bg-white shadow-sm"
         style={{ width: paperWidth, fontFamily: setting.tableDataFontFamily || 'Arial' }}
       >
-        {/* Print-like header: brand left · meta + QR right */}
+        {/* Compact white header: brand left · meta text + QR side-by-side */}
         <div
-          className="relative overflow-hidden"
+          className="border-b border-slate-200 bg-white"
           style={{
-            minHeight: Math.max(setting.headerHeightPx || 78, 68),
-            background: 'linear-gradient(135deg, #0f2744 0%, #1e3a5f 55%, #16324f 100%)',
-            padding: `10px ${padX}px`,
+            minHeight: Math.max(setting.headerHeightPx || 52, 48),
+            padding: `8px ${padX}px 7px`,
             fontFamily: headerFont,
           }}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               {setting.showLogo && logoSrc && (
-                <img src={logoSrc} alt="" className="h-11 max-w-[64px] shrink-0 rounded bg-white object-contain p-0.5 shadow" />
+                <img src={logoSrc} alt="" className="h-9 max-w-[56px] shrink-0 rounded border border-slate-200 object-contain" />
               )}
               {setting.showLogo && !logoSrc && (
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded bg-white/10 text-[9px] font-black text-slate-300 ring-1 ring-white/20">LOGO</div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-200 text-[8px] font-black text-slate-400">LOGO</div>
               )}
               <div className="min-w-0">
-                <p className="truncate font-extrabold leading-tight text-white" style={{ fontSize: headerSize }}>{companyName}</p>
-                {contact && <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-slate-300">{contact}</p>}
+                <p className="truncate font-extrabold leading-tight text-slate-900" style={{ fontSize: Math.min(headerSize, 14) }}>{companyName}</p>
+                {contact && <p className="mt-0.5 line-clamp-1 text-[8px] leading-3 text-slate-500">{contact}</p>}
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-              <p className="text-[9px] font-black uppercase tracking-wide text-cyan-300">{title}</p>
-              <p className="text-[8px] font-bold text-slate-400">CUSTOMER COPY</p>
-              <p className="text-sm font-black text-white">INV-000123</p>
-              <p className="text-[9px] text-slate-300">04/09/2026 14:30</p>
-              {setting.showQrCode && <PreviewQr size={isA5 ? 48 : 56} />}
+            <div className="flex shrink-0 items-center gap-2 border-l border-slate-200 pl-2">
+              {setting.showQrCode && <PreviewQr size={isA5 ? 34 : 40} />}
+              <div className="text-right">
+                <p className="text-[7px] font-black uppercase tracking-wide text-slate-500">{title}</p>
+                <p className="text-[7px] font-bold text-slate-400">CUSTOMER COPY</p>
+                <p className="text-[12px] font-black leading-tight text-slate-900">INV-000123</p>
+                <p className="text-[8px] text-slate-500">04/09/2026 14:30</p>
+              </div>
             </div>
           </div>
-          <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-cyan-400 via-indigo-400 to-cyan-400" />
         </div>
+        <div className="h-0.5 bg-indigo-600" />
 
         <div
           className="grid grid-cols-2 gap-2 border-b border-slate-100 text-[10px] text-slate-600"
@@ -456,31 +463,71 @@ const VoucherPreview: React.FC<{
         </div>
 
         <div style={{ padding: `8px ${padX}px 10px` }}>
-          <div
-            className="grid grid-cols-[1fr_40px_56px] border-b border-slate-300 pb-1 text-[10px] font-black uppercase text-slate-700"
-            style={{
-              fontFamily: setting.tableHeaderFontFamily || 'Arial',
-              fontSize: Math.max(setting.tableHeaderFontSizePx || 10, 9),
-              minHeight: Math.max(setting.tableHeaderHeightPx || 22, 18),
-            }}
-          >
-            <span>Item</span><span className="text-right">Qty</span><span className="text-right">Amount</span>
-          </div>
-          {rows.map((_, idx) => (
-            <div
-              key={idx}
-              className="grid grid-cols-[1fr_40px_56px] items-start border-b border-dashed border-slate-100 py-1 text-[10px] text-slate-600"
-              style={{ minHeight: Math.max(setting.rowHeightPx || 26, 20), fontSize: Math.max(setting.tableDataFontSizePx || 10, 9) }}
-            >
-              <div className="min-w-0 pr-1">
-                <div className="truncate font-medium text-slate-800">Product {idx + 1}</div>
-                {setting.showSerial && idx === 0 && <div className="text-[9px] text-slate-400">SN: ABC-2048</div>}
-                {idx === 0 && <div className="text-[9px] font-semibold text-indigo-600">Warranty: 1 Year</div>}
-              </div>
-              <span className="text-right">1</span>
-              <span className="text-right font-semibold text-slate-800">25,000</span>
-            </div>
-          ))}
+          {(() => {
+            const showWar = setting.showColWarranty !== false;
+            const showDis = setting.showColLineDiscount !== false;
+            const cols = [
+              '22px',
+              'minmax(0,1.2fr)',
+              setting.showSerial ? 'minmax(0,0.9fr)' : null,
+              showWar ? '52px' : null,
+              showDis ? '48px' : null,
+              '28px',
+              '48px',
+              '48px',
+            ].filter(Boolean).join(' ');
+            return (
+              <>
+                <div
+                  className="gap-1 border-b border-slate-300 pb-1 text-[8px] font-black uppercase tracking-wide text-slate-700"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: cols,
+                    fontFamily: setting.tableHeaderFontFamily || 'Arial',
+                    fontSize: Math.max((setting.tableHeaderFontSizePx || 10) - 1, 8),
+                    minHeight: Math.max(setting.tableHeaderHeightPx || 22, 18),
+                  }}
+                >
+                  <span className="text-center">#</span>
+                  <span>Service</span>
+                  {setting.showSerial && <span>Serial</span>}
+                  {showWar && <span>Warranty</span>}
+                  {showDis && <span className="text-right">Dis</span>}
+                  <span className="text-center">Qty</span>
+                  <span className="text-right">Unit</span>
+                  <span className="text-right">Amt</span>
+                </div>
+                {rows.map((_, idx) => {
+                  const sample = idx === 0
+                    ? { name: 'iPhone 13 Display', sn: 'SN:ABC-2048', war: '1Year', disc: '5,000', qty: '1', unit: '85,000', amt: '80,000' }
+                    : idx === 1
+                      ? { name: 'Battery Replacement', sn: '—', war: '6Months', disc: '—', qty: '1', unit: '45,000', amt: '45,000' }
+                      : { name: `Product ${idx + 1}`, sn: '—', war: '—', disc: '—', qty: '1', unit: '25,000', amt: '25,000' };
+                  return (
+                    <div
+                      key={idx}
+                      className="items-start gap-1 border-b border-dashed border-slate-100 py-1.5 text-[9px] text-slate-600"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: cols,
+                        minHeight: Math.max(setting.rowHeightPx || 26, 20),
+                        fontSize: Math.max(setting.tableDataFontSizePx || 10, 8),
+                      }}
+                    >
+                      <span className="text-center text-slate-400">{idx + 1}</span>
+                      <div className="min-w-0 truncate font-medium text-slate-800">{sample.name}</div>
+                      {setting.showSerial && <span className="min-w-0 truncate text-[8px] text-slate-500">{sample.sn}</span>}
+                      {showWar && <span className="text-[8px] text-slate-500">{sample.war}</span>}
+                      {showDis && <span className="text-right text-[8px] text-slate-500">{sample.disc}</span>}
+                      <span className="text-center font-semibold">{sample.qty}</span>
+                      <span className="text-right">{sample.unit}</span>
+                      <span className="text-right font-semibold text-slate-800">{sample.amt}</span>
+                    </div>
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
 
         <div

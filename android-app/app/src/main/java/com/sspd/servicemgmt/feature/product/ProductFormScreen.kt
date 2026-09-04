@@ -264,8 +264,8 @@ private fun ProductPhotoBox(
     val source = remember(photoBase64, imagePath, thumbnailPath) {
         when {
             !photoBase64.isNullOrBlank() -> photoBase64
-            else -> ProductPhotoLoader.resolveSource(thumbnailPath)
-                ?: ProductPhotoLoader.resolveSource(imagePath)
+            else -> ProductPhotoLoader.resolveSource(imagePath)
+                ?: ProductPhotoLoader.resolveSource(thumbnailPath)
         }
     }
     Box(

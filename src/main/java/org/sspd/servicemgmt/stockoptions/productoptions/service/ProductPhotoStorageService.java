@@ -16,8 +16,8 @@ import java.util.UUID;
 
 @Service
 public class ProductPhotoStorageService {
-    private static final int MAX_IMAGE_SIZE = 1600;
-    private static final int THUMBNAIL_SIZE = 320;
+    private static final int MAX_IMAGE_SIZE = 2048;
+    private static final int THUMBNAIL_SIZE = 640;
     private final Path storageRoot;
 
     public ProductPhotoStorageService(@Value("${app.product-photo.storage-dir}") String storageDir) {
@@ -54,8 +54,8 @@ public class ProductPhotoStorageService {
             String name = "slot-" + slot + "-" + UUID.randomUUID();
             Path imageFile = folder.resolve(name + ".jpg");
             Path thumbnailFile = folder.resolve(name + "-thumb.jpg");
-            writeJpeg(resize(source, MAX_IMAGE_SIZE), imageFile, 0.90f);
-            writeJpeg(resize(source, THUMBNAIL_SIZE), thumbnailFile, 0.82f);
+            writeJpeg(resize(source, MAX_IMAGE_SIZE), imageFile, 0.92f);
+            writeJpeg(resize(source, THUMBNAIL_SIZE), thumbnailFile, 0.88f);
 
             return new StoredPhoto(
                     "/uploads/product-photos/" + directory + "/" + imageFile.getFileName(),

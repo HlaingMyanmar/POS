@@ -58,7 +58,7 @@ const PhotoLightbox = ({ photos, index, onClose, onChange }: { photos: ItemPhoto
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="flex max-h-[92vh] max-w-[95vw] flex-col items-center gap-3" onClick={e => e.stopPropagation()}>
         {photos.length > 1 && <div className="text-sm font-medium text-white/80">{index + 1} / {photos.length}</div>}
-        <img src={resolveAssetUrl(photo?.imagePath || photo?.dataUrl)} alt={photo?.fileName || `Device photo ${photo?.slot || index + 1}`} className="max-h-[78vh] max-w-[95vw] rounded-xl object-contain shadow-2xl" />
+        <img src={resolveAssetUrl(photo?.imagePath || photo?.dataUrl || photo?.thumbnailPath)} alt={photo?.fileName || `Device photo ${photo?.slot || index + 1}`} className="max-h-[78vh] max-w-[95vw] rounded-xl object-contain shadow-2xl" />
         {photo.fileName && <div className="max-w-[95vw] truncate text-xs text-white/70">{photo.fileName}</div>}
         <div className="flex items-center gap-3">
           {hasPrev && <button type="button" onClick={() => onChange(index - 1)} className="flex items-center gap-1 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"><ChevronLeft size={18} /> ယခင်</button>}

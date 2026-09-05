@@ -1116,4 +1116,40 @@ interface ApiService {
         @Path("id") id: Int,
         @Body photos: List<ProductPhotoDTO>
     ): Response<ApiResponse<Void>>
+
+    @GET("staffs")
+    suspend fun getStaffs(@Header("Authorization") auth: String): Response<ApiResponse<List<StaffDTO>>>
+
+    @POST("staffs")
+    suspend fun createStaff(@Header("Authorization") auth: String, @Body body: StaffDTO): Response<ApiResponse<StaffDTO>>
+
+    @PUT("staffs/{id}")
+    suspend fun updateStaff(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: StaffDTO): Response<ApiResponse<StaffDTO>>
+
+    @GET("payment-methods")
+    suspend fun getPaymentMethods(@Header("Authorization") auth: String): Response<ApiResponse<List<PaymentMethodDTO>>>
+
+    @POST("payment-methods")
+    suspend fun createPaymentMethod(@Header("Authorization") auth: String, @Body body: PaymentMethodDTO): Response<ApiResponse<PaymentMethodDTO>>
+
+    @PUT("payment-methods/{id}")
+    suspend fun updatePaymentMethod(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: PaymentMethodDTO): Response<ApiResponse<PaymentMethodDTO>>
+
+    @POST("suppliers")
+    suspend fun createSupplier(@Header("Authorization") auth: String, @Body body: SupplierDTO): Response<ApiResponse<SupplierDTO>>
+
+    @PUT("suppliers/{id}")
+    suspend fun updateSupplier(@Header("Authorization") auth: String, @Path("id") id: Int, @Body body: SupplierDTO): Response<ApiResponse<SupplierDTO>>
+
+    @GET("user")
+    suspend fun getUsers(@Header("Authorization") auth: String): Response<ApiResponse<List<RbacUserDTO>>>
+
+    @GET("roles")
+    suspend fun getRoles(@Header("Authorization") auth: String): Response<ApiResponse<List<RbacRoleDTO>>>
+
+    @GET("quotations")
+    suspend fun getQuotations(@Header("Authorization") auth: String): Response<ApiResponse<List<QuotationDTO>>>
+
+    @POST("company-settings")
+    suspend fun updateCompanySettings(@Header("Authorization") auth: String, @Body body: CompanySettingsDTO): Response<ApiResponse<CompanySettingsDTO>>
 }

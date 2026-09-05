@@ -94,9 +94,52 @@ sealed class Screen(val route: String) {
     object OpeningBalance   : Screen("opening_balance")
     object OpeningStock     : Screen("opening_stock")
     object Transfer         : Screen("transfer")
+    object ComposeModule : Screen("pos_module/{moduleId}") {
+        fun createRoute(id: String) = "pos_module/$id"
+    }
     object WebModule        : Screen("web_module/{title}/{endpoint}") {
         fun createRoute(title: String, endpoint: String) = "web_module/${Uri.encode(title)}/${Uri.encode(endpoint)}"
     }
+}
+
+/** Native Compose routes for modules that used to open the web UI. */
+object ComposePages {
+    fun route(id: String) = Screen.ComposeModule.createRoute(id)
+
+    val quotations = route("quotations")
+    val users = route("users")
+    val roles = route("roles")
+    val permissions = route("roles")
+    val staff = route("staff")
+    val brands = Screen.InventorySetup.route
+    val categories = Screen.InventorySetup.route
+    val units = Screen.InventorySetup.route
+    val suppliers = route("suppliers")
+    val serials = Screen.SerialRegistry.route
+    val labelDesigner = Screen.Products.route
+    val coa = route("coa")
+    val paymentMethods = route("payment-methods")
+    val accountingDashboard = route("accounting-dashboard")
+    val paymentTransactions = Screen.Transfer.route
+    val profitLoss = route("profit-loss")
+    val trialBalance = route("trial-balance")
+    val balanceSheet = route("balance-sheet")
+    val arAging = Screen.CreditDesk.route
+    val apAging = Screen.SupplierPayments.route
+    val dailySnapshot = Screen.IncomeReport.route
+    val salesSummary = Screen.SalesRanking.route
+    val purchaseSummary = Screen.Purchases.route
+    val serviceSummary = Screen.ServiceJobs.route
+    val customerHistory = route("customer-history")
+    val stockReport = Screen.Products.route
+    val outdoorTracking = Screen.ServiceJobs.route
+    val videos = route("videos")
+    val serviceHelp = route("service-help")
+    val adminQueries = route("admin-queries")
+    val company = route("company")
+    val backup = route("backup")
+    val voucher = route("voucher")
+    val dashboard = Screen.Home.route
 }
 
 const val AUTH_GRAPH = "auth_graph"

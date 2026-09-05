@@ -32,6 +32,7 @@ import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.BookingDTO
 import com.sspd.servicemgmt.core.navigation.LocalServerStatus
 import com.sspd.servicemgmt.core.navigation.Screen
+import com.sspd.servicemgmt.core.navigation.ComposePages
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.UpdateDialog
 import com.sspd.servicemgmt.core.ui.util.adaptiveContentWidth
@@ -401,15 +402,20 @@ private fun FullHomeBody(
     HomeActionSection("ရောင်း", listOf(
         QuadItem("အရောင်းဆိုင်ရာ", Icons.Outlined.Receipt, Primary, Screen.Sales.route),
         QuadItem("ရောင်းပြန်လက်ခံ", Icons.Outlined.AssignmentReturn, Danger, Screen.SaleReturns.route),
+        QuadItem("ကိုးကားချက်", Icons.Outlined.RequestQuote, Color(0xFF0369A1), ComposePages.quotations),
     ), onNavigate)
     HomeActionSection("ဖောက်သည်", listOf(
         QuadItem("ဖောက်သည်များ", Icons.Outlined.Groups, Success, Screen.Customers.route),
         QuadItem("ခရက်ဒစ် စားပွဲ", Icons.Outlined.CreditCard, Gold, Screen.CreditDesk.route),
+        QuadItem("ဖောက်သည် မှတ်တမ်း", Icons.Outlined.History, Success, ComposePages.customerHistory),
     ), onNavigate)
     HomeActionSection("ဝန်ဆောင်မှု", listOf(
         QuadItem("ပစ္စည်းလက်ခံ", Icons.Outlined.CalendarMonth, Color(0xFFB45309), Screen.Bookings.route),
         QuadItem("ဝန်ဆောင်မှုအလုပ်", Icons.Outlined.Build, Color(0xFF059669), Screen.ServiceJobs.route),
         QuadItem("ဝန်ဆောင်မှုများ", Icons.Outlined.MiscellaneousServices, Gold, Screen.ServiceMgmt.route),
+        QuadItem("ပြင်ပ ခြေရာခံ", Icons.Outlined.Map, Color(0xFF059669), ComposePages.outdoorTracking),
+        QuadItem("ဗီဒီယိုများ", Icons.Outlined.VideoLibrary, Color(0xFF7C3AED), ComposePages.videos),
+        QuadItem("ဝန်ဆောင်မှု အကူအညီ", Icons.Outlined.HelpOutline, Color(0xFFB45309), ComposePages.serviceHelp),
     ), onNavigate)
     HomeActionSection("ကုန်", listOf(
         QuadItem("ကုန်ပစ္စည်းများ", Icons.Outlined.Inventory2, Color(0xFFB45309), Screen.Products.route),
@@ -419,15 +425,41 @@ private fun FullHomeBody(
         QuadItem("ကုန်ပမာဏ ပြင်ဆင်မှု", Icons.Outlined.Inventory, Color(0xFFB45309), Screen.StockAdjustments.route),
         QuadItem("ကနဦး ကုန်လက်ကျန်", Icons.Outlined.Inventory2, Color(0xFF047857), Screen.OpeningStock.route),
         QuadItem("စီးရီး မှတ်တမ်း", Icons.Outlined.QrCode2, Gold, Screen.SerialRegistry.route),
+        QuadItem("အမှတ်တံဆိပ်", Icons.Outlined.BrandingWatermark, Color(0xFFB45309), ComposePages.brands),
+        QuadItem("အမျိုးအစား", Icons.Outlined.Category, Color(0xFFB45309), ComposePages.categories),
+        QuadItem("ယူနစ်", Icons.Outlined.Straighten, Color(0xFFB45309), ComposePages.units),
+        QuadItem("ပေးသွင်းသူများ", Icons.Outlined.LocalShipping, Color(0xFF9A3412), ComposePages.suppliers),
+        QuadItem("လေဘယ်ဒီဇိုင်း", Icons.Outlined.Label, Gold, ComposePages.labelDesigner),
+        QuadItem("ကုန်လက်ကျန် အစီရင်ခံ", Icons.Outlined.Assessment, Color(0xFF047857), ComposePages.stockReport),
     ), onNavigate)
     HomeActionSection("ငွေကြေး", listOf(
         QuadItem("ကုန်ကျစရိတ်", Icons.Outlined.AccountBalanceWallet, Gold, Screen.Expenses.route),
         QuadItem("ပေးသွင်းသူ ငွေချေ", Icons.Outlined.Payments, Color(0xFFB45309), Screen.SupplierPayments.route),
         QuadItem("အစပိုင်း လက်ကျန်", Icons.Outlined.AccountBalance, Color(0xFF9A3412), Screen.OpeningBalance.route),
         QuadItem("ငွေပြောင်းလဲမှု", Icons.Outlined.SwapHoriz, Gold, Screen.Transfer.route),
+        QuadItem("စာရင်းကိုင် ဒက်ရှ်ဘုတ်", Icons.Outlined.AccountBalance, Color(0xFF0369A1), ComposePages.accountingDashboard),
+        QuadItem("စာရင်းဇယား (COA)", Icons.Outlined.AccountTree, Color(0xFF0369A1), ComposePages.coa),
+        QuadItem("ငွေပေးချေနည်း", Icons.Outlined.CreditScore, Gold, ComposePages.paymentMethods),
+        QuadItem("ငွေလွှဲမှတ်တမ်း", Icons.Outlined.ReceiptLong, Color(0xFF9A3412), ComposePages.paymentTransactions),
         QuadItem("ကိန်းဂဏာန်း", Icons.Outlined.BarChart, Color(0xFFB45309), Screen.Report.route),
         QuadItem("ဝင်ငွေ/အမြတ်", Icons.Outlined.TrendingUp, Success, Screen.IncomeReport.route),
+        QuadItem("အမြတ်အရှုံး", Icons.Outlined.ShowChart, Success, ComposePages.profitLoss),
+        QuadItem("စမ်းသပ်လက်ကျန်", Icons.Outlined.Balance, Color(0xFF0369A1), ComposePages.trialBalance),
+        QuadItem("လက်ကျန်ရှင်းတမ်း", Icons.Outlined.Summarize, Color(0xFF0369A1), ComposePages.balanceSheet),
+        QuadItem("AR Aging", Icons.Outlined.Schedule, Danger, ComposePages.arAging),
+        QuadItem("AP Aging", Icons.Outlined.Schedule, Color(0xFFB45309), ComposePages.apAging),
         QuadItem("ရောင်းအား အဆင့်", Icons.Outlined.EmojiEvents, Gold, Screen.SalesRanking.route),
+        QuadItem("နေ့စဉ် Snapshot", Icons.Outlined.Today, Primary, ComposePages.dailySnapshot),
+        QuadItem("ရောင်းချုပ်", Icons.Outlined.PointOfSale, Primary, ComposePages.salesSummary),
+        QuadItem("ဝယ်ချုပ်", Icons.Outlined.ShoppingBag, Color(0xFF9A3412), ComposePages.purchaseSummary),
+        QuadItem("ဝန်ဆောင်မှုချုပ်", Icons.Outlined.Handyman, Color(0xFF059669), ComposePages.serviceSummary),
+    ), onNavigate)
+    HomeActionSection("စီမံခန့်ခွဲမှု", listOf(
+        QuadItem("အသုံးပြုသူများ", Icons.Outlined.Group, Violet, ComposePages.users),
+        QuadItem("အခန်းကဏ္ဍများ", Icons.Outlined.AdminPanelSettings, Violet, ComposePages.roles),
+        QuadItem("ခွင့်ပြုချက်များ", Icons.Outlined.VerifiedUser, Violet, ComposePages.permissions),
+        QuadItem("ဝန်ထမ်းများ", Icons.Outlined.Badge, Violet, ComposePages.staff),
+        QuadItem("Admin Query", Icons.Outlined.Storage, Color(0xFF7C3AED), ComposePages.adminQueries),
     ), onNavigate)
 }
 
@@ -817,25 +849,50 @@ fun DrawerContent(
                 DrawerMenuItem("ဝယ်ပြန်ပို့",                    Icons.Outlined.AssignmentReturn,       Screen.PurchaseReturns.route,   onNavigate)
                 DrawerMenuItem("ရောင်းပြန်လက်ခံ",                Icons.Outlined.AssignmentReturn,       Screen.SaleReturns.route,       onNavigate)
                 DrawerMenuItem("စီးရီး မှတ်တမ်း",           Icons.Outlined.QrCode2,                Screen.SerialRegistry.route,    onNavigate)
+                DrawerMenuItem("အမှတ်တံဆိပ်",                Icons.Outlined.BrandingWatermark,      ComposePages.brands,               onNavigate)
+                DrawerMenuItem("အမျိုးအစား",                  Icons.Outlined.Category,               ComposePages.categories,           onNavigate)
+                DrawerMenuItem("ယူနစ်",                       Icons.Outlined.Straighten,             ComposePages.units,                onNavigate)
+                DrawerMenuItem("ပေးသွင်းသူများ",              Icons.Outlined.LocalShipping,          ComposePages.suppliers,            onNavigate)
+                DrawerMenuItem("လေဘယ်ဒီဇိုင်း",              Icons.Outlined.Label,                  ComposePages.labelDesigner,        onNavigate)
 
                 DrawerSection("ဖောက်သည်")
                 DrawerMenuItem("ဖောက်သည်များ",              Icons.Outlined.Groups,                 Screen.Customers.route,         onNavigate)
                 DrawerMenuItem("ခရက်ဒစ် စားပွဲ",     Icons.Outlined.CreditCard,             Screen.CreditDesk.route,        onNavigate)
+                DrawerMenuItem("ကိုးကားချက်",                  Icons.Outlined.RequestQuote,           ComposePages.quotations,           onNavigate)
+                DrawerMenuItem("ဖောက်သည် မှတ်တမ်း",           Icons.Outlined.History,                ComposePages.customerHistory,      onNavigate)
 
                 DrawerSection("ဝန်ဆောင်မှု")
                 DrawerMenuItem("ဝန်ဆောင်မှုများ",          Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route,       onNavigate)
                 DrawerMenuItem("ကန့်တည်နေရာများ",          Icons.Outlined.LocationOn,            Screen.ShelfLocations.route,    onNavigate)
+                DrawerMenuItem("ပြင်ပ ခြေရာခံ",               Icons.Outlined.Map,                   ComposePages.outdoorTracking,      onNavigate)
+                DrawerMenuItem("ဗီဒီယိုများ",                  Icons.Outlined.VideoLibrary,           ComposePages.videos,               onNavigate)
+                DrawerMenuItem("ဝန်ဆောင်မှု အကူအညီ",         Icons.Outlined.HelpOutline,           ComposePages.serviceHelp,          onNavigate)
 
                 DrawerSection("ငွေကြေး")
                 DrawerMenuItem("ငွေပြောင်းလဲမှု (Transfer)",   Icons.Outlined.SwapHoriz,              Screen.Transfer.route,      onNavigate)
                 DrawerMenuItem("အစပိုင်း လက်ကျန်", Icons.Outlined.AccountBalance,         Screen.OpeningBalance.route, onNavigate)
                 DrawerMenuItem("ကုန်ကျစရိတ်",              Icons.Outlined.AccountBalanceWallet,  Screen.Expenses.route,      onNavigate)
                 DrawerMenuItem("ဂျာနယ်မှတ်တမ်း",             Icons.Outlined.MenuBook,              Screen.JournalEntries.route, onNavigate)
+                DrawerMenuItem("စာရင်းကိုင် ဒက်ရှ်ဘုတ်",      Icons.Outlined.AccountBalance,         ComposePages.accountingDashboard, onNavigate)
+                DrawerMenuItem("စာရင်းဇယား (COA)",           Icons.Outlined.AccountTree,            ComposePages.coa,                onNavigate)
+                DrawerMenuItem("ငွေပေးချေနည်း",              Icons.Outlined.CreditScore,            ComposePages.paymentMethods,      onNavigate)
+                DrawerMenuItem("ငွေလွှဲမှတ်တမ်း",             Icons.Outlined.ReceiptLong,            ComposePages.paymentTransactions, onNavigate)
+                DrawerMenuItem("အမြတ်အရှုံး",                 Icons.Outlined.ShowChart,             ComposePages.profitLoss,         onNavigate)
+                DrawerMenuItem("စမ်းသပ်လက်ကျန်",             Icons.Outlined.Balance,               ComposePages.trialBalance,       onNavigate)
+                DrawerMenuItem("လက်ကျန်ရှင်းတမ်း",           Icons.Outlined.Summarize,             ComposePages.balanceSheet,       onNavigate)
+                DrawerMenuItem("AR / AP Aging",               Icons.Outlined.Schedule,              ComposePages.arAging,            onNavigate)
+                DrawerMenuItem("နေ့စဉ် Snapshot",             Icons.Outlined.Today,                 ComposePages.dailySnapshot,      onNavigate)
+                DrawerMenuItem("ရောင်း / ဝယ် ချုပ်",          Icons.Outlined.PointOfSale,           ComposePages.salesSummary,       onNavigate)
                 DrawerMenuItem("ကိန်းဂဏာန်း",              Icons.Outlined.BarChart,              Screen.Report.route,        onNavigate)
                 DrawerMenuItem("ဝင်ငွေ / အမြတ် စာရင်း",   Icons.Outlined.TrendingUp,            Screen.IncomeReport.route,  onNavigate)
                 DrawerMenuItem("ရောင်းအား အဆင့်",         Icons.Outlined.EmojiEvents,           Screen.SalesRanking.route,  onNavigate)
 
                 DrawerSection("အဖွဲ့")
+                DrawerMenuItem("အသုံးပြုသူများ",              Icons.Outlined.Group,                 ComposePages.users,            onNavigate)
+                DrawerMenuItem("အခန်းကဏ္ဍများ",              Icons.Outlined.AdminPanelSettings,    ComposePages.roles,            onNavigate)
+                DrawerMenuItem("ခွင့်ပြုချက်များ",            Icons.Outlined.VerifiedUser,          ComposePages.permissions,      onNavigate)
+                DrawerMenuItem("ဝန်ထမ်းများ",                 Icons.Outlined.Badge,                 ComposePages.staff,            onNavigate)
+                DrawerMenuItem("Admin Query",                 Icons.Outlined.Storage,               ComposePages.adminQueries,     onNavigate)
                 DrawerMenuItem("ဝန်ထမ်းစွမ်းဆောင်ရည်",     Icons.Outlined.BarChart,              Screen.StaffReport.route,   onNavigate)
                 DrawerMenuItem("အဖွဲ့ စကားဝိုင်း",               Icons.Outlined.Chat,                  Screen.Chat.route,          onNavigate)
 

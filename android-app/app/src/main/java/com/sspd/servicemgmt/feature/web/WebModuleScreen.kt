@@ -4,12 +4,14 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.sspd.servicemgmt.core.network.ApiClient
@@ -55,10 +56,7 @@ fun WebModuleScreen(
     val context = LocalContext.current
     val prefs = remember(context) { PreferenceManager(context) }
     val baseUri = remember { Uri.parse(ApiClient.rawBaseUrl) }
-    val url = remember(endpoint) {
-        val hash = endpoint.trimStart('/')
-        "${ApiClient.rawBaseUrl.trimEnd('/')}/#/$hash"
-    }
+    val url = remember(endpoint) { webAppUrl(endpoint) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var sessionInjected by remember { mutableStateOf(false) }
@@ -97,8 +95,20 @@ fun WebModuleScreen(
                     WebView(ctx).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        settings.databaseEnabled = true
                         settings.allowFileAccess = true
                         settings.allowContentAccess = true
+                        settings.javaScriptCanOpenWindowsAutomatically = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            settings.safeBrowsingEnabled = false
+                        }
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                         if (prefs.refreshToken.isNotBlank()) {
@@ -124,7 +134,10 @@ fun WebModuleScreen(
                             override fun shouldOverrideUrlLoading(
                                 view: WebView,
                                 request: WebResourceRequest,
-                            ): Boolean = request.url.host != baseUri.host
+                            ): Boolean {
+                                val host = request.url.host ?: return false
+                                return host != baseUri.host
+                            }
 
                             override fun onReceivedSslError(
                                 view: WebView,
@@ -167,6 +180,12 @@ fun WebModuleScreen(
             error?.let { Text(it) }
         }
     }
+}
+
+internal fun webAppUrl(endpoint: String): String {
+    val base = ApiClient.rawBaseUrl.trimEnd('/')
+    val hash = endpoint.trim().trimStart('#').trimStart('/')
+    return if (hash.isEmpty()) "$base/#/" else "$base/#/$hash"
 }
 
 private fun sessionBootstrapJs(prefs: PreferenceManager): String {

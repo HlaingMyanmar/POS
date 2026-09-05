@@ -56,6 +56,7 @@ import com.sspd.servicemgmt.feature.salereturn.*
 import com.sspd.servicemgmt.feature.service.catalog.*
 import com.sspd.servicemgmt.feature.service.job.*
 import com.sspd.servicemgmt.feature.settings.*
+import com.sspd.servicemgmt.feature.compose.ComposeModuleScreen
 import com.sspd.servicemgmt.feature.web.*
 import com.sspd.servicemgmt.core.ui.theme.BorderColor
 import com.sspd.servicemgmt.core.ui.theme.CardBg
@@ -678,6 +679,15 @@ fun AppNavigation() {
                     }
                     screen(Screen.About.route)          { AboutScreen             { nav.popBackStack() } }
                     screen(Screen.SoftwareUpdate.route) { SoftwareUpdateScreen    { nav.popBackStack() } }
+                    composable(
+                        route = Screen.ComposeModule.route,
+                        arguments = listOf(navArgument("moduleId") { type = NavType.StringType }),
+                    ) { entry ->
+                        ComposeModuleScreen(
+                            moduleId = entry.arguments?.getString("moduleId").orEmpty(),
+                            onBack = { nav.popBackStack() },
+                        )
+                    }
                 }
             }
         }

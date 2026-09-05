@@ -245,6 +245,10 @@ public class InvoiceAssemblerService {
                     .noticed(safe(item.getNoticed()))
                     .build());
         }
+        int deviceRowTotal = deviceRows.size();
+        if (deviceRows.size() > 10) {
+            deviceRows = new ArrayList<>(deviceRows.subList(0, 10));
+        }
 
         String receivedAt = booking.getUpdatedAt() != null
                 ? booking.getUpdatedAt().format(DT_FMT)
@@ -278,6 +282,7 @@ public class InvoiceAssemblerService {
                 .problemDesc(safe(booking.getComplaintNote()))
                 .bookingReceipt(true)
                 .deviceRows(deviceRows)
+                .deviceRowTotal(deviceRowTotal)
                 .build();
     }
 

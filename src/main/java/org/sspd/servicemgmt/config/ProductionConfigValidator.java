@@ -34,6 +34,9 @@ public class ProductionConfigValidator implements ApplicationRunner {
     @Value("${app.apk.storage-dir}")
     private String apkStorageDir;
 
+    @Value("${app.print.templates-dir:}")
+    private String printTemplatesDir;
+
     @Value("${app.booking-photo.storage-dir}")
     private String bookingPhotoStorageDir;
 
@@ -68,7 +71,11 @@ public class ProductionConfigValidator implements ApplicationRunner {
         Files.createDirectories(Path.of(apkStorageDir));
         Files.createDirectories(Path.of(bookingPhotoStorageDir));
         Files.createDirectories(Path.of(backupRootDirectory));
-        log.info("Production configuration validated. APK dir={}, backup dir={}, public URL={}",
-                apkStorageDir, backupRootDirectory, appBaseUrl);
+        if (printTemplatesDir != null && !printTemplatesDir.isBlank()
+                && !Files.isDirectory(Path.of(printTemplatesDir))) {
+            log.warn("Print templates dir {} is missing — WAR voucher templates will be used", printTemplatesDir);
+        }
+        log.info("Production configuration validated. APK dir={}, print dir={}, backup dir={}, public URL={}",
+                apkStorageDir, printTemplatesDir, backupRootDirectory, appBaseUrl);
     }
 }

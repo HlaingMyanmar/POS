@@ -1,8 +1,17 @@
 # ── App API models (Retrofit / Gson must not be renamed) ──────────────────────
 -keep class com.sspd.servicemgmt.core.network.** { *; }
+-keepclassmembers class com.sspd.servicemgmt.core.network.** { *; }
+-keep interface com.sspd.servicemgmt.core.network.** { *; }
 
+# Retrofit 2.9 consumer rules are incomplete under R8 full mode (AGP 8+).
+# Without these, suspend login() throws at runtime only in release APKs.
 -keepattributes Signature, InnerClasses, EnclosingMethod
 -keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+-keep,allowobfuscation,allowshrinking interface retrofit2.Call
+-keep,allowobfuscation,allowshrinking class retrofit2.Response
+-keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
+-if interface * { @retrofit2.http.* public *** *(...); }
+-keep,allowoptimization,allowshrinking,allowobfuscation class <3>
 -keepclassmembers,allowshrinking,allowobfuscation interface * {
     @retrofit2.http.* <methods>;
 }

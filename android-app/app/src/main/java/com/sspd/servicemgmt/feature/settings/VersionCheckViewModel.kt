@@ -20,12 +20,7 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -47,8 +42,11 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val res = ApiClient.service.getAppVersion()
                 val dto = res.body()?.data ?: return@launch
-                if (dto.versionCode > BuildConfig.VERSION_CODE) {
-                    _state.update { it.copy(update = dto, checked = true) }
+                val update = dto.copy(
+                    downloadUrl = ApiClient.resolveApkDownloadUrl(dto.downloadUrl, "servicemgmt.apk")
+                )
+                if (update.versionCode > BuildConfig.VERSION_CODE) {
+                    _state.update { it.copy(update = update, checked = true) }
                 } else {
                     _state.update { it.copy(checked = true) }
                 }
@@ -133,15 +131,7 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun buildDownloadClient(): OkHttpClient {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val sslContext = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         return OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(5, TimeUnit.MINUTES)
             .build()

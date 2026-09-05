@@ -140,6 +140,7 @@ public class HtmlPdfService {
                     .invoice-page { page-break-after: always; }
                     .invoice-page:last-child { page-break-after: avoid; }
                     %s
+                    %s
                   </style>
                 </head>
                 <body>
@@ -150,6 +151,7 @@ public class HtmlPdfService {
                 cfg.getCssPageSize(),
                 cfg.getMarginTopMm(), cfg.getMarginRightMm(),
                 cfg.getMarginBottomMm(), cfg.getMarginLeftMm(),
+                templateService.printCss(),
                 fontCss,
                 body);
     }

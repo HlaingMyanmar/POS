@@ -90,6 +90,19 @@ object ApiClient {
     /** Base URL without the /api/v1/ suffix, e.g. "https://192.168.x.x:8080/" */
     val rawBaseUrl: String get() = _baseUrl.removeSuffix("api/v1/")
 
+    /** APK update links from the server may use a hostname phones cannot resolve. */
+    fun resolveApkDownloadUrl(serverUrl: String, apkFileName: String): String {
+        val compact = serverUrl.trim().replace(" ", "")
+        if (compact.isEmpty()) return ""
+        val base = rawBaseUrl.trimEnd('/')
+        val path = if (compact.contains("/app/")) {
+            compact.substring(compact.indexOf("/app/"))
+        } else {
+            "/app/$apkFileName"
+        }
+        return base + path
+    }
+
     fun buildPingClient(): OkHttpClient {
         val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}

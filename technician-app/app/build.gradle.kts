@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -10,6 +11,24 @@ val localProps = Properties().also { props ->
     if (f.exists()) f.inputStream().use(props::load)
 }
 
+fun releaseKeystoreFile(): File {
+    val raw = localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore")
+        .trim()
+        .replace('\\', '/')
+    val candidate = File(raw)
+    val resolved = if (candidate.isAbsolute) candidate else rootProject.file(raw)
+    if (resolved.isFile) return resolved
+    val withExt = File(resolved.path + ".keystore")
+    if (withExt.isFile) return withExt
+    if (resolved.isDirectory) {
+        val nested = resolved.listFiles()?.firstOrNull { f ->
+            f.isFile && (f.extension.equals("keystore", true) || f.extension.equals("jks", true))
+        }
+        if (nested != null) return nested
+    }
+    return resolved
+}
+
 android {
     namespace  = "com.sspd.servicemgmt"
     compileSdk = 35
@@ -18,8 +37,8 @@ android {
         applicationId = "com.sspd.technician"
         minSdk        = 26
         targetSdk     = 35
-        versionCode   = 3
-        versionName   = "1.0.2"
+        versionCode   = 1
+        versionName   = "1.0.1"
         vectorDrawables { useSupportLibrary = true }
 
         buildConfigField("String", "DEFAULT_BASE_URL", "\"http://118.27.151.89\"")
@@ -29,11 +48,10 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystorePath = localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore")
-            storeFile     = file(keystorePath)
-            storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
+            storeFile     = releaseKeystoreFile()
+            storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "21101998")
             keyAlias      = localProps.getProperty("KEY_ALIAS", "sspd")
-            keyPassword   = localProps.getProperty("KEY_PASSWORD", "")
+            keyPassword   = localProps.getProperty("KEY_PASSWORD", "21101998")
         }
     }
 
@@ -54,11 +72,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "1.8" }
+    kotlinOptions { jvmTarget = "17" }
 
     buildFeatures {
         compose     = true
@@ -75,7 +93,7 @@ android {
 }
 
 fun requireReleaseSigning() {
-    val keystore = file(localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore"))
+    val keystore = releaseKeystoreFile()
     val storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
     val keyPassword = localProps.getProperty("KEY_PASSWORD", "")
     val alias = localProps.getProperty("KEY_ALIAS", "sspd")
@@ -110,8 +128,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")

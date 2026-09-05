@@ -1,51 +1,16 @@
-<!--
-  ══════════════════════════════════════════════════════════════════════════
-  SERVICE VOUCHER (Intake Sheet) — A4
-
-  Customise this document type by editing:
-    • Intake Sheet sections → fragments/service-job-body.html  ← main body here
-    • Bill To / Invoice     → fragments/invoice-info-blocks.html
-    • Service lines + Parts → fragments/invoice-table.html
-    • Signatures / Footer   → fragments/invoice-footer.html :: last
-    • All CSS               → static/print/css/print-base.css
-
-  Note: Includes financial summary (Subtotal / Discount / Net) like the web voucher.
-  ══════════════════════════════════════════════════════════════════════════
--->
+<!-- Service job A4 — header / intake body / table / footer -->
 <div class="invoice-page invoice-page--a4" xmlns:th="http://www.thymeleaf.org">
-
-  <!-- ── Header ─────────────────────────────────────────────────────────── -->
-  <div th:if="${inv.currentPage == 1}"
-       th:replace="~{print/fragments/invoice-header :: full(${inv}, ${layout})}"></div>
-  <div th:if="${inv.currentPage > 1}"
-       th:replace="~{print/fragments/invoice-header :: cont(${inv}, ${layout})}"></div>
-
-  <!-- ── Body ───────────────────────────────────────────────────────────── -->
+  <div th:replace="~{print/fragments/service-job-header :: render(${inv})}"></div>
   <div class="inv-body">
-
-    <!-- Bill To + Invoice Details (first page) -->
-    <div th:if="${inv.currentPage == 1}"
-         th:replace="~{print/fragments/invoice-info-blocks :: render(${inv})}"></div>
-
-    <!-- Intake Sheet: Device · Problem · Condition checklist (first page) -->
-    <div th:if="${inv.currentPage == 1}"
-         th:replace="~{print/fragments/service-job-body :: render(${inv})}"></div>
-
-    <!-- Service lines + Parts table (all pages) -->
+    <th:block th:if="${inv.currentPage == 1}">
+      <div th:replace="~{print/fragments/service-job-body :: render(${inv})}"></div>
+    </th:block>
     <div th:replace="~{print/fragments/service-job-table :: render(${inv})}"></div>
-
-    <!-- Last page: financial totals (Subtotal / Discount / Net) -->
-    <div th:if="${inv.currentPage == inv.totalPages}"
-         th:replace="~{print/fragments/invoice-summary :: render(${inv})}"></div>
-
-    <!-- Last page: remark + signatures + footer bar -->
-    <div th:if="${inv.currentPage == inv.totalPages}"
-         th:replace="~{print/fragments/invoice-footer :: last(${inv})}"></div>
-
-    <!-- Non-last pages: "continued" footer -->
-    <div th:if="${inv.currentPage < inv.totalPages}"
-         th:replace="~{print/fragments/invoice-footer :: cont(${inv})}"></div>
-
+    <th:block th:if="${inv.currentPage == inv.totalPages}">
+      <div th:replace="~{print/fragments/service-job-footer :: last(${inv})}"></div>
+    </th:block>
+    <th:block th:if="${inv.currentPage < inv.totalPages}">
+      <div th:replace="~{print/fragments/service-job-footer :: cont(${inv})}"></div>
+    </th:block>
   </div>
-
 </div>

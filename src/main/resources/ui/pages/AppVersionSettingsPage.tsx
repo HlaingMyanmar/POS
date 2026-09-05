@@ -27,6 +27,19 @@ const defaultSettings: VersionSettings = {
   technicianChangelog: '',
 };
 
+const MAX_APK_SIZE_BYTES = 200 * 1024 * 1024;
+
+const uploadErrorMessage = (error: any) => {
+  const message = String(error?.message || '');
+  if (error?.response?.status === 413 || /\b413\b/.test(message)) {
+    return 'APK file ကြီးလွန်းပါသည်။ Server upload limit ကို စစ်ပါ။';
+  }
+  if (/network error/i.test(message)) {
+    return 'Server သို့ APK upload မရပါ။ Nginx upload limit နှင့် server connection ကို စစ်ပါ။';
+  }
+  return message || 'APK upload မအောင်မြင်ပါ';
+};
+
 const changelogTemplates = [
   {
     label: 'Split Payment',
@@ -133,6 +146,10 @@ const AppVersionSettingsPage: React.FC = () => {
       Swal.fire({ icon: 'warning', title: '.apk file သာ upload လုပ်ပါ', timer: 1600, showConfirmButton: false });
       return;
     }
+    if (apkFile.size > MAX_APK_SIZE_BYTES) {
+      Swal.fire({ icon: 'warning', title: 'APK file သည် 200 MB ထက် မကြီးရပါ', timer: 2000, showConfirmButton: false });
+      return;
+    }
 
     setUploading(true);
     try {
@@ -148,7 +165,7 @@ const AppVersionSettingsPage: React.FC = () => {
         Swal.fire({ icon: 'error', title: res.message || 'APK upload မအောင်မြင်ပါ' });
       }
     } catch (e: any) {
-      Swal.fire({ icon: 'error', title: e?.message || 'APK upload မအောင်မြင်ပါ' });
+      Swal.fire({ icon: 'error', title: uploadErrorMessage(e) });
     } finally {
       setUploading(false);
     }
@@ -302,7 +319,7 @@ const AppVersionSettingsPage: React.FC = () => {
                 <h2 className="text-sm font-bold text-slate-800">APK Upload</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Upload လုပ်ပြီးသော APK ကို mobile app က download လုပ်မည်။</p>
               </div>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${apkExists ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${currentApkExists ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                 {currentApkExists ? <CheckCircle2 size={13} /> : <Info size={13} />}
                 {currentApkExists ? 'APK Ready' : 'No APK'}
               </span>
@@ -329,7 +346,7 @@ const AppVersionSettingsPage: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              Server ထဲတွင် <span className="font-mono font-semibold">C:/sspd-apk/{apkStorageName}</span> အဖြစ်သိမ်းမည်။ APK file name ဘာဖြစ်ဖြစ် upload ပြီးပါက app က <span className="font-mono">{apkDownloadPath}</span> မှ download လုပ်ပါမည်။
+              APK file name ဘာဖြစ်ဖြစ် server က <span className="font-mono font-semibold">{apkStorageName}</span> အဖြစ်သိမ်းမည်။ Upload ပြီးပါက app က <span className="font-mono">{apkDownloadPath}</span> မှ download လုပ်ပါမည်။
             </p>
           </div>
         </div>

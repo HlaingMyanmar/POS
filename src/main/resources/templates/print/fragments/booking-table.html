@@ -1,77 +1,82 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
-<head><title>Device intake receipt</title></head>
+<head><title>fragment</title></head>
 <body>
 
-<div th:fragment="render(inv)" style="margin-bottom:16px;">
+<!-- Compact A5/A4/POS intake list: max 10 rows, one line per device. -->
+<div th:fragment="render(inv)" class="bk-table">
 
-  <div th:if="${not #strings.isEmpty(inv.problemDesc)}"
-       style="margin-bottom:10px; border:1px solid #fed7aa; background:#fff7ed; border-radius:5px; padding:8px 10px;">
-    <div style="font-size:8px; font-weight:800; color:#9a3412; letter-spacing:1px; text-transform:uppercase;">Booking Complaint</div>
-    <div style="font-size:11px; line-height:1.45; font-weight:700; color:#7c2d12; margin-top:2px;" th:text="${inv.problemDesc}">—</div>
-  </div>
-
-  <div style="font-size:10px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:#1e3a5f; border-bottom:3px solid #1e3a5f; padding-bottom:4px; margin-bottom:7px;">
-    Received Items
-  </div>
-
-  <div th:each="dev, stat : ${inv.deviceRows}"
-       style="border:1.5px solid #94a3b8; border-radius:5px; margin-bottom:8px; page-break-inside:avoid; overflow:hidden;">
-    <div style="background:#f1f5f9; border-bottom:1px solid #cbd5e1; padding:6px 9px;">
-      <span style="display:inline-block; background:#1e3a5f; color:white; border-radius:10px; padding:2px 7px; font-size:9px; font-weight:800; margin-right:6px;"
-            th:text="${'ITEM ' + stat.count}">ITEM 1</span>
-      <span style="font-size:13px; font-weight:800; color:#0f172a;" th:text="${dev.brand ?: '—'}">Item</span>
-      <span th:if="${not #strings.isEmpty(dev.deviceType)}" style="font-size:9px; color:#64748b; margin-left:5px;"
-            th:text="${'(' + dev.deviceType + ')'}"></span>
-    </div>
-
-    <table style="width:100%; border-collapse:collapse; font-size:10px;">
-      <tr>
-        <td style="width:50%; padding:6px 9px; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:8px; font-weight:700; color:#64748b; letter-spacing:.8px; text-transform:uppercase;">Serial Number</div>
-          <div style="font-family:monospace; font-size:11px; font-weight:700; color:#0f172a; margin-top:2px;" th:text="${not #strings.isEmpty(dev.serialNo) ? dev.serialNo : '—'}">—</div>
-        </td>
-        <td style="width:50%; padding:6px 9px; border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:8px; font-weight:700; color:#64748b; letter-spacing:.8px; text-transform:uppercase;">Color / Accessories</div>
-          <div style="font-size:10px; font-weight:600; color:#0f172a; margin-top:2px;"
-               th:text="${(#strings.isEmpty(dev.color) ? '—' : dev.color) + (#strings.isEmpty(dev.accessories) ? '' : '  |  ' + dev.accessories)}">—</div>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="2" style="padding:7px 9px; background:#fff7ed; border-bottom:1px solid #fed7aa;">
-          <div style="font-size:8px; font-weight:800; color:#9a3412; letter-spacing:1px; text-transform:uppercase;">Reported Problem</div>
-          <div style="font-size:12px; line-height:1.45; font-weight:700; color:#7c2d12; margin-top:2px;" th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}">—</div>
-        </td>
-      </tr>
-      <tr th:if="${not #strings.isEmpty(dev.deviceConditions)}">
-        <td colspan="2" style="padding:7px 9px; background:#f0fdf4; border-bottom:1px solid #bbf7d0;">
-          <div style="font-size:8px; font-weight:800; color:#166534; letter-spacing:1px; text-transform:uppercase;">Item Condition on Intake</div>
-          <div style="font-size:11px; line-height:1.45; font-weight:700; color:#14532d; margin-top:2px; white-space:pre-line;" th:text="${dev.deviceConditions}">—</div>
-        </td>
-      </tr>
-      <tr th:if="${not #strings.isEmpty(dev.noticed)}">
-        <td colspan="2" style="padding:7px 9px; background:#fefce8; border-bottom:1px solid #fde047;">
-          <div style="font-size:8px; font-weight:800; color:#854d0e; letter-spacing:1px; text-transform:uppercase;">Noticed</div>
-          <div style="font-size:11px; line-height:1.45; font-weight:700; color:#713f12; margin-top:2px; white-space:pre-line;" th:text="${dev.noticed}">—</div>
-        </td>
-      </tr>
-    </table>
-  </div>
-
-  <div th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}"
-       style="border:1px dashed #94a3b8; padding:14px; color:#64748b; text-align:center; font-size:10px; margin-bottom:8px;">
-    No received items recorded
-  </div>
-
-  <table style="width:100%; border-collapse:collapse; margin-top:8px;" th:if="${not #strings.isEmpty(inv.remark)}">
+  <table th:if="${not #strings.isEmpty(inv.problemDesc)}" class="bk-complaint">
     <tr>
-      <td style="padding:7px 9px; border:1px solid #cbd5e1; background:#f8fafc;">
-        <div style="font-size:8px; font-weight:800; color:#475569; letter-spacing:1px; text-transform:uppercase;">Remark</div>
-        <div style="font-size:10px; font-weight:600; color:#0f172a; margin-top:2px;" th:text="${inv.remark}"></div>
+      <td class="bk-complaint__bar"></td>
+      <td class="bk-complaint__body">
+        <div class="bk-kicker">Customer Complaint</div>
+        <div class="bk-complaint__text" th:text="${inv.problemDesc}"></div>
       </td>
     </tr>
   </table>
 
+  <div class="bk-list-head">
+    <span>Received Items</span>
+    <span th:if="${inv.deviceRows != null and not #lists.isEmpty(inv.deviceRows)}">
+      <th:block th:text="${#lists.size(inv.deviceRows)}"></th:block>
+      <th:block th:text="${#lists.size(inv.deviceRows) == 1 ? ' item' : ' items'}"></th:block>
+      <th:block th:if="${inv.deviceRowTotal != null and inv.deviceRowTotal > 10}"
+                th:text="${' / ' + inv.deviceRowTotal}"></th:block>
+    </span>
+  </div>
+
+  <table class="bk-grid">
+    <thead>
+      <tr>
+        <th class="bk-c-no">#</th>
+        <th class="bk-c-dev">Device</th>
+        <th class="bk-c-sn">Serial</th>
+        <th class="bk-c-col">Color</th>
+        <th class="bk-c-prob">Problem</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="dev, stat : ${inv.deviceRows}">
+        <td class="bk-c-no" th:text="${stat.count}"></td>
+        <td class="bk-c-dev">
+          <div class="bk-dev-name" th:text="${not #strings.isEmpty(dev.brand) ? dev.brand : '—'}"></div>
+          <div class="bk-dev-meta">
+            <span th:if="${!#strings.isEmpty(dev.deviceType)}" th:text="${dev.deviceType}"></span>
+            <span th:if="${!#strings.isEmpty(dev.deviceType) and !#strings.isEmpty(dev.model)}"> · </span>
+            <span th:if="${!#strings.isEmpty(dev.model)}" th:text="${dev.model}"></span>
+          </div>
+        </td>
+        <td class="bk-c-sn" th:text="${not #strings.isEmpty(dev.serialNo) ? dev.serialNo : '—'}"></td>
+        <td class="bk-c-col" th:text="${not #strings.isEmpty(dev.color) ? dev.color : '—'}"></td>
+        <td class="bk-c-prob">
+          <div th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}"></div>
+          <div class="bk-extra"
+               th:if="${!#strings.isEmpty(dev.accessories) or !#strings.isEmpty(dev.deviceConditions) or !#strings.isEmpty(dev.noticed)}">
+            <span th:if="${!#strings.isEmpty(dev.accessories)}" th:text="${'Acc: ' + dev.accessories}"></span>
+            <span th:if="${!#strings.isEmpty(dev.deviceConditions)}" th:text="${'Cond: ' + dev.deviceConditions}"></span>
+            <span th:if="${!#strings.isEmpty(dev.noticed)}" th:text="${'Note: ' + dev.noticed}"></span>
+          </div>
+        </td>
+      </tr>
+      <tr th:if="${inv.deviceRows == null or #lists.isEmpty(inv.deviceRows)}">
+        <td colspan="5" class="bk-empty">No received items recorded</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div th:if="${inv.deviceRowTotal != null and inv.deviceRowTotal > 10}" class="bk-cap">
+    Voucher တွင် ပစ္စည်း ၁၀ ခုအထိသာ ပြသည်။
+  </div>
+
+  <table th:if="${not #strings.isEmpty(inv.remark)}" class="bk-remark">
+    <tr>
+      <td>
+        <div class="bk-kicker">General Remark</div>
+        <div th:text="${inv.remark}"></div>
+      </td>
+    </tr>
+  </table>
 </div>
 
 </body>

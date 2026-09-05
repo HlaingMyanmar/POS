@@ -1,6 +1,7 @@
 package com.sspd.servicemgmt.feature.auth
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sspd.servicemgmt.BuildConfig
@@ -8,6 +9,7 @@ import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.LoginRequest
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.google.gson.Gson
+import com.google.gson.JsonParseException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,7 +44,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 if (response.isSuccessful && response.body()?.success == true) {
                     val auth = response.body()?.data
-                    if (auth == null) {
+                    if (auth == null || auth.accessToken.isBlank()) {
                         _uiState.update {
                             it.copy(loading = false, error = "အကောင့်အချက်အလက် ရယူ၍မရပါ။ ပြန်ကြိုးစားပါ")
                         }
@@ -90,6 +92,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } catch (error: Exception) {
+                Log.e("LoginViewModel", "Login failed", error)
                 _uiState.update {
                     it.copy(loading = false, error = friendlyLoginError(error))
                 }
@@ -106,10 +109,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 "ဆာဗာလိပ်စာကို ရှာမတွေ့ပါ။ Wi-Fi သို့မဟုတ် အင်တာနက်လိုင်းကို စစ်ဆေးပါ"
             causes.any { it is SSLException } ->
                 "လုံခြုံသော ဆက်သွယ်မှု မပြုလုပ်နိုင်ပါ။ စနစ်တာဝန်ခံကို ဆက်သွယ်ပါ"
+            causes.any { it is JsonParseException || it is ClassCastException } ->
+                "ဆာဗာအဖြေကို ဖတ်၍မရပါ။ အက်ပ်ဗားရှင်းအသစ် ထည့်သွင်းပါ"
+            causes.any { it is IllegalArgumentException || it is IllegalStateException } ->
+                "ဆာဗာချိတ်ဆက်မှု ပြင်ဆင်မှု မှားနေပါသည်။ ပြန်ထည့်သွင်းပါ"
             causes.any { it is ConnectException || it is NoRouteToHostException || it is IOException } ->
                 "ဆာဗာနှင့် ချိတ်ဆက်၍မရပါ။ ကွန်ရက်ချိတ်ဆက်မှုကို စစ်ဆေးပါ"
             else ->
-                "ဝင်ရောက်မှု မအောင်မြင်ပါ။ ခဏနောက် ပြန်ကြိုးစားပါ"
+                "ဝင်ရောက်မှု မအောင်မြင်ပါ (${error.javaClass.simpleName})"
         }
     }
 

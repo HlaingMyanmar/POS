@@ -199,6 +199,7 @@ public class PaginationService {
                 .serialNo(base.getSerialNo())
                 .color(base.getColor())
                 .deviceRows(base.getDeviceRows())
+                .deviceRowTotal(base.getDeviceRowTotal())
                 // ── Print options ─────────────────────────────────────────────
                 .pageConfig(base.getPageConfig())
                 .showLogo(base.isShowLogo())

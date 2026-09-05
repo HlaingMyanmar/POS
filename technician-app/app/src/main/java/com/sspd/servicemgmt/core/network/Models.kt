@@ -1,11 +1,13 @@
 package com.sspd.servicemgmt.core.network
 
+import com.google.gson.annotations.SerializedName
+
 // ─── Generic wrappers ────────────────────────────────────────────────────────
 
 data class ApiResponse<T>(
-    val success: Boolean = false,
-    val message: String = "",
-    val data: T? = null
+    @SerializedName("success") val success: Boolean = false,
+    @SerializedName("message") val message: String = "",
+    @SerializedName("data") val data: T? = null
 )
 
 data class AppVersionDTO(
@@ -41,17 +43,20 @@ data class PagedResponse<T>(
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
-data class LoginRequest(val usernameOremail: String, val password: String)
+data class LoginRequest(
+    @SerializedName("usernameOremail") val usernameOremail: String,
+    @SerializedName("password") val password: String
+)
 
 data class AuthResponse(
-    val accessToken: String,
-    val refreshToken: String? = null,
-    val username: String,
-    val name: String? = null,
-    val phone: String? = null,
-    val staffId: Int? = null,
-    val roles: List<String> = emptyList(),
-    val permissions: List<String> = emptyList()
+    @SerializedName("accessToken") val accessToken: String = "",
+    @SerializedName("refreshToken") val refreshToken: String? = null,
+    @SerializedName("username") val username: String = "",
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("phone") val phone: String? = null,
+    @SerializedName("staffId") val staffId: Int? = null,
+    @SerializedName("roles") val roles: List<String> = emptyList(),
+    @SerializedName("permissions") val permissions: List<String> = emptyList()
 )
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

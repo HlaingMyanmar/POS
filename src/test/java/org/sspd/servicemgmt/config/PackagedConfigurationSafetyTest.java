@@ -19,6 +19,7 @@ class PackagedConfigurationSafetyTest {
         assertTrue(props.contains("${SSL_ENABLED"));
         assertTrue(props.contains("${APP_BASE_URL"));
         assertTrue(props.contains("${APP_APK_STORAGE_DIR"));
+        assertTrue(props.contains("${APP_PRINT_TEMPLATES_DIR"));
         assertTrue(props.contains("${BACKUP_ROOT_DIRECTORY"));
         assertTrue(props.contains("${CORS_ALLOWED_ORIGINS"));
         assertTrue(props.contains("server.ssl.enabled=${SSL_ENABLED:false}"));
@@ -37,6 +38,7 @@ class PackagedConfigurationSafetyTest {
         assertTrue(props.contains("server.ssl.enabled=${SSL_ENABLED:false}"));
         assertTrue(props.contains("server.address=${SERVER_ADDRESS:127.0.0.1}"));
         assertTrue(props.contains("/opt/sspd/apk"));
+        assertTrue(props.contains("/opt/sspd/print"));
         assertTrue(props.contains("/opt/sspd/Backup"));
         assertTrue(props.contains("spring.flyway.clean-disabled=true"));
         assertFalse(props.contains("C:/"));

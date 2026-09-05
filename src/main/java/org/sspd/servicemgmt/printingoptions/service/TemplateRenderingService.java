@@ -3,14 +3,17 @@ package org.sspd.servicemgmt.printingoptions.service;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 import org.sspd.servicemgmt.printingoptions.config.PrintLayoutConfig;
+import org.sspd.servicemgmt.printingoptions.config.PrintTemplatePaths;
 import org.sspd.servicemgmt.printingoptions.dto.PrintInvoiceData;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 
 /**
@@ -30,9 +33,9 @@ import java.util.List;
  * <h3>Maintainability</h3>
  * <ul>
  *   <li>To change which template is used for A5 — edit {@link #resolveTemplate}.</li>
- *   <li>To redesign the invoice header — edit
- *       {@code templates/print/fragments/invoice-header.html}.
- *       No Java code changes needed.</li>
+ *   <li>To redesign a voucher — edit that type's fragments under
+ *       {@code templates/print/fragments/} (booking-header, booking-table,
+ *       booking-footer, …). Page wrappers only set paper size.</li>
  *   <li>To change the HTML preview wrapper (browser chrome) — edit
  *       {@link #buildPreviewShell}.  The PDF wrapper lives in
  *       {@link HtmlPdfService}.</li>
@@ -45,15 +48,34 @@ public class TemplateRenderingService {
 
     private final TemplateEngine templateEngine;
 
+    @Value("${app.print.templates-dir:}")
+    private String printTemplatesDir;
+
     private String printCss = "";
+
+    String printCss() {
+        if (PrintTemplatePaths.cssAvailable(printTemplatesDir)) {
+            try {
+                return Files.readString(PrintTemplatePaths.cssFile(printTemplatesDir), StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                log.warn("Failed to read overlay print CSS: {}", e.getMessage());
+            }
+        }
+        return printCss == null ? "" : printCss;
+    }
 
     @PostConstruct
     void loadPrintCss() {
         try {
+            if (PrintTemplatePaths.cssAvailable(printTemplatesDir)) {
+                printCss = Files.readString(PrintTemplatePaths.cssFile(printTemplatesDir), StandardCharsets.UTF_8);
+                log.info("Print CSS overlay enabled: {}", PrintTemplatePaths.cssFile(printTemplatesDir));
+                return;
+            }
             var res = new ClassPathResource("print/css/print-base.css");
             printCss = res.getContentAsString(StandardCharsets.UTF_8);
         } catch (Exception e) {
-            log.warn("print-base.css not found on classpath — styles will be missing in preview");
+            log.warn("print-base.css not found — styles will be missing in preview");
         }
     }
 
@@ -177,29 +199,30 @@ public class TemplateRenderingService {
      *
      * <p>Template resolution:
      * <pre>
-     *   BOOKING      + A4/A5  → print/booking-a4  / print/booking-a5
-     *   SERVICE_JOB / SERVICE_DONE + A4/A5  → print/service-job-a4 / print/service-job-a5
-     *   SALE/PURCHASE+ A4/A5  → print/invoice-a4 / print/invoice-a5
-     *   POS_80MM/58MM (any)   → print/invoice-pos
+     *   BOOKING      → print/booking-a4 | booking-a5 | booking-pos
+     *   SALE         → print/sale-a4 | sale-a5 | sale-pos
+     *   PURCHASE     → print/purchase-a4 | purchase-a5 | purchase-pos
+     *   SERVICE_JOB  → print/service-job-a4 | service-job-a5 | service-job-pos
+     *   SERVICE_DONE → print/service-done-a4 | service-done-a5 | service-done-pos
      * </pre>
      *
      * To add a new document type or paper size, edit only this method.
      */
     private String resolveTemplate(PrintLayoutConfig config, PrintInvoiceData data) {
         String dt = data.getDocumentType() != null ? data.getDocumentType() : "";
-        return switch (config.getName()) {
-            case "POS_80MM", "POS_58MM" -> "print/invoice-pos";
-            case "A5" -> switch (dt) {
-                case "BOOKING"      -> "print/booking-a5";
-                case "SERVICE_JOB", "SERVICE_DONE" -> "print/service-job-a5";
-                default             -> "print/invoice-a5";
-            };
-            default -> switch (dt) { // A4 is the default paper size
-                case "BOOKING"      -> "print/booking-a4";
-                case "SERVICE_JOB", "SERVICE_DONE" -> "print/service-job-a4";
-                default             -> "print/invoice-a4";
-            };
+        String paper = switch (config.getName()) {
+            case "POS_80MM", "POS_58MM" -> "pos";
+            case "A5" -> "a5";
+            default -> "a4";
         };
+        String type = switch (dt) {
+            case "BOOKING" -> "booking";
+            case "PURCHASE" -> "purchase";
+            case "SERVICE_JOB" -> "service-job";
+            case "SERVICE_DONE" -> "service-done";
+            default -> "sale";
+        };
+        return "print/" + type + "-" + paper;
     }
 
     /** Builds the Thymeleaf context with all variables the templates expect. */
@@ -241,7 +264,7 @@ public class TemplateRenderingService {
                   </style>
                 </head>
                 <body>
-                """.formatted(printCss,
+                """.formatted(printCss(),
                               config.getCssPageSize(),
                               config.getMarginTopMm(), config.getMarginRightMm(),
                               config.getMarginBottomMm(), config.getMarginLeftMm(),

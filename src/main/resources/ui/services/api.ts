@@ -61,6 +61,15 @@ const isServiceJobRequest = (url?: string) => /\/v1\/service-jobs(?:\/|$)/i.test
  * Injects token from JS Memory
  */
 api.interceptors.request.use(config => {
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    const headers = config.headers;
+    if (headers && typeof headers.delete === 'function') {
+      headers.delete('Content-Type');
+    } else if (headers) {
+      delete headers['Content-Type'];
+      delete headers['content-type'];
+    }
+  }
   if (_accessToken) {
     config.headers.Authorization = `Bearer ${_accessToken}`;
   }
@@ -195,16 +204,14 @@ export const appVersionSettingsService = {
   uploadApk: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-apk', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    // Let the browser generate the multipart boundary. Supplying a
+    // Content-Type manually can result in a request without its boundary.
+    return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-apk', formData);
   },
   uploadTechnicianApk: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-technician-apk', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-technician-apk', formData);
   },
 };
 
@@ -217,9 +224,7 @@ export const backupService = {
   importBackup: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post<FormData, ApiResponse<any>>('/v1/backup/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post<FormData, ApiResponse<any>>('/v1/backup/import', formData);
   },
 };
 

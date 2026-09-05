@@ -80,6 +80,8 @@ public class PrintInvoiceData {
     private String color;
     private String shelfLocation;
     private List<DeviceRow> deviceRows; // multiple devices per booking
+    /** Original received-item count before voucher cap (10). */
+    private Integer deviceRowTotal;
 
     @Data
     @Builder

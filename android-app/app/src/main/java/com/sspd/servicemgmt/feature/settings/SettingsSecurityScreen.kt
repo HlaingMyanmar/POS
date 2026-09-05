@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sspd.servicemgmt.core.navigation.ComposePages
 import com.sspd.servicemgmt.core.navigation.Screen
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.util.PreferenceManager
@@ -41,15 +42,15 @@ fun SettingsSecurityScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val isAdmin = prefs.hasRole("ADMINISTRATOR") || prefs.hasRole("ADMIN")
     val security = listOf(
         SettingsEntry("Account", "Profile and account information", Icons.Outlined.ManageAccounts, Screen.Account.route),
-        SettingsEntry("Users", "Accounts, status and staff links", Icons.Outlined.Group, webRoute("Users", "/rbac/users"), "CAN_ACCESS_USERS_READ"),
-        SettingsEntry("Roles & Permissions", "Access control and permissions", Icons.Outlined.AdminPanelSettings, webRoute("Roles & Permissions", "/rbac/roles"), "CAN_ACCESS_ROLES_READ"),
+        SettingsEntry("Users", "Accounts, status and staff links", Icons.Outlined.Group, ComposePages.users, "CAN_ACCESS_USERS_READ"),
+        SettingsEntry("Roles & Permissions", "Access control and permissions", Icons.Outlined.AdminPanelSettings, ComposePages.roles, "CAN_ACCESS_ROLES_READ"),
         SettingsEntry("Audit Logs", "Login and system activity history", Icons.Outlined.Policy, Screen.AuditLog.route, "CAN_ACCESS_AUDIT_LOG_READ"),
     )
     val system = listOf(
-        SettingsEntry("Company Settings", "Business identity and contact details", Icons.Outlined.Business, webRoute("Company Settings", "/settings/company"), adminOnly = true),
-        SettingsEntry("Voucher & Print", "Receipt and document design", Icons.Outlined.ReceiptLong, webRoute("Voucher Settings", "/settings/voucher"), adminOnly = true),
-        SettingsEntry("Backup & Restore", "Database backup controls", Icons.Outlined.Backup, webRoute("Backup & Restore", "/settings/backup"), "CAN_ACCESS_BACKUP_SETTINGS_READ"),
-        SettingsEntry("App Version Management", "Manager and Technician APK releases", Icons.Outlined.AppSettingsAlt, webRoute("App Version", "/settings/app-version"), "CAN_ACCESS_USERS_READ"),
+        SettingsEntry("Company Settings", "Business identity and contact details", Icons.Outlined.Business, ComposePages.company, adminOnly = true),
+        SettingsEntry("Voucher & Print", "Receipt and document design", Icons.Outlined.ReceiptLong, ComposePages.voucher, adminOnly = true),
+        SettingsEntry("Backup & Restore", "Database backup controls", Icons.Outlined.Backup, ComposePages.backup, "CAN_ACCESS_BACKUP_SETTINGS_READ"),
+        SettingsEntry("App Version Management", "Manager and Technician APK releases", Icons.Outlined.AppSettingsAlt, Screen.SoftwareUpdate.route, "CAN_ACCESS_USERS_READ"),
         SettingsEntry("Software Update", "Check and install Manager updates", Icons.Outlined.SystemUpdate, Screen.SoftwareUpdate.route),
         SettingsEntry("About", "Application and build information", Icons.Outlined.Info, Screen.About.route),
     )
@@ -112,5 +113,3 @@ private fun SettingsSection(title: String, entries: List<SettingsEntry>, onNavig
 
 private fun allowed(entry: SettingsEntry, prefs: PreferenceManager, isAdmin: Boolean): Boolean =
     (!entry.adminOnly || isAdmin) && (entry.permission == null || isAdmin || prefs.hasPermission(entry.permission))
-
-private fun webRoute(title: String, endpoint: String) = Screen.WebModule.createRoute(title, endpoint)

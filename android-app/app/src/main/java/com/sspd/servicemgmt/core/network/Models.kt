@@ -782,6 +782,17 @@ data class NoteRequest(val note: String? = null)
 data class ReasonRequest(val reason: String)
 
 data class CompanySettingsDTO(
+    val id: Int? = null,
+    val companyName: String? = null,
+    val companyAddress: String? = null,
+    val companyPhone: String? = null,
+    val companyEmail: String? = null,
+    val invoiceTitle: String? = null,
+    val footerNote: String? = null,
+    val taglineMm: String? = null,
+    val salePrefix: String? = null,
+    val purchasePrefix: String? = null,
+    val bookingPrefix: String? = null,
     val serviceAllowDeliveryWithDue: Boolean? = false
 )
 
@@ -1464,4 +1475,31 @@ data class ProfitLossReportDTO(
     val expenseItems:     List<ProfitLossLineItemDTO>? = null,
     val totalExpenses:    Double?                    = null,
     val netProfit:        Double?                    = null
+)
+
+data class RbacUserDTO(
+    val id: Long? = null,
+    val username: String = "",
+    val email: String? = null,
+    val isActive: Boolean = true,
+    val roles: List<String> = emptyList(),
+    val staffId: Int? = null,
+    val staffName: String? = null
+)
+
+data class RbacRoleDTO(
+    val id: Int? = null,
+    val name: String = "",
+    val description: String? = null
+)
+
+data class QuotationDTO(
+    val id: Int? = null,
+    val quotationCode: String? = null,
+    val customerId: Int? = null,
+    val customerName: String? = null,
+    val quotationDate: String? = null,
+    val status: String? = null,
+    val totalAmount: Double? = null,
+    val netAmount: Double? = null
 )

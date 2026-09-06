@@ -47,4 +47,20 @@ public class AppVersionSettings {
     @Column(name = "technician_changelog", length = 2000)
     @Builder.Default
     private String technicianChangelog = "";
+
+    @Column(name = "customer_version_code", nullable = false)
+    @Builder.Default
+    private Integer customerVersionCode = 1;
+
+    @Column(name = "customer_version_name", nullable = false, length = 50)
+    @Builder.Default
+    private String customerVersionName = "1.0.0";
+
+    @Column(name = "customer_force_update", nullable = false)
+    @Builder.Default
+    private boolean customerForceUpdate = false;
+
+    @Column(name = "customer_changelog", length = 2000)
+    @Builder.Default
+    private String customerChangelog = "";
 }

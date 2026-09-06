@@ -12,4 +12,8 @@ public class AppVersionSettingsDTO {
     private String  technicianVersionName;
     private boolean technicianForceUpdate;
     private String  technicianChangelog;
+    private Integer customerVersionCode;
+    private String  customerVersionName;
+    private boolean customerForceUpdate;
+    private String  customerChangelog;
 }

@@ -9,6 +9,7 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.client.RestClient;
 import org.sspd.servicemgmt.jwt.CustomUserDetailsService;
 
 @Configuration
@@ -29,6 +30,11 @@ public class ApplicationConfig {
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
+    }
+
+    @Bean
+    public RestClient.Builder restClientBuilder() {
+        return RestClient.builder();
     }
 
     @Bean

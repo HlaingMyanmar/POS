@@ -263,7 +263,9 @@ public enum PermissionName {
     CAN_ACCESS_VIDEO_UPDATE("Video Management တွင် video ပြင်ဆင်ခွင့်"),
     CAN_ACCESS_VIDEO_DELETE("Video Management တွင် video ဖျက်ခွင့်"),
     CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN("Technician App video catalog ကြည့်ခွင့်"),
-    CAN_ACCESS_VIDEO_CATALOG_CLIENT("Client App video catalog ကြည့်ခွင့်");
+    CAN_ACCESS_VIDEO_CATALOG_CLIENT("Client App video catalog ကြည့်ခွင့်"),
+    CAN_ACCESS_CUSTOMER_APP_ORDER_READ("Customer App order စာရင်း ကြည့်ခွင့်"),
+    CAN_ACCESS_CUSTOMER_APP_ORDER_UPDATE("Customer App order အခြေအနေ ပြင်ခွင့်");
 
 
 

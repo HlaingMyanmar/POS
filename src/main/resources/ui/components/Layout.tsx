@@ -202,6 +202,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ပေးသွင်းသူ', icon: <Truck size={18} />, path: AppRoute.SUPPLIERS, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_SUPPLIER_READ' },
       { name: 'ရောင်းချမှု', icon: <TrendingUp size={18} />, path: AppRoute.SALES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ဈေးနှုန်းကမ်းလှမ်း', icon: <ClipboardList size={18} />, path: AppRoute.QUOTATIONS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_QUOTATION_READ' },
+      { name: 'Customer App အော်ဒါ', icon: <Smartphone size={18} />, path: AppRoute.CUSTOMER_APP_ORDERS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ရောင်းပြန်ပို့', icon: <RotateCcw size={18} />, path: AppRoute.SALE_RETURNS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_RETURN_READ' },
       { name: 'ဖောက်သည်များ', icon: <Users size={18} />, path: AppRoute.CUSTOMERS, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_CUSTOMER_READ' },
       { name: 'အကြွေးစားပွဲ', icon: <CreditCard size={18} />, path: AppRoute.CREDIT, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_SALE_READ' },

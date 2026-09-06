@@ -25,7 +25,8 @@ import PurchaseReturnManagement from './pages/PurchaseReturnManagement';
 import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
 import SaleManagement from './pages/SaleManagement';
 import SaleReturnManagement from './pages/SaleReturnManagement';
-import QuotationManagement from './pages/QuotationManagement';
+import CustomerAppOrdersPage from './pages/CustomerAppOrdersPage';
+import CustomerShopPage from './pages/customer-shop/CustomerShopPage';
 import CreditManagement from './pages/CreditManagement';
 import StockAdjustmentManagement from './pages/StockAdjustmentManagement';
 import ExpenseIncomeManagement from './pages/ExpenseIncomeManagement';
@@ -229,28 +230,47 @@ const App: React.FC = () => {
     return <>{element}</>;
   };
 
+  const shopRoute = <Route path={AppRoute.CUSTOMER_SHOP} element={<CustomerShopPage />} />;
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-indigo-600"></div>
-      </div>
+      <HashRouter>
+        <Routes>
+          {shopRoute}
+          <Route path="*" element={
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-indigo-600"></div>
+            </div>
+          } />
+        </Routes>
+      </HashRouter>
     );
   }
 
   if (needsInitialAdmin) {
     return (
-      <InitialAdminPage onComplete={() => {
-        setNeedsInitialAdmin(false);
-      }} />
+      <HashRouter>
+        <Routes>
+          {shopRoute}
+          <Route path="*" element={<InitialAdminPage onComplete={() => { setNeedsInitialAdmin(false); }} />} />
+        </Routes>
+      </HashRouter>
     );
   }
 
   if (user && needsSetup) {
     return (
-      <SetupWizardPage onComplete={() => {
-        setNeedsSetup(false);
-        void getCompanySettings(true);
-      }} />
+      <HashRouter>
+        <Routes>
+          {shopRoute}
+          <Route path="*" element={
+            <SetupWizardPage onComplete={() => {
+              setNeedsSetup(false);
+              void getCompanySettings(true);
+            }} />
+          } />
+        </Routes>
+      </HashRouter>
     );
   }
 
@@ -262,6 +282,7 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <Routes>
+        {shopRoute}
         <Route path="/scan" element={<ScanPage />} />
         <Route
           path={AppRoute.LOGIN}
@@ -303,6 +324,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.PURCHASE_RETURNS}    element={guard(<PurchaseReturnManagement />,   'CAN_ACCESS_PURCHASE_RETURN_READ')} />
           <Route path={AppRoute.SALES}               element={guard(<SaleManagement />,             'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.QUOTATIONS}          element={guard(<QuotationManagement />,        'CAN_ACCESS_QUOTATION_READ')} />
+          <Route path={AppRoute.CUSTOMER_APP_ORDERS} element={guard(<CustomerAppOrdersPage />,      'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.SALE_RETURNS}        element={guard(<SaleReturnManagement />,       'CAN_ACCESS_SALE_RETURN_READ')} />
           <Route path={AppRoute.CREDIT}              element={guard(<CreditManagement />,           'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.PROFIT_LOSS}         element={guard(<ProfitLossReport />,           'CAN_ACCESS_REPORT_READ')} />

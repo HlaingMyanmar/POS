@@ -44,6 +44,9 @@ public class Booking {
     @Column(columnDefinition = "TEXT")
     private String remark;
 
+    @Column(length = 20)
+    private String source;
+
     @Builder.Default
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")

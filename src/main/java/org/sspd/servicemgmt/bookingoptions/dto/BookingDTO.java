@@ -21,6 +21,7 @@ public class BookingDTO {
     private String complaintNote;
     private BookingStatus status;
     private String remark;
+    private String source;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<BookingItemDTO> items = new ArrayList<>();

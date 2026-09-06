@@ -1,5 +1,6 @@
 package org.sspd.servicemgmt.serviceoptions.repository;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.serviceoptions.model.ServiceItem;
@@ -9,6 +10,7 @@ import java.util.Optional;
 
 @Repository
 public interface ServiceItemRepository extends JpaRepository<ServiceItem, Integer> {
+    @EntityGraph(attributePaths = {"serviceType", "subServiceType"})
     List<ServiceItem> findByIsActiveTrue();
     List<ServiceItem> findByServiceTypeId(Integer serviceTypeId);
     Optional<ServiceItem> findTopByOrderByIdDesc();

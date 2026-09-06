@@ -48,7 +48,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 4. Email ရှိပြီး လက်ရှိ SecurityContext မှာ Authentication မရှိသေးရင်
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            UserDetails userDetails;
+            try {
+                userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            } catch (Exception ignored) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             // 5. Token version စစ်ဆေးခြင်း — version မတိုက်မိရင် session invalid ဖြစ်သွားပြီ
             if (userDetails instanceof TokenAwareUserDetails tud) {

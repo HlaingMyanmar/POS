@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { User, AppLanguage } from '../types';
+import { Link } from 'react-router-dom';
+import { User, AppLanguage, AppRoute } from '../types';
 import { authService, setupService } from '../services/api';
 import InitialAdminForm from './InitialAdminForm';
 import { Lock, User as UserIcon, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, Languages } from 'lucide-react';
@@ -204,7 +205,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, language, onLanguageChang
           </form>
         </div>
 
-        <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 text-center">
+        <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 text-center space-y-2">
+          <Link to={AppRoute.CUSTOMER_SHOP} className="block text-xs font-bold text-indigo-600 hover:text-indigo-800">
+            ဖောက်သည်ဝင်ရန် (ပစ္စည်း / Service)
+          </Link>
           <p className="text-slate-400 text-[10px] font-semibold">
             &copy; 2026 SSPD IT Solution - {appVersion ? `v${appVersion}` : 'v1.2.0'}
           </p>

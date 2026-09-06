@@ -8,6 +8,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.customerportaloptions.service.CustomerPortalAuthService;
+import org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.rbacoptions.permissionoptions.enums.PermissionName;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
@@ -23,10 +25,14 @@ import java.util.Set;
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
+    private final CustomerPortalAuthService customerPortalAuthService;
 
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String usernameOrEmail) throws ResourceNotFoundException {
+        if (CustomerPortalAuth.isCustomerUsername(usernameOrEmail)) {
+            return customerPortalAuthService.loadUserDetails(usernameOrEmail);
+        }
 
 
         User user = userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)

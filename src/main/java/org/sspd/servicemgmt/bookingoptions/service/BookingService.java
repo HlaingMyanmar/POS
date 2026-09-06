@@ -77,6 +77,7 @@ public class BookingService {
                 .complaintNote(trimToNull(dto.getComplaintNote()))
                 .status(BookingStatus.CONFIRMED)
                 .remark(trimToNull(dto.getRemark()))
+                .source(trimToNull(dto.getSource()))
                 .items(new ArrayList<>())
                 .build();
         booking = repository.saveAndFlush(booking);
@@ -248,6 +249,10 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
     }
 
+    public BookingDTO toSummaryDto(Booking booking) {
+        return toDto(booking, false);
+    }
+
     private BookingDTO toDto(Booking booking, boolean detail) {
         BookingDTO dto = new BookingDTO();
         dto.setId(booking.getId());
@@ -260,6 +265,7 @@ public class BookingService {
         dto.setComplaintNote(booking.getComplaintNote());
         dto.setStatus(booking.getStatus());
         dto.setRemark(booking.getRemark());
+        dto.setSource(booking.getSource());
         dto.setCreatedAt(booking.getCreatedAt());
         dto.setUpdatedAt(booking.getUpdatedAt());
         if (detail) {

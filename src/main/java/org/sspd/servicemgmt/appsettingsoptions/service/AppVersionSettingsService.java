@@ -39,6 +39,14 @@ public class AppVersionSettingsService {
         }
         s.setTechnicianForceUpdate(dto.isTechnicianForceUpdate());
         s.setTechnicianChangelog(dto.getTechnicianChangelog() != null ? dto.getTechnicianChangelog() : "");
+        if (dto.getCustomerVersionCode() != null && dto.getCustomerVersionCode() > 0) {
+            s.setCustomerVersionCode(dto.getCustomerVersionCode());
+        }
+        if (dto.getCustomerVersionName() != null && !dto.getCustomerVersionName().isBlank()) {
+            s.setCustomerVersionName(dto.getCustomerVersionName().trim());
+        }
+        s.setCustomerForceUpdate(dto.isCustomerForceUpdate());
+        s.setCustomerChangelog(dto.getCustomerChangelog() != null ? dto.getCustomerChangelog() : "");
         return toDto(repository.save(s));
     }
 
@@ -58,6 +66,10 @@ public class AppVersionSettingsService {
         dto.setTechnicianVersionName(s.getTechnicianVersionName() == null ? "1.0.0" : s.getTechnicianVersionName());
         dto.setTechnicianForceUpdate(s.isTechnicianForceUpdate());
         dto.setTechnicianChangelog(s.getTechnicianChangelog() == null ? "" : s.getTechnicianChangelog());
+        dto.setCustomerVersionCode(s.getCustomerVersionCode() == null ? 1 : s.getCustomerVersionCode());
+        dto.setCustomerVersionName(s.getCustomerVersionName() == null ? "1.0.0" : s.getCustomerVersionName());
+        dto.setCustomerForceUpdate(s.isCustomerForceUpdate());
+        dto.setCustomerChangelog(s.getCustomerChangelog() == null ? "" : s.getCustomerChangelog());
         return dto;
     }
 }

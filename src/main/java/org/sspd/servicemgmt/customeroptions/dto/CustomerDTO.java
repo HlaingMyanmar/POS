@@ -14,6 +14,7 @@ public class CustomerDTO {
     @NotBlank(message = "Phone number is required")
     @Size(max = 20)
     private String phone;
+    private String email;
 
     @NotBlank(message = "Address is required")
     private String address;

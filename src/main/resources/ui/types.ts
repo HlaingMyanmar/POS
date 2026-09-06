@@ -1146,6 +1146,7 @@ export interface ShelfLocationDTO {
 
 export enum AppRoute {
   LOGIN = '/login',
+  CUSTOMER_SHOP = '/shop',
   DASHBOARD = '/',
   USERS = '/rbac/users',
   ROLES = '/rbac/roles',
@@ -1202,5 +1203,6 @@ export enum AppRoute {
   OPENING_BALANCE          = '/accounting/opening-balance',
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',
+  CUSTOMER_APP_ORDERS      = '/crm/customer-app-orders',
   DAILY_SNAPSHOT           = '/reports/daily-snapshot'
 }

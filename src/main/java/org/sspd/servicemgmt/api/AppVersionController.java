@@ -21,13 +21,13 @@ public class AppVersionController {
 
     private final AppVersionSettingsService versionSettingsService;
 
-    @Value("${app.download.base-url}")
+    @Value("${app.download.base-url:}")
     private String downloadBaseUrl;
 
     @Value("${app.download.apk-origin:http://118.27.151.89}")
     private String apkDownloadOrigin;
 
-    @Value("${app.apk.storage-dir}")
+    @Value("${app.apk.storage-dir:./apk-storage}")
     private String apkStorageDir;
 
     @GetMapping("/version")
@@ -52,6 +52,19 @@ public class AppVersionController {
                 s.isTechnicianForceUpdate(),
                 s.getTechnicianChangelog(),
                 "technician.apk",
+                request
+        )));
+    }
+
+    @GetMapping("/customer/version")
+    public ResponseEntity<ApiResponse<AppVersionResponse>> getCustomerVersion(HttpServletRequest request) {
+        AppVersionSettings s = versionSettingsService.getOrCreate();
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", toResponse(
+                s.getCustomerVersionCode() == null ? 1 : s.getCustomerVersionCode(),
+                s.getCustomerVersionName() == null ? "1.0.0" : s.getCustomerVersionName(),
+                s.isCustomerForceUpdate(),
+                s.getCustomerChangelog(),
+                "customer.apk",
                 request
         )));
     }

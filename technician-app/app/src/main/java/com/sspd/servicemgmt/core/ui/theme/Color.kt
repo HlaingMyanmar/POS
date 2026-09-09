@@ -2,24 +2,27 @@ package com.sspd.servicemgmt.core.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// SSPD Technician — professional field-service palette
-val Primary      = Color(0xFF0F766E)   // Teal: primary actions and active states
-val PrimaryDark  = Color(0xFF0F2A3D)   // Navy: headers and strong hierarchy
-val PrimaryLight = Color(0xFFE7F8F5)   // Soft teal surfaces
-val Accent       = Color(0xFF2DD4BF)   // Connectivity and live-state accent
+// SSPD Technician — user-specified custom theme palette
+val Primary      = Color(0xFF0F3D5E)   // Navy Blue
+val PrimaryDark  = Color(0xFF092942)   // Deep Navy Blue
+val PrimaryLight = Color(0xFFE8F2F8)   // Soft Navy Tint
+val Secondary    = Color(0xFF0EA5A8)   // Teal
+val SecondaryBg  = Color(0xFFE6F7F7)   // Soft Teal Tint
+val Accent       = Color(0xFF38BDF8)   // Sky Blue
+val AccentBg     = Color(0xFFF0F9FF)   // Soft Sky Tint
 
-val Success      = Color(0xFF15803D)
-val SuccessBg    = Color(0xFFECFDF3)
-val Warning      = Color(0xFFB45309)
-val WarningBg    = Color(0xFFFFF8E7)
-val Danger       = Color(0xFFDC2626)
-val DangerBg     = Color(0xFFFEF2F2)
-val Violet       = Color(0xFF2563EB)   // Secondary informational accent
-val VioletBg     = Color(0xFFEFF6FF)
+val Success      = Color(0xFF16A34A)   // Success Green
+val SuccessBg    = Color(0xFFDCFCE7)   // Soft Green Tint
+val Warning      = Color(0xFFF59E0B)   // Warning Amber
+val WarningBg    = Color(0xFFFEF3C7)   // Soft Amber Tint
+val Danger       = Color(0xFFDC2626)   // Error Red
+val DangerBg     = Color(0xFFFEF2F2)   // Soft Red Tint
+val Violet       = Color(0xFF0EA5A8)   // Secondary Teal Accent
+val VioletBg     = Color(0xFFE6F7F7)   // Soft Secondary Tint
 
-val TextMain     = Color(0xFF172033)
-val TextMuted    = Color(0xFF647184)
-val BorderColor  = Color(0xFFDDE5EC)
-val CardBg       = Color(0xFFFFFFFF)
-val ScreenBg     = Color(0xFFF4F7FA)
-val SurfaceSoft  = Color(0xFFF8FAFC)
+val TextMain     = Color(0xFF172033)   // Main Dark Text
+val TextMuted    = Color(0xFF64748B)   // Muted Text
+val BorderColor  = Color(0xFFE2E8F0)   // Clean Border
+val CardBg       = Color(0xFFFFFFFF)   // White Card Surface
+val ScreenBg     = Color(0xFFF6F8FA)   // Screen Background
+val SurfaceSoft  = Color(0xFFF8FAFC)   // Soft Container Surface

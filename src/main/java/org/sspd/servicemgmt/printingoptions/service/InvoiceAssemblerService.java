@@ -640,12 +640,10 @@ public class InvoiceAssemblerService {
         return safe(user.getUsername());
     }
 
-    /** Sale line warranty: detail first, then product catalog fallback (older rows / omitted payload). */
+    /** Sale line warranty snapshot only — never the current Product master. */
     private String resolveSaleWarrantyLabel(org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail d) {
         Integer months = d.getWarrantyMonths();
-        if (months == null || months <= 0) {
-            months = d.getProduct() != null ? d.getProduct().getWarrantyMonths() : null;
-        }
+        if (months == null || months <= 0) return "";
         return fmtWarrantyLabel(months, d.getWarrantyExpiryDate());
     }
 

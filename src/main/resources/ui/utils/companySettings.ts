@@ -10,6 +10,7 @@ export type CompanySettings = {
   footerNote?: string;
   taglineMm?: string;
   logoBase64?: string;
+  notificationSoundBase64?: string;
   voucherConfigJson?: string;
   salePrefix?: string;
   saleDigits?: number;
@@ -25,6 +26,17 @@ export type CompanySettings = {
   poFinalApprovalThreshold?: number | null;
   serviceSupervisorApprovalRequired?: boolean;
   serviceAllowDeliveryWithDue?: boolean;
+  /** 1–100: pickup orders require this percent as a pre-transfer deposit. */
+  pickupDepositPercent?: number;
+  mailSmtpHost?: string;
+  mailSmtpPort?: number;
+  mailSmtpUsername?: string;
+  /** Write-only; blank keeps existing App Password. */
+  mailSmtpPassword?: string;
+  mailSmtpFrom?: string;
+  mailSmtpAuth?: boolean;
+  mailSmtpStartTls?: boolean;
+  mailSmtpConfigured?: boolean;
 };
 
 const DEFAULT_SETTINGS: CompanySettings = {
@@ -36,6 +48,7 @@ const DEFAULT_SETTINGS: CompanySettings = {
   footerNote: 'Thank you for your business',
   taglineMm: 'ဝန်ဆောင်မှုဌာန',
   logoBase64: '',
+  notificationSoundBase64: '',
   salePrefix: 'INV',
   saleDigits: 5,
   purchasePrefix: 'PUR',
@@ -49,6 +62,15 @@ const DEFAULT_SETTINGS: CompanySettings = {
   poFinalApprovalThreshold: null,
   serviceSupervisorApprovalRequired: true,
   serviceAllowDeliveryWithDue: false,
+  pickupDepositPercent: 30,
+  mailSmtpHost: '',
+  mailSmtpPort: 587,
+  mailSmtpUsername: '',
+  mailSmtpPassword: '',
+  mailSmtpFrom: '',
+  mailSmtpAuth: true,
+  mailSmtpStartTls: true,
+  mailSmtpConfigured: false,
 };
 
 let cached: CompanySettings | null = null;

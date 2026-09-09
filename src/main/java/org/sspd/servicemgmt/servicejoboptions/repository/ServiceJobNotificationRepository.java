@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface ServiceJobNotificationRepository extends JpaRepository<ServiceJobNotification, Integer> {
     List<ServiceJobNotification> findByServiceJobIdOrderByNotifiedAtDesc(Integer serviceJobId);
+    List<ServiceJobNotification> findByServiceJob_Customer_IdOrderByNotifiedAtDesc(Integer customerId);
 }

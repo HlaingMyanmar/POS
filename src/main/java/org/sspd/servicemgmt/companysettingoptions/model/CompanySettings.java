@@ -44,6 +44,11 @@ public class CompanySettings {
     @Column(name = "logo_base64", columnDefinition = "LONGTEXT")
     private String logoBase64;
 
+    /** Custom alert clip (data URL) for customer-order notifications. */
+    @Lob
+    @Column(name = "notification_sound_base64", columnDefinition = "LONGTEXT")
+    private String notificationSoundBase64;
+
     @Lob
     @Column(name = "voucher_config_json", columnDefinition = "LONGTEXT")
     private String voucherConfigJson;
@@ -103,4 +108,32 @@ public class CompanySettings {
     @Builder.Default
     @Column(name = "service_allow_delivery_with_due", nullable = false)
     private Boolean serviceAllowDeliveryWithDue = Boolean.FALSE;
+
+    /** Percent of items total required as a bank transfer deposit for PICKUP orders (1–100). */
+    @Builder.Default
+    @Column(name = "pickup_deposit_percent", nullable = false, precision = 5, scale = 2)
+    private java.math.BigDecimal pickupDepositPercent = new java.math.BigDecimal("30.00");
+
+    @Column(name = "mail_smtp_host", length = 150)
+    private String mailSmtpHost;
+
+    @Column(name = "mail_smtp_port")
+    private Integer mailSmtpPort;
+
+    @Column(name = "mail_smtp_username", length = 190)
+    private String mailSmtpUsername;
+
+    @Column(name = "mail_smtp_password", length = 255)
+    private String mailSmtpPassword;
+
+    @Column(name = "mail_smtp_from", length = 190)
+    private String mailSmtpFrom;
+
+    @Builder.Default
+    @Column(name = "mail_smtp_auth", nullable = false)
+    private Boolean mailSmtpAuth = Boolean.TRUE;
+
+    @Builder.Default
+    @Column(name = "mail_smtp_starttls", nullable = false)
+    private Boolean mailSmtpStartTls = Boolean.TRUE;
 }

@@ -3,7 +3,7 @@ package com.sspd.servicemgmt
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,7 +15,7 @@ import com.sspd.servicemgmt.core.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class TechnicianMainActivity : ComponentActivity() {
+class TechnicianMainActivity : FragmentActivity() {
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -40,9 +40,7 @@ class TechnicianMainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            AppTheme {
-                TechnicianAppNavigation()
-            }
+            TechnicianAppRoot()
         }
     }
 }

@@ -78,6 +78,7 @@ public class SaleService {
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final org.sspd.servicemgmt.customerportaloptions.service.CustomerStockReservationService customerStock;
     private final ProductSerialRepository serialRepository;
     private final StockMovementService stockMovementService;
     private final JournalWriter journalWriter;
@@ -155,6 +156,9 @@ public class SaleService {
         validateStaffSelection(staff);
 
         Sale sale = new Sale();
+        BigDecimal deliveryCharge = dto.getDeliveryCharge() == null ? BigDecimal.ZERO : dto.getDeliveryCharge();
+        if (deliveryCharge.signum() < 0) throw new IllegalArgumentException("Delivery charge cannot be negative");
+        sale.setDeliveryCharge(deliveryCharge);
         sale.setVoided(Boolean.FALSE);
         sale.setCustomer(customer);
         sale.setStaff(staff);
@@ -172,7 +176,7 @@ public class SaleService {
         sale.setTaxAmount(tax);
         BigDecimal totalPreview = calculateTotal(details);
         validateDiscountLimit(totalPreview, discount);
-        BigDecimal netPreview = totalPreview.subtract(discount).max(BigDecimal.ZERO).add(tax);
+        BigDecimal netPreview = totalPreview.subtract(discount).max(BigDecimal.ZERO).add(tax).add(deliveryCharge);
 
         // Internal service-job sales: treat as fully paid (inventory-only, payment tracked at job level)
         boolean isServiceJobSale = dto.isServiceJobSale();
@@ -323,7 +327,8 @@ public class SaleService {
         BigDecimal totalPreview = calculateTotal(details);
         validateDiscountLimit(totalPreview, discount);
         BigDecimal netPreview = totalPreview.subtract(discount != null ? discount : BigDecimal.ZERO)
-                .add(existing.getTaxAmount() != null ? existing.getTaxAmount() : BigDecimal.ZERO);
+                .add(existing.getTaxAmount() != null ? existing.getTaxAmount() : BigDecimal.ZERO)
+                .add(existing.getDeliveryCharge() != null ? existing.getDeliveryCharge() : BigDecimal.ZERO);
         if (netPreview.compareTo(BigDecimal.ZERO) < 0) netPreview = BigDecimal.ZERO;
         BigDecimal paidPreview = paid != null ? paid : BigDecimal.ZERO;
         if (paidPreview.compareTo(netPreview) > 0) paidPreview = netPreview;
@@ -448,10 +453,18 @@ public class SaleService {
     }
 
     private List<SaleDetail> buildDetails(List<SaleDetailDTO> detailDTOs, Sale parent, boolean isServiceJobSale) {
+        java.util.Map<Integer,Integer> requested = new java.util.TreeMap<>();
+        for (SaleDetailDTO d : detailDTOs) {
+            if (d.getProductId() == null || d.getQty() == null || d.getQty() <= 0) throw new IllegalArgumentException("Invalid product quantity");
+            requested.merge(d.getProductId(), d.getQty(), Math::addExact);
+        }
+        var lockedProducts = customerStock.lockProducts(requested.keySet());
+        requested.forEach((id,qty) -> {
+            if (customerStock.availableLocked(lockedProducts.get(id)) < qty) throw new IllegalStateException("Insufficient available stock (customer orders reserved): " + lockedProducts.get(id).getName());
+        });
         List<SaleDetail> detailEntities = new ArrayList<>();
         for (SaleDetailDTO d : detailDTOs) {
-            Product product = productRepository.findById(d.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+            Product product = lockedProducts.get(d.getProductId());
 
             if (!isServiceJobSale && (product.getSellingPrice() == null || product.getSellingPrice().compareTo(BigDecimal.ZERO) <= 0)) {
                 throw new RuntimeException("Product '" + product.getName() + "' တွင် selling price မသတ်မှတ်ရသေးပါ။ ရောင်းချမည့်အချိန် selling price သတ်မှတ်ထားရပါမည်။");
@@ -469,6 +482,8 @@ public class SaleService {
                     : (product.getWarrantyMonths() != null ? product.getWarrantyMonths() : 0);
             java.time.LocalDate saleLocalDate = parent.getSaleDate() != null
                     ? parent.getSaleDate().toLocalDate() : java.time.LocalDate.now();
+            var warranty = org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyCalculator.snapshot(
+                    requestedWarrantyMonths, saleLocalDate);
             BigDecimal lineDiscount = d.getDiscountAmount() != null ? d.getDiscountAmount() : BigDecimal.ZERO;
             BigDecimal customVoucherPrice = d.getCustomVoucherPrice();
             boolean isFoc = Boolean.TRUE.equals(d.getFoc());
@@ -505,12 +520,6 @@ public class SaleService {
                     if (serial.getStatus() != SerialStatus.Available) {
                         throw new RuntimeException("Serial number '" + sn + "' is not available for sale");
                     }
-                    int serialWarrantyMonths = serial.getWarrantyMonths() != null
-                            ? serial.getWarrantyMonths()
-                            : requestedWarrantyMonths;
-                    java.time.LocalDate serialWarrantyExpiry = serial.getWarrantyEndDate() != null
-                            ? serial.getWarrantyEndDate()
-                            : (serialWarrantyMonths > 0 ? saleLocalDate.plusMonths(serialWarrantyMonths) : null);
                     serial.setStatus(isServiceJobSale ? SerialStatus.Used_In_Service : SerialStatus.Sold);
                     serialRepository.save(serial);
 
@@ -529,8 +538,9 @@ public class SaleService {
                             .costPriceSnapshot(product.getCostPrice())
                             .discountAmount(perSerialDiscount)
                             .foc(isFoc)
-                            .warrantyMonths(serialWarrantyMonths)
-                            .warrantyExpiryDate(serialWarrantyExpiry)
+                            .warrantyMonths(warranty.months())
+                            .warrantyStartDate(warranty.startDate())
+                            .warrantyExpiryDate(warranty.endDate())
                             .build();
                     detailEntities.add(detail);
                 }
@@ -543,7 +553,7 @@ public class SaleService {
                     throw new RuntimeException("Quantity must be greater than zero");
                 }
                 int currentQty = product.getStockQty() != null ? product.getStockQty() : 0;
-                int availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty());
+                int availableQty = currentQty - (product.getQuarantinedQty() == null ? 0 : product.getQuarantinedQty()) - customerStock.reserved(product);
                 if (availableQty < d.getQty()) {
                     throw new RuntimeException("Insufficient stock for: " + product.getName()
                             + ". Available: " + availableQty);
@@ -556,9 +566,6 @@ public class SaleService {
                 }
                 BigDecimal subtotal = isFoc ? BigDecimal.ZERO : gross.subtract(lineDiscount);
                 if (subtotal.compareTo(BigDecimal.ZERO) < 0) subtotal = BigDecimal.ZERO;
-                java.time.LocalDate warrantyExpiry = requestedWarrantyMonths > 0
-                        ? saleLocalDate.plusMonths(requestedWarrantyMonths)
-                        : null;
 
                 SaleDetail detail = SaleDetail.builder()
                         .sale(parent)
@@ -572,8 +579,9 @@ public class SaleService {
                         .costPriceSnapshot(product.getCostPrice())
                         .discountAmount(lineDiscount)
                         .foc(isFoc)
-                        .warrantyMonths(requestedWarrantyMonths)
-                        .warrantyExpiryDate(warrantyExpiry)
+                        .warrantyMonths(warranty.months())
+                        .warrantyStartDate(warranty.startDate())
+                        .warrantyExpiryDate(warranty.endDate())
                         .build();
                 detailEntities.add(detail);
             }
@@ -653,7 +661,7 @@ public class SaleService {
             throw new RuntimeException("Discount cannot be negative");
         }
         BigDecimal tax = sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO;
-        BigDecimal net = total.subtract(safeDiscount).add(tax);
+        BigDecimal net = total.subtract(safeDiscount).add(tax).add(sale.getDeliveryCharge() == null ? BigDecimal.ZERO : sale.getDeliveryCharge());
         if (net.compareTo(BigDecimal.ZERO) < 0) {
             net = BigDecimal.ZERO;
         }

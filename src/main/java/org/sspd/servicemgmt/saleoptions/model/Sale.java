@@ -52,6 +52,9 @@ public class Sale {
     @Column(name = "credit_status", length = 20)
     private CreditStatus creditStatus = CreditStatus.Not_Credit;
 
+    @Column(name = "delivery_charge", nullable = false, precision = 15, scale = 2)
+    private BigDecimal deliveryCharge = BigDecimal.ZERO;
+
     @Column(name = "total_amount", precision = 15, scale = 2)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 

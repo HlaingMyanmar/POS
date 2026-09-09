@@ -316,6 +316,7 @@ public class ProductService {
                     - (entity.getQuarantinedQty() == null ? 0 : entity.getQuarantinedQty())));
             dto.setUnlinkedQty(0);
         }
+        dto.setStockQty(Math.max(0, (dto.getStockQty() == null ? 0 : dto.getStockQty()) - (entity.getCustomerReservedQty() == null ? 0 : entity.getCustomerReservedQty())));
         dto.setQuarantinedQty(entity.getQuarantinedQty() == null ? 0 : entity.getQuarantinedQty());
         dto.setHasSerial(entity.getHasSerial());
         int reorderLevel = sanitizeReorderLevel(entity.getReorderLevel());

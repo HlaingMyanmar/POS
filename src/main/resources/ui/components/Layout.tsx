@@ -35,6 +35,7 @@ import {
   Scissors,
   Settings,
   ClipboardList,
+  Shield,
   ShieldCheck,
   ShoppingCart,
   Sun,
@@ -58,6 +59,7 @@ import { creditAlertService } from '../services/creditalertapiservice';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsHelp from './KeyboardShortcutsHelp';
+import CustomerOrderNotification from './CustomerOrderNotification';
 
 /* ── Tab Close Menu ─────────────────────────────────────────── */
 const TabCloseMenu: React.FC<{
@@ -201,8 +203,11 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ဝယ်ပြန်ပို့', icon: <RotateCcw size={18} />, path: AppRoute.PURCHASE_RETURNS, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_PURCHASE_RETURN_READ' },
       { name: 'ပေးသွင်းသူ', icon: <Truck size={18} />, path: AppRoute.SUPPLIERS, group: 'ဝယ်ယူရေး', permission: 'CAN_ACCESS_SUPPLIER_READ' },
       { name: 'ရောင်းချမှု', icon: <TrendingUp size={18} />, path: AppRoute.SALES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
+      { name: 'Warranty', icon: <Shield size={18} />, path: AppRoute.WARRANTIES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ဈေးနှုန်းကမ်းလှမ်း', icon: <ClipboardList size={18} />, path: AppRoute.QUOTATIONS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_QUOTATION_READ' },
       { name: 'Customer App အော်ဒါ', icon: <Smartphone size={18} />, path: AppRoute.CUSTOMER_APP_ORDERS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
+      { name: 'Delivery Charges', icon: <Truck size={18} />, path: AppRoute.DELIVERY_CHARGES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
+      { name: 'Customer App အကောင့်', icon: <Smartphone size={18} />, path: AppRoute.CUSTOMER_APP_ACCOUNTS, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_CUSTOMER_READ' },
       { name: 'ရောင်းပြန်ပို့', icon: <RotateCcw size={18} />, path: AppRoute.SALE_RETURNS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_RETURN_READ' },
       { name: 'ဖောက်သည်များ', icon: <Users size={18} />, path: AppRoute.CUSTOMERS, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_CUSTOMER_READ' },
       { name: 'အကြွေးစားပွဲ', icon: <CreditCard size={18} />, path: AppRoute.CREDIT, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_SALE_READ' },
@@ -664,6 +669,8 @@ const Layout: React.FC<LayoutProps> = ({
                 >
                   <Keyboard size={16} />
                 </button>
+
+                {hasMenuAccess(user, 'CAN_ACCESS_SALE_READ') && <CustomerOrderNotification isDark={isDark} />}
 
                 <button className={`p-1.5 rounded-lg relative ${isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>
                   <Bell size={18} />

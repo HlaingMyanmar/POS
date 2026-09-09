@@ -8,6 +8,8 @@ import com.sspd.servicemgmt.core.network.HandoverDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.realtime.DataEventBus
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,9 +43,9 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun load() {
+    fun load(fromPull: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
+            _uiState.update { it.copy(refreshing = fromPull, loading = !fromPull && it.items.isEmpty()) }
             try {
                 val s   = _uiState.value
                 val scoped = prefs.shouldScopeToOwnStaff()
@@ -76,14 +78,25 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
                     }
                 }
             } catch (_: Exception) {}
-            _uiState.update { it.copy(loading = false) }
+            _uiState.update { it.copy(loading = false, refreshing = false) }
         }
     }
+
+    fun refresh() = load(fromPull = true)
 
     fun setFilter(f: String) = _uiState.update { it.copy(filter = f) }
     fun setWorkTab(tab: WorkTab) = _uiState.update { it.copy(workTab = tab) }
 
-    fun setSearch(q: String) { _uiState.update { it.copy(search = q) }; load() }
+    private var searchJob: Job? = null
+
+    fun setSearch(q: String) {
+        _uiState.update { it.copy(search = q) }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(400)
+            load()
+        }
+    }
 
     // ── Date filter ───────────────────────────────────────────────────────────
     fun setFromDate(d: String?) { _uiState.update { it.copy(fromDate = d) }; load() }
@@ -123,6 +136,7 @@ class ServiceJobListViewModel(application: Application) : AndroidViewModel(appli
         val sentHandovers:     List<HandoverDTO>   = emptyList(),
         val sentPendingCount:  Int                 = 0,
         val loading:           Boolean             = true,
+        val refreshing:        Boolean             = false,
         val workTab:       WorkTab             = WORK_TAB_ACTIVE,
         val filter:        String              = "ALL",
         val search:        String              = "",

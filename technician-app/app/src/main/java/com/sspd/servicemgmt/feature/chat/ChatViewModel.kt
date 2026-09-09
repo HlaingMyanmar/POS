@@ -49,6 +49,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         connectWs()
     }
 
+    fun refresh() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(refreshing = true) }
+            loadInitialMessages()
+            _uiState.update { it.copy(refreshing = false) }
+        }
+    }
+
     // ── WebSocket ─────────────────────────────────────────────────────────────
 
     private fun connectWs() {
@@ -136,6 +144,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sending:    Boolean              = false,
         val myUsername: String               = "",
         val connected:  Boolean              = false,
+        val refreshing: Boolean              = false,
     )
 }
 

@@ -381,10 +381,16 @@ private fun RouteMapView(
         }
     }
 
+    var lastKey by remember { mutableStateOf("") }
+
     AndroidView(
         factory = { mapView },
         modifier = modifier,
         update = { map ->
+            val newKey = "${destination?.latitude},${destination?.longitude}_${technicianPoint?.latitude},${technicianPoint?.longitude}_${pings.size}_${events.size}"
+            if (lastKey == newKey) return@AndroidView
+            lastKey = newKey
+
             map.overlays.clear()
             val routePoints = pings.mapNotNull { validPoint(it.latitude, it.longitude) }
             if (routePoints.size >= 2) {

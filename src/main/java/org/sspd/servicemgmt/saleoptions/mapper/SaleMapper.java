@@ -34,8 +34,19 @@ public interface SaleMapper {
     @Mapping(source = "discountAmount", target = "discountAmount")
     @Mapping(source = "foc", target = "foc")
     @Mapping(source = "warrantyMonths", target = "warrantyMonths")
+    @Mapping(source = "warrantyStartDate", target = "warrantyStartDate")
     @Mapping(source = "warrantyExpiryDate", target = "warrantyExpiryDate")
+    @Mapping(target = "warrantyStatus", ignore = true)
+    @Mapping(target = "warrantyDaysRemaining", ignore = true)
     SaleDetailDTO toDto(SaleDetail detail);
+
+    @AfterMapping
+    default void fillWarrantyStatus(SaleDetail entity, @MappingTarget SaleDetailDTO dto) {
+        dto.setWarrantyStatus(org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyCalculator.status(
+                entity.getWarrantyMonths(), entity.getWarrantyExpiryDate(), java.time.LocalDate.now()));
+        dto.setWarrantyDaysRemaining(org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyCalculator.daysRemaining(
+                entity.getWarrantyMonths(), entity.getWarrantyExpiryDate(), java.time.LocalDate.now()));
+    }
 
     @Mapping(target = "customer", ignore = true)
     @Mapping(target = "staff", ignore = true)

@@ -29,6 +29,7 @@ import com.sspd.servicemgmt.core.network.ServiceTypeDTO
 import com.sspd.servicemgmt.core.network.SubServiceTypeDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,7 +140,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                     IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "နောက်ပြန်", tint = Color.White) }
                 },
                 actions = {
-                    IconButton(onClick = { vm.load() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) }
+                    IconButton(onClick = { vm.refresh() }) { Icon(Icons.Outlined.Refresh, "ပြန်ဆောင်ရန်", tint = Color.White) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
             )
@@ -161,7 +162,12 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
+        Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
 
             if (!catalogReadOnly) {
                 TabRow(selectedTabIndex = selectedTab, containerColor = CardBg, contentColor = Primary) {
@@ -212,7 +218,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                 singleLine = true, shape = RoundedCornerShape(12.dp)
             )
 
-            if (state.loading) {
+            if (state.loading && state.types.isEmpty() && state.items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppLoading()
                 }
@@ -233,6 +239,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                     canManage = !catalogReadOnly
                 )
             }
+        }
         }
     }
 }

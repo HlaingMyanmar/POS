@@ -37,6 +37,7 @@ import com.sspd.servicemgmt.core.network.PaymentMethodDTO
 import com.sspd.servicemgmt.core.network.PaymentTransactionDTO
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.network.ReworkRequestDTO
+import com.sspd.servicemgmt.core.network.ServiceJobActivityDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.ServiceJobLineDTO
 import com.sspd.servicemgmt.core.network.ServiceJobPartDTO
@@ -501,6 +502,21 @@ fun ServiceJobDetailScreen(
         )
     }
 
+    var workTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0) }
+    val editJob: () -> Unit = {
+        val currentJob = state.job
+        if (!state.actionLoading && !visitBusy && currentJob != null) {
+            if (!canAssignTechnician && (currentJob.canEditJob == false || currentJob.myAssignmentStatus.equals("PENDING", true))) {
+                scope.launch { snackbar.showSnackbar("Assignment လက်ခံပြီး ပြင်ဆင်ခွင့်ရမှသာ Job ပြင်ဆင်နိုင်ပါသည်") }
+            } else onEdit()
+        }
+    }
+    var showMoreActions by remember { mutableStateOf(false) }
+    var showWorkLog by remember { mutableStateOf(false) }
+    var showLeadNote by remember { mutableStateOf(false) }
+    var showReturnReason by remember { mutableStateOf(false) }
+    var showCompactMap by remember { mutableStateOf(false) }
+
     if (state.showReworkDialog) {
         ReworkDialog(
             job = state.job,
@@ -536,27 +552,293 @@ fun ServiceJobDetailScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White)
             )
+        },
+        bottomBar = {
+            val job = state.job
+            if (job != null) {
+                val primary = resolveWorkPrimaryAction(
+                    job, state.team, visit, vm.myStaffId, visitVm.canStart, vm.canSupervise
+                )
+                if (primary.kind != WorkPrimaryKind.ACCEPT_ASSIGNMENT) {
+                    Surface(shadowElevation = 4.dp, color = CardBg) {
+                        Column(
+                            modifier = Modifier
+                                .navigationBarsPadding()
+                                .imePadding()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showMoreActions = true },
+                                    modifier = Modifier.heightIn(min = 44.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Menu, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("အခြား", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                if (primary.kind != WorkPrimaryKind.NONE) {
+                                    Button(
+                                        onClick = {
+                                            when (primary.kind) {
+                                                WorkPrimaryKind.ACCEPT_ASSIGNMENT -> primary.assignmentId?.let(vm::acceptAssignment)
+                                                WorkPrimaryKind.ACCEPT_HANDOVER -> primary.handoverId?.let(vm::acceptHandover)
+                                                WorkPrimaryKind.DEPART -> runVisit("start:SERVICE")
+                                                WorkPrimaryKind.ARRIVE -> runVisit("arrive")
+                                                WorkPrimaryKind.START_WORK -> {
+                                                    val id = primary.assignmentId
+                                                    if (id != null) vm.recordWork(id, "START")
+                                                    else if (job.status.equals("RECEIVED", true)) vm.updateStatus("INSPECTING")
+                                                    else vm.updateStatus("IN_PROGRESS")
+                                                }
+                                                WorkPrimaryKind.LOG_WORK -> showWorkLog = true
+                                                WorkPrimaryKind.SUBMIT_FINAL -> showLeadNote = true
+                                                WorkPrimaryKind.VIEW_RETURN -> showReturnReason = true
+                                                WorkPrimaryKind.APPROVE_FINAL -> vm.approveFinal()
+                                                WorkPrimaryKind.REFRESH -> vm.load(background = true)
+                                                WorkPrimaryKind.SETTLE -> { workTab = 1; vm.showSettleDialog() }
+                                                WorkPrimaryKind.NONE -> {}
+                                            }
+                                        },
+                                        enabled = !state.actionLoading && !visitBusy && primary.blockedReason == null,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 44.dp),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        if (state.actionLoading || visitBusy) {
+                                            CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("သိမ်းနေသည်…", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        } else {
+                                            Text(primary.label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        }
+                                    }
+                                }
+                            }
+                            primary.blockedReason?.let { Text(it, fontSize = 11.sp, color = Warning) }
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
-        if (state.loading) {
+        if (state.loading && state.job == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 AppLoading()
             }
             return@Scaffold
         }
 
-        val job = state.job ?: run {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("ဒေတာ မတွေ့ပါ", color = TextMuted)
+        val job = state.job
+        if (job == null) {
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(state.loadError ?: "ဒေတာ မတွေ့ပါ", color = Danger, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = { vm.load() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("ပြန်ကြိုးစားမည်") }
             }
             return@Scaffold
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        val primary = resolveWorkPrimaryAction(job, state.team, visit, vm.myStaffId, visitVm.canStart, vm.canSupervise)
+        val myAssign = myAssignment(state.team, job, vm.myStaffId)
+        val dest = jobDestination(job, visit)
+
+        if (showMoreActions) {
+            TechnicianMoreActionsSheet(
+                job = job,
+                canHandover = myAssign?.status?.uppercase() in setOf("ACTIVE", "PAUSED"),
+                sentPending = state.team?.handovers.orEmpty().any { it.fromMine && it.status.equals("PENDING", true) },
+                onDismiss = { showMoreActions = false },
+                onHold = { vm.showHoldDialog() },
+                onHandover = { workTab = 1 },
+                onNotify = { vm.showNotifyDialog() },
+                onEdit = editJob
+            )
+        }
+        if (showWorkLog && myAssign != null) {
+            WorkLogDraftDialog(
+                jobId = job.id ?: 0,
+                assignment = myAssign,
+                loading = state.actionLoading,
+                onDismiss = { showWorkLog = false },
+                onSave = { work, service, parts, note, onSuccess ->
+                    myAssign.id?.let { vm.recordWork(it, "NOTE", note, work, service, parts, onSuccess) }
+                }
+            )
+        }
+        if (showReturnReason) {
+            AlertDialog(
+                onDismissRequest = { showReturnReason = false },
+                title = { Text("ပြန်ပြင်ရန် အချက်များ") },
+                text = { Text(state.team?.finalReturnReason.orEmpty()) },
+                confirmButton = {
+                    TextButton(onClick = { showReturnReason = false; workTab = 0 }) {
+                        Text("အလုပ်မှတ်တမ်းသို့ ပြန်မည်")
+                    }
+                }
+            )
+        }
+        if (showLeadNote) {
+            NoteInputDialog(
+                title = "Lead Technician Final Check",
+                label = "မှတ်ချက်",
+                onDismiss = { showLeadNote = false },
+                onConfirm = { note -> showLeadNote = false; vm.submitLeadFinalCheck(note) }
+            )
+        }
+
+        Column(Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
+            if (!state.extrasWarning.isNullOrBlank()) {
+                Surface(color = WarningBg, modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(state.extrasWarning ?: "", modifier = Modifier.weight(1f), fontSize = 12.sp, color = Warning)
+                        TextButton(onClick = { vm.load(background = true) }) { Text("ပြန်ကြိုးစားမည်") }
+                    }
+                }
+            }
+            TabRow(selectedTabIndex = workTab, containerColor = CardBg) {
+                listOf("အလုပ်လုပ်ရန်", "အသေးစိတ်", "မှတ်တမ်း").forEachIndexed { i, label ->
+                    Tab(selected = workTab == i, onClick = { workTab = i }, text = { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) })
+                }
+            }
+            when (workTab) {
+                0 -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        TechnicianJobHero(
+                            job = job,
+                            onCall = { openCustomerDial(context, job.customerPhone) },
+                            onNavigate = { openCustomerNavigation(context, dest?.latitude, dest?.longitude) },
+                            canNavigate = dest != null
+                        )
+                    }
+                    if (primary.kind != WorkPrimaryKind.ACCEPT_ASSIGNMENT) {
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF)),
+                                border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("လက်ရှိအဆင့်", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF312E81))
+                                    Text(primary.stepTitle, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                                    Text(primary.stepHint, fontSize = 12.sp, color = TextMuted)
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        CompactAssignmentCard(
+                            assignment = myAssign,
+                            loading = state.actionLoading,
+                            blockedReason = primary.blockedReason?.takeIf { primary.kind == WorkPrimaryKind.ACCEPT_ASSIGNMENT },
+                            onAccept = { myAssign?.id?.let(vm::acceptAssignment) },
+                            onMore = { showMoreActions = true }
+                        )
+                    }
+                    if (isOutdoorJob(job)) {
+                        item {
+                            OutdoorVisitCard(
+                                jobId = job.id,
+                                visit = visit,
+                                busy = visitBusy,
+                                pendingResume = pendingResume && visit?.jobId == job.id,
+                                canStart = visitVm.canStart,
+                                onStart = { purpose -> runVisit("start:$purpose") },
+                                onArrive = { runVisit("arrive") },
+                                onDepartCustomer = { outcome -> runVisit("depart:$outcome") },
+                                onEnd = { runVisit("end") },
+                                onJourneyResume = { runVisit("journeyResume") },
+                                onResume = { runVisit("resume") },
+                                onCancel = { visitVm.cancel("WRONG_VISIT") },
+                                onReason = { showReasonDialog = true },
+                                onOpenActiveVisit = onOpenActiveVisit
+                            )
+                        }
+                        item {
+                            OutlinedButton(
+                                onClick = { showCompactMap = !showCompactMap },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            ) { Text(if (showCompactMap) "မြေပုံပိတ်မည်" else "မြေပုံကြည့်မည်") }
+                        }
+                        if (showCompactMap) {
+                            item {
+                                CustomerRouteMap(
+                                    customerName = job.customerName ?: "Customer",
+                                    destinationLatitude = dest?.latitude,
+                                    destinationLongitude = dest?.longitude,
+                                    visit = visit?.takeIf { it.jobId == job.id }
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        Text("လုပ်ဆောင်ချက်များ", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted)
+                    }
+                    item {
+                        OutlinedButton(onClick = { showWorkLog = true }, enabled = myAssign?.id != null && myAssign.status?.uppercase() in setOf("ACTIVE", "PAUSED") && !state.actionLoading && !visitBusy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Icon(Icons.Outlined.Description, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("လုပ်ခဲ့သောအလုပ် / မှတ်တမ်း")
+                        }
+                    }
+                    item {
+                        OutlinedButton(onClick = editJob, enabled = !state.actionLoading && !visitBusy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text("စစ်ဆေးတွေ့ရှိချက် / ပစ္စည်း / ပုံ ပြင်မည်")
+                        }
+                    }
+                    if (primary.kind == WorkPrimaryKind.SUBMIT_FINAL || primary.kind == WorkPrimaryKind.VIEW_RETURN || state.team?.canComplete == true) {
+                        item {
+                            FinalCheckSummaryCard(
+                                job = job,
+                                team = state.team,
+                                onFillNote = { showLeadNote = true },
+                                onOpenWorkLog = { showWorkLog = true },
+                                onOpenEdit = editJob
+                            )
+                        }
+                    }
+                    item { Spacer(Modifier.height(88.dp)) }
+                }
+                2 -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item { ServiceJobActivitySection(activities = job.activities) }
+                    item { TechnicianAssignmentSection(
+                        team = state.team,
+                        teamError = state.teamError,
+                        myStaffId = vm.myStaffId,
+                        loading = state.actionLoading,
+                        onAccept = vm::acceptAssignment,
+                        onReject = vm::rejectAssignment,
+                        onWork = { id, action, work, service, parts, note ->
+                            vm.recordWork(id, action, note, work, service, parts)
+                        }
+                    ) }
+                    item { Spacer(Modifier.height(88.dp)) }
+                }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize().background(ScreenBg),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
             // ── Header card ───────────────────────────────────────────────────
             item {
                 Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
@@ -1027,7 +1309,9 @@ fun ServiceJobDetailScreen(
                 }
             }
 
-            item { Spacer(Modifier.height(24.dp)) }
+            item { Spacer(Modifier.height(88.dp)) }
+        }
+            }
         }
     }
 }
@@ -2290,6 +2574,22 @@ private fun TechnicianJobWorkflowHoldPreview() {
     }
 }
 
+@Preview(name = "Job load error + retry", showBackground = true, widthDp = 390, heightDp = 420)
+@Composable
+private fun JobLoadErrorPreview() {
+    AppTheme {
+        Column(
+            Modifier.fillMaxSize().background(ScreenBg).padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("ကွန်ရက် မရောက်ပါ။ ချိတ်ဆက်မှု စစ်ပြီး ပြန်ကြိုးစားပါ။", color = Danger, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = {}, modifier = Modifier.heightIn(min = 48.dp)) { Text("ပြန်ကြိုးစားမည်") }
+        }
+    }
+}
+
 @Preview(name = "Estimate actions — no reject perm", showBackground = true, widthDp = 390)
 @Composable
 private fun EstimateActionNoRejectPreview() {
@@ -2303,6 +2603,152 @@ private fun EstimateActionNoRejectPreview() {
                 onHoldEstimate = {},
                 onRejectEstimate = {},
             )
+        }
+    }
+}
+
+@Preview(name = "Job details tab — အသေးစိတ်", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun JobDetailsTabPreview() {
+    val job = ServiceJobDTO(
+        id = 4,
+        jobNo = "SJ-000004",
+        customerName = "ဦးအောင်ကျော်",
+        customerPhone = "09450011223",
+        assignedStaffName = "ကိုမင်း",
+        itemName = "iPhone 14 Pro",
+        shelfLocationCode = "A-12",
+        shelfLocationLabel = "Shelf A2",
+        serialNo = "SN-9988776655",
+        color = "Deep Purple",
+        itemCondition = "အစုတ်မရှိ၊ မှန်ကွဲမရှိ",
+        problemDesc = "Power နှိပ်လျှင် မီးမလင်းပါ၊ ခွဲခြားစစ်ဆေးရန်လိုအပ်ပါသည်",
+        diagnosisNotes = "Battery voltage နည်းနေပါသည်၊ Battery ပြောင်းရန် လိုအပ်ပါသည်",
+        status = "IN_PROGRESS",
+        serviceMode = "INDOOR",
+        receivedDate = "2026-09-08T10:30:00",
+        estimatedCompletion = "2026-09-09T14:00:00",
+        finalCost = 85000.0,
+        paidAmount = 30000.0,
+        dueAmount = 55000.0,
+        lines = listOf(
+            ServiceJobLineDTO(id = 1, serviceItemName = "iPhone 14 Pro Battery Replacement", approvedPrice = 85000.0, confirmationStatus = "APPROVED")
+        ),
+        productParts = listOf(
+            ServiceJobPartDTO(id = 1, productName = "Original Battery 14 Pro", qty = 1, unitPrice = 65000.0)
+        )
+    )
+    AppTheme {
+        Column(Modifier.fillMaxSize().background(ScreenBg)) {
+            TabRow(selectedTabIndex = 1, containerColor = CardBg) {
+                listOf("အလုပ်လုပ်ရန်", "အသေးစိတ်", "မှတ်တမ်း").forEachIndexed { i, label ->
+                    Tab(selected = i == 1, onClick = {}, text = { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) })
+                }
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(job.jobNo ?: "#${job.id}", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Violet)
+                                JobDetailStatusBadge(job.status)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text("လက်ခံသည့်ရက်: ${job.receivedDate?.take(16)?.replace("T", "  ") ?: "—"}", fontSize = 12.sp, color = TextMuted)
+                        }
+                    }
+                }
+                item {
+                    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            JobInfoRow(Icons.Outlined.Person, "ဖောက်သည်", job.customerName ?: "—")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Phone, "ဖုန်း", job.customerPhone ?: "—")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Badge, "နည်းပညာဆရာ", job.assignedStaffName ?: "—")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Devices, "ပစ္စည်း", job.itemName ?: "—")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Inventory2, "ထားသည့်နေရာ", "${job.shelfLocationCode} - ${job.shelfLocationLabel}")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Numbers, "Serial No", job.serialNo ?: "—")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.ReportProblem, "ပြဿနာ", job.problemDesc ?: "—")
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Description, "စစ်ဆေးချက်", job.diagnosisNotes ?: "—")
+                        }
+                    }
+                }
+                if (!job.lines.isNullOrEmpty()) {
+                    item { Text("ဝန်ဆောင်မှုများ (${job.lines.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted) }
+                    items(job.lines) { line -> ServiceLineCard(line) }
+                }
+                if (!job.productParts.isNullOrEmpty()) {
+                    item { Text("အပိုပစ္စည်းများ (${job.productParts.size})", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextMuted) }
+                    items(job.productParts) { part -> PartCard(part, emptyMap()) }
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "Job history tab — မှတ်တမ်း", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun JobHistoryTabPreview() {
+    val activities = listOf(
+        ServiceJobActivityDTO(
+            id = 1,
+            eventType = "ASSIGNMENT_ACCEPTED",
+            actor = "ကိုမင်း",
+            note = "တာဝန်လက်ခံပြီး စစ်ဆေးမှု စတင်ပါသည်",
+            occurredAt = "2026-09-08T10:35:00",
+            fromStatus = "RECEIVED",
+            toStatus = "INSPECTING"
+        ),
+        ServiceJobActivityDTO(
+            id = 2,
+            eventType = "ESTIMATE_APPROVED",
+            actor = "Admin",
+            note = "ဖောက်သည် အတည်ပြုပြီးပါပြီ",
+            occurredAt = "2026-09-08T11:00:00",
+            fromStatus = "INSPECTING",
+            toStatus = "IN_PROGRESS"
+        )
+    )
+    val team = TeamSnapshotDTO(
+        assignments = listOf(
+            AssignmentDTO(id = 1, staffName = "ကိုမင်း", role = "LEAD", status = "ACTIVE", workStartedAt = "2026-09-08T11:05:00")
+        )
+    )
+    AppTheme {
+        Column(Modifier.fillMaxSize().background(ScreenBg)) {
+            TabRow(selectedTabIndex = 2, containerColor = CardBg) {
+                listOf("အလုပ်လုပ်ရန်", "အသေးစိတ်", "မှတ်တမ်း").forEachIndexed { i, label ->
+                    Tab(selected = i == 2, onClick = {}, text = { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold) })
+                }
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item { ServiceJobActivitySection(activities = activities) }
+                item {
+                    TechnicianAssignmentSection(
+                        team = team,
+                        teamError = null,
+                        myStaffId = 1,
+                        loading = false,
+                        onAccept = {},
+                        onReject = { _, _ -> },
+                        onWork = { _, _, _, _, _, _ -> }
+                    )
+                }
+            }
         }
     }
 }

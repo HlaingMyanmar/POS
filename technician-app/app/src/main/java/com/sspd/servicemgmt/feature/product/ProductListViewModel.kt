@@ -38,15 +38,21 @@ class ProductListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun load() {
+    fun load(fromPull: Boolean = false) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, error = null) }
+            _uiState.update {
+                it.copy(
+                    refreshing = fromPull,
+                    loading = !fromPull && it.items.isEmpty(),
+                    error = if (fromPull) it.error else null
+                )
+            }
             try {
                 val res = ApiClient.service.getProducts(ApiClient.bearer(prefs.authToken))
                 val body = res.body()
                 if (res.isSuccessful && body?.success == true) {
-                    _uiState.update { it.copy(items = body.data.orEmpty(), loading = false, error = null) }
+                    _uiState.update { it.copy(items = body.data.orEmpty(), loading = false, refreshing = false, error = null) }
                 } else {
                     val message = when (res.code()) {
                         401 -> "Login သက်တမ်းကုန်နေပါသည်။ ပြန်လည် Login ဝင်ပါ။"
@@ -54,7 +60,7 @@ class ProductListViewModel(application: Application) : AndroidViewModel(applicat
                         else -> body?.message?.takeIf(String::isNotBlank)
                             ?: "ကုန်ပစ္စည်းစာရင်း ရယူ၍မရပါ (HTTP ${res.code()})"
                     }
-                    _uiState.update { it.copy(loading = false, error = message) }
+                    _uiState.update { it.copy(loading = false, refreshing = false, error = message) }
                 }
             } catch (e: Exception) {
                 val message = when {
@@ -66,10 +72,12 @@ class ProductListViewModel(application: Application) : AndroidViewModel(applicat
                         "Server ချိတ်ဆက်မှု ပြတ်တောက်သွားပါသည်။ ပြန်လည်ရယူပါ။"
                     else -> "ကုန်ပစ္စည်း data ဖတ်၍မရပါ: ${e.message ?: e.javaClass.simpleName}"
                 }
-                _uiState.update { it.copy(loading = false, error = message) }
+                _uiState.update { it.copy(loading = false, refreshing = false, error = message) }
             }
         }
     }
+
+    fun refresh() = load(fromPull = true)
 
     fun setSearch(q: String) = _uiState.update { it.copy(search = q) }
     fun setFilter(filter: ProductFilter) = _uiState.update { it.copy(filter = filter) }
@@ -108,6 +116,7 @@ class ProductListViewModel(application: Application) : AndroidViewModel(applicat
     data class ProductListUiState(
         val items:            List<ProductDTO>   = emptyList(),
         val loading:          Boolean            = true,
+        val refreshing:       Boolean            = false,
         val error:            String?            = null,
         val search:           String             = "",
         val filter:           ProductFilter      = ProductFilter.ALL,

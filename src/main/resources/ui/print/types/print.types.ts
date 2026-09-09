@@ -32,6 +32,7 @@ export interface PrintLineItem {
   unitPrice: string;
   subtotal: string;
   discount?: string;
+  foc?: boolean;
 }
 
 export interface PaymentEntry {
@@ -162,4 +163,5 @@ export interface PrintApiRequest {
   sign1Label: string;
   sign2Label: string;
   copyType?: 'CUSTOMER' | 'SHOP' | 'BOTH';
+  toEmail?: string;
 }

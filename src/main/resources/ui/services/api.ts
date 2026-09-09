@@ -193,6 +193,8 @@ export const authService = {
 export const companySettingsService = {
   getSettings: () => api.get<any, ApiResponse<any>>('/v1/company-settings'),
   saveSettings: (dto: any) => api.post<any, ApiResponse<any>>('/v1/company-settings', dto),
+  testMail: (to: string) =>
+    api.post<any, ApiResponse<void>>('/v1/company-settings/test-mail', { to }),
 };
 
 // ── App Version Settings ───────────────────────────────────

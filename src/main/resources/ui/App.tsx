@@ -24,9 +24,14 @@ import PurchaseManagement from './pages/PurchaseManagement';
 import PurchaseReturnManagement from './pages/PurchaseReturnManagement';
 import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
 import SaleManagement from './pages/SaleManagement';
+import WarrantyLookupPage from './pages/WarrantyLookupPage';
+import QuotationManagement from './pages/QuotationManagement';
 import SaleReturnManagement from './pages/SaleReturnManagement';
 import CustomerAppOrdersPage from './pages/CustomerAppOrdersPage';
+import DeliveryChargesPage from './pages/DeliveryChargesPage';
+import CustomerAppAccountsPage from './pages/CustomerAppAccountsPage';
 import CustomerShopPage from './pages/customer-shop/CustomerShopPage';
+import CustomerPasswordResetPage from './pages/customer-shop/CustomerPasswordResetPage';
 import CreditManagement from './pages/CreditManagement';
 import StockAdjustmentManagement from './pages/StockAdjustmentManagement';
 import ExpenseIncomeManagement from './pages/ExpenseIncomeManagement';
@@ -230,13 +235,18 @@ const App: React.FC = () => {
     return <>{element}</>;
   };
 
-  const shopRoute = <Route path={AppRoute.CUSTOMER_SHOP} element={<CustomerShopPage />} />;
+  const publicCustomerRoutes = (
+    <>
+      <Route path={AppRoute.CUSTOMER_SHOP} element={<CustomerShopPage />} />
+      <Route path={AppRoute.CUSTOMER_PASSWORD_RESET} element={<CustomerPasswordResetPage />} />
+    </>
+  );
 
   if (loading) {
     return (
       <HashRouter>
         <Routes>
-          {shopRoute}
+          {publicCustomerRoutes}
           <Route path="*" element={
             <div className="min-h-screen flex items-center justify-center bg-slate-50">
               <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-indigo-600"></div>
@@ -251,7 +261,7 @@ const App: React.FC = () => {
     return (
       <HashRouter>
         <Routes>
-          {shopRoute}
+          {publicCustomerRoutes}
           <Route path="*" element={<InitialAdminPage onComplete={() => { setNeedsInitialAdmin(false); }} />} />
         </Routes>
       </HashRouter>
@@ -262,7 +272,7 @@ const App: React.FC = () => {
     return (
       <HashRouter>
         <Routes>
-          {shopRoute}
+          {publicCustomerRoutes}
           <Route path="*" element={
             <SetupWizardPage onComplete={() => {
               setNeedsSetup(false);
@@ -282,7 +292,7 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <Routes>
-        {shopRoute}
+        {publicCustomerRoutes}
         <Route path="/scan" element={<ScanPage />} />
         <Route
           path={AppRoute.LOGIN}
@@ -323,8 +333,11 @@ const App: React.FC = () => {
           <Route path={AppRoute.PURCHASE_ORDERS}     element={guard(<PurchaseOrderManagement />,    'CAN_ACCESS_PURCHASE_ORDER_READ')} />
           <Route path={AppRoute.PURCHASE_RETURNS}    element={guard(<PurchaseReturnManagement />,   'CAN_ACCESS_PURCHASE_RETURN_READ')} />
           <Route path={AppRoute.SALES}               element={guard(<SaleManagement />,             'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.WARRANTIES}          element={guard(<WarrantyLookupPage />,         'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.QUOTATIONS}          element={guard(<QuotationManagement />,        'CAN_ACCESS_QUOTATION_READ')} />
           <Route path={AppRoute.CUSTOMER_APP_ORDERS} element={guard(<CustomerAppOrdersPage />,      'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.DELIVERY_CHARGES} element={guard(<DeliveryChargesPage />,          'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.CUSTOMER_APP_ACCOUNTS} element={guard(<CustomerAppAccountsPage />,  'CAN_ACCESS_CUSTOMER_READ')} />
           <Route path={AppRoute.SALE_RETURNS}        element={guard(<SaleReturnManagement />,       'CAN_ACCESS_SALE_RETURN_READ')} />
           <Route path={AppRoute.CREDIT}              element={guard(<CreditManagement />,           'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.PROFIT_LOSS}         element={guard(<ProfitLossReport />,           'CAN_ACCESS_REPORT_READ')} />

@@ -39,6 +39,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**", "/api/v1/customer-portal/auth/**", "/ws-clinic/**", "/ws-native/**", "/topic/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/customer/reset-password").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/customer-reset-password.html").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/setup/status").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/setup/initial-admin").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/company-settings").permitAll()
@@ -46,6 +48,9 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/technician/version").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/app/customer/version").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/catalog/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/delivery-townships").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/delivery-locations").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/branding", "/api/v1/customer-portal/branding/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/scan").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()

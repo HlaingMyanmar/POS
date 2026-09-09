@@ -29,7 +29,11 @@ const PaymentMethodManagement: React.FC = () => {
   const [formData, setFormData] = useState<Partial<PaymentMethodDTO>>({
     methodName: '',
     active: true,
-    accountId: null
+    accountId: null,
+    payeeName: '',
+    payeeAccountNo: '',
+    payeeHint: '',
+    showOnCustomerApp: true,
   });
   const [saving, setSaving] = useState(false);
 
@@ -70,14 +74,22 @@ const PaymentMethodManagement: React.FC = () => {
       setFormData({
         methodName: method.methodName,
         active: method.active,
-        accountId: method.accountId
+        accountId: method.accountId,
+        payeeName: method.payeeName || '',
+        payeeAccountNo: method.payeeAccountNo || '',
+        payeeHint: method.payeeHint || '',
+        showOnCustomerApp: method.showOnCustomerApp !== false,
       });
     } else {
       setEditingMethod(null);
       setFormData({
         methodName: '',
         active: true,
-        accountId: null
+        accountId: null,
+        payeeName: '',
+        payeeAccountNo: '',
+        payeeHint: '',
+        showOnCustomerApp: true,
       });
     }
     setIsModalOpen(true);
@@ -190,6 +202,7 @@ const PaymentMethodManagement: React.FC = () => {
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
               <tr>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Channel Identity</th>
+                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Payee (Customer App)</th>
                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Accounting Bridge (COA)</th>
                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Active Status</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
@@ -204,7 +217,22 @@ const PaymentMethodManagement: React.FC = () => {
                         <CreditCard size={20} />
                       </div>
                       <p className="text-[13px] font-black text-slate-800 tracking-tight">{method.methodName}</p>
+                      {(method.payeeName || method.payeeAccountNo) && (
+                        <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                          {[method.payeeName, method.payeeAccountNo].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
                     </div>
+                  </td>
+                  <td className="px-4 py-5">
+                    <div className="text-[11px] font-bold text-slate-700">
+                      {method.payeeName || method.payeeAccountNo
+                        ? [method.payeeName, method.payeeAccountNo].filter(Boolean).join(' · ')
+                        : <span className="text-slate-400">မသတ်မှတ်ရသေး</span>}
+                    </div>
+                    {method.payeeHint && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">{method.payeeHint}</p>
+                    )}
                   </td>
                   <td className="px-4 py-5">
                     <div className="flex items-center gap-2">
@@ -300,6 +328,41 @@ const PaymentMethodManagement: React.FC = () => {
                   <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
                 <p className="text-[9px] text-slate-400 font-bold ml-1 uppercase">Payments through this channel will hit this ledger account.</p>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Customer App — ငွေလက်ခံအကောင့်</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase">COA နှင့် သီးခြား — customer ကို ပြမည့် အကောင့်အမည် / နံပါတ်</p>
+                <input
+                  type="text"
+                  value={formData.payeeName || ''}
+                  onChange={(e) => setFormData({ ...formData, payeeName: e.target.value })}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500"
+                  placeholder="အကောင့်အမည် (ဥပမာ — U Aung)"
+                />
+                <input
+                  type="text"
+                  value={formData.payeeAccountNo || ''}
+                  onChange={(e) => setFormData({ ...formData, payeeAccountNo: e.target.value })}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500"
+                  placeholder="အကောင့်နံပါတ် / ဖုန်း"
+                />
+                <input
+                  type="text"
+                  value={formData.payeeHint || ''}
+                  onChange={(e) => setFormData({ ...formData, payeeHint: e.target.value })}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500"
+                  placeholder="အပိုညွှန်ကြားချက် (optional)"
+                />
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.showOnCustomerApp !== false}
+                    onChange={(e) => setFormData({ ...formData, showOnCustomerApp: e.target.checked })}
+                    className="w-5 h-5 rounded-lg border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Customer App မှာ ပြမည်</span>
+                </label>
               </div>
 
               <div className="flex items-center gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-200">

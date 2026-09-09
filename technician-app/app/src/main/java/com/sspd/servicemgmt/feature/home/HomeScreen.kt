@@ -46,6 +46,15 @@ import java.util.Calendar
 private val HeroTop    = Color(0xFF0F2A3D)
 private val HeroBottom = Color(0xFF1E5A6F)
 
+/**
+ * Main Home/Dashboard Screen composable for the SSPD Technician mobile application.
+ *
+ * Displays a personalized top hero banner, server connectivity chip, outdoor visit tracking status,
+ * pending service job metrics, action grid shortcuts, real-time booking alerts, and a modal navigation drawer.
+ *
+ * @param onNavigate Callback to handle screen navigation given a route string.
+ * @param onLogout Callback invoked when the user confirms logging out of the application.
+ */
 @Composable
 fun HomeScreen(
     onNavigate: (String) -> Unit,
@@ -272,6 +281,19 @@ private data class QuadItem(
     val route: String
 )
 
+/**
+ * Technician-focused dashboard body content.
+ *
+ * Highlights current outdoor visit status, assigned pending jobs count, and quick action grid.
+ *
+ * @param pendingJobs Number of pending service jobs assigned to the technician.
+ * @param visit Active outdoor technician visit details, if currently on a visit.
+ * @param visitBusy `true` if a visit state transition operation is currently in progress.
+ * @param pendingResume `true` if location tracking needs to be resumed.
+ * @param canOutdoorVisit `true` if user permissions allow initiating outdoor visits.
+ * @param onResumeTracking Callback to resume background location tracking.
+ * @param onNavigate Navigation handler callback.
+ */
 @Composable
 private fun TechnicianHomeBody(
     pendingJobs: Long,
@@ -338,6 +360,17 @@ private fun TechnicianHomeBody(
     ActionGrid(actions, onNavigate)
 }
 
+/**
+ * Comprehensive business operations dashboard body content.
+ *
+ * Displays financial statistics, sales metrics, stock warnings, accounts receivable pulse,
+ * booking alerts, and complete module action grid.
+ *
+ * @param state Current UI state snapshot containing statistics and alerts.
+ * @param onNavigate Navigation callback handler.
+ * @param onDismissAlert Callback to dismiss a single booking alert by ID.
+ * @param onDismissAll Callback to dismiss all active booking alerts.
+ */
 @Composable
 private fun FullHomeBody(
     state: HomeViewModel.HomeUiState,
@@ -499,6 +532,12 @@ private fun FullHomeBody(
     ActionGrid(actions, onNavigate)
 }
 
+/**
+ * 2-column grid layout for quick action shortcut buttons.
+ *
+ * @param actions List of [QuadItem] entries defining label, icon, tint color, and navigation route.
+ * @param onNavigate Navigation callback handler.
+ */
 @Composable
 private fun ActionGrid(actions: List<QuadItem>, onNavigate: (String) -> Unit) {
     actions.chunked(2).forEach { row ->
@@ -522,6 +561,17 @@ private fun ActionGrid(actions: List<QuadItem>, onNavigate: (String) -> Unit) {
 }
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
+
+/**
+ * Overview card highlighting Accounts Receivable (AR) metrics including pending and overdue balances.
+ *
+ * @param pendingAmount Total monetary value of pending credit receivables.
+ * @param overdueAmount Total monetary value of overdue credit receivables.
+ * @param pendingCount Count of pending credit invoices.
+ * @param overdueCount Count of overdue credit invoices.
+ * @param onCreditClick Callback when credit desk action is clicked.
+ * @param onCustomerClick Callback when customers list action is clicked.
+ */
 @Composable
 private fun OperationsPulseCard(
     pendingAmount: Long,
@@ -577,6 +627,9 @@ private fun OperationsPulseCard(
     }
 }
 
+/**
+ * Metric summary sub-card inside [OperationsPulseCard].
+ */
 @Composable
 private fun PulseMetric(
     label: String,
@@ -601,6 +654,9 @@ private fun PulseMetric(
     }
 }
 
+/**
+ * Metric summary card displaying a numeric stat value with icon, label, and custom background color.
+ */
 @Composable
 private fun StatCard(
     modifier: Modifier,
@@ -637,6 +693,10 @@ private fun StatCard(
 }
 
 // ── Action Grid Card ──────────────────────────────────────────────────────────
+
+/**
+ * Action card component used within the Quick Action Grid.
+ */
 @Composable
 private fun ActionGridCard(
     modifier: Modifier,
@@ -680,6 +740,9 @@ private fun ActionGridCard(
 
 // ── Booking alert card ────────────────────────────────────────────────────────
 
+/**
+ * Real-time booking notification card displaying customer appointment info and action buttons.
+ */
 @Composable
 private fun BookingAlertCard(
     booking:    BookingDTO,
@@ -763,6 +826,16 @@ private fun BookingAlertCard(
 }
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
+
+/**
+ * Navigation drawer content pane displaying user profile header and navigation items.
+ *
+ * @param username Active account username.
+ * @param displayName Display name for the logged-in user.
+ * @param isTechnician `true` if current user is a technician staff member.
+ * @param onNavigate Navigation callback handler.
+ * @param onLogout Logout action callback handler.
+ */
 @Composable
 fun DrawerContent(
     username:     String,
@@ -881,6 +954,9 @@ fun DrawerContent(
     }
 }
 
+/**
+ * Section header label inside the navigation drawer.
+ */
 @Composable
 private fun DrawerSection(title: String) {
     Text(
@@ -893,6 +969,9 @@ private fun DrawerSection(title: String) {
     )
 }
 
+/**
+ * Individual navigation item button inside the drawer.
+ */
 @Composable
 private fun DrawerMenuItem(
     label:     String,
@@ -934,6 +1013,10 @@ private fun DrawerMenuItem(
 }
 
 // ── Server status chip ────────────────────────────────────────────────────────
+
+/**
+ * Chip component indicating current server connectivity state (ONLINE, OFFLINE, or CHECKING).
+ */
 @Composable
 private fun ServerStatusChip() {
     val status = LocalServerStatus.current

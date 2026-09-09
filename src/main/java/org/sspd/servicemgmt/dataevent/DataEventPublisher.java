@@ -23,9 +23,23 @@ public class DataEventPublisher {
         publishTopic("/topic/data-events", payload);
     }
 
+    public void publishToUser(String username, String destination, Object payload) {
+        afterCommit(() -> messaging.convertAndSendToUser(username, destination, payload));
+    }
+
     /** Broadcast to any STOMP topic after the current transaction commits. */
     public void publishTopic(String topic, Object payload) {
-        Runnable send = () -> messaging.convertAndSend(topic, payload);
+        afterCommit(() -> messaging.convertAndSend(topic, payload));
+    }
+
+    public void publishCustomerOrder(String type, Integer orderId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", type);
+        if (orderId != null) payload.put("orderId", orderId);
+        publishTopic("/topic/customer-order", payload);
+    }
+
+    private void afterCommit(Runnable send) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override

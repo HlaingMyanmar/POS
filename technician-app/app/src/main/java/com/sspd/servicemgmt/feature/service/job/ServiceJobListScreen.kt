@@ -28,6 +28,7 @@ import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -51,6 +52,10 @@ fun ServiceJobListScreen(
     var showToPicker   by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        TechnicianQueueFocus.bucket?.let {
+            vm.setWorkTab(WORK_TAB_ACTIVE)
+            TechnicianQueueFocus.bucket = null
+        }
         while (true) { vm.load(); delay(30_000) }
     }
 
@@ -155,7 +160,14 @@ fun ServiceJobListScreen(
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+        Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
             OutlinedTextField(
                 value = state.search,
                 onValueChange = vm::setSearch,
@@ -284,7 +296,7 @@ fun ServiceJobListScreen(
                 }
             }
 
-            if (state.loading) {
+            if (state.loading && state.items.isEmpty() && state.sentHandovers.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppLoading()
                 }
@@ -359,12 +371,13 @@ fun ServiceJobListScreen(
                             }
                         }
                     }
-                    items(filtered) { job ->
+                    items(filtered, key = { it.id ?: it.hashCode() }) { job ->
                         ServiceJobListCard(job = job, onClick = { job.id?.let { onJobClick(it) } })
                     }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
             }
+        }
         }
     }
 }

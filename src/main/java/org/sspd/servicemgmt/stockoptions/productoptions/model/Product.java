@@ -24,6 +24,18 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Builder.Default
+    @Column(name = "customer_reserved_qty", nullable = false)
+    private Integer customerReservedQty = 0;
+
+    @PreUpdate
+    void protectCustomerReservations() {
+        if (!Boolean.TRUE.equals(hasSerial) && (stockQty == null ? 0 : stockQty)
+                < (customerReservedQty == null ? 0 : customerReservedQty) + (quarantinedQty == null ? 0 : quarantinedQty)) {
+            throw new IllegalStateException("Stock is reserved for customer orders or quarantined");
+        }
+    }
+
     @Version
     private Long version;
 

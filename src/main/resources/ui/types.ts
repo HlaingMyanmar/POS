@@ -343,6 +343,10 @@ export interface PaymentMethodDTO {
   active: boolean;
   accountId: number | null;
   accountName?: string;
+  payeeName?: string | null;
+  payeeAccountNo?: string | null;
+  payeeHint?: string | null;
+  showOnCustomerApp?: boolean | null;
 }
 
 export interface ExpenseDTO {
@@ -434,7 +438,10 @@ export interface SaleDetailDTO {
   discountAmount?: number;
   foc?: boolean;
   warrantyMonths?: number;
+  warrantyStartDate?: string;
   warrantyExpiryDate?: string;
+  warrantyStatus?: string;
+  warrantyDaysRemaining?: number;
   serialNumbers: string[];
 }
 
@@ -1147,6 +1154,7 @@ export interface ShelfLocationDTO {
 export enum AppRoute {
   LOGIN = '/login',
   CUSTOMER_SHOP = '/shop',
+  CUSTOMER_PASSWORD_RESET = '/customer/reset-password',
   DASHBOARD = '/',
   USERS = '/rbac/users',
   ROLES = '/rbac/roles',
@@ -1159,6 +1167,7 @@ export enum AppRoute {
   UNITS = '/inventory/units',
   SUPPLIERS = '/procurement/suppliers',
   SALES = '/crm/sales',
+  WARRANTIES = '/crm/warranties',
   QUOTATIONS = '/crm/quotations',
   CREDIT = '/crm/credit-management',
   CUSTOMERS = '/crm/customers',
@@ -1204,5 +1213,7 @@ export enum AppRoute {
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',
   CUSTOMER_APP_ORDERS      = '/crm/customer-app-orders',
+  DELIVERY_CHARGES         = '/crm/delivery-charges',
+  CUSTOMER_APP_ACCOUNTS    = '/crm/customer-app-accounts',
   DAILY_SNAPSHOT           = '/reports/daily-snapshot'
 }

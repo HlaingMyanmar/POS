@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Printer, X, Download, RefreshCw, FileText, ZoomIn, ZoomOut, Receipt } from 'lucide-react';
+import { Printer, X, Download, RefreshCw, FileText, ZoomIn, ZoomOut, Receipt, Send } from 'lucide-react';
 import { DocumentType, PaperSize, PrintOptions } from '../types/print.types';
-import { useHtmlPreview, useIframePrint, usePdfDownload } from '../hooks/usePrint';
+import { useHtmlPreview, useIframePrint, usePdfDownload, useInvoiceSend } from '../hooks/usePrint';
 import { voucherSettingService, VoucherSettingDto, DocumentType as VoucherDocType } from '../../services/voucherSettingService';
 
 interface InvoicePrintPreviewProps {
@@ -110,6 +110,7 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
   const { html, loading, error, load } = useHtmlPreview();
   const { iframeRef, print } = useIframePrint();
   const { execute: downloadPdf, loading: pdfLoading } = usePdfDownload();
+  const { execute: sendPdf, loading: sendLoading } = useInvoiceSend();
 
   useEffect(() => {
     if (!settingsReady) return;
@@ -131,6 +132,17 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
 
   const handleDownload = () => {
     downloadPdf(documentType, documentId, options, 'download');
+  };
+
+  const handleSend = async () => {
+    const to = window.prompt('Invoice ပို့မည့် email\n(ကွက်လပ်ထားရင် ဖောက်သည် email သို့ ပို့မည်)', '');
+    if (to === null) return;
+    try {
+      const sent = await sendPdf(documentType, documentId, options, to.trim());
+      window.alert('Invoice ပို့ပြီးပါပြီ\n' + sent);
+    } catch (err: unknown) {
+      window.alert(err instanceof Error ? err.message : 'Invoice မပို့နိုင်ပါ');
+    }
   };
 
   const HeaderIcon = isBooking ? Receipt : FileText;
@@ -171,6 +183,15 @@ export const InvoicePrintPreview: React.FC<InvoicePrintPreviewProps> = ({
             >
               <Download size={14} />
               {pdfLoading ? 'PDF…' : 'PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={sendLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <Send size={14} />
+              {sendLoading ? 'ပို့နေသည်…' : 'Send'}
             </button>
             <button
               type="button"

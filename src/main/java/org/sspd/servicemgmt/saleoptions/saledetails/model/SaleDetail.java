@@ -63,6 +63,9 @@ public class SaleDetail {
     @Column(name = "warranty_months")
     private Integer warrantyMonths = 0;
 
+    @Column(name = "warranty_start_date")
+    private LocalDate warrantyStartDate;
+
     @Column(name = "warranty_expiry_date")
     private LocalDate warrantyExpiryDate;
 }

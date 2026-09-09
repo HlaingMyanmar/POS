@@ -321,9 +321,8 @@ private fun JobPrintWebView(
                     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPageStarted()
                     override fun onPageFinished(view: WebView, url: String) = onPageFinished()
 
-                    @SuppressLint("WebViewClientOnReceivedSslError")
                     override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-                        handler.proceed()
+                        handler.cancel()
                     }
                 }
                 onCreated(this)

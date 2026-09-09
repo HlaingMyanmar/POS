@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { DocumentType, PrintJob, PrintOptions } from '../types/print.types';
-import { fetchHtmlPreview, fetchPdfObjectUrl } from '../utils/htmlPdfClient';
+import { fetchHtmlPreview, fetchPdfObjectUrl, sendInvoicePdf } from '../utils/htmlPdfClient';
 import { printQueue } from '../utils/printQueue';
 
 // ─── useHtmlPreview ───────────────────────────────────────────────────────────
@@ -80,6 +80,30 @@ export function usePdfDownload() {
         }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'PDF generation failed');
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { execute, loading, error };
+}
+
+export function useInvoiceSend() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const execute = useCallback(
+    async (type: DocumentType, id: number, options: PrintOptions, toEmail?: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        return await sendInvoicePdf(type, id, options, toEmail);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Invoice မပို့နိုင်ပါ';
+        setError(message);
+        throw new Error(message);
       } finally {
         setLoading(false);
       }

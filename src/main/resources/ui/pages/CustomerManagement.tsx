@@ -21,6 +21,7 @@ import {
   X
 } from 'lucide-react';
 import { customerService } from '../services/customerapiservice';
+import { api } from '../services/api';
 import { creditAlertService } from '../services/creditalertapiservice';
 import { creditTermService } from '../services/credittermapiservice';
 import { customerPaymentService } from '../services/customerpaymentapiservice';
@@ -75,6 +76,7 @@ const CustomerManagement: React.FC = () => {
   const [alerts, setAlerts] = useState<CreditAlertDTO[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDTO[]>([]);
   const [payments, setPayments] = useState<CustomerPaymentDTO[]>([]);
+  const [appCustomerIds, setAppCustomerIds] = useState<Set<number>>(new Set());
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -143,18 +145,20 @@ const CustomerManagement: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [customerRows, saleRows, termRows, alertRows, methodRows] = await Promise.all([
+      const [customerRows, saleRows, termRows, alertRows, methodRows, appRes] = await Promise.all([
         customerService.getAll(),
         saleApiService.getAll(),
         creditTermService.getAll(),
         creditAlertService.getAllUnresolved(),
-        paymentMethodService.getAllActive()
+        paymentMethodService.getAllActive(),
+        api.get<any>('/v1/customer-app-accounts').catch(() => ({ data: [] }))
       ]);
       setCustomers(customerRows || []);
       setSales(saleRows || []);
       setTerms(termRows || []);
       setAlerts(alertRows || []);
       setPaymentMethods(methodRows || []);
+      setAppCustomerIds(new Set((appRes.data || []).map((a: { customerId?: number }) => a.customerId).filter(Boolean)));
     } catch (error: any) {
       Swal.fire('Error', error?.message || 'Failed to load customer data', 'error');
     } finally {
@@ -634,7 +638,12 @@ const CustomerManagement: React.FC = () => {
                     <td className="px-4 py-3 text-slate-600">#{customer.id}</td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-semibold text-slate-800">{customer.name}</p>
+                        <p className="font-semibold text-slate-800">
+                          {customer.name}
+                          {appCustomerIds.has(customer.id) && (
+                            <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-black text-indigo-700">APP</span>
+                          )}
+                        </p>
                         <p className="text-xs text-slate-500">{customer.address}</p>
                       </div>
                     </td>

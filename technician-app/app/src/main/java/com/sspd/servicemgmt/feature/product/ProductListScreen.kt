@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ProductDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
 import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
 import com.sspd.servicemgmt.core.ui.theme.*
@@ -76,6 +77,7 @@ fun ProductListScreen(
         filter = state.filter,
         sort = state.sort,
         loading = state.loading,
+        refreshing = state.refreshing,
         error = state.error,
         scanLoading = state.scanLoading,
         showScanner = state.showScanner,
@@ -88,6 +90,7 @@ fun ProductListScreen(
         onScanResult = vm::onScanResult,
         onDismissScanner = vm::dismissScanner,
         onReload = vm::load,
+        onRefresh = vm::refresh,
         onProductClick = onProductClick,
         onNewProduct = onNewProduct,
         canCreateProduct = canCreateProduct
@@ -102,6 +105,7 @@ fun ProductListContent(
     filter: ProductListViewModel.ProductFilter,
     sort: ProductListViewModel.ProductSort,
     loading: Boolean,
+    refreshing: Boolean = false,
     error: String?,
     scanLoading: Boolean,
     showScanner: Boolean,
@@ -114,6 +118,7 @@ fun ProductListContent(
     onScanResult: (String) -> Unit,
     onDismissScanner: () -> Unit,
     onReload: () -> Unit,
+    onRefresh: () -> Unit = onReload,
     onProductClick: (Int) -> Unit,
     onNewProduct: () -> Unit,
     canCreateProduct: Boolean = true
@@ -208,10 +213,16 @@ fun ProductListContent(
                 }
             }
         ) { padding ->
-            Column(
+            AppPullRefresh(
+                refreshing = refreshing,
+                onRefresh = onRefresh,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
+            ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
                     .background(ScreenBg)
             ) {
                 Column(
@@ -411,6 +422,7 @@ fun ProductListContent(
                         }
                     }
                 }
+            }
             }
         }
 

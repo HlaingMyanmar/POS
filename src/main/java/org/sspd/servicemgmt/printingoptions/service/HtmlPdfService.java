@@ -136,9 +136,15 @@ public class HtmlPdfService {
                       margin: %.1fmm %.1fmm %.1fmm %.1fmm;
                     }
                     *, *::before, *::after { box-sizing: border-box; }
-                    body { margin: 0; padding: 0; }
+                    body {
+                      margin: 0;
+                      padding: 0;
+                      color: #111827;
+                      font-family: Pyidaungsu, 'Myanmar Text', 'Segoe UI', Arial, sans-serif;
+                    }
                     .invoice-page { page-break-after: always; }
                     .invoice-page:last-child { page-break-after: avoid; }
+                    %s
                     %s
                     %s
                   </style>
@@ -152,6 +158,7 @@ public class HtmlPdfService {
                 cfg.getMarginTopMm(), cfg.getMarginRightMm(),
                 cfg.getMarginBottomMm(), cfg.getMarginLeftMm(),
                 templateService.printCss(),
+                templateService.pdfCss(),
                 fontCss,
                 body);
     }
@@ -176,6 +183,7 @@ public class HtmlPdfService {
             Document doc = parseXhtml(xhtml);
 
             ITextRenderer renderer = new ITextRenderer();
+            PrintPdfFontSupport.register(renderer);
             renderer.setDocument(doc, null);
             renderer.layout();
             renderer.createPDF(out);

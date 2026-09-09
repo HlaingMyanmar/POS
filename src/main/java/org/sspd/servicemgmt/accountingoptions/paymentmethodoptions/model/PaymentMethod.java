@@ -28,4 +28,19 @@ public class PaymentMethod {
 
     @Column(name = "is_active")
     private boolean active = true;
+
+    /** Customer-facing receiver name (not COA ledger). */
+    @Column(name = "payee_name", length = 120)
+    private String payeeName;
+
+    /** Bank / wallet / phone account number shown for transfers. */
+    @Column(name = "payee_account_no", length = 80)
+    private String payeeAccountNo;
+
+    @Column(name = "payee_hint", length = 255)
+    private String payeeHint;
+
+    @Builder.Default
+    @Column(name = "show_on_customer_app", nullable = false)
+    private Boolean showOnCustomerApp = Boolean.TRUE;
 }

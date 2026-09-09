@@ -52,6 +52,7 @@ public class TemplateRenderingService {
     private String printTemplatesDir;
 
     private String printCss = "";
+    private String pdfCss = "";
 
     String printCss() {
         if (PrintTemplatePaths.cssAvailable(printTemplatesDir)) {
@@ -64,18 +65,29 @@ public class TemplateRenderingService {
         return printCss == null ? "" : printCss;
     }
 
+    String pdfCss() {
+        return pdfCss == null ? "" : pdfCss;
+    }
+
     @PostConstruct
     void loadPrintCss() {
         try {
             if (PrintTemplatePaths.cssAvailable(printTemplatesDir)) {
                 printCss = Files.readString(PrintTemplatePaths.cssFile(printTemplatesDir), StandardCharsets.UTF_8);
                 log.info("Print CSS overlay enabled: {}", PrintTemplatePaths.cssFile(printTemplatesDir));
-                return;
+            } else {
+                var res = new ClassPathResource("print/css/print-base.css");
+                printCss = res.getContentAsString(StandardCharsets.UTF_8);
             }
-            var res = new ClassPathResource("print/css/print-base.css");
-            printCss = res.getContentAsString(StandardCharsets.UTF_8);
         } catch (Exception e) {
             log.warn("print-base.css not found — styles will be missing in preview");
+        }
+        try {
+            pdfCss = new ClassPathResource("print/css/print-pdf.css")
+                    .getContentAsString(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.warn("print-pdf.css not found — PDF layout fallbacks disabled");
+            pdfCss = "";
         }
     }
 

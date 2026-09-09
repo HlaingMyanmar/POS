@@ -25,13 +25,17 @@ import com.sspd.servicemgmt.core.network.ServiceJobPayDueRequest
 import com.sspd.servicemgmt.core.network.SettleJobRequest
 import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
+import com.sspd.servicemgmt.core.network.httpFailureMessage
+import com.sspd.servicemgmt.core.network.toUserNetworkMessage
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.sspd.servicemgmt.core.realtime.onDataEvent
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ServiceJobDetailViewModel(
     application: Application,
@@ -43,58 +47,138 @@ class ServiceJobDetailViewModel(
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+    private val loadInFlight = AtomicBoolean(false)
+    private val actionInFlight = AtomicBoolean(false)
 
     init {
         load()
-        onDataEvent("Service Job") { load() }
+        onDataEvent("Service Job", debounceMs = 1200L) { load(background = true) }
     }
 
-    fun load() {
+    fun load(background: Boolean = false) {
+        if (!loadInFlight.compareAndSet(false, true)) return
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
+            val keepJob = _uiState.value.job != null
+            _uiState.update {
+                it.copy(
+                    loading = !background && !keepJob,
+                    loadError = null
+                )
+            }
             try {
-                val token   = ApiClient.bearer(prefs.authToken)
-                val jobD    = async { ApiClient.service.getServiceJobById(token, jobId) }
-                val teamD   = async { ApiClient.service.getServiceJobTeam(token, jobId) }
-                val pmD     = async { ApiClient.service.getActivePaymentMethods(token) }
-                val staffD  = async { ApiClient.service.getActiveStaff(token) }
-                val settingsD = async { ApiClient.service.getCompanySettings(token) }
-                val jobData = jobD.await().body()?.data
-                val teamRes = teamD.await()
-                val teamData = teamRes.body()?.data
-                val teamError = when {
-                    !teamRes.isSuccessful ->
-                        "Assignment မရပါ (HTTP ${teamRes.code()}) — CAN_ACCESS_SERVICE_JOB_READ စစ်ပါ"
-                    else -> null
+                val token = ApiClient.bearer(prefs.authToken)
+                val jobRes = ApiClient.service.getServiceJobById(token, jobId)
+                val jobData = jobRes.body()?.data
+                if (!jobRes.isSuccessful || jobData == null) {
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            loadError = httpFailureMessage(jobRes.code(), jobRes.body()?.message)
+                        )
+                    }
+                    return@launch
                 }
-                val allSerials = (jobData?.productParts ?: emptyList()).flatMap { it.serialNumbers ?: emptyList() }
-                val snMap: Map<String, ProductSerialDTO> = if (allSerials.isNotEmpty()) {
-                    runCatching {
-                        ApiClient.service.getProductSerialsBySerials(token, allSerials)
-                            .body()?.data?.associateBy { it.serialNumber } ?: emptyMap()
-                    }.getOrElse { emptyMap() }
-                } else emptyMap()
+                val extras = loadExtras(token, jobData)
                 _uiState.update {
                     it.copy(
-                        job               = jobData,
-                        team              = teamData,
-                        teamError         = teamError,
-                        paymentMethods    = pmD.await().body()?.data ?: emptyList(),
-                        staff             = staffD.await().body()?.data ?: emptyList(),
-                        serialWarrantyMap = snMap,
-                        serviceAllowDeliveryWithDue = settingsD.await().body()?.data?.serviceAllowDeliveryWithDue == true,
-                        loading           = false
+                        job = jobData,
+                        team = extras.team ?: it.team,
+                        teamError = extras.teamError,
+                        paymentMethods = extras.paymentMethods ?: it.paymentMethods,
+                        staff = extras.staff ?: it.staff,
+                        serialWarrantyMap = extras.serials,
+                        serviceAllowDeliveryWithDue = extras.allowDue ?: it.serviceAllowDeliveryWithDue,
+                        extrasWarning = extras.warning,
+                        loading = false,
+                        loadError = null
                     )
                 }
-            } catch (_: Exception) {
-                _uiState.update { it.copy(loading = false) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        loading = false,
+                        loadError = if (it.job == null) e.toUserNetworkMessage() else null,
+                        extrasWarning = if (it.job != null) e.toUserNetworkMessage() else it.extrasWarning
+                    )
+                }
+            } finally {
+                loadInFlight.set(false)
             }
         }
     }
 
+    private data class Extras(
+        val team: TeamSnapshotDTO? = null,
+        val teamError: String? = null,
+        val paymentMethods: List<PaymentMethodDTO>? = null,
+        val staff: List<StaffDTO>? = null,
+        val serials: Map<String, ProductSerialDTO> = emptyMap(),
+        val allowDue: Boolean? = null,
+        val warning: String? = null
+    )
+
+    private suspend fun loadExtras(token: String, itJob: ServiceJobDTO?): Extras = coroutineScope {
+        val currentUi = _uiState.value
+        val hasPm = currentUi.paymentMethods.isNotEmpty()
+        val hasStaff = currentUi.staff.isNotEmpty()
+
+        val teamAttempt = async { runCatching { ApiClient.service.getServiceJobTeam(token, jobId) } }
+        val pmAttempt = if (hasPm) null else async { runCatching { ApiClient.service.getActivePaymentMethods(token) } }
+        val staffAttempt = if (hasStaff) null else async { runCatching { ApiClient.service.getActiveStaff(token) } }
+        val settingsAttempt = async { runCatching { ApiClient.service.getCompanySettings(token) } }
+
+        val teamResult = teamAttempt.await()
+        val teamRes = teamResult.getOrNull()
+        val warnings = mutableListOf<String>()
+        val teamError = when {
+            teamResult.isFailure -> {
+                warnings += "Assignment စာရင်း မရပါ"
+                teamResult.exceptionOrNull()?.toUserNetworkMessage()
+            }
+            teamRes?.isSuccessful != true ->
+                "Assignment မရပါ (HTTP ${teamRes?.code()}) — CAN_ACCESS_SERVICE_JOB_READ စစ်ပါ"
+            else -> null
+        }
+        val pmResult = pmAttempt?.await()
+        val pmData = if (hasPm) currentUi.paymentMethods else pmResult?.getOrNull()?.body()?.data
+        if (!hasPm && (pmResult == null || pmResult.isFailure || pmResult.getOrNull()?.isSuccessful != true)) {
+            warnings += "ငွေပေးချေနည်း စာရင်း မရပါ"
+        }
+
+        val staffResult = staffAttempt?.await()
+        val staffData = if (hasStaff) currentUi.staff else staffResult?.getOrNull()?.body()?.data
+        if (!hasStaff && (staffResult == null || staffResult.isFailure || staffResult.getOrNull()?.isSuccessful != true)) {
+            warnings += "Staff စာရင်း မရပါ"
+        }
+
+        val settingsRes = settingsAttempt.await()
+        if (settingsRes.isFailure || settingsRes.getOrNull()?.isSuccessful != true) {
+            warnings += "Company settings မရပါ"
+        }
+        val allSerials = (itJob?.productParts ?: emptyList()).flatMap { it.serialNumbers ?: emptyList() }
+        val snMap: Map<String, ProductSerialDTO> = if (allSerials.isNotEmpty()) {
+            runCatching {
+                ApiClient.service.getProductSerialsBySerials(token, allSerials)
+                    .body()?.data?.associateBy { it.serialNumber } ?: emptyMap()
+            }.getOrElse { emptyMap() }
+        } else emptyMap()
+        Extras(
+            team = teamRes?.body()?.data,
+            teamError = teamError,
+            paymentMethods = pmData,
+            staff = staffData,
+            serials = snMap,
+            allowDue = settingsRes.getOrNull()?.body()?.data?.serviceAllowDeliveryWithDue,
+            warning = warnings.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+        )
+    }
+
+    private fun beginAction(): Boolean = actionInFlight.compareAndSet(false, true)
+
     // ── Status Update ─────────────────────────────────────────────────────────
 
     fun updateStatus(status: String, holdReason: String? = null) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
@@ -107,7 +191,9 @@ class ServiceJobDetailViewModel(
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
@@ -163,14 +249,15 @@ class ServiceJobDetailViewModel(
         note: String? = null,
         completedWork: String? = null,
         serviceDetails: String? = null,
-        partsDetails: String? = null
+        partsDetails: String? = null,
+        onSuccess: () -> Unit = {}
     ) {
         val success = when (action.uppercase()) {
             "COMPLETE" -> "လုပ်ငန်းပြီးစီးမှတ်တမ်း သိမ်းပြီး"
             "NOTE" -> "လုပ်ငန်းမှတ်တမ်း တင်ပြီး"
             else -> "မှတ်တမ်း သိမ်းပြီး"
         }
-        runTeamAction(success) {
+        runTeamAction(success, onSuccess) {
             ApiClient.service.recordServiceJobWork(
                 it, jobId, assignmentId,
                 AssignmentActionRequest(
@@ -200,19 +287,22 @@ class ServiceJobDetailViewModel(
     }
 
     private inline fun runJobAction(successMsg: String, crossinline call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<ServiceJobDTO>>) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = call(token)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    load()
+                    load(background = true)
                     _uiState.update { it.copy(actionLoading = false, actionSuccess = successMsg) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
@@ -221,40 +311,48 @@ class ServiceJobDetailViewModel(
     val myStaffId get() = prefs.staffId
 
     private fun runHandoverAction(successMsg: String, call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<HandoverDTO>>) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = call(token)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    load()
+                    load(background = true)
                     _uiState.update { it.copy(actionLoading = false, actionSuccess = successMsg) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
 
     private fun runTeamAction(
         successMsg: String = "မှတ်တမ်း သိမ်းပြီး",
+        onSuccess: () -> Unit = {},
         call: suspend (String) -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<AssignmentDTO>>
     ) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res = call(token)
                 if (res.isSuccessful && res.body()?.data != null) {
-                    load()
+                    onSuccess()
+                    load(background = true)
                     _uiState.update { it.copy(actionLoading = false, actionSuccess = successMsg) }
                 } else {
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
@@ -326,6 +424,7 @@ class ServiceJobDetailViewModel(
         payments:  List<PaymentTransactionDTO>? = null,
         discountAllocationMethod: String = "PRO_RATA"
     ) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
@@ -357,7 +456,9 @@ class ServiceJobDetailViewModel(
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
@@ -376,6 +477,7 @@ class ServiceJobDetailViewModel(
         paymentDiscount: Double = 0.0,
         paymentDiscountApprovalNote: String? = null
     ) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
@@ -405,7 +507,9 @@ class ServiceJobDetailViewModel(
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
@@ -435,6 +539,7 @@ class ServiceJobDetailViewModel(
     fun dismissNotifyDialog() = _uiState.update { it.copy(showNotifyDialog = false) }
 
     fun createRework(request: ReworkRequestDTO) {
+        if (!beginAction()) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }
             try {
@@ -448,7 +553,9 @@ class ServiceJobDetailViewModel(
                     _uiState.update { it.copy(actionLoading = false, actionError = res.body()?.message ?: "Rework မအောင်မြင်ပါ") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+                _uiState.update { it.copy(actionLoading = false, actionError = e.toUserNetworkMessage()) }
+            } finally {
+                actionInFlight.set(false)
             }
         }
     }
@@ -666,6 +773,8 @@ class ServiceJobDetailViewModel(
         val serviceAllowDeliveryWithDue: Boolean            = false,
         val creditBalance:     Double                       = 0.0,
         val deleteLoading:     Boolean                      = false,
+        val extrasWarning:     String?                      = null,
+        val loadError:         String?                      = null,
         val actionSuccess:     String?                      = null,
         val actionError:       String?                      = null
     )

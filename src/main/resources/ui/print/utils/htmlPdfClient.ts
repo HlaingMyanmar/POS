@@ -45,6 +45,25 @@ export async function fetchPdfObjectUrl(
   return URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
 }
 
+export async function sendInvoicePdf(
+  documentType: DocumentType,
+  documentId: number,
+  options: PrintOptions,
+  toEmail?: string
+): Promise<string> {
+  const body = { ...buildRequest(documentType, documentId, options), toEmail: toEmail || undefined };
+  try {
+    const { data } = await axios.post<{ success?: boolean; message?: string; data?: string }>(`${BASE}/send`, body, {
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    });
+    if (data?.success === false) throw new Error(data.message || 'Invoice မပို့နိုင်ပါ');
+    return data?.data || data?.message || 'ပို့ပြီး';
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: { message?: string } }; message?: string };
+    throw new Error(ax.response?.data?.message || ax.message || 'Invoice မပို့နိုင်ပါ');
+  }
+}
+
 /**
  * Convenience GET for a sale PDF: opens inline in the browser.
  */

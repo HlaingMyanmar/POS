@@ -10,6 +10,7 @@ import org.sspd.servicemgmt.printingoptions.dto.PrintRequest;
 import org.sspd.servicemgmt.printingoptions.entity.VoucherSetting;
 import org.sspd.servicemgmt.printingoptions.service.HtmlPdfService;
 import org.sspd.servicemgmt.printingoptions.service.InvoiceAssemblerService;
+import org.sspd.servicemgmt.printingoptions.service.InvoiceSendService;
 import org.sspd.servicemgmt.printingoptions.service.VoucherSettingService;
 
 /**
@@ -33,6 +34,7 @@ public class InvoicePrintController {
     private final InvoiceAssemblerService assembler;
     private final HtmlPdfService          pdfService;
     private final VoucherSettingService   voucherSettings;
+    private final InvoiceSendService      invoiceSend;
 
     // ── POST endpoints (full request body control) ─────────────────────────
 
@@ -68,6 +70,17 @@ public class InvoicePrintController {
         return ResponseEntity.ok()
                 .contentType(TEXT_HTML_UTF8)
                 .body(html);
+    }
+
+    /**
+     * Emails the same PDF the shop prints (Company Settings SMTP).
+     */
+    @PostMapping("/send")
+    public ResponseEntity<org.sspd.servicemgmt.api.ApiResponse<String>> sendPdf(@RequestBody PrintRequest req) {
+        VoucherSetting s = voucherSettings.findEntity(req.getDocumentType()).orElse(null);
+        applySettingToRequest(req, s);
+        String to = invoiceSend.send(req);
+        return ResponseEntity.ok(new org.sspd.servicemgmt.api.ApiResponse<>(true, "Invoice ပို့ပြီးပါပြီ", to));
     }
 
     // ── GET shortcuts (convenient for direct browser/link access) ──────────

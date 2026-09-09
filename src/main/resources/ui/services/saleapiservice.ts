@@ -179,6 +179,17 @@ export const saleApiService = {
     return res.data ?? [];
   },
 
+  lookupWarranties: async (q: { saleId?: number; customerId?: number; serial?: string; status?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (q.saleId) params.set('saleId', String(q.saleId));
+    if (q.customerId) params.set('customerId', String(q.customerId));
+    if (q.serial) params.set('serial', q.serial);
+    if (q.status) params.set('status', q.status);
+    const qs = params.toString() ? `?${params}` : '';
+    const res = await api.get<any, ApiResponse<any[]>>(`/v1/sale-warranties${qs}`);
+    return res.data ?? [];
+  },
+
   getStats: async (dateFrom = '', dateTo = '') => {
     const params = new URLSearchParams();
     if (dateFrom) params.set('dateFrom', dateFrom);

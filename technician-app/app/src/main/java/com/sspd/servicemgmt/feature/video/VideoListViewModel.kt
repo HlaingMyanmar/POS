@@ -22,11 +22,11 @@ class VideoListViewModel(application: Application) : AndroidViewModel(applicatio
         load()
     }
 
-    fun load() {
+    fun load(fromPull: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, error = null) }
+            _uiState.update { it.copy(refreshing = fromPull, loading = !fromPull && it.videos.isEmpty(), error = if (fromPull) it.error else null) }
             if (prefs.authToken.isBlank()) {
-                _uiState.update { it.copy(loading = false, error = "ပြန်လည် login ဝင်ပါ") }
+                _uiState.update { it.copy(loading = false, refreshing = false, error = "ပြန်လည် login ဝင်ပါ") }
                 return@launch
             }
             try {
@@ -34,20 +34,22 @@ class VideoListViewModel(application: Application) : AndroidViewModel(applicatio
                 val res = ApiClient.service.getVideoCatalog(token)
                 if (res.isSuccessful) {
                     _uiState.update {
-                        it.copy(videos = sanitize(res.body()?.data), loading = false, error = null)
+                        it.copy(videos = sanitize(res.body()?.data), loading = false, refreshing = false, error = null)
                     }
                 } else {
                     val message = when (res.code()) {
                         401, 403 -> "Video ကြည့်ရန် ခွင့်ပြုချက်မရှိပါ"
                         else -> res.body()?.message?.takeIf { it.isNotBlank() } ?: "Video စာရင်း မရရှိပါ"
                     }
-                    _uiState.update { it.copy(loading = false, error = message) }
+                    _uiState.update { it.copy(loading = false, refreshing = false, error = message) }
                 }
             } catch (_: Exception) {
-                _uiState.update { it.copy(loading = false, error = "ချိတ်ဆက်မှု မအောင်မြင်ပါ") }
+                _uiState.update { it.copy(loading = false, refreshing = false, error = "ချိတ်ဆက်မှု မအောင်မြင်ပါ") }
             }
         }
     }
+
+    fun refresh() = load(fromPull = true)
 
     fun setSearch(query: String) = _uiState.update { it.copy(search = query) }
 
@@ -55,6 +57,7 @@ class VideoListViewModel(application: Application) : AndroidViewModel(applicatio
         val videos: List<VideoDTO> = emptyList(),
         val search: String = "",
         val loading: Boolean = false,
+        val refreshing: Boolean = false,
         val error: String? = null
     ) {
         val filtered: List<VideoDTO>

@@ -24,9 +24,9 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
 
     init { load() }
 
-    fun load() {
+    fun load(fromPull: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
+            _uiState.update { it.copy(refreshing = fromPull, loading = !fromPull && it.types.isEmpty() && it.items.isEmpty()) }
             try {
                 val token  = ApiClient.bearer(prefs.authToken)
                 val typesD = async { ApiClient.service.getServiceTypes(token) }
@@ -35,12 +35,15 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
                     it.copy(
                         types   = typesD.await().body()?.data ?: emptyList(),
                         items   = itemsD.await().body()?.data ?: emptyList(),
-                        loading = false
+                        loading = false,
+                        refreshing = false
                     )
                 }
-            } catch (_: Exception) { _uiState.update { it.copy(loading = false) } }
+            } catch (_: Exception) { _uiState.update { it.copy(loading = false, refreshing = false) } }
         }
     }
+
+    fun refresh() = load(fromPull = true)
 
     fun setSearch(q: String) = _uiState.update { it.copy(search = q) }
 
@@ -331,6 +334,7 @@ class ServiceManagementViewModel(application: Application) : AndroidViewModel(ap
         val items:              List<ServiceItemDTO>    = emptyList(),
         val subTypes:           List<SubServiceTypeDTO> = emptyList(),
         val loading:            Boolean                 = true,
+        val refreshing:         Boolean                 = false,
         val saving:             Boolean                 = false,
         val search:             String                  = "",
         // service type dialogs

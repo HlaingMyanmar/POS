@@ -37,11 +37,11 @@ android {
         applicationId = "com.sspd.technician"
         minSdk        = 26
         targetSdk     = 35
-        versionCode   = 1
-        versionName   = "1.0.1"
+        versionCode   = 4
+        versionName   = "1.0.4"
         vectorDrawables { useSupportLibrary = true }
 
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"http://118.27.151.89\"")
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://sspdmyanmar.com\"")
         buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Technician\"")
         buildConfigField("boolean", "TECHNICIAN_ONLY", "true")
     }
@@ -117,6 +117,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
+    implementation("androidx.biometric:biometric-ktx:1.2.0-alpha05")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")

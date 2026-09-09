@@ -5,18 +5,21 @@
     <style name="Theme.SSPDManager" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">#F6F8FA</item>
+        <item name="android:colorAccent">#0EA5A8</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
     <!--
         Splash screen theme — applied at cold launch via installSplashScreen().
-        Background : Primary teal  #0F766E
+        Background : Primary Navy Blue  #0F3D5E
         Icon       : ic_launcher_foreground (white circle + blue S lettermark)
         After exit : swaps to Theme.SSPDManager automatically
     -->
     <style name="Theme.SSPDManager.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0F766E</item>
+        <item name="windowSplashScreenBackground">#0F3D5E</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
-        <item name="windowSplashScreenIconBackgroundColor">#0F766E</item>
+        <item name="windowSplashScreenIconBackgroundColor">#0F3D5E</item>
         <item name="postSplashScreenTheme">@style/Theme.SSPDManager</item>
     </style>
 

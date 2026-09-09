@@ -3,6 +3,8 @@ package com.sspd.servicemgmt.feature.chat
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.ui.theme.*
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,8 +81,13 @@ fun ChatScreen(onBack: () -> Unit) {
             }
         }
     ) { padding ->
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
         if (state.messages.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 Text("Chat message မရှိသေးပါ", color = TextMuted)
             }
         } else {
@@ -87,7 +95,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize().padding(padding)
+                modifier = Modifier.fillMaxSize()
             ) {
                 items(state.messages) { msg ->
                     val isMe = msg.senderUsername == state.myUsername
@@ -127,6 +135,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
+        }
         }
     }
 }

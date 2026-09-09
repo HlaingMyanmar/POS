@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -27,6 +28,8 @@ private val AppColorScheme = lightColorScheme(
     onBackground       = TextMain,
     surface            = CardBg,
     onSurface          = TextMain,
+    onSurfaceVariant   = TextMuted,
+    surfaceTint        = Color.Transparent,
     surfaceVariant     = SurfaceSoft,
     surfaceContainer  = SurfaceSoft,
     surfaceContainerHigh = Color(0xFFEEF3F7),
@@ -36,6 +39,30 @@ private val AppColorScheme = lightColorScheme(
     onError            = Color.White,
 )
 
+private val AppDarkColorScheme = darkColorScheme(
+    primary              = Color(0xFF5EEAD4),
+    onPrimary            = Color(0xFF062E2B),
+    primaryContainer     = Color(0xFF12324A),
+    onPrimaryContainer   = Color(0xFFD9F5F0),
+    secondary            = Color(0xFF7DD3FC),
+    onSecondary          = Color(0xFF082F49),
+    secondaryContainer   = Color(0xFF164E63),
+    onSecondaryContainer = Color(0xFFE0F2FE),
+    tertiary             = Color(0xFF5EEAD4),
+    background           = Color(0xFF0B141C),
+    onBackground         = Color(0xFFE6EDF3),
+    surface              = Color(0xFF111C25),
+    onSurface            = Color(0xFFE6EDF3),
+    surfaceVariant       = Color(0xFF192733),
+    onSurfaceVariant     = Color(0xFFB7C5D1),
+    surfaceContainer     = Color(0xFF14212B),
+    surfaceContainerHigh = Color(0xFF1B2A36),
+    surfaceTint          = Color.Transparent,
+    outline              = Color(0xFF40515E),
+    outlineVariant       = Color(0xFF293945),
+    error                = Color(0xFFFFB4AB),
+    onError              = Color(0xFF690005),
+)
 private val MyanmarFontFamily = FontFamily.SansSerif
 
 private val AppShapes = Shapes(
@@ -62,9 +89,9 @@ private val AppTypography = Typography(
 )
 
 @Composable
-fun AppTheme(content: @Composable () -> Unit) {
+fun AppTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = AppColorScheme,
+        colorScheme = if (darkTheme) AppDarkColorScheme else AppColorScheme,
         typography  = AppTypography,
         shapes      = AppShapes,
         content     = content

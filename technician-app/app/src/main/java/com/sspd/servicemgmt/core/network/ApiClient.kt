@@ -1,19 +1,13 @@
 package com.sspd.servicemgmt.core.network
 
 import com.sspd.servicemgmt.BuildConfig
-import okhttp3.OkHttpClient
 import okhttp3.ConnectionPool
-import okhttp3.Protocol
+import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 object ApiClient {
     private var _baseUrl = BuildConfig.DEFAULT_BASE_URL.trimEnd('/') + "/api/v1/"
@@ -27,27 +21,12 @@ object ApiClient {
         }
     }
 
-    // Trust all certificates — for internal HTTPS server with self-signed cert
-    private fun buildTrustAllClient(): OkHttpClient {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-
-        val sslContext = SSLContext.getInstance("TLS").apply {
-            init(null, trustAll, SecureRandom())
-        }
-
+    /** OkHttp uses Android system TLS & Connection Pooling for fast HTTP keep-alive socket reuse. */
+    private fun buildApiClient(): OkHttpClient {
         return OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
-                    .header("Connection", "close")
-                    .build()
                 val response = try {
-                    chain.proceed(request)
+                    chain.proceed(chain.request())
                 } catch (error: IllegalStateException) {
                     // OkHttp may surface a broken HTTP/1 codec state as a runtime
                     // exception. Convert it to an I/O failure so Retrofit delivers
@@ -61,19 +40,18 @@ object ApiClient {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
                         else HttpLoggingInterceptor.Level.NONE
             })
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .protocols(listOf(Protocol.HTTP_1_1))
-            .connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
+            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
             .build()
     }
 
     private fun build(): Retrofit =
         Retrofit.Builder()
             .baseUrl(_baseUrl)
-            .client(buildTrustAllClient())
+            .client(buildApiClient())
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
@@ -104,15 +82,7 @@ object ApiClient {
     }
 
     fun buildPingClient(): OkHttpClient {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val sslContext = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         return OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(4, TimeUnit.SECONDS)
             .build()
@@ -123,15 +93,7 @@ object ApiClient {
      *  - pingInterval = 30s  (OkHttp sends WebSocket PING frames to keep the connection alive)
      */
     fun wsClient(): OkHttpClient {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val sslContext = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         return OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)   // no read timeout for WebSocket
             .pingInterval(30, TimeUnit.SECONDS)       // keep-alive ping every 30 s

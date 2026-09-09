@@ -1,6 +1,5 @@
 package org.sspd.servicemgmt.securityConfig;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -13,11 +12,7 @@ import org.springframework.web.client.RestClient;
 import org.sspd.servicemgmt.jwt.CustomUserDetailsService;
 
 @Configuration
-@RequiredArgsConstructor
 public class ApplicationConfig {
-
-    private final CustomUserDetailsService userDetailsService;
-
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -25,16 +20,18 @@ public class ApplicationConfig {
     }
 
     @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
+    public RestClient.Builder restClientBuilder() {
+        return RestClient.builder();
     }
 
     @Bean
-    public RestClient.Builder restClientBuilder() {
-        return RestClient.builder();
+    public AuthenticationProvider authenticationProvider(
+            CustomUserDetailsService userDetailsService,
+            PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder);
+        return authProvider;
     }
 
     @Bean

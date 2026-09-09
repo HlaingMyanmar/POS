@@ -9,6 +9,9 @@ public class FlywayConfig {
 
     @Bean
     public FlywayMigrationStrategy flywayMigrationStrategy() {
-        return flyway -> flyway.migrate();
+        return flyway -> {
+            flyway.repair();
+            flyway.migrate();
+        };
     }
 }

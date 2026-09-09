@@ -56,6 +56,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.tooling.preview.Preview
 import com.sspd.servicemgmt.core.network.VideoDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 import com.sspd.servicemgmt.core.ui.theme.AppTheme
 import com.sspd.servicemgmt.core.ui.theme.BorderColor
 import com.sspd.servicemgmt.core.ui.theme.Primary
@@ -81,6 +82,7 @@ fun VideoListScreen(
         onBack = onBack,
         onSearch = vm::setSearch,
         onRetry = vm::load,
+        onRefresh = vm::refresh,
         onOpen = onOpenVideo
     )
 }
@@ -92,6 +94,7 @@ private fun VideoListContent(
     onBack: () -> Unit,
     onSearch: (String) -> Unit,
     onRetry: () -> Unit = {},
+    onRefresh: () -> Unit = onRetry,
     onOpen: (VideoDTO) -> Unit
 ) {
     Scaffold(
@@ -107,10 +110,16 @@ private fun VideoListContent(
             )
         }
     ) { padding ->
-        Column(
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = onRefresh,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+        ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .background(ScreenBg)
         ) {
             OutlinedTextField(
@@ -138,7 +147,7 @@ private fun VideoListContent(
             )
 
             when {
-                state.loading -> AppLoading()
+                state.loading && state.videos.isEmpty() -> AppLoading()
                 state.error != null -> Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -171,6 +180,7 @@ private fun VideoListContent(
                     }
                 }
             }
+        }
         }
     }
 }

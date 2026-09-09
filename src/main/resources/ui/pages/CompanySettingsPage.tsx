@@ -12,6 +12,7 @@ const emptySettings: CompanySettings = {
   footerNote: 'Thank you for your business',
   taglineMm: 'ဝန်ဆောင်မှုဌာန',
   logoBase64: '',
+  notificationSoundBase64: '',
   voucherConfigJson: '',
   salePrefix: 'INV',
   saleDigits: 5,
@@ -26,9 +27,19 @@ const emptySettings: CompanySettings = {
   poFinalApprovalThreshold: null,
   serviceSupervisorApprovalRequired: true,
   serviceAllowDeliveryWithDue: false,
+  pickupDepositPercent: 30,
+  mailSmtpHost: '',
+  mailSmtpPort: 587,
+  mailSmtpUsername: '',
+  mailSmtpPassword: '',
+  mailSmtpFrom: '',
+  mailSmtpAuth: true,
+  mailSmtpStartTls: true,
+  mailSmtpConfigured: false,
 };
 
 const MAX_LOGO_BYTES = 500 * 1024;
+const MAX_SOUND_BYTES = 2 * 1024 * 1024;
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -38,14 +49,17 @@ const fileToDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
-type Tab = 'company' | 'serial';
+type Tab = 'company' | 'serial' | 'email';
 
 const CompanySettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('company');
   const [settings, setSettings] = useState<CompanySettings>(emptySettings);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testingMail, setTestingMail] = useState(false);
+  const [testTo, setTestTo] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const soundInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { void load(); }, []);
 
@@ -67,9 +81,17 @@ const CompanySettingsPage: React.FC = () => {
     }
     setSaving(true);
     try {
-      const res = await companySettingsService.saveSettings(settings);
+      const payload = { ...settings };
+      if (!payload.mailSmtpPassword?.trim()) {
+        delete (payload as { mailSmtpPassword?: string }).mailSmtpPassword;
+      }
+      const res = await companySettingsService.saveSettings(payload);
       if (res.success) {
-        const merged = { ...emptySettings, ...(res.data || settings) };
+        const merged = {
+          ...emptySettings,
+          ...(res.data || settings),
+          mailSmtpPassword: '',
+        };
         setSettings(merged);
         setCompanySettingsCache(merged);
         Swal.fire('Saved', 'Settings updated successfully.', 'success');
@@ -79,6 +101,25 @@ const CompanySettingsPage: React.FC = () => {
     } catch (e: any) {
       Swal.fire('Error', e?.message || 'Save failed', 'error');
     } finally { setSaving(false); }
+  };
+
+  const handleTestMail = async () => {
+    const to = (testTo || settings.mailSmtpUsername || settings.companyEmail || '').trim();
+    if (!to || !to.includes('@')) {
+      Swal.fire('Required', 'Test လက်ခံမည့် Gmail / email ထည့်ပါ', 'warning');
+      return;
+    }
+    setTestingMail(true);
+    try {
+      const res = await companySettingsService.testMail(to);
+      if (res.success) Swal.fire('Sent', res.message || 'Test email ပို့ပြီးပါပြီ', 'success');
+      else Swal.fire('Error', res.message || 'Test mail failed', 'error');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Test mail failed';
+      Swal.fire('Error', msg, 'error');
+    } finally {
+      setTestingMail(false);
+    }
   };
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,12 +134,47 @@ const CompanySettingsPage: React.FC = () => {
     finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  const handleSoundChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('audio/')) {
+      Swal.fire('Invalid', 'MP3 / WAV / OGG အသံဖိုင်သာ တင်ပါ။', 'warning');
+      return;
+    }
+    if (file.size > MAX_SOUND_BYTES) {
+      Swal.fire('Too Large', 'အသံဖိုင် 2MB အောက် ဖြစ်ရပါမည်။', 'warning');
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setSettings(p => ({ ...p, notificationSoundBase64: dataUrl }));
+    } catch {
+      Swal.fire('Error', 'ဖိုင်ဖတ်မရပါ။', 'error');
+    } finally {
+      if (soundInputRef.current) soundInputRef.current.value = '';
+    }
+  };
+
+  const playSoundPreview = async () => {
+    if (!settings.notificationSoundBase64) {
+      Swal.fire('Info', 'အသံ မတင်ရသေးပါ။', 'info');
+      return;
+    }
+    try {
+      const audio = new Audio(settings.notificationSoundBase64);
+      await audio.play();
+    } catch {
+      Swal.fire('Error', 'အသံဖွင့်မရပါ။ ဘရောက်ဇာက အသံခွင့်ပြုထားပါ။', 'error');
+    }
+  };
+
   const set = <K extends keyof CompanySettings>(key: K, val: CompanySettings[K]) =>
     setSettings(p => ({ ...p, [key]: val }));
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'company', label: 'Company Info' },
     { id: 'serial',  label: 'Serial Numbers' },
+    { id: 'email',   label: 'Email (Gmail)' },
   ];
 
   return (
@@ -208,6 +284,25 @@ const CompanySettingsPage: React.FC = () => {
                   </span>
                 </label>
               </div>
+              <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <label className="block text-sm font-bold text-emerald-950">စရံရာခိုင်နှုန်း (%)</label>
+                <p className="mt-1 mb-2 text-xs text-emerald-800">
+                  ဆိုင်မှာလာယူ နှင့် ပစ္စည်းလက်ခံချိန် ငွေရှင်း တို့တွင် ဤရာခိုင်နှုန်းကို စရံအဖြစ် ကြိုလွှဲရမည်။ ကျန်ငွေ လက်ခံချိန် ပေးချေပါမည်။
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  step="0.01"
+                  value={settings.pickupDepositPercent ?? 30}
+                  onChange={e => {
+                    const n = Number(e.target.value);
+                    const clamped = Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 30;
+                    set('pickupDepositPercent', clamped);
+                  }}
+                  className="w-full max-w-xs border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
             </div>
 
             <div className="border-t pt-5">
@@ -233,6 +328,42 @@ const CompanySettingsPage: React.FC = () => {
                     </button>
                   )}
                   <p className="text-[10px] text-slate-400">PNG/JPG, max 500 KB. Square recommended.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-5">
+              <h3 className="text-sm font-medium text-slate-700 mb-2">Customer Order အသံ</h3>
+              <p className="text-xs text-slate-500 mb-3">
+                App အော်ဒါရောက်သည့်အခါ ဖွင့်မည့် notification အသံ။ မြန်မာ voice ရှိပါက စကားပြောအသံလည်း ထွက်ပါမည်။
+                အသံမတင်ထားပါက မူရင်း beep သံ သုံးမည်။
+              </p>
+              <div className="flex flex-wrap items-start gap-4">
+                <div className="min-w-[10rem] rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
+                  {settings.notificationSoundBase64 ? (
+                    <span className="text-xs font-bold text-emerald-700">အသံ တင်ပြီးပါပြီ</span>
+                  ) : (
+                    <span className="text-xs text-slate-400">အသံ မရှိသေး</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button type="button" onClick={() => soundInputRef.current?.click()}
+                    className="px-4 py-1.5 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 w-fit">
+                    {settings.notificationSoundBase64 ? '↑ အသံ ပြောင်းမည်' : '↑ အသံ Upload'}
+                  </button>
+                  {settings.notificationSoundBase64 && (
+                    <>
+                      <button type="button" onClick={() => void playSoundPreview()}
+                        className="px-3 py-1.5 text-xs font-bold text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-50 w-fit">
+                        နားထောင်မည်
+                      </button>
+                      <button type="button" onClick={() => setSettings(p => ({ ...p, notificationSoundBase64: '' }))}
+                        className="px-3 py-1.5 text-xs text-rose-600 border border-rose-200 rounded hover:bg-rose-50 w-fit">
+                        အသံ ဖယ်မည်
+                      </button>
+                    </>
+                  )}
+                  <p className="text-[10px] text-slate-400">MP3 / WAV / OGG, max 2 MB။ Save နှိပ်မှ သိမ်းမည်။</p>
                 </div>
               </div>
             </div>
@@ -369,8 +500,142 @@ const CompanySettingsPage: React.FC = () => {
         );
       })()}
 
-      {/* Hidden file input */}
+      {/* ─── Email / Gmail SMTP Tab ─── */}
+      {activeTab === 'email' && (
+        <div className="max-w-2xl space-y-4">
+          <div className="bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-xs text-sky-800 space-y-1">
+            <p>
+              Customer password-reset email အတွက် <b>Gmail App Password</b> ထည့်ပါ။
+              Account password မဟုတ်ပါ — Google Account → Security → 2-Step Verification → App passwords မှ ၁၆ လုံးကုဒ်ယူပါ။
+            </p>
+            <p>
+              Status:{' '}
+              {settings.mailSmtpConfigured ? (
+                <span className="font-semibold text-emerald-700">Configured</span>
+              ) : (
+                <span className="font-semibold text-amber-700">Not configured</span>
+              )}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+              <h2 className="font-semibold text-slate-700">SMTP (Gmail)</h2>
+              <button
+                type="button"
+                onClick={() => setSettings(p => ({
+                  ...p,
+                  mailSmtpHost: 'smtp.gmail.com',
+                  mailSmtpPort: 587,
+                  mailSmtpAuth: true,
+                  mailSmtpStartTls: true,
+                }))}
+                className="text-xs px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50"
+              >
+                Gmail defaults
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-600 mb-1">SMTP Host</label>
+                <input
+                  value={settings.mailSmtpHost || ''}
+                  onChange={e => set('mailSmtpHost', e.target.value)}
+                  placeholder="smtp.gmail.com"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Port</label>
+                <input
+                  type="number"
+                  value={settings.mailSmtpPort ?? 587}
+                  onChange={e => set('mailSmtpPort', Number(e.target.value) || 587)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">From (optional)</label>
+                <input
+                  value={settings.mailSmtpFrom || ''}
+                  onChange={e => set('mailSmtpFrom', e.target.value)}
+                  placeholder="same as Gmail"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-600 mb-1">Gmail address</label>
+                <input
+                  type="email"
+                  value={settings.mailSmtpUsername || ''}
+                  onChange={e => set('mailSmtpUsername', e.target.value)}
+                  placeholder="you@gmail.com"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-600 mb-1">App Password</label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={settings.mailSmtpPassword || ''}
+                  onChange={e => set('mailSmtpPassword', e.target.value)}
+                  placeholder={settings.mailSmtpConfigured ? '******** (leave blank to keep)' : 'xxxx xxxx xxxx xxxx'}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  သိမ်းပြီးသား password ကို API က ပြန်မပေးပါ။ အသစ်ထည့်မှသာ ပြောင်းမည်။
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={settings.mailSmtpAuth !== false}
+                  onChange={e => set('mailSmtpAuth', e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                />
+                SMTP Auth
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={settings.mailSmtpStartTls !== false}
+                  onChange={e => set('mailSmtpStartTls', e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                />
+                STARTTLS
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6 space-y-3">
+            <h3 className="font-semibold text-slate-700">Test email</h3>
+            <p className="text-xs text-slate-500">Save Settings ပြီးမှ စမ်းပါ။ Inbox / Spam စစ်ပါ။</p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="email"
+                value={testTo}
+                onChange={e => setTestTo(e.target.value)}
+                placeholder={settings.mailSmtpUsername || 'you@gmail.com'}
+                className="flex-1 min-w-[200px] border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={handleTestMail}
+                disabled={testingMail || saving}
+                className="px-4 py-2 text-sm font-medium border border-indigo-300 text-indigo-700 rounded-lg hover:bg-indigo-50 disabled:opacity-50"
+              >
+                {testingMail ? 'Sending...' : 'Send test'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file inputs */}
       <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" aria-hidden="true" />
+      <input ref={soundInputRef} type="file" accept="audio/*" onChange={handleSoundChange} className="hidden" aria-hidden="true" />
 
       {/* ─── Save / Reload buttons ─── */}
       <div className="flex gap-3">

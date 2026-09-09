@@ -2332,7 +2332,7 @@ const SaleManagement: React.FC = () => {
                 <div>
                   <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">Items Sold</h4>
                   <div className="border border-slate-200 rounded-lg overflow-auto">
-                    <table className="w-full min-w-[1050px] text-sm">
+                    <table className="w-full min-w-[1280px] text-sm">
                       <thead className="bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                           <th className="px-4 py-2.5 text-left">Product</th>
@@ -2343,7 +2343,9 @@ const SaleManagement: React.FC = () => {
                           <th className="px-4 py-2.5 text-right w-28">Commission</th>
                           <th className="px-4 py-2.5 text-left">Serial #</th>
                           <th className="px-4 py-2.5 text-center w-24">Warranty</th>
+                          <th className="px-4 py-2.5 text-center w-28">Start</th>
                           <th className="px-4 py-2.5 text-center w-28">Expiry</th>
+                          <th className="px-4 py-2.5 text-center w-24">Status</th>
                           <th className="px-4 py-2.5 text-right w-28">Subtotal</th>
                         </tr>
                       </thead>
@@ -2358,7 +2360,13 @@ const SaleManagement: React.FC = () => {
                             <td className="px-4 py-3 text-right font-semibold text-violet-700">{Number(d.customerMargin) ? money(Number(d.customerMargin)) : '—'}</td>
                             <td className="px-4 py-3 text-xs text-slate-500">{isSerialProduct(d.productId) ? (d.serialNumbers?.length ? d.serialNumbers.join(', ') : '—') : <span className="text-slate-400">Qty only</span>}</td>
                             <td className="px-4 py-3 text-center text-xs text-slate-500">{Number(d.warrantyMonths || 0) > 0 ? `${d.warrantyMonths} mo.` : '—'}</td>
+                            <td className="px-4 py-3 text-center text-xs text-slate-500">{d.warrantyStartDate || '—'}</td>
                             <td className="px-4 py-3 text-center text-xs text-slate-500">{d.warrantyExpiryDate || '—'}</td>
+                            <td className="px-4 py-3 text-center text-xs">
+                              {d.warrantyStatus === 'ACTIVE' ? <span className="font-bold text-emerald-700">{d.warrantyDaysRemaining ?? 0} ရက် ကျန်</span>
+                                : d.warrantyStatus === 'EXPIRED' ? <span className="font-bold text-rose-600">ကုန်</span>
+                                : <span className="text-slate-400">—</span>}
+                            </td>
                             <td className="px-4 py-3 text-right font-semibold text-slate-800">{money(Number(d.subtotal) || 0)}</td>
                           </tr>
                         ))}

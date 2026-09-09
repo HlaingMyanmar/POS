@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.sspd.servicemgmt.companysettingoptions.dto.CompanySettingsDTO;
 import org.sspd.servicemgmt.companysettingoptions.model.CompanySettings;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
@@ -16,9 +17,43 @@ public class CompanySettingsService {
 
     private final CompanySettingsRepository repository;
 
+    public record MailSmtpConfig(
+            String host,
+            int port,
+            String username,
+            String password,
+            String from,
+            boolean auth,
+            boolean startTls
+    ) {
+        public boolean isConfigured() {
+            return StringUtils.hasText(host)
+                    && StringUtils.hasText(username)
+                    && StringUtils.hasText(password);
+        }
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CompanySettingsDTO getSettings() {
         return toDto(getOrCreate());
+    }
+
+    @Transactional(readOnly = true)
+    public MailSmtpConfig resolveMailSmtp() {
+        List<CompanySettings> all = repository.findAll();
+        if (all.isEmpty()) {
+            return new MailSmtpConfig(null, 587, null, null, null, true, true);
+        }
+        CompanySettings s = all.get(0);
+        String host = trimToNull(s.getMailSmtpHost());
+        String username = trimToNull(s.getMailSmtpUsername());
+        String password = trimToNull(s.getMailSmtpPassword());
+        String from = trimToNull(s.getMailSmtpFrom());
+        if (from == null) from = username;
+        int port = s.getMailSmtpPort() != null && s.getMailSmtpPort() > 0 ? s.getMailSmtpPort() : 587;
+        boolean auth = !Boolean.FALSE.equals(s.getMailSmtpAuth());
+        boolean startTls = !Boolean.FALSE.equals(s.getMailSmtpStartTls());
+        return new MailSmtpConfig(host, port, username, password, from, auth, startTls);
     }
 
     @Transactional
@@ -36,6 +71,7 @@ public class CompanySettingsService {
         s.setFooterNote(dto.getFooterNote());
         s.setTaglineMm(dto.getTaglineMm());
         s.setLogoBase64(dto.getLogoBase64());
+        s.setNotificationSoundBase64(dto.getNotificationSoundBase64());
         s.setVoucherConfigJson(dto.getVoucherConfigJson());
         if (dto.getSalePrefix() != null) s.setSalePrefix(dto.getSalePrefix().isBlank() ? "INV" : dto.getSalePrefix().trim());
         if (dto.getSaleDigits() != null && dto.getSaleDigits() >= 1 && dto.getSaleDigits() <= 10) s.setSaleDigits(dto.getSaleDigits());
@@ -52,6 +88,28 @@ public class CompanySettingsService {
             s.setServiceSupervisorApprovalRequired(dto.getServiceSupervisorApprovalRequired());
         if (dto.getServiceAllowDeliveryWithDue() != null)
             s.setServiceAllowDeliveryWithDue(dto.getServiceAllowDeliveryWithDue());
+        if (dto.getPickupDepositPercent() != null) {
+            java.math.BigDecimal pct = dto.getPickupDepositPercent();
+            if (pct.compareTo(java.math.BigDecimal.ONE) < 0 || pct.compareTo(new java.math.BigDecimal("100")) > 0) {
+                throw new IllegalArgumentException("ဆိုင်မှာလာယူ စရံရာခိုင်နှုန်း ၁ မှ ၁၀၀ အတွင်း ထည့်ပါ");
+            }
+            s.setPickupDepositPercent(pct.setScale(2, java.math.RoundingMode.HALF_UP));
+        }
+
+        if (dto.getMailSmtpHost() != null) s.setMailSmtpHost(trimToNull(dto.getMailSmtpHost()));
+        if (dto.getMailSmtpPort() != null) {
+            int port = dto.getMailSmtpPort();
+            s.setMailSmtpPort(port > 0 ? port : 587);
+        }
+        if (dto.getMailSmtpUsername() != null) s.setMailSmtpUsername(trimToNull(dto.getMailSmtpUsername()));
+        if (dto.getMailSmtpFrom() != null) s.setMailSmtpFrom(trimToNull(dto.getMailSmtpFrom()));
+        if (dto.getMailSmtpAuth() != null) s.setMailSmtpAuth(dto.getMailSmtpAuth());
+        if (dto.getMailSmtpStartTls() != null) s.setMailSmtpStartTls(dto.getMailSmtpStartTls());
+        String pwd = dto.getMailSmtpPassword();
+        if (StringUtils.hasText(pwd) && !"********".equals(pwd.trim())) {
+            s.setMailSmtpPassword(pwd.trim());
+        }
+
         return toDto(repository.save(s));
     }
 
@@ -80,6 +138,7 @@ public class CompanySettingsService {
         dto.setFooterNote(s.getFooterNote());
         dto.setTaglineMm(s.getTaglineMm());
         dto.setLogoBase64(s.getLogoBase64());
+        dto.setNotificationSoundBase64(s.getNotificationSoundBase64());
         dto.setVoucherConfigJson(s.getVoucherConfigJson());
         dto.setSalePrefix(s.getSalePrefix() != null ? s.getSalePrefix() : "INV");
         dto.setSaleDigits(s.getSaleDigits() != null ? s.getSaleDigits() : 5);
@@ -94,6 +153,26 @@ public class CompanySettingsService {
         dto.setPoFinalApprovalThreshold(s.getPoFinalApprovalThreshold());
         dto.setServiceSupervisorApprovalRequired(!Boolean.FALSE.equals(s.getServiceSupervisorApprovalRequired()));
         dto.setServiceAllowDeliveryWithDue(Boolean.TRUE.equals(s.getServiceAllowDeliveryWithDue()));
+        dto.setPickupDepositPercent(s.getPickupDepositPercent() != null
+                ? s.getPickupDepositPercent()
+                : new java.math.BigDecimal("30.00"));
+        dto.setMailSmtpHost(s.getMailSmtpHost());
+        dto.setMailSmtpPort(s.getMailSmtpPort() != null ? s.getMailSmtpPort() : 587);
+        dto.setMailSmtpUsername(s.getMailSmtpUsername());
+        dto.setMailSmtpFrom(s.getMailSmtpFrom());
+        dto.setMailSmtpAuth(!Boolean.FALSE.equals(s.getMailSmtpAuth()));
+        dto.setMailSmtpStartTls(!Boolean.FALSE.equals(s.getMailSmtpStartTls()));
+        boolean configured = StringUtils.hasText(s.getMailSmtpHost())
+                && StringUtils.hasText(s.getMailSmtpUsername())
+                && StringUtils.hasText(s.getMailSmtpPassword());
+        dto.setMailSmtpConfigured(configured);
+        dto.setMailSmtpPassword(null);
         return dto;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String t = value.trim();
+        return t.isEmpty() ? null : t;
     }
 }

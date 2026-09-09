@@ -19,12 +19,12 @@ import androidx.work.WorkerParameters
 import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.util.PreferenceManager
+import com.sspd.servicemgmt.core.util.VibrationUtil
 import java.util.concurrent.TimeUnit
 
 object TechnicianJobAlerts {
     private const val CHANNEL_ID = "technician_new_jobs"
     private const val SEEN_PREFS = "technician_job_alerts"
-    private const val SEEN_IDS = "seen_job_ids"
 
     fun createChannel(context: Context) {
         val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -38,6 +38,7 @@ object TechnicianJobAlerts {
         ).apply {
             description = "Booking မှ Service Job ပြောင်းပြီး assign ရောက်လာသောအခါ"
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 300, 150, 300, 150, 450)
             setSound(sound, audio)
         }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
@@ -56,16 +57,24 @@ object TechnicianJobAlerts {
         )
         if (!response.isSuccessful) return false
 
-        val assignedBookingJobs = response.body()?.data?.content.orEmpty()
-            .filter { it.id != null && it.assignedStaffId == prefs.staffId && !it.bookingNo.isNullOrBlank() }
+        val assignedJobs = response.body()?.data?.content.orEmpty()
+            .filter { job ->
+                job.id != null &&
+                    (job.assignedStaffId == prefs.staffId || job.myAssignmentStatus.equals("PENDING", true) || job.onTeamForMe == true) &&
+                    job.status?.uppercase() !in setOf("DELIVERED", "CANCELLED")
+            }
+        val seenKey = "seen|" + prefs.staffId + "|" + prefs.serverUrl.trim().lowercase()
         val store = context.getSharedPreferences(SEEN_PREFS, Context.MODE_PRIVATE)
-        val seen = store.getStringSet(SEEN_IDS, emptySet()).orEmpty().toMutableSet()
-        val newJobs = assignedBookingJobs.filter { it.id.toString() !in seen }
+        val seen = store.getStringSet(seenKey, emptySet()).orEmpty().toMutableSet()
+        val newJobs = assignedJobs.filter { it.id.toString() !in seen }
+
+        if (newJobs.isNotEmpty()) {
+            VibrationUtil.vibrateNewJob(context)
+        }
 
         newJobs.takeLast(5).forEach { showNotification(context, it) }
-        seen += assignedBookingJobs.mapNotNull { it.id?.toString() }
-        // Bound stored history while retaining the newest server results.
-        store.edit().putStringSet(SEEN_IDS, seen.toList().takeLast(500).toSet()).apply()
+        seen += assignedJobs.mapNotNull { it.id?.toString() }
+        store.edit().putStringSet(seenKey, seen.toList().takeLast(500).toSet()).apply()
         return true
     }
 
@@ -92,9 +101,10 @@ object TechnicianJobAlerts {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(detail)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$detail\nBooking: ${job.bookingNo}"))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVibrate(longArrayOf(0, 300, 150, 300, 150, 450))
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()

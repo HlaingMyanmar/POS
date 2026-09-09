@@ -32,6 +32,8 @@ public class PrintRequest {
     private String sign2Label = "Received By";
     /** CUSTOMER, SHOP, or BOTH copies. */
     private String copyType = "CUSTOMER";
+    /** Optional override when sending the PDF by email. */
+    private String toEmail;
 
     private String  headerFontFamily;
     private Integer headerFontSizePx;

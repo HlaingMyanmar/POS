@@ -11,6 +11,7 @@ import java.util.List;
 
 @Data
 public class SaleDTO {
+    private BigDecimal deliveryCharge;
     private Integer id;
     private String saleCode;
     private Integer customerId;

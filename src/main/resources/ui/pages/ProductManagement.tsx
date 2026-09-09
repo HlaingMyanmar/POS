@@ -1,4 +1,5 @@
 ﻿
+import { ProductShippingEditor } from '../components/ShippingSettings';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resolveAssetUrl } from '../services/api';
@@ -1679,6 +1680,7 @@ const ProductManagement: React.FC = () => {
               </div>
             </div>
 
+            <ProductShippingEditor productId={editingProduct?.id} />
             {/* Section: Remarks */}
             <div className="bg-white border border-slate-200 rounded-2xl">
               <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">

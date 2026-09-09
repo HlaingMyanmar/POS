@@ -26,7 +26,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new ApiResponse<>(false, "Username သို့မဟုတ် Password မှားနေပါသည်", null));
+                .body(new ApiResponse<>(false,
+                        ex.getMessage() != null && !ex.getMessage().isBlank()
+                                ? ex.getMessage()
+                                : "Username သို့မဟုတ် Password မှားနေပါသည်",
+                        null));
     }
 
     // ၁။ @NotBlank စတဲ့ Validation Error တွေကို ဖမ်းဖို့
@@ -76,6 +80,15 @@ public class GlobalExceptionHandler {
                 System.currentTimeMillis()
         );
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(org.springframework.dao.DataIntegrityViolationException ex) {
+        log.warn("Data integrity", ex);
+        return new ResponseEntity<>(
+                new ErrorResponse(HttpStatus.CONFLICT.value(), "ဤဖုန်း သို့မဟုတ် အကောင့် ရှိပြီးသား ဖြစ်သည်", System.currentTimeMillis()),
+                HttpStatus.CONFLICT
+        );
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

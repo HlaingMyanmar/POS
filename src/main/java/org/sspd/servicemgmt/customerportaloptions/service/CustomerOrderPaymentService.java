@@ -15,6 +15,10 @@ import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.Pa
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
+import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
+import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
+import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
 import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.sspd.servicemgmt.saleoptions.service.SaleService;
 import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
@@ -38,6 +42,8 @@ public class CustomerOrderPaymentService {
  private final org.springframework.jdbc.core.JdbcTemplate shippingJdbc;
  private final CustomerPromoService promos;
  private final CustomerLoyaltyService loyalty;
+ private final AccountResolver accounts;
+ private final JournalWriter journalWriter;
 
  public record ShippingDecision(BigDecimal amount,String handler,String reason,Integer version,Boolean accept,
                               java.time.LocalDateTime scheduledAt) {}
@@ -520,7 +526,7 @@ public class CustomerOrderPaymentService {
     o.setPaymentVerifiedAt(LocalDateTime.now());
     o.setPaymentState("PAID");
     proof.setReviewState("PAID");proof.setReviewedBy(actor());proof.setReviewNote(request.getNote());
-    recordReceivedTransaction(o, remain, o.getCollectionPaymentMethodId(), proof.getTransactionReference());
+    recordReceivedTransaction(o, remain, o.getCollectionPaymentMethodId(), proof.getTransactionReference(), "REMAINDER");
     changed(o,"Online remainder verified; payment is complete");
     return;
    }
@@ -556,12 +562,14 @@ public class CustomerOrderPaymentService {
    if(remainingDue(o).signum()>0) {
     o.setPaymentState("DEPOSIT_PAID");
     if(proof!=null){proof.setReviewState(o.getPaymentState());proof.setReviewedBy(actor());proof.setReviewNote(request.getNote());}
+    recordReceivedTransaction(o, expectedTransfer(o), o.getPaymentMethodId(), proof==null?null:proof.getTransactionReference(), "DEPOSIT");
     changed(o,"စရံငွေ အတည်ပြုပြီးပါပြီ။ ကျန် "+remainingDue(o)+" Ks လက်ခံမှတ်ပြီးမှ Sale ထည့်ပါ။"
       +(request.getNote()==null?"":" — "+request.getNote()));
     return;
    }
    o.setPaymentState("PAID");
    if(proof!=null){proof.setReviewState(o.getPaymentState());proof.setReviewedBy(actor());proof.setReviewNote(request.getNote());}
+   recordReceivedTransaction(o, total(o), o.getPaymentMethodId(), proof==null?null:proof.getTransactionReference(), "FULL");
    changed(o,"ငွေဝင်မှု အတည်ပြုပြီးပါပြီ။ ငွေလက်ခံပြေစာ ရနိုင်ပါပြီ။"+(request.getNote()==null?"":" — "+request.getNote()));
    return;
   } else if("COLLECT_REMAINDER".equals(action)) {
@@ -586,6 +594,7 @@ public class CustomerOrderPaymentService {
    o.setCollectionAt(LocalDateTime.now());
    o.setCollectionRecordedBy(actor());
    o.setPaymentState("PAID");
+   recordReceivedTransaction(o, remain, o.getCollectionPaymentMethodId(), o.getCollectionReference(), "REMAINDER");
    changed(o,"ကျန်ငွေ "+remain+" Ks လက်ခံမှတ်ပြီးပါပြီ။ ငွေအပြည့် ရမှ Sale ထည့်ပါ။"
      +(request.getNote()==null?"":" — "+request.getNote()));
    return;
@@ -633,6 +642,7 @@ public class CustomerOrderPaymentService {
   sale.setSaleDate(LocalDateTime.now());sale.setPaymentMethodId(o.getPaymentMethodId());
   sale.setPaidAmount(total(o));sale.setDeliveryCharge(zero(o.getDeliveryCharge()));
   sale.setPayments(salePayments(o));
+  sale.setCustomerAdvanceApplied(advanceReceivedForSale(o));
   sale.setRemark("Customer order " + o.getOrderNo()
     + (hasDeposit(o) ? " — စရံ "+expectedTransfer(o)+" / ကျန် "+remain : "")
     + ("HANDOFF".equals(o.getDeliveryHandler()) ? " — ပြင်ပို့ အပ် (ဆိုင်ပို့ခ မထည့်)" : ""));
@@ -722,19 +732,73 @@ public class CustomerOrderPaymentService {
   paymentTransactions.save(tx);
  }
 
- private void recordReceivedTransaction(CustomerOrder o, BigDecimal amount, Integer methodId, String reference) {
+ private void recordReceivedTransaction(CustomerOrder o, BigDecimal amount, Integer methodId, String reference, String stage) {
   if(paymentTransactions==null || amount==null || amount.signum()<=0 || methodId==null) return;
-  String transactionNo=(reference==null||reference.isBlank())?"ORDER-"+o.getOrderNo():reference.trim();
+  String transactionNo=(reference==null||reference.isBlank())?stage+"-"+o.getOrderNo():reference.trim();
   boolean exists=paymentTransactions.findByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order)
     .stream().anyMatch(tx -> !Boolean.TRUE.equals(tx.getReversed()) && transactionNo.equals(tx.getTransactionNo()));
-  if(exists) return;
-  var method=methods.findById(methodId).orElseThrow(() -> new IllegalArgumentException("Choose an active payment method"));
-  PaymentTransaction tx=new PaymentTransaction();
-  tx.setReferenceId(o.getId());tx.setReferenceType(ReferenceType.Customer_Order);tx.setPaymentMethod(method);
-  tx.setAmount(amount.setScale(2, RoundingMode.HALF_UP));tx.setPaymentDate(LocalDateTime.now());tx.setTransactionNo(transactionNo);
-  paymentTransactions.save(tx);
+  if(!exists) {
+   var method=methods.findById(methodId).orElseThrow(() -> new IllegalArgumentException("Choose an active payment method"));
+   PaymentTransaction tx=new PaymentTransaction();
+   tx.setReferenceId(o.getId());tx.setReferenceType(ReferenceType.Customer_Order);tx.setPaymentMethod(method);
+   tx.setAmount(amount.setScale(2, RoundingMode.HALF_UP));tx.setPaymentDate(LocalDateTime.now());tx.setTransactionNo(transactionNo);
+   paymentTransactions.save(tx);
+  }
+  postAdvanceReceiptJournal(o, amount, methodId, stage);
  }
 
+ private String advanceJournalRef(CustomerOrder o, String stage) {
+  return "CUSTOMER-ORDER-"+o.getId()+"-ADV-"+stage;
+ }
+
+ private void postAdvanceReceiptJournal(CustomerOrder o, BigDecimal amount, Integer methodId, String stage) {
+  if(journalWriter==null || accounts==null || amount==null || amount.signum()<=0) return;
+  String ref=advanceJournalRef(o, stage);
+  if(journalWriter.hasActiveReferencePrefix(ref)) return;
+  var method=methods.findById(methodId).orElseThrow(() -> new IllegalArgumentException("Choose an active payment method"));
+  if(method.getAccount()==null || method.getAccount().getId()==null)
+   throw new IllegalStateException("Payment method must have a ledger account");
+  JournalEntryDTO entry=new JournalEntryDTO();
+  entry.setReferenceNo(ref);entry.setEntryDate(LocalDateTime.now());
+  entry.setDescription("Customer order advance receipt - "+o.getOrderNo()+" ("+stage+")");
+  entry.setDetails(List.of(journalLine(method.getAccount().getId(), amount, BigDecimal.ZERO),
+    journalLine(accounts.custAdvance().getId(), BigDecimal.ZERO, amount)));
+  journalWriter.write(entry);
+ }
+
+ private BigDecimal advanceReceivedForSale(CustomerOrder o) {
+  if(journalWriter==null) return BigDecimal.ZERO;
+  if(journalWriter.hasActiveReferencePrefix(advanceJournalRef(o,"FULL"))) return total(o);
+  BigDecimal amount=BigDecimal.ZERO;
+  if(journalWriter.hasActiveReferencePrefix(advanceJournalRef(o,"DEPOSIT"))) amount=amount.add(expectedTransfer(o));
+  if(journalWriter.hasActiveReferencePrefix(advanceJournalRef(o,"REMAINDER"))) amount=amount.add(remainingDue(o));
+  return amount.min(total(o));
+ }
+
+ private JournalDetailDTO journalLine(Integer accountId, BigDecimal debit, BigDecimal credit) {
+  JournalDetailDTO line=new JournalDetailDTO();line.setAccountId(accountId);line.setDebit(debit);line.setCredit(credit);return line;
+ }
+ private void postAdvanceSettlementJournal(CustomerOrder o, BigDecimal refund, Integer refundMethodId, String action) {
+  if(journalWriter==null || accounts==null) return;
+  BigDecimal journaled=advanceReceivedForSale(o);
+  if(journaled.signum()<=0) return;
+  String ref="CUSTOMER-ORDER-"+o.getId()+"-ADV-SETTLEMENT";
+  if(journalWriter.hasActiveReferencePrefix(ref)) return;
+  BigDecimal refunded=refund==null?BigDecimal.ZERO:refund.max(BigDecimal.ZERO).min(journaled);
+  BigDecimal kept=journaled.subtract(refunded);
+  List<JournalDetailDTO> lines=new ArrayList<>();
+  lines.add(journalLine(accounts.custAdvance().getId(), journaled, BigDecimal.ZERO));
+  if(refunded.signum()>0) {
+   var method=methods.findById(refundMethodId).orElseThrow(() -> new IllegalArgumentException("Choose an active payment method"));
+   if(method.getAccount()==null || method.getAccount().getId()==null)
+    throw new IllegalStateException("Refund payment method must have a ledger account");
+   lines.add(journalLine(method.getAccount().getId(), BigDecimal.ZERO, refunded));
+  }
+  if(kept.signum()>0) lines.add(journalLine(accounts.otherIncome().getId(), BigDecimal.ZERO, kept));
+  JournalEntryDTO entry=new JournalEntryDTO();entry.setReferenceNo(ref);entry.setEntryDate(LocalDateTime.now());
+  entry.setDescription("Customer order advance settlement - "+o.getOrderNo()+" ("+action+")");entry.setDetails(lines);
+  journalWriter.write(entry);
+ }
  private String settlementReference(OrderPaymentRequest request) {
   String ref = request.getTransactionNo()==null ? null : request.getTransactionNo().trim().toUpperCase(Locale.ROOT);
   if(ref==null || ref.isBlank()) throw new IllegalArgumentException("ပြန်အမ်း transaction reference ထည့်ပါ");
@@ -750,6 +814,7 @@ public class CustomerOrderPaymentService {
   BigDecimal received = confirmedReceived(o, null);
   recordSettlement(o, "FORFEIT", BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), received,
     o.getPaymentMethodId(), "FORFEIT-"+o.getOrderNo(), request.getNote());
+  postAdvanceSettlementJournal(o, BigDecimal.ZERO, null, "FORFEIT");
   stock.release(o);
   o.setPaymentState("FORFEITED");
   o.setStatus(CustomerOrderStatus.CANCELLED);
@@ -772,6 +837,7 @@ public class CustomerOrderPaymentService {
   BigDecimal kept = received.subtract(amount).setScale(2, RoundingMode.HALF_UP);
   recordSettlement(o, "REFUND", amount.setScale(2, RoundingMode.HALF_UP), kept,
     request.getPaymentMethodId(), ref, request.getNote());
+  postAdvanceSettlementJournal(o, amount.setScale(2, RoundingMode.HALF_UP), request.getPaymentMethodId(), "REFUND");
   stock.release(o);
   o.setPaymentState("REFUNDED");
   o.setStatus(CustomerOrderStatus.CANCELLED);
@@ -811,3 +877,8 @@ public class CustomerOrderPaymentService {
   if (promos != null && o != null) promos.release(o.getId());
  }
 }
+
+
+
+
+

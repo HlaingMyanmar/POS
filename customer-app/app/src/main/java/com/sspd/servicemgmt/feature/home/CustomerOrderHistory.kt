@@ -52,6 +52,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.Dp
 import com.sspd.servicemgmt.core.feature.CustomerAppFeatures
 import com.sspd.servicemgmt.core.network.ApiClient
@@ -334,13 +335,7 @@ fun CustomerOrderHistoryCard(
             } else {
             HorizontalDivider(color = BorderColor.copy(alpha = 0.8f))
 
-            CustomerOrderPaymentCard(
-                order,
-                onOrderUpdated = onOrderUpdated,
-                onReorder = onReorder,
-                pickedImageUri = pickedImageUri,
-                onPickImage = onPickImage
-            )
+
 
             Text(
                 "ပါဝင်သော ပစ္စည်းများ",
@@ -371,6 +366,199 @@ fun CustomerOrderHistoryCard(
                     }
                 }
             }
+
+                CustomerOrderPaymentCard(
+                    order,
+                    onOrderUpdated = onOrderUpdated,
+                    onReorder = onReorder,
+                    pickedImageUri = pickedImageUri,
+                    onPickImage = onPickImage
+                )
+
+                order.completedSale?.let { invoice ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = SuccessBg,
+                        border = BorderStroke(1.dp, Success.copy(alpha = 0.25f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "Sale Invoice (ဆိုင်ဘောင်ချာ)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Success
+                            )
+                            Text(
+                                invoice.saleCode.orEmpty().ifBlank { "Sale #${invoice.id}" },
+                                fontWeight = FontWeight.Bold,
+                                color = TextMain,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                listOfNotNull(
+                                    invoice.saleDate?.replace('T', ' ')?.take(16),
+                                    invoice.paymentStatus
+                                ).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
+                            )
+                            Text(
+                                money(invoice.netAmount),
+                                fontWeight = FontWeight.Bold,
+                                color = Success,
+                                fontSize = 16.sp
+                            )
+                            if ((order.depositAmount ?: 0.0) > 0.0) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = CardBg,
+                                    border = BorderStroke(1.dp, BorderColor)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Text("Sale ငွေပေးချေမှု", fontWeight = FontWeight.Bold, color = TextMain)
+                                        Text("စရံ · ${money(order.depositAmount)} · ${order.paymentMethodName ?: "Channel"} ✓", style = MaterialTheme.typography.bodySmall, color = Success)
+                                        Text("ကျန်ငွေ · ${money(order.collectionAmount ?: order.remainingAmount)} · ${order.collectionPaymentMethodName ?: "Channel"} ✓", style = MaterialTheme.typography.bodySmall, color = Success)
+                                        HorizontalDivider(color = BorderColor)
+                                        Text("ပေးပြီးစုစုပေါင်း · ${money(invoice.netAmount)}", fontWeight = FontWeight.SemiBold, color = TextMain)
+                                        Text("ပေးရန်ကျန် · ${money(0.0)}", fontWeight = FontWeight.Bold, color = Success)
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        openingInvoice = true
+                                        invoiceError = null
+                                        scope.launch {
+                                            invoiceError = SaleInvoiceOpener.openForOrder(
+                                                context,
+                                                order.id,
+                                                invoice.saleCode
+                                            )
+                                            openingInvoice = false
+                                        }
+                                    },
+                                    enabled = !openingInvoice,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                                ) {
+                                    Text(
+                                        if (openingInvoice) "…" else "PDF ဖွင့်",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        openingInvoice = true
+                                        invoiceError = null
+                                        scope.launch {
+                                            invoiceError = SaleInvoiceOpener.shareForOrder(
+                                                context,
+                                                order.id,
+                                                invoice.saleCode
+                                            )
+                                            openingInvoice = false
+                                        }
+                                    },
+                                    enabled = !openingInvoice,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Send", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Text(
+                                "ဆိုင် POS ဘောင်ချာ template အတိုင်း server က ထုတ်ပေးသည်။",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMuted
+                            )
+                            invoiceError?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
+                            }
+                        }
+                    }
+                } ?: run {
+                    if (canOpenInvoice) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SuccessBg,
+                            border = BorderStroke(1.dp, Success.copy(alpha = 0.25f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    "Sale #${order.completedSaleId} — ဘောင်ချာ ထုတ်ပြီးပါပြီ",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Success
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            openingInvoice = true
+                                            invoiceError = null
+                                            scope.launch {
+                                                invoiceError = SaleInvoiceOpener.openForOrder(
+                                                    context,
+                                                    order.id,
+                                                    null
+                                                )
+                                                openingInvoice = false
+                                            }
+                                        },
+                                        enabled = !openingInvoice,
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                                    ) {
+                                        Text(
+                                            if (openingInvoice) "…" else "PDF ဖွင့်",
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            openingInvoice = true
+                                            invoiceError = null
+                                            scope.launch {
+                                                invoiceError = SaleInvoiceOpener.shareForOrder(
+                                                    context,
+                                                    order.id,
+                                                    null
+                                                )
+                                                openingInvoice = false
+                                            }
+                                        },
+                                        enabled = !openingInvoice,
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Send", fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                invoiceError?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
+                                }
+                            }
+                        }
+                    }
+                }
 
             if ("DELIVERY".equals(order.orderType, ignoreCase = true)) {
                 Surface(
@@ -469,192 +657,10 @@ fun CustomerOrderHistoryCard(
                 }
             )
 
-            order.completedSale?.let { invoice ->
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = SuccessBg,
-                    border = BorderStroke(1.dp, Success.copy(alpha = 0.25f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            "Sale Invoice (ဆိုင်ဘောင်ချာ)",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Success
-                        )
-                        Text(
-                            invoice.saleCode.orEmpty().ifBlank { "Sale #${invoice.id}" },
-                            fontWeight = FontWeight.Bold,
-                            color = TextMain,
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            listOfNotNull(
-                                invoice.saleDate?.replace('T', ' ')?.take(16),
-                                invoice.paymentStatus
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                        Text(
-                            money(invoice.netAmount),
-                            fontWeight = FontWeight.Bold,
-                            color = Success,
-                            fontSize = 16.sp
-                        )
-                        if ((order.depositAmount ?: 0.0) > 0.0) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = CardBg,
-                                border = BorderStroke(1.dp, BorderColor)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Text("Sale ငွေပေးချေမှု", fontWeight = FontWeight.Bold, color = TextMain)
-                                    Text("စရံ · ${money(order.depositAmount)} · ${order.paymentMethodName ?: "Channel"} ✓", style = MaterialTheme.typography.bodySmall, color = Success)
-                                    Text("ကျန်ငွေ · ${money(order.collectionAmount ?: order.remainingAmount)} · ${order.collectionPaymentMethodName ?: "Channel"} ✓", style = MaterialTheme.typography.bodySmall, color = Success)
-                                    HorizontalDivider(color = BorderColor)
-                                    Text("ပေးပြီးစုစုပေါင်း · ${money(invoice.netAmount)}", fontWeight = FontWeight.SemiBold, color = TextMain)
-                                    Text("ပေးရန်ကျန် · ${money(0.0)}", fontWeight = FontWeight.Bold, color = Success)
-                                }
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    openingInvoice = true
-                                    invoiceError = null
-                                    scope.launch {
-                                        invoiceError = SaleInvoiceOpener.openForOrder(
-                                            context,
-                                            order.id,
-                                            invoice.saleCode
-                                        )
-                                        openingInvoice = false
-                                    }
-                                },
-                                enabled = !openingInvoice,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-                            ) {
-                                Text(
-                                    if (openingInvoice) "…" else "PDF ဖွင့်",
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    openingInvoice = true
-                                    invoiceError = null
-                                    scope.launch {
-                                        invoiceError = SaleInvoiceOpener.shareForOrder(
-                                            context,
-                                            order.id,
-                                            invoice.saleCode
-                                        )
-                                        openingInvoice = false
-                                    }
-                                },
-                                enabled = !openingInvoice,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Send", fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        Text(
-                            "ဆိုင် POS ဘောင်ချာ template အတိုင်း server က ထုတ်ပေးသည်။",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
-                        )
-                        invoiceError?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
-                        }
-                    }
-                }
-            } ?: run {
-                if (canOpenInvoice) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = SuccessBg,
-                        border = BorderStroke(1.dp, Success.copy(alpha = 0.25f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                "Sale #${order.completedSaleId} — ဘောင်ချာ ထုတ်ပြီးပါပြီ",
-                                fontWeight = FontWeight.SemiBold,
-                                color = Success
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        openingInvoice = true
-                                        invoiceError = null
-                                        scope.launch {
-                                            invoiceError = SaleInvoiceOpener.openForOrder(
-                                                context,
-                                                order.id,
-                                                null
-                                            )
-                                            openingInvoice = false
-                                        }
-                                    },
-                                    enabled = !openingInvoice,
-                                    modifier = Modifier.weight(1f).height(48.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                                ) {
-                                    Text(
-                                        if (openingInvoice) "…" else "PDF ဖွင့်",
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        openingInvoice = true
-                                        invoiceError = null
-                                        scope.launch {
-                                            invoiceError = SaleInvoiceOpener.shareForOrder(
-                                                context,
-                                                order.id,
-                                                null
-                                            )
-                                            openingInvoice = false
-                                        }
-                                    },
-                                    enabled = !openingInvoice,
-                                    modifier = Modifier.weight(1f).height(48.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("Send", fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                            invoiceError?.let {
-                                Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
-                            }
-                        }
-                    }
-                }
-            }
 
-            OrderReturnRateBlock(order = order)
+
+            OrderRatingBlock(order = order)
+            OrderReturnBlock(order = order)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -810,31 +816,25 @@ private fun StarRatingBar(
 }
 
 @Composable
-private fun OrderReturnRateBlock(order: CustomerOrder) {
-    if (!CustomerAppFeatures.ORDER_RETURNS && !CustomerAppFeatures.ORDER_RATINGS) return
-    val saleId = order.completedSaleId ?: order.completedSale?.id
-    val receiptOk = order.customerReceiptState.equals("CONFIRMED", ignoreCase = true)
-    if (saleId == null && !receiptOk && order.rating == null) return
+private fun OrderReturnBlock(order: CustomerOrder) {
+    if (!CustomerAppFeatures.ORDER_RETURNS) return
+    val saleId = order.completedSaleId ?: order.completedSale?.id ?: return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var reason by remember(order.id) { mutableStateOf("") }
-    var productRating by remember(order.id) { mutableStateOf((order.rating?.productRating ?: 5).toString()) }
-    var serviceRating by remember(order.id) { mutableStateOf((order.rating?.serviceRating ?: 5).toString()) }
-    var review by remember(order.id) { mutableStateOf(order.rating?.comment ?: order.rating?.review ?: "") }
     var qtyText by remember(order.id) { mutableStateOf(order.lines.orEmpty().associate { (it.productId ?: 0) to "0" }) }
     var message by remember(order.id) { mutableStateOf<String?>(null) }
     var busy by remember(order.id) { mutableStateOf(false) }
     var existing by remember(order.id) { mutableStateOf<List<ProductReturn>>(emptyList()) }
-    val serviceLabel = if (order.orderType.equals("PICKUP", ignoreCase = true)) "ဆိုင်ဝန်ဆောင်မှု" else "ပို့ဆောင်မှု"
-    val canRate = CustomerAppFeatures.ORDER_RATINGS && receiptOk && (order.canRate == true || order.canEditRating == true)
-    androidx.compose.runtime.LaunchedEffect(order.id) {
-        if (saleId == null) return@LaunchedEffect
+
+    LaunchedEffect(order.id) {
         try {
             val prefs = PreferenceManager(context)
             val res = ApiClient.service.orderReturns(ApiClient.bearer(prefs.authToken), order.id)
             existing = res.body()?.data.orEmpty()
         } catch (_: Exception) { }
     }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
@@ -842,184 +842,236 @@ private fun OrderReturnRateBlock(order: CustomerOrder) {
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("ပစ္စည်းပြန်ပို့ / အဆင့်သတ်", fontWeight = FontWeight.Bold, color = TextMain)
-            if (CustomerAppFeatures.ORDER_RETURNS && saleId != null) {
-                Text("ငွေစရံပြန်အမ်းနှင့် မရောပါ။ Sale voucher ရှိမှ တောင်းနိုင်သည်။", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                existing.forEach {
-                    Text("${it.returnNo} · ${it.status}", style = MaterialTheme.typography.bodySmall, color = Primary)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Inventory2,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text("ပစ္စည်းပြန်ပို့ရန်", fontWeight = FontWeight.Bold, color = TextMain)
+            }
+            Text("ငွေစရံပြန်အမ်းနှင့် မရောပါ။ Sale voucher ရှိမှ တောင်းနိုင်သည်။", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            existing.forEach {
+                Text("${it.returnNo} · ${it.status}", style = MaterialTheme.typography.bodySmall, color = Primary)
+                Text(
+                    "Return delivery: ${it.deliveryStatus ?: "PICKUP_REQUESTED"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted
+                )
+                it.lines.forEach { line ->
+                    val replacement = line.replacementSerialNumber?.let { serial -> " -> $serial" }.orEmpty()
                     Text(
-                        "Return delivery: ${it.deliveryStatus ?: "PICKUP_REQUESTED"}",
+                        "${line.productName ?: "Product"} x${line.qty} ${line.disposition.orEmpty()}$replacement",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
-                    it.lines.forEach { line ->
-                        val replacement = line.replacementSerialNumber?.let { serial -> " -> $serial" }.orEmpty()
-                        Text(
-                            "${line.productName ?: "Product"} x${line.qty} ${line.disposition.orEmpty()}$replacement",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
-                        )
-                    }
                 }
-                order.lines.orEmpty().forEach { line ->
-                    val id = line.productId ?: return@forEach
-                    OutlinedTextField(
-                        value = qtyText[id] ?: "0",
-                        onValueChange = { qtyText = qtyText + (id to it.filter { ch -> ch.isDigit() }.ifBlank { "0" }) },
-                        label = { Text("${line.productName} (max ${line.qty})") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-                OutlinedTextField(
-                    value = reason,
-                    onValueChange = { reason = it },
-                    label = { Text("ပြန်ပို့ အကြောင်းရင်း") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(
-                    enabled = !busy,
-                    onClick = {
-                        val lines = order.lines.orEmpty().mapNotNull { line ->
-                            val id = line.productId ?: return@mapNotNull null
-                            val q = qtyText[id]?.toIntOrNull() ?: 0
-                            if (q <= 0) null else ReturnLineRequest(id, q, null)
-                        }
-                        if (reason.isBlank() || lines.isEmpty()) {
-                            message = "အကြောင်းရင်းနှင့် ပစ္စည်းရွေးပါ"
-                            return@Button
-                        }
-                        busy = true
-                        message = null
-                        scope.launch {
-                            try {
-                                val prefs = PreferenceManager(context)
-                                val res = ApiClient.service.requestReturn(
-                                    ApiClient.bearer(prefs.authToken),
-                                    order.id,
-                                    ReturnRequest(reason.trim(), null, saleId, lines)
-                                )
-                                message = if (res.isSuccessful) "တောင်းဆိုပြီးပါပြီ" else res.body()?.message ?: "မတင်နိုင်ပါ"
-                                val list = ApiClient.service.orderReturns(ApiClient.bearer(prefs.authToken), order.id)
-                                existing = list.body()?.data.orEmpty()
-                            } catch (e: Exception) {
-                                message = e.message
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                ) { Text("ပြန်ပို့ တောင်းမည်", fontWeight = FontWeight.Bold) }
             }
-            if (CustomerAppFeatures.ORDER_RATINGS) {
-                order.rating?.let { rate ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            order.lines.orEmpty().forEach { line ->
+                val id = line.productId ?: return@forEach
+                OutlinedTextField(
+                    value = qtyText[id] ?: "0",
+                    onValueChange = { qtyText = qtyText + (id to it.filter { ch -> ch.isDigit() }.ifBlank { "0" }) },
+                    label = { Text("${line.productName} (max ${line.qty})") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+            OutlinedTextField(
+                value = reason,
+                onValueChange = { reason = it },
+                label = { Text("ပြန်ပို့ အကြောင်းရင်း") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Button(
+                enabled = !busy,
+                onClick = {
+                    val lines = order.lines.orEmpty().mapNotNull { line ->
+                        val id = line.productId ?: return@mapNotNull null
+                        val q = qtyText[id]?.toIntOrNull() ?: 0
+                        if (q <= 0) null else ReturnLineRequest(id, q, null)
+                    }
+                    if (reason.isBlank() || lines.isEmpty()) {
+                        message = "အကြောင်းရင်းနှင့် ပစ္စည်းရွေးပါ"
+                        return@Button
+                    }
+                    busy = true
+                    message = null
+                    scope.launch {
+                        try {
+                            val prefs = PreferenceManager(context)
+                            val res = ApiClient.service.requestReturn(
+                                ApiClient.bearer(prefs.authToken),
+                                order.id,
+                                ReturnRequest(reason.trim(), null, saleId, lines)
+                            )
+                            message = if (res.isSuccessful) "တောင်းဆိုပြီးပါပြီ" else res.body()?.message ?: "မတင်နိုင်ပါ"
+                            val list = ApiClient.service.orderReturns(ApiClient.bearer(prefs.authToken), order.id)
+                            existing = list.body()?.data.orEmpty()
+                        } catch (e: Exception) {
+                            message = e.message
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) { Text("ပြန်ပို့ တောင်းမည်", fontWeight = FontWeight.Bold) }
+
+            message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Primary) }
+        }
+    }
+}
+
+@Composable
+private fun OrderRatingBlock(order: CustomerOrder) {
+    if (!CustomerAppFeatures.ORDER_RATINGS) return
+    val receiptOk = order.customerReceiptState.equals("CONFIRMED", ignoreCase = true)
+    if (!receiptOk && order.rating == null) return
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var productRating by remember(order.id) { mutableStateOf((order.rating?.productRating ?: 5).toString()) }
+    var serviceRating by remember(order.id) { mutableStateOf((order.rating?.serviceRating ?: 5).toString()) }
+    var review by remember(order.id) { mutableStateOf(order.rating?.comment ?: order.rating?.review ?: "") }
+    var message by remember(order.id) { mutableStateOf<String?>(null) }
+    var busy by remember(order.id) { mutableStateOf(false) }
+    val serviceLabel = if (order.orderType.equals("PICKUP", ignoreCase = true)) "ဆိုင်ဝန်ဆောင်မှု" else "ပို့ဆောင်မှု"
+    val canRate = receiptOk && (order.canRate == true || order.canEditRating == true)
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = SurfaceSoft,
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Star,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text("အဆင့်သတ်မှတ်ရန်", fontWeight = FontWeight.Bold, color = TextMain)
+            }
+
+            order.rating?.let { rate ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("ပစ္စည်းအဆင့်:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        StarRatingBar(rating = rate.productRating ?: rate.rating ?: 5, starSize = 18.dp)
+                    }
+                    val sRating = rate.serviceRating
+                    if (sRating != null) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("ပစ္စည်းအဆင့်:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                            StarRatingBar(rating = rate.productRating ?: rate.rating ?: 5, starSize = 18.dp)
-                        }
-                        val sRating = rate.serviceRating
-                        if (sRating != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text("$serviceLabel:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                StarRatingBar(rating = sRating, starSize = 18.dp)
-                            }
-                        }
-                        val comment = rate.comment ?: rate.review
-                        if (!comment.isNullOrBlank()) {
-                            Text("မှတ်ချက်: $comment", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text("$serviceLabel:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            StarRatingBar(rating = sRating, starSize = 18.dp)
                         }
                     }
-                }
-                if (!receiptOk && order.rating == null) {
-                    Text("လက်ခံအတည်ပြုပြီးမှ အဆင့်ပေးနိုင်သည်။", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                }
-                if (canRate) {
-                    var pStars by remember(order.id) { mutableIntStateOf((order.rating?.productRating ?: order.rating?.rating ?: 5).coerceIn(1, 5)) }
-                    var sStars by remember(order.id) { mutableIntStateOf((order.rating?.serviceRating ?: 5).coerceIn(1, 5)) }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("ပစ္စည်းအဆင့် ပေးပါ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                            StarRatingBar(
-                                rating = pStars,
-                                onRatingChanged = {
-                                    pStars = it
-                                    productRating = it.toString()
-                                },
-                                starSize = 26.dp
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("$serviceLabel အဆင့် ပေးပါ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                            StarRatingBar(
-                                rating = sStars,
-                                onRatingChanged = {
-                                    sStars = it
-                                    serviceRating = it.toString()
-                                },
-                                starSize = 26.dp
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = review,
-                            onValueChange = { review = it },
-                            label = { Text("မှတ်ချက် (ဆန္ဒရှိပါက ထည့်ပါ)") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedButton(
-                            enabled = !busy,
-                            onClick = {
-                                val productStars = pStars
-                                val serviceStars = sStars
-                                if (productStars !in 1..5 || serviceStars !in 1..5) {
-                                    message = "အဆင့် 1 မှ 5"
-                                    return@OutlinedButton
-                                }
-                                busy = true
-                                message = null
-                                scope.launch {
-                                    try {
-                                        val prefs = PreferenceManager(context)
-                                        val res = ApiClient.service.rateOrder(
-                                            ApiClient.bearer(prefs.authToken),
-                                            order.id,
-                                            OrderRatingRequest(productStars, serviceStars, review.trim().ifBlank { null })
-                                        )
-                                        message = if (res.isSuccessful) {
-                                            if (order.canEditRating == true) "အဆင့် ပြင်ပြီးပါပြီ" else "အဆင့်ပေးပြီးပါပြီ"
-                                        } else res.body()?.message ?: "မတင်နိုင်ပါ"
-                                    } catch (e: Exception) {
-                                        message = e.message
-                                    } finally {
-                                        busy = false
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(46.dp)
-                        ) { Text(if (order.canEditRating == true) "အဆင့် ပြင်မည်" else "အဆင့်ပေးမည်", fontWeight = FontWeight.SemiBold) }
+                    val comment = rate.comment ?: rate.review
+                    if (!comment.isNullOrBlank()) {
+                        Text("မှတ်ချက်: $comment", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                     }
                 }
             }
+
+            if (!receiptOk && order.rating == null) {
+                Text("လက်ခံအတည်ပြုပြီးမှ အဆင့်ပေးနိုင်သည်။", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+
+            if (canRate) {
+                var pStars by remember(order.id) { mutableIntStateOf((order.rating?.productRating ?: order.rating?.rating ?: 5).coerceIn(1, 5)) }
+                var sStars by remember(order.id) { mutableIntStateOf((order.rating?.serviceRating ?: 5).coerceIn(1, 5)) }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("ပစ္စည်းအဆင့် ပေးပါ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        StarRatingBar(
+                            rating = pStars,
+                            onRatingChanged = {
+                                pStars = it
+                                productRating = it.toString()
+                            },
+                            starSize = 26.dp
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("$serviceLabel အဆင့် ပေးပါ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        StarRatingBar(
+                            rating = sStars,
+                            onRatingChanged = {
+                                sStars = it
+                                serviceRating = it.toString()
+                            },
+                            starSize = 26.dp
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = review,
+                        onValueChange = { review = it },
+                        label = { Text("မှတ်ချက် (ဆန္ဒရှိပါက ထည့်ပါ)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedButton(
+                        enabled = !busy,
+                        onClick = {
+                            val productStars = pStars
+                            val serviceStars = sStars
+                            if (productStars !in 1..5 || serviceStars !in 1..5) {
+                                message = "အဆင့် 1 မှ 5"
+                                return@OutlinedButton
+                            }
+                            busy = true
+                            message = null
+                            scope.launch {
+                                try {
+                                    val prefs = PreferenceManager(context)
+                                    val res = ApiClient.service.rateOrder(
+                                        ApiClient.bearer(prefs.authToken),
+                                        order.id,
+                                        OrderRatingRequest(productStars, serviceStars, review.trim().ifBlank { null })
+                                    )
+                                    message = if (res.isSuccessful) {
+                                        if (order.canEditRating == true) "အဆင့် ပြင်ပြီးပါပြီ" else "အဆင့်ပေးပြီးပါပြီ"
+                                    } else res.body()?.message ?: "မတင်နိုင်ပါ"
+                                } catch (e: Exception) {
+                                    message = e.message
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(46.dp)
+                    ) { Text(if (order.canEditRating == true) "အဆင့် ပြင်မည်" else "အဆင့်ပေးမည်", fontWeight = FontWeight.SemiBold) }
+                }
+            }
+
             message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Primary) }
         }
     }
@@ -1336,6 +1388,8 @@ private fun sampleOrders(): List<CustomerOrder> {
             orderNo = "CA-000038",
             status = "CONFIRMED",
             paymentState = "FULFILLED",
+            customerReceiptState = "CONFIRMED",
+            canRate = true,
             paymentChoice = "TRANSFER",
             paymentMethodId = 2,
             paymentMethodName = "WavePay",
@@ -1468,7 +1522,7 @@ private fun OrderReviewPreview() {
     showBackground = true,
     backgroundColor = 0xFFF4F7FA,
     widthDp = 390,
-    heightDp = 620
+    heightDp = 900
 )
 @Composable
 private fun OrderInvoicePreview() {
@@ -1491,6 +1545,36 @@ private fun OrderCancelledPreview() {
     AppTheme {
         Surface(color = ScreenBg, modifier = Modifier.padding(12.dp)) {
             CustomerOrderHistoryCard(sampleOrders()[4], initiallyExpanded = true)
+        }
+    }
+}
+
+@Preview(
+    name = "8 · Return Block Card",
+    showBackground = true,
+    backgroundColor = 0xFFF4F7FA,
+    widthDp = 390
+)
+@Composable
+private fun OrderReturnBlockPreview() {
+    AppTheme {
+        Surface(color = ScreenBg, modifier = Modifier.padding(12.dp)) {
+            OrderReturnBlock(sampleOrders()[3])
+        }
+    }
+}
+
+@Preview(
+    name = "9 · Rating Block Card",
+    showBackground = true,
+    backgroundColor = 0xFFF4F7FA,
+    widthDp = 390
+)
+@Composable
+private fun OrderRatingBlockPreview() {
+    AppTheme {
+        Surface(color = ScreenBg, modifier = Modifier.padding(12.dp)) {
+            OrderRatingBlock(sampleOrders()[3])
         }
     }
 }

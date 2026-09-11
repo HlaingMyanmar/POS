@@ -45,6 +45,8 @@ public class SaleDTO {
     private Integer paymentMethodId; // required when paidAmount > 0
     private String transactionNo;
     private List<PaymentTransactionDTO> payments;
+    /** Internal: money received and journaled as Customer Advance before this sale. */
+    private BigDecimal customerAdvanceApplied;
     private Integer arAccountId; // for credit/partial sales
     private List<SaleDetailDTO> details;
 
@@ -53,3 +55,4 @@ public class SaleDTO {
     // since payment is tracked at the ServiceJob level.
     private boolean serviceJobSale;
 }
+

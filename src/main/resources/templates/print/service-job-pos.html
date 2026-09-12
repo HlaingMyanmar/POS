@@ -1,0 +1,17 @@
+<!-- Service job 80mm/58mm — header / intake body / table / footer -->
+<div th:class="${'invoice-page invoice-page--' + #strings.toLowerCase(layout.name).replace('_','-')}"
+     xmlns:th="http://www.thymeleaf.org">
+  <div th:replace="~{print/fragments/service-job-header :: render(${inv})}"></div>
+  <div class="inv-body">
+    <th:block th:if="${inv.currentPage == 1}">
+      <div th:replace="~{print/fragments/service-job-body :: render(${inv})}"></div>
+    </th:block>
+    <div th:replace="~{print/fragments/service-job-table :: render(${inv})}"></div>
+    <th:block th:if="${inv.currentPage == inv.totalPages}">
+      <div th:replace="~{print/fragments/service-job-footer :: last(${inv})}"></div>
+    </th:block>
+    <th:block th:if="${inv.currentPage < inv.totalPages}">
+      <div th:replace="~{print/fragments/service-job-footer :: cont(${inv})}"></div>
+    </th:block>
+  </div>
+</div>

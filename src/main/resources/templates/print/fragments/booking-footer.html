@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><title>booking-footer</title></head>
+<body>
+<div th:fragment="render(inv)">
+  <div th:if="${not #strings.isEmpty(inv.customerNotice)}" style="margin-top:10px;">
+    <div class="inv-section-label">Notice</div>
+    <div class="inv-notice" th:text="${inv.customerNotice}"></div>
+  </div>
+  <div th:if="${inv.showSignatures}" class="inv-signatures">
+    <div class="inv-sign">
+      <div class="inv-sign__line" th:text="${inv.sign1Label ?: 'Prepared By'}"></div>
+    </div>
+    <div class="inv-sign">
+      <div class="inv-sign__line" th:text="${inv.sign2Label ?: 'Received By'}"></div>
+    </div>
+  </div>
+  <div class="inv-footer">
+    <span th:text="${inv.companyName}"></span>
+    <span th:if="${not #strings.isEmpty(inv.footerNote)}" th:text="${' · ' + inv.footerNote}"></span>
+  </div>
+</div>
+</body>
+</html>

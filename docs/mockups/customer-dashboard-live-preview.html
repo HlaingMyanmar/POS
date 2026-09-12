@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="my">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SSPD Customer Dashboard Preview</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#e9edf4;font-family:Inter,"Noto Sans Myanmar",system-ui,sans-serif;color:#172033}
+    .stage{min-height:100vh;display:grid;place-items:center;padding:24px}.phone{width:390px;max-width:100%;height:844px;background:#f4f7fa;border:1px solid #cbd5e1;border-radius:34px;overflow:hidden;position:relative}
+    .status{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:12px;font-weight:700;background:#fff}
+    .content{height:748px;overflow:auto;padding:13px 16px 24px}.header{display:flex;align-items:center;margin-bottom:14px}.avatar{width:46px;height:46px;border-radius:50%;background:#4f46e5;color:white;display:grid;place-items:center;font-weight:900}.hello{flex:1;margin-left:11px}.muted{font-size:11px;color:#647184}.name{font-size:17px;font-weight:900}.bell{font-size:22px}
+    .credit{background:#312e81;color:white;border-radius:20px;padding:17px;display:flex;align-items:center;gap:12px}.credit-icon{width:46px;height:46px;border-radius:50%;background:#ffffff22;display:grid;place-items:center;font-size:23px}.grow{flex:1}.label{font-size:11px;opacity:.76}.active{display:inline-block;margin-top:4px;padding:3px 8px;border-radius:7px;background:#ecfdf3;color:#15803d;font-size:10px;font-weight:900}.limit{text-align:right}.amount{font-size:18px;font-weight:900;margin-top:3px}
+    .summary{margin-top:12px;background:white;border-radius:17px;padding:14px 4px;display:grid;grid-template-columns:repeat(3,1fr)}.sum{display:flex;justify-content:center;align-items:center;gap:7px;border-right:1px solid #e2e8f0}.sum:last-child{border:0}.sum-icon{color:#4f46e5;font-size:20px}.sum b{display:block;color:#312e81}.section-title{display:flex;justify-content:space-between;align-items:center;margin:20px 1px 10px;font-size:15px;font-weight:900}.link{font-size:11px;color:#4f46e5}
+    .actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.action{background:white;border-radius:16px;min-height:102px;display:grid;place-items:center;text-align:center;padding:8px;font-size:11px;font-weight:800}.action i{display:block;font-style:normal;color:#4f46e5;font-size:28px;margin-bottom:7px}
+    .job{background:white;border-radius:18px;padding:15px}.job-head{display:flex;align-items:center}.job-icon{width:48px;height:48px;border-radius:13px;background:#eef2ff;color:#4f46e5;display:grid;place-items:center;font-size:23px;margin-right:10px}.job-title{flex:1}.job-title b{display:block}.pill{padding:5px 9px;border-radius:8px;background:#eef2ff;color:#4f46e5;font-size:9px;font-weight:900}.progress{display:grid;grid-template-columns:repeat(4,1fr);margin-top:15px}.step{text-align:center;font-size:9px;color:#647184;position:relative}.dot{width:23px;height:23px;border-radius:50%;background:#dde5ec;margin:0 auto 5px;display:grid;place-items:center;color:white}.step.done{color:#4f46e5}.step.done .dot{background:#4f46e5}
+    .products{display:flex;gap:10px;overflow:hidden}.product{min-width:171px;background:white;border-radius:17px;overflow:hidden}.photo{height:82px;background:#eef2ff;display:grid;place-items:center;font-size:40px}.product-body{padding:10px}.product-name{font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.price-row{display:flex;align-items:center;margin-top:7px}.price{flex:1;color:#4f46e5;font-size:12px;font-weight:900}.add{width:29px;height:29px;border:0;border-radius:9px;background:#eef2ff;color:#4f46e5;font-size:19px}
+    .nav{height:68px;background:white;border-top:1px solid #dde5ec;display:grid;grid-template-columns:repeat(5,1fr);position:absolute;bottom:0;left:0;right:0}.nav-item{display:grid;place-items:center;align-content:center;color:#647184;font-size:9px;gap:3px}.nav-item span{font-size:20px}.nav-item.active{color:#4f46e5;font-weight:900}
+    @media(max-width:430px){.stage{padding:0}.phone{width:100%;height:100vh;border:0;border-radius:0}.content{height:calc(100vh - 96px)}}
+  </style>
+</head>
+<body>
+<div class="stage"><main class="phone">
+  <div class="status"><span>9:41</span><span>● 100%</span></div>
+  <div class="content">
+    <header class="header"><div class="avatar">AK</div><div class="hello"><div class="muted">မင်္ဂလာပါ</div><div class="name">Aung Kyaw Moe</div></div><div class="bell">♢</div></header>
+    <section class="credit"><div class="credit-icon">▣</div><div class="grow"><div class="label">အကြွေးဝယ်ယူခွင့်</div><span class="active">ACTIVE</span></div><div class="limit"><div class="label">အများဆုံး (Limit)</div><div class="amount">1,500,000 Ks</div><div class="label">30 ရက်</div></div></section>
+    <section class="summary"><div class="sum"><span class="sum-icon">□</span><div><b>2</b><span class="muted">အော်ဒါ</span></div></div><div class="sum"><span class="sum-icon">◇</span><div><b>1</b><span class="muted">Service</span></div></div><div class="sum"><span class="sum-icon">✓</span><div><b>12</b><span class="muted">ပြီးစီး</span></div></div></section>
+    <div class="section-title"><span>ဘာလုပ်ချင်ပါသလဲ?</span></div>
+    <section class="actions">
+      <div class="action"><div><i>🛒</i>ပစ္စည်း<br>ဝယ်မည်</div></div><div class="action"><div><i>⌕</i>Service<br>ခေါ်မည်</div></div><div class="action"><div><i>▤</i>ခြင်းတောင်း<br>ကြည့်မည်</div></div><div class="action"><div><i>◷</i>မှတ်တမ်း<br>ကြည့်မည်</div></div>
+    </section>
+    <div class="section-title"><span>လတ်တလော အခြေအနေ</span><span class="link">အားလုံးကြည့်မည်</span></div>
+    <section class="job"><div class="job-head"><div class="job-icon">⌕</div><div class="job-title"><b>JOB-000042</b><span class="muted">Laptop</span></div><span class="pill">IN PROGRESS</span></div><div class="progress"><div class="step done"><div class="dot">✓</div>လက်ခံ</div><div class="step done"><div class="dot">✓</div>စစ်ဆေး</div><div class="step done"><div class="dot"></div>ပြုပြင်</div><div class="step"><div class="dot"></div>ပြီးစီး</div></div></section>
+    <div class="section-title"><span>အကြံပြုပစ္စည်းများ</span><span class="link">အားလုံးကြည့်မည်</span></div>
+    <section class="products"><article class="product"><div class="photo">💻</div><div class="product-body"><div class="product-name">Dell Inspiron 15 3530</div><div class="muted">Dell • Laptop</div><div class="price-row"><span class="price">1,350,000 Ks</span><button class="add">+</button></div></div></article><article class="product"><div class="photo">🎒</div><div class="product-body"><div class="product-name">HP 15.6 Backpack</div><div class="muted">HP • Accessories</div><div class="price-row"><span class="price">48,000 Ks</span><button class="add">+</button></div></div></article></section>
+  </div>
+  <nav class="nav"><div class="nav-item active"><span>⌂</span>ပင်မ</div><div class="nav-item"><span>⌕</span>Service</div><div class="nav-item"><span>□</span>ခြင်း</div><div class="nav-item"><span>▤</span>မှတ်တမ်း</div><div class="nav-item"><span>○</span>ကျွန်ုပ်</div></nav>
+</main></div>
+</body>
+</html>

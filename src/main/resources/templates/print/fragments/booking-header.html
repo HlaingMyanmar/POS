@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><title>booking-header</title></head>
+<body>
+<div th:fragment="render(inv)">
+  <div class="inv-header">
+    <div class="inv-header__brand">
+      <img th:if="${inv.showLogo and not #strings.isEmpty(inv.logoBase64)}"
+           th:src="${inv.logoBase64}" class="inv-header__logo" alt="logo"/>
+      <div class="inv-header__brand-text">
+        <div class="inv-header__company-name" th:text="${inv.companyName}">Company</div>
+        <div class="inv-header__company-sub">
+          <span th:if="${not #strings.isEmpty(inv.companyAddress)}" th:text="${inv.companyAddress}"></span>
+          <span th:if="${not #strings.isEmpty(inv.companyPhone)}"
+                th:text="${(not #strings.isEmpty(inv.companyAddress) ? ' · ' : '') + inv.companyPhone}"></span>
+          <span th:if="${not #strings.isEmpty(inv.companyEmail)}" th:text="${' · ' + inv.companyEmail}"></span>
+        </div>
+      </div>
+    </div>
+    <div class="inv-header__meta">
+      <img th:if="${inv.showQrCode and not #strings.isEmpty(inv.qrCodeBase64)}"
+           th:src="${inv.qrCodeBase64}" class="inv-header__qr" alt="QR"/>
+      <div class="inv-header__meta-text">
+        <div class="inv-header__meta-title" th:text="${inv.invoiceTitle}">DEVICE INTAKE RECEIPT</div>
+        <div class="inv-header__copy-label" th:text="${inv.copyLabel}">CUSTOMER COPY</div>
+        <div class="inv-header__meta-number" th:text="${inv.invoiceNo}">BK-000001</div>
+        <div class="inv-header__meta-date" th:text="${inv.invoiceDate}"></div>
+      </div>
+    </div>
+  </div>
+  <div class="inv-accent-bar"></div>
+  <div class="inv-info-grid">
+    <div class="inv-block">
+      <div class="inv-block__title">Bill To</div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Customer</span>
+        <span class="inv-block__value" th:text="${inv.customerName ?: '—'}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.customerPhone)}">
+        <span class="inv-block__label">Phone</span>
+        <span class="inv-block__value" th:text="${inv.customerPhone}"></span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.customerAddress)}">
+        <span class="inv-block__label">Address</span>
+        <span class="inv-block__value" th:text="${inv.customerAddress}"></span>
+      </div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Status</span>
+        <span class="inv-block__value" th:text="${inv.paymentStatus ?: '—'}"></span>
+      </div>
+    </div>
+    <div class="inv-block">
+      <div class="inv-block__title">Invoice Details</div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Invoice No</span>
+        <span class="inv-block__value" th:text="${inv.invoiceNo}">—</span>
+      </div>
+      <div class="inv-block__row">
+        <span class="inv-block__label">Date</span>
+        <span class="inv-block__value" th:text="${inv.invoiceDate}">—</span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.dueDate)}">
+        <span class="inv-block__label">Due Date</span>
+        <span class="inv-block__value" th:text="${inv.dueDate}"></span>
+      </div>
+      <div class="inv-block__row" th:if="${not #strings.isEmpty(inv.cashierName)}">
+        <span class="inv-block__label">လက်ခံသူ</span>
+        <span class="inv-block__value" th:text="${inv.cashierName}"></span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+<!-- Booking 80mm/58mm — same booking-header / booking-table / booking-footer -->
+<div th:class="${'invoice-page invoice-page--' + #strings.toLowerCase(layout.name).replace('_','-')}"
+     xmlns:th="http://www.thymeleaf.org">
+  <div th:replace="~{print/fragments/booking-header :: render(${inv})}"></div>
+  <div class="inv-body">
+    <div th:replace="~{print/fragments/booking-table :: render(${inv})}"></div>
+    <div th:replace="~{print/fragments/booking-footer :: render(${inv})}"></div>
+  </div>
+</div>

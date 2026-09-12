@@ -140,6 +140,42 @@ private fun formatCountdown(totalSeconds: Long): String {
     return "%d:%02d".format(m, s)
 }
 
+private fun moneyValue(amount: Double?): Double {
+    val safe = amount?.takeIf { it.isFinite() } ?: 0.0
+    return if (safe < 0) 0.0 else safe
+}
+
+private fun isRemainderReady(order: CustomerOrder, remaining: Double): Boolean {
+    val state = order.paymentState?.trim()?.uppercase().orEmpty()
+    return state == "DEPOSIT_PAID" &&
+        remaining > 0.0 &&
+        (order.orderType != "DELIVERY" || order.deliveryStatus in setOf(
+            "HANDED_TO_RIDER", "OUT_FOR_DELIVERY", "IN_TRANSIT", "DELIVERED"
+        ))
+}
+
+/** Amount the customer must transfer now: deposit only, or remaining after deposit is already sent. */
+internal fun orderPayNowAmount(order: CustomerOrder): Double {
+    val state = order.paymentState?.trim()?.uppercase().orEmpty()
+    val total = moneyValue(order.total)
+    val deposit = moneyValue(order.depositAmount)
+    val remaining = moneyValue(order.remainingAmount ?: (total - deposit))
+    val remainderSubmitted = state in setOf("REMAINDER_PROOF_SUBMITTED", "REMAINDER_CHECKING")
+    val remainderConfirmed = state in setOf("PAID", "FULFILLED") && moneyValue(order.collectionAmount) > 0.0
+    val depositTransferred = state in setOf(
+        "DEPOSIT_PAID", "REMAINDER_PROOF_SUBMITTED", "REMAINDER_CHECKING",
+        "PAID", "FULFILLED", "PROOF_SUBMITTED", "CHECKING", "REVIEW", "LATE_REVIEW"
+    )
+    return when {
+        state in setOf("PAID", "FULFILLED") || remainderConfirmed || remainderSubmitted -> 0.0
+        isRemainderReady(order, remaining) -> remaining
+        depositTransferred && deposit > 0.0 -> remaining
+        depositTransferred -> 0.0
+        deposit > 0.0 -> deposit
+        else -> total
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CustomerOrderPaymentCard(
@@ -173,29 +209,28 @@ fun CustomerOrderPaymentCard(
         }
     }
     val state = current.paymentState ?: "NONE"
+    val depositAmount = moneyValue(current.depositAmount)
+    val remainingAmount = moneyValue(current.remainingAmount ?: (moneyValue(current.total) - depositAmount))
     val depositConfirmed = state in setOf("DEPOSIT_PAID", "REMAINDER_PROOF_SUBMITTED", "REMAINDER_CHECKING", "PAID", "FULFILLED")
     val remainderSubmitted = state in setOf("REMAINDER_PROOF_SUBMITTED", "REMAINDER_CHECKING")
-    val remainderConfirmed = state in setOf("PAID", "FULFILLED") && (current.collectionAmount ?: 0.0) > 0.0
+    val remainderConfirmed = state in setOf("PAID", "FULFILLED") && moneyValue(current.collectionAmount) > 0.0
+    val depositTransferred = depositConfirmed || (
+        depositAmount > 0.0 && state in setOf("PROOF_SUBMITTED", "CHECKING", "REVIEW", "LATE_REVIEW")
+    )
     val paidSoFar = when {
-        remainderConfirmed -> (current.depositAmount ?: 0.0) + (current.collectionAmount ?: 0.0)
-        depositConfirmed -> current.depositAmount ?: 0.0
+        remainderConfirmed -> depositAmount + moneyValue(current.collectionAmount)
+        remainderSubmitted -> depositAmount + remainingAmount
+        depositTransferred -> depositAmount
         else -> 0.0
     }
-    val balanceDue = ((current.total ?: 0.0) - paidSoFar).coerceAtLeast(0.0)
-    val remainderReady = state == "DEPOSIT_PAID" &&
-        (current.remainingAmount ?: 0.0) > 0.0 &&
-        (current.orderType != "DELIVERY" || current.deliveryStatus in setOf(
-            "HANDED_TO_RIDER", "OUT_FOR_DELIVERY", "IN_TRANSIT", "DELIVERED"
-        ))
-    val transferDue = if (remainderReady) {
-        current.remainingAmount
-    } else if ((current.depositAmount ?: 0.0) > 0.0) {
-        current.depositAmount
-    } else {
-        current.total
-    }
+    val balanceDue = (moneyValue(current.total) - paidSoFar).coerceAtLeast(0.0)
+    val remainderReady = isRemainderReady(current, remainingAmount)
+    val transferDue = orderPayNowAmount(current)
     var amount by remember(order.id) {
         mutableStateOf(formatTransferAmount(transferDue))
+    }
+    LaunchedEffect(order.id, transferDue) {
+        amount = formatTransferAmount(transferDue)
     }
     var submitting by remember { mutableStateOf(false) }
     var choosingChannel by remember { mutableStateOf(false) }
@@ -656,13 +691,13 @@ fun CustomerOrderPaymentCard(
                 }
             }
 
-            if (state == "DEPOSIT_PAID" && (current.remainingAmount ?: 0.0) > 0.0) {
+            if (state == "DEPOSIT_PAID" && remainingAmount > 0.0) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         if (current.orderType == "DELIVERY")
-                            "စရံရရှိပြီး — ဆိုင်က ပို့ပါမည်။ ပစ္စည်းရောက်မှ ကျန် ${moneyKs(current.remainingAmount)} ပေးချေပါ။"
+                            "စရံရရှိပြီး — ဆိုင်က ပို့ပါမည်။ ပစ္စည်းရောက်မှ ကျန် ${moneyKs(remainingAmount)} ပေးချေပါ။"
                         else
-                            "စရံရရှိပြီး — ဆိုင်မှာ လက်ခံချိန် ကျန် ${moneyKs(current.remainingAmount)} ပေးချေပါ။",
+                            "စရံရရှိပြီး — ဆိုင်မှာ လက်ခံချိန် ကျန် ${moneyKs(remainingAmount)} ပေးချေပါ။",
                         fontWeight = FontWeight.SemiBold,
                         color = Success
                     )
@@ -721,16 +756,32 @@ fun CustomerOrderPaymentCard(
                     } else if ((current.deliveryCharge ?: 0.0) > 0 || current.orderType == "DELIVERY") {
                         Text("ဆိုင်ပို့ခ · ${moneyKs(current.deliveryCharge)}", style = MaterialTheme.typography.bodySmall)
                     }
-                    if ((current.depositAmount ?: 0.0) > 0.0) {
-                        PaymentInfoRow(label = "စရံ ${(current.depositPercent ?: 0.0).toInt()}%", value = "${moneyKs(current.depositAmount)} · ${if (depositConfirmed) "အတည်ပြုပြီး ✓" else "ပေးရန်"}")
-                        if ((current.remainingAmount ?: 0.0) > 0.0) {
-                            PaymentInfoRow(label = "ကျန်ငွေ", value = "${moneyKs(current.remainingAmount)} · ${if (remainderConfirmed) "အတည်ပြုပြီး ✓" else if (remainderSubmitted) "လွှဲပုံတင်ပြီး" else "ပေးရန်ကျန်"}")
+                    if (depositAmount > 0.0) {
+                        PaymentInfoRow(
+                            label = "စရံ ${(current.depositPercent ?: 0.0).toInt()}%",
+                            value = "${moneyKs(depositAmount)} · ${when {
+                                depositConfirmed -> "အတည်ပြုပြီး ✓"
+                                depositTransferred -> "လွှဲပြီး"
+                                else -> "ပေးရန်"
+                            }}"
+                        )
+                        if (remainingAmount > 0.0) {
+                            PaymentInfoRow(
+                                label = "ကျန်ငွေ",
+                                value = "${moneyKs(remainingAmount)} · ${when {
+                                    remainderConfirmed -> "အတည်ပြုပြီး ✓"
+                                    remainderSubmitted -> "လွှဲပုံတင်ပြီး"
+                                    depositTransferred -> "စရံနှုတ်ပြီး"
+                                    else -> "ပေးရန်ကျန်"
+                                }}"
+                            )
                         }
                     }
                     PaymentInfoRow(label = "ပေးပြီးစုစုပေါင်း", value = moneyKs(paidSoFar))
                     PaymentInfoRow(label = "ပေးရန်ကျန်", value = moneyKs(balanceDue))
+                    Text("ယခုပေးရန်", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                     Text(
-                        "ယခုပေးရန် · ${moneyKs(if (remainderReady) current.remainingAmount else if ((current.depositAmount ?: 0.0) > 0) current.depositAmount else current.total)}",
+                        moneyKs(transferDue),
                         fontWeight = FontWeight.Bold,
                         color = Primary,
                         style = MaterialTheme.typography.headlineSmall
@@ -884,7 +935,7 @@ fun CustomerOrderPaymentCard(
 
             if (cashRemainder) {
                 Text(
-                    "ပစ္စည်းရောက်ချိန် Rider ကို ကျန်ငွေ ${moneyKs(current.remainingAmount)} Cash ပေးပါ။ Screenshot မလိုပါ။",
+                    "ပစ္စည်းရောက်ချိန် Rider ကို ကျန်ငွေ ${moneyKs(remainingAmount)} Cash ပေးပါ။ Screenshot မလိုပါ။",
                     style = MaterialTheme.typography.bodySmall,
                     color = Success
                 )

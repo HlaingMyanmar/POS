@@ -16,6 +16,7 @@ import com.sspd.servicemgmt.R
 object CustomerOrderAlerts {
     const val EXTRA_ORDER_ID = "focus_order_id"
     const val EXTRA_OPEN_ORDERS = "open_orders_tab"
+    private const val DEDUPE_WINDOW_MS = 60_000L
 
     fun show(context: Context, notification: CustomerNotification) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -28,6 +29,17 @@ object CustomerOrderAlerts {
         ) {
             return
         }
+        // A live update can arrive through WebSocket and FCM at nearly the same time.
+        val eventKey = listOf(
+            notification.orderId ?: notification.id,
+            notification.status.orEmpty(),
+            notification.notifiedAt.orEmpty(),
+            notification.note.orEmpty()
+        ).joinToString(":").hashCode().toString()
+        val now = System.currentTimeMillis()
+        val dedupe = context.getSharedPreferences("order_alert_dedupe", Context.MODE_PRIVATE)
+        if (now - dedupe.getLong(eventKey, 0L) < DEDUPE_WINDOW_MS) return
+        dedupe.edit().clear().putLong(eventKey, now).apply()
         val cancelled = notification.status.equals("CANCELLED", ignoreCase = true)
             || notification.status.equals("EXPIRED", ignoreCase = true)
         val title = when {

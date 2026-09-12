@@ -153,7 +153,7 @@ fun LoginScreen(onSuccess: () -> Unit) {
     }
 }
 
-private val LoginAccent = Primary
+private val LoginAccent = Color(0xFF00B9E8)
 private val LoginFieldBg = Color(0xFFF0F7F7)
 private val LoginInk = TextMain
 
@@ -360,7 +360,7 @@ private fun TechnicianLoginLayout(
                         enabled = !loading,
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = LoginAccent,
+                            containerColor = Color(0xFF00B9E8),
                             disabledContainerColor = LoginAccent.copy(alpha = 0.55f),
                             disabledContentColor = Color.White
                         ),

@@ -68,6 +68,14 @@ export const CustomerProductReturnPanel: React.FC<{
   const [disp, setDisp] = useState<Record<number, string>>({});
   const [replacementSerial, setReplacementSerial] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<'ACTIVE' | 'ALL' | 'DONE'>('ACTIVE');
+  const [query, setQuery] = useState('');
+  const activeStatuses = ['REQUESTED', 'APPROVED', 'RETURNED', 'INSPECTING'];
+  const visibleRows = rows.filter((r) => {
+    const q = query.trim().toLowerCase();
+    const matches = !q || [r.returnNo, r.orderNo, r.customerName].some((v) => (v || '').toLowerCase().includes(q));
+    return matches && (filter === 'ALL' || (filter === 'ACTIVE' ? activeStatuses.includes(r.status) : !activeStatuses.includes(r.status)));
+  });
 
   useEffect(() => {
     api.get<any>('/v1/payment-methods/active').then((r) => setMethods(r.data || [])).catch(() => setMethods([]));
@@ -107,8 +115,22 @@ export const CustomerProductReturnPanel: React.FC<{
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
-      <div className="lg:col-span-2 bg-white border rounded-xl overflow-hidden">
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div><h3 className="font-black text-slate-900">Product return workflow</h3><p className="mt-1 text-xs text-slate-500">Review request → Return delivery → Shop receipt → Inspection → Refund or replacement</p></div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search return, order or customer" className="min-w-64 rounded-lg border px-3 py-2 text-sm" />
+            <div className="flex rounded-lg bg-slate-100 p-1">
+              {([['ACTIVE','Action needed'],['ALL','All'],['DONE','Completed']] as const).map(([id,label]) => (
+                <button key={id} type="button" onClick={() => setFilter(id)} className={`rounded-md px-3 py-1.5 text-xs font-bold ${filter === id ? 'bg-white text-indigo-700 shadow' : 'text-slate-500'}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="max-h-[72vh] overflow-auto bg-white border rounded-xl">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
             <tr>
@@ -118,10 +140,10 @@ export const CustomerProductReturnPanel: React.FC<{
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {visibleRows.length === 0 ? (
               <tr><td colSpan={3} className="py-10 text-center text-slate-400">ပြန်ပို့ တောင်းဆိုချက် မရှိသေးပါ</td></tr>
-            ) : rows.map((r) => (
-              <tr key={r.id} className="border-t cursor-pointer hover:bg-indigo-50/60" onClick={() => void open(r.id)}>
+            ) : visibleRows.map((r) => (
+              <tr key={r.id} className={`border-t cursor-pointer hover:bg-indigo-50/60 ${selected?.id === r.id ? 'bg-indigo-100 ring-2 ring-inset ring-indigo-400' : ''}`} onClick={() => void open(r.id)}>
                 <td className="px-3 py-2 font-semibold text-indigo-700">{r.returnNo}<div className="text-[10px] text-slate-500">{r.orderNo || `Sale #${r.saleId}`}</div></td>
                 <td className="px-3 py-2">{r.customerName}</td>
                 <td className="px-3 py-2 text-center text-[11px] font-bold">{statusLabel[r.status] || r.status}</td>
@@ -130,7 +152,7 @@ export const CustomerProductReturnPanel: React.FC<{
           </tbody>
         </table>
       </div>
-      <div className="lg:col-span-3 bg-white border rounded-xl p-4 space-y-3">
+      <div className="min-w-0 bg-white border rounded-xl p-5 space-y-4">
         {!selected ? <p className="text-sm text-slate-400">ဘယ်ဘက်မှ return ရွေးပါ။ ငွေပြန်အမ်း (payment refund) နှင့် သီးခြားဖြစ်သည်။</p> : (
           <>
             <div className="flex justify-between gap-2">
@@ -155,9 +177,9 @@ export const CustomerProductReturnPanel: React.FC<{
                 </div>
                 {['RETURNED', 'INSPECTING'].includes(selected.status) && (
                   <select value={disp[l.id] || 'SELLABLE'} onChange={(e) => setDisp({ ...disp, [l.id]: e.target.value })} className="rounded border px-1">
-                    <option value="SELLABLE">SELLABLE</option>
-                    <option value="DAMAGED">DAMAGED</option>
-                    <option value="QUARANTINE">QUARANTINE</option>
+                    <option value="SELLABLE">Sellable / return to stock</option>
+                    <option value="DAMAGED">Damaged</option>
+                    <option value="QUARANTINE">Quarantine / inspect separately</option>
                   </select>
                 )}
                 {l.disposition && !['RETURNED', 'INSPECTING'].includes(selected.status) && <span>{l.disposition}</span>}
@@ -173,7 +195,7 @@ export const CustomerProductReturnPanel: React.FC<{
             <div className="flex flex-wrap gap-2">
               {(selected.photos || []).map((p) => p.image ? <img key={p.id} src={p.image} alt="" className="h-20 w-20 rounded object-cover border" /> : null)}
             </div>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Review / inspect note" className="w-full rounded-lg border p-2 text-sm" rows={2} />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Decision, delivery or inspection note" className="w-full rounded-lg border p-2 text-sm" rows={2} />
             {selected.status === 'REQUESTED' && (
               <div className="flex gap-2">
                 <button disabled={busy} type="button" onClick={() => void review('APPROVE')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">လက်ခံ</button>
@@ -202,12 +224,12 @@ export const CustomerProductReturnPanel: React.FC<{
                 </div>
                 {outcome === 'REFUNDED' && (
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} className="rounded border p-2 text-sm" placeholder="Amount" />
+                    <input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} className="rounded border p-2 text-sm" placeholder="Refund amount" />
                     <select value={methodId} onChange={(e) => setMethodId(e.target.value ? Number(e.target.value) : '')} className="rounded border p-2 text-sm">
-                      <option value="">Channel</option>
+                      <option value="">Select refund channel</option>
                       {methods.map((m) => <option key={m.id} value={m.id}>{m.methodName}</option>)}
                     </select>
-                    <input value={reference} onChange={(e) => setReference(e.target.value)} className="rounded border p-2 text-sm" placeholder="Txn ref" />
+                    <input value={reference} onChange={(e) => setReference(e.target.value)} className="rounded border p-2 text-sm" placeholder="Transaction reference" />
                   </div>
                 )}
                 <button
@@ -234,6 +256,7 @@ export const CustomerProductReturnPanel: React.FC<{
             )}
           </>
         )}
+      </div>
       </div>
     </div>
   );

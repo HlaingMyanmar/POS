@@ -139,7 +139,9 @@ public class SaleService {
         return mapper.toDto(saved);
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_CREATE')")
+    // Service-job settlement creates an inventory-only sale for consumed parts.
+    // The public sale endpoint still requires CAN_ACCESS_SALE_CREATE at the controller.
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_CREATE','CAN_ACCESS_SERVICE_JOB_SETTLE')")
     @Transactional
     public SaleDTO save(SaleDTO dto) {
         if (dto.getDetails() == null || dto.getDetails().isEmpty()) {

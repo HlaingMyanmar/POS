@@ -64,6 +64,7 @@ public class CustomerFcmService {
   for(var device:devices.findByCustomer_IdAndActiveTrue(id))try{
    Map<String,Object> data=new LinkedHashMap<>();data.put("type","CUSTOMER_ORDER");data.put("orderId",Objects.toString(notice.getOrderId(),""));
    data.put("status",Objects.toString(notice.getStatus(),""));data.put("orderNo",Objects.toString(notice.getOrderNo(),""));data.put("note",body);
+   data.put("notifiedAt",Objects.toString(notice.getNotifiedAt(),""));
    Map<String,Object> message=new LinkedHashMap<>();message.put("token",device.getToken());
    message.put("notification",Map.of("title",Objects.toString(notice.getOrderNo(),"SSPD Customer"),"body",body));message.put("data",data);
    message.put("android",Map.of(

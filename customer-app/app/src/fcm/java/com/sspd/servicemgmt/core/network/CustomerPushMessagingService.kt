@@ -41,7 +41,8 @@ class CustomerPushMessagingService : FirebaseMessagingService() {
         CustomerOrderAlerts.show(applicationContext, CustomerNotification(
             id = orderId?.let { -it } ?: -1, channel = "CUSTOMER_ORDER",
             note = data["note"] ?: message.notification?.body, orderId = orderId,
-            orderNo = data["orderNo"] ?: message.notification?.title, status = data["status"]
+            orderNo = data["orderNo"] ?: message.notification?.title, status = data["status"],
+            notifiedAt = data["notifiedAt"]
         ))
     }
 }

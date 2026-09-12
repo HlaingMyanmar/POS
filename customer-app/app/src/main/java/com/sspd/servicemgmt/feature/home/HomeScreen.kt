@@ -44,6 +44,7 @@ import com.sspd.servicemgmt.core.tracking.LocationClient
 import com.sspd.servicemgmt.core.tracking.LocationPermission
 import com.sspd.servicemgmt.core.ui.component.ErrorRetryBanner
 import com.sspd.servicemgmt.core.ui.component.OrderSkeletonList
+import com.sspd.servicemgmt.core.ui.component.SaleInvoiceViewerDialog
 import com.sspd.servicemgmt.core.ui.theme.Danger
 import com.sspd.servicemgmt.core.ui.theme.Primary
 import com.sspd.servicemgmt.core.ui.theme.PrimaryDark
@@ -294,7 +295,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                     if (response.isSuccessful) {
                         notifications = response.body()?.data ?: emptyList()
                         recomputeUnread()
-                        notifications.filter { it.orderId != null }.asReversed().forEach { receiveOrderNotification(it) }
+                        // This response is notification history. Keep it for the inbox/badge only;
+                        // replaying it through receiveOrderNotification() makes old alerts appear
+                        // again whenever the socket connects or the app resumes.
                     }
                     val orderResponse = ApiClient.service.myOrders(auth())
                     if (orderResponse.isSuccessful) orders = orderResponse.body()?.data ?: emptyList()
@@ -1545,6 +1548,7 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
     val prefs = remember { PreferenceManager(context.applicationContext) }
     val scope = rememberCoroutineScope()
     var purchaseInvoiceError by remember { mutableStateOf<String?>(null) }
+    var selectedPurchaseForDialog by remember { mutableStateOf<CustomerPurchase?>(null) }
     var proofPickerKey by remember { mutableStateOf<String?>(null) }
     var pickedProofUri by remember { mutableStateOf<Uri?>(null) }
     val proofPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1719,7 +1723,7 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
                         }
                     },
                     onReorder = onReorder,
-                    initiallyExpanded = isSelected,
+                    expanded = isSelected,
                     pickedImageUri = pickedProofUri.takeIf { proofPickerKey == itemKey },
                     onPickImage = {
                         proofPickerKey = itemKey
@@ -1787,11 +1791,7 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
                     }
                     Text("${(p.netAmount ?: 0.0).toInt()} Ks", fontWeight = FontWeight.ExtraBold, color = Primary)
                     TextButton(onClick = {
-                        scope.launch {
-                            purchaseInvoiceError = SaleInvoiceOpener.openForPurchase(
-                                context, p.id, p.saleCode
-                            )
-                        }
+                        selectedPurchaseForDialog = p
                     }) {
                         Text("Invoice ဖွင့်")
                     }
@@ -1858,6 +1858,14 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
                 }
             }
         }
+    }
+
+    selectedPurchaseForDialog?.let { p ->
+        SaleInvoiceViewerDialog(
+            purchaseSaleId = p.id,
+            saleCode = p.saleCode,
+            onDismiss = { selectedPurchaseForDialog = null }
+        )
     }
 }
 

@@ -3,6 +3,7 @@ import {
   MapPin,
   Package,
   RefreshCw,
+  Search,
   Smartphone,
   Truck,
   X,
@@ -11,7 +12,6 @@ import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import CustomerOrderPaymentPanel, { PaymentOrder, paymentStateLabel } from '../components/CustomerOrderPaymentPanel';
 import ShippingQuoteEditor from '../components/ShippingQuoteEditor';
-import { CustomerProductReturnPanel, ProductReturn } from '../components/CustomerProductReturnPanel';
 import { AppRoute } from '../types';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useCustomerOrderLiveSync } from '../hooks/useCustomerOrderLiveSync';
@@ -586,7 +586,7 @@ const OrderDetailModal: React.FC<{
               ပစ္စည်းစာရင်း
             </div>
             <div className="overflow-hidden rounded-xl border">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1050px] text-sm">
                 <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left">ပစ္စည်း</th>
@@ -687,7 +687,23 @@ const OrderDetailModal: React.FC<{
               </>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: 'အော်ဒါအားလုံး', value: tabCounts.ALL, tone: 'border-slate-200 bg-white text-slate-800' },
+          { label: 'အခုလုပ်ရန်', value: tabCounts.CONFIRM_TIME + tabCounts.VERIFY_PAYMENT, tone: 'border-amber-200 bg-amber-50 text-amber-900' },
+          { label: 'ပို့ဆောင်ရန်', value: tabCounts.DELIVER, tone: 'border-sky-200 bg-sky-50 text-sky-900' },
+          { label: 'လက်ခံမှုစစ်ရန်', value: tabCounts.RECEIPT, tone: 'border-rose-200 bg-rose-50 text-rose-900' },
+        ].map((item) => <div key={item.label} className={`rounded-xl border p-3 shadow-sm ${item.tone}`}><p className="text-xs font-semibold opacity-70">{item.label}</p><p className="mt-1 text-2xl font-black">{item.value}</p></div>)}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full lg:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Order နံပါတ်၊ Customer၊ ဖုန်း ရှာရန်" className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></div>
+          <p className="text-xs font-semibold text-slate-500">လုပ်ရန်ရှိသော order များကို အပေါ်ဆုံးတွင် အလိုအလျောက်ပြထားသည်</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
             {order.status === 'PENDING' && (
               <button
                 type="button"
@@ -734,8 +750,8 @@ const CustomerAppOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Order | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
-  const [workTab, setWorkTab] = useState<'ALL' | 'CONFIRM_TIME' | 'RENEGOTIATED' | 'VERIFY_PAYMENT' | 'DELIVER' | 'RECEIPT' | 'RETURNS' | 'RATINGS'>('ALL');
-  const [returns, setReturns] = useState<ProductReturn[]>([]);
+  const [search, setSearch] = useState('');
+  const [workTab, setWorkTab] = useState<'ALL' | 'CONFIRM_TIME' | 'RENEGOTIATED' | 'VERIFY_PAYMENT' | 'DELIVER' | 'RECEIPT' | 'RATINGS'>('ALL');
   const [ratings, setRatings] = useState<{
     id: number;
     orderNo?: string;
@@ -774,10 +790,6 @@ const CustomerAppOrdersPage: React.FC = () => {
       setRows(merged);
       setSelected((prev) => (prev ? merged.find((o) => o.id === prev.id) ?? prev : null));
       setPaymentOrder((prev) => (prev ? merged.find((o) => o.id === prev.id) ?? prev : null));
-      try {
-        const ret = await api.get<any>('/v1/customer-order-returns');
-        setReturns(ret.data ?? []);
-      } catch { setReturns([]); }
       try {
         const rate = await api.get<any>('/v1/customer-order-returns/ratings');
         setRatings(rate.data ?? []);
@@ -937,6 +949,18 @@ const CustomerAppOrdersPage: React.FC = () => {
     return true;
   });
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleRows = filteredRows.filter((o) => !normalizedSearch || [o.orderNo, o.customerName, o.customerPhone, o.deliveryPhone].some((value) => String(value || '').toLowerCase().includes(normalizedSearch))).sort((a, b) => {
+    const urgent = (o: Order) => {
+      const pay = (o.paymentState || '').toUpperCase();
+      if (['PROOF_SUBMITTED', 'CHECKING', 'REVIEW', 'LATE_REVIEW'].includes(pay)) return 0;
+      if (o.orderType === 'DELIVERY' && (o.shippingState || '').toUpperCase() === 'AWAITING_SHOP') return 1;
+      if (o.awaitingCustomerReceipt || (o.customerReceiptState || '').toUpperCase() === 'NOT_RECEIVED') return 2;
+      if (o.status === 'PENDING') return 3;
+      return 4;
+    };
+    return urgent(a) - urgent(b) || Number(b.id) - Number(a.id);
+  });
   const tabCounts = {
     ALL: rows.length,
     CONFIRM_TIME: rows.filter((o) => o.orderType === 'DELIVERY' && (o.shippingState || '').toUpperCase() === 'AWAITING_SHOP' && o.status !== 'CANCELLED').length,
@@ -951,7 +975,6 @@ const CustomerAppOrdersPage: React.FC = () => {
       return pay === 'PAID' || pay === 'FULFILLED' || (o.orderType === 'DELIVERY' && pay === 'DEPOSIT_PAID');
     }).length,
     RECEIPT: rows.filter((o) => o.awaitingCustomerReceipt === true || (o.customerReceiptState || '').toUpperCase() === 'NOT_RECEIVED').length,
-    RETURNS: returns.filter((r) => ['REQUESTED', 'APPROVED', 'RETURNED', 'INSPECTING'].includes(r.status)).length,
     RATINGS: ratings.length,
   };
 
@@ -962,7 +985,6 @@ const CustomerAppOrdersPage: React.FC = () => {
     { id: 'VERIFY_PAYMENT', label: `ငွေစစ်ရန် (${tabCounts.VERIFY_PAYMENT})` },
     { id: 'DELIVER', label: `ပို့ရန် (${tabCounts.DELIVER})` },
     { id: 'RECEIPT', label: `ဖောက်သည်လက်ခံ (${tabCounts.RECEIPT})` },
-    { id: 'RETURNS', label: `ပစ္စည်းပြန်ပို့ (${tabCounts.RETURNS})` },
     { id: 'RATINGS', label: `အဆင့်သတ် (${tabCounts.RATINGS})` },
   ];
 
@@ -989,7 +1011,23 @@ const CustomerAppOrdersPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: 'အော်ဒါအားလုံး', value: tabCounts.ALL, tone: 'border-slate-200 bg-white text-slate-800' },
+          { label: 'အခုလုပ်ရန်', value: tabCounts.CONFIRM_TIME + tabCounts.VERIFY_PAYMENT, tone: 'border-amber-200 bg-amber-50 text-amber-900' },
+          { label: 'ပို့ဆောင်ရန်', value: tabCounts.DELIVER, tone: 'border-sky-200 bg-sky-50 text-sky-900' },
+          { label: 'လက်ခံမှုစစ်ရန်', value: tabCounts.RECEIPT, tone: 'border-rose-200 bg-rose-50 text-rose-900' },
+        ].map((item) => <div key={item.label} className={`rounded-xl border p-3 shadow-sm ${item.tone}`}><p className="text-xs font-semibold opacity-70">{item.label}</p><p className="mt-1 text-2xl font-black">{item.value}</p></div>)}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full lg:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Order နံပါတ်၊ Customer၊ ဖုန်း ရှာရန်" className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></div>
+          <p className="text-xs font-semibold text-slate-500">လုပ်ရန်ရှိသော order များကို အပေါ်ဆုံးတွင် အလိုအလျောက်ပြထားသည်</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
         {workTabs.map((t) => (
           <button
             key={t.id}
@@ -1004,11 +1042,9 @@ const CustomerAppOrdersPage: React.FC = () => {
         ))}
       </div>
 
-      {workTab === 'RETURNS' ? (
-        <CustomerProductReturnPanel rows={returns} onReload={async () => { await load({ silent: true }); }} />
-      ) : workTab === 'RATINGS' ? (
-        <div className="bg-white border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+      {workTab === 'RATINGS' ? (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full min-w-[1050px] text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2 text-left">Customer</th>
@@ -1057,8 +1093,8 @@ const CustomerAppOrdersPage: React.FC = () => {
           </table>
         </div>
       ) : (
-      <div className="bg-white border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full min-w-[1050px] text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
             <tr>
               <th className="px-4 py-2 text-left">အော်ဒါနံပါတ်</th>
@@ -1076,9 +1112,9 @@ const CustomerAppOrdersPage: React.FC = () => {
           <tbody>
             {loading ? (
               <tr><td colSpan={tableColSpan} className="py-12 text-center text-slate-400">ဖတ်နေသည်…</td></tr>
-            ) : filteredRows.length === 0 ? (
+            ) : visibleRows.length === 0 ? (
               <tr><td colSpan={tableColSpan} className="py-12 text-center text-slate-400">ဤ tab တွင် အော်ဒါ မရှိပါ</td></tr>
-            ) : filteredRows.map((o) => (
+            ) : visibleRows.map((o) => (
               <tr
                 key={o.id}
                 className="border-t cursor-pointer transition-colors hover:bg-indigo-50/60"

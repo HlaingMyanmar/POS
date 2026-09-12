@@ -6,6 +6,6 @@ package com.sspd.servicemgmt.core.feature
 object CustomerAppFeatures {
     const val WISHLIST = true
     const val PROMO_CODES = true
-    const val ORDER_RETURNS = true
+    const val ORDER_RETURNS = false
     const val ORDER_RATINGS = true
 }

@@ -1,0 +1,14 @@
+<!-- Service done 80mm/58mm — header / table / footer -->
+<div th:class="${'invoice-page invoice-page--' + #strings.toLowerCase(layout.name).replace('_','-')}"
+     xmlns:th="http://www.thymeleaf.org">
+  <div th:replace="~{print/fragments/service-done-header :: render(${inv})}"></div>
+  <div class="inv-body">
+    <div th:replace="~{print/fragments/service-done-table :: render(${inv})}"></div>
+    <th:block th:if="${inv.currentPage == inv.totalPages}">
+      <div th:replace="~{print/fragments/service-done-footer :: last(${inv})}"></div>
+    </th:block>
+    <th:block th:if="${inv.currentPage < inv.totalPages}">
+      <div th:replace="~{print/fragments/service-done-footer :: cont(${inv})}"></div>
+    </th:block>
+  </div>
+</div>

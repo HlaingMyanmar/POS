@@ -1,0 +1,83 @@
+CREATE TABLE customer_product_returns (
+    id INT NOT NULL AUTO_INCREMENT,
+    return_no VARCHAR(24) NOT NULL,
+    order_id INT NULL,
+    sale_id INT NULL,
+    customer_id INT NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    reason VARCHAR(1000) NOT NULL,
+    customer_note VARCHAR(1000) NULL,
+    review_note VARCHAR(1000) NULL,
+    inspect_note VARCHAR(1000) NULL,
+    refund_amount DECIMAL(15, 2) NULL,
+    refund_payment_method_id INT NULL,
+    refund_reference VARCHAR(120) NULL,
+    refunded_at DATETIME(6) NULL,
+    refund_recorded_by VARCHAR(255) NULL,
+    reviewed_by VARCHAR(255) NULL,
+    reviewed_at DATETIME(6) NULL,
+    received_at DATETIME(6) NULL,
+    received_by VARCHAR(255) NULL,
+    inspected_by VARCHAR(255) NULL,
+    inspected_at DATETIME(6) NULL,
+    completed_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_customer_product_return_no (return_no),
+    KEY idx_cpr_customer (customer_id, created_at),
+    KEY idx_cpr_order (order_id),
+    KEY idx_cpr_sale (sale_id),
+    KEY idx_cpr_status (status),
+    CONSTRAINT fk_cpr_order FOREIGN KEY (order_id) REFERENCES customer_orders (id),
+    CONSTRAINT fk_cpr_sale FOREIGN KEY (sale_id) REFERENCES sales (id),
+    CONSTRAINT fk_cpr_customer FOREIGN KEY (customer_id) REFERENCES customer (id),
+    CONSTRAINT fk_cpr_refund_method FOREIGN KEY (refund_payment_method_id) REFERENCES payment_methods (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE customer_product_return_lines (
+    id INT NOT NULL AUTO_INCREMENT,
+    return_id INT NOT NULL,
+    order_line_id INT NULL,
+    sale_detail_id INT NULL,
+    product_id INT NOT NULL,
+    product_name VARCHAR(255) NOT NULL,
+    qty INT NOT NULL,
+    unit_price DECIMAL(15, 2) NOT NULL,
+    subtotal DECIMAL(15, 2) NOT NULL,
+    serial_number VARCHAR(120) NULL,
+    disposition VARCHAR(20) NULL,
+    PRIMARY KEY (id),
+    KEY idx_cprl_return (return_id),
+    CONSTRAINT fk_cprl_return FOREIGN KEY (return_id) REFERENCES customer_product_returns (id) ON DELETE CASCADE,
+    CONSTRAINT fk_cprl_product FOREIGN KEY (product_id) REFERENCES products (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE customer_product_return_photos (
+    id INT NOT NULL AUTO_INCREMENT,
+    return_id INT NOT NULL,
+    image_data MEDIUMBLOB NOT NULL,
+    image_type VARCHAR(40) NOT NULL,
+    submitted_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_cprp_return (return_id),
+    CONSTRAINT fk_cprp_return FOREIGN KEY (return_id) REFERENCES customer_product_returns (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE customer_order_ratings (
+    id INT NOT NULL AUTO_INCREMENT,
+    order_id INT NULL,
+    sale_id INT NULL,
+    customer_id INT NOT NULL,
+    rating TINYINT NOT NULL,
+    review VARCHAR(1000) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_cor_order (order_id),
+    UNIQUE KEY uk_cor_sale (sale_id),
+    KEY idx_cor_customer (customer_id),
+    CONSTRAINT fk_cor_order FOREIGN KEY (order_id) REFERENCES customer_orders (id),
+    CONSTRAINT fk_cor_sale FOREIGN KEY (sale_id) REFERENCES sales (id),
+    CONSTRAINT fk_cor_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

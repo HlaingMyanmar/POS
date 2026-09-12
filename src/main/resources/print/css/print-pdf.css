@@ -1,0 +1,346 @@
+/* Flying Saucer ignores CSS variables, flex, grid, gap, and linear-gradient.
+   Redeclare the production voucher skin with tables and hex colors. */
+
+html, body {
+  color: #111827;
+  background: #fff;
+  font-family: Pyidaungsu, 'Myanmar Text', 'Segoe UI', Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.invoice-page,
+.invoice-page--a4,
+.invoice-page--a5,
+.invoice-page--pos-80mm,
+.invoice-page--pos-58mm {
+  width: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+  color: #111827;
+  background: #fff;
+}
+
+.inv-header {
+  display: table !important;
+  width: 100% !important;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: #fff !important;
+  color: #111827 !important;
+  border: 1px solid #9ca3af !important;
+  border-bottom: 0 !important;
+  padding: 8px 12px 7px !important;
+}
+
+.inv-header__brand,
+.inv-header__meta {
+  display: table-cell !important;
+  vertical-align: middle !important;
+}
+
+.inv-header__brand { width: 62%; }
+.inv-header__meta {
+  width: 38%;
+  text-align: right;
+  padding-left: 10px !important;
+  border-left: 1px solid #d1d5db !important;
+}
+
+.inv-header__logo {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
+  /* Flying Saucer ignores max-width/max-height and uses the image's native size. */
+  width: 9mm !important;
+  height: 9mm !important;
+  border: 1px solid #9ca3af !important;
+  background: #fff;
+}
+
+.inv-thermal__logo {
+  width: 8mm !important;
+  height: 8mm !important;
+}
+
+.inv-header__brand-text {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 78%;
+}
+
+.inv-header__company-name {
+  color: #111827 !important;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.inv-header__company-sub {
+  display: block !important;
+  overflow: visible !important;
+  color: #374151 !important;
+  font-size: 8.5px;
+  line-height: 1.3;
+}
+
+.inv-header__qr {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #9ca3af !important;
+  background: #fff;
+}
+
+.inv-header__meta-text {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.inv-header__meta-title,
+.inv-header__copy-label,
+.inv-header__meta-date {
+  color: #4b5563 !important;
+}
+
+.inv-header__meta-number {
+  color: #111827 !important;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inv-accent-bar {
+  height: 0 !important;
+  border-top: 2px solid #0f766e !important;
+  background: transparent !important;
+}
+
+.inv-cont-header {
+  display: table !important;
+  width: 100% !important;
+  background: #fff !important;
+  border: 1px solid #9ca3af !important;
+  border-bottom: 3px solid #0f766e !important;
+  padding: 8px 16px !important;
+}
+
+.inv-cont-header__title,
+.inv-cont-header__page {
+  display: table-cell !important;
+  vertical-align: middle;
+}
+
+.inv-cont-header__title { color: #111827 !important; }
+.inv-cont-header__page { text-align: right; color: #4b5563 !important; }
+
+.inv-body {
+  border: 1px solid #9ca3af !important;
+  border-top: 0 !important;
+  padding: 12px 14px !important;
+}
+
+.inv-info-grid {
+  display: table !important;
+  width: 100% !important;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 8px 0;
+  margin-bottom: 10px !important;
+  padding-bottom: 10px !important;
+  border-bottom: 1px solid #9ca3af !important;
+}
+
+.inv-info-grid > .inv-block {
+  display: table-cell !important;
+  width: 50%;
+  vertical-align: top;
+}
+
+.inv-block {
+  background: #fff !important;
+  border: 1px solid #d1d5db !important;
+  border-left: 3px solid #0f766e !important;
+  padding: 7px 9px !important;
+}
+
+.inv-block__title,
+.inv-section-label {
+  color: #111827 !important;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.inv-block__row {
+  display: table !important;
+  width: 100% !important;
+  margin-top: 4px;
+}
+
+.inv-block__label,
+.inv-block__value {
+  display: table-cell !important;
+  vertical-align: baseline;
+}
+
+.inv-block__label { width: 34%; text-align: left; color: #4b5563 !important; }
+.inv-block__value { text-align: right; color: #111827 !important; font-weight: 700; }
+
+.inv-badge {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+}
+.inv-badge--partial {
+  background: #fffbeb !important;
+  color: #92400e !important;
+}
+.inv-badge--neutral {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+}
+
+.inv-table-wrap,
+.inv-pay-table,
+.inv-summary-box {
+  border: 1px solid #9ca3af !important;
+  overflow: visible !important;
+}
+
+.inv-table th,
+.inv-pay-table th {
+  color: #111827 !important;
+  background: #f3f4f6 !important;
+  border-bottom: 1px solid #9ca3af !important;
+  font-weight: 800;
+}
+
+.inv-table td,
+.inv-pay-table td {
+  border-bottom: 1px solid #e5e7eb !important;
+  color: #111827 !important;
+}
+
+.inv-table__sub { color: #4b5563 !important; }
+
+.inv-bottom {
+  display: table !important;
+  width: 100% !important;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 10px 0;
+}
+
+.inv-payment-col,
+.inv-summary-col {
+  display: table-cell !important;
+  vertical-align: top;
+}
+
+.inv-payment-col { width: 58%; }
+.inv-summary-col { width: 42%; }
+.inv-summary-box { width: 100% !important; }
+
+.inv-summary-row {
+  display: table !important;
+  width: 100% !important;
+  border-bottom: 1px solid #d1d5db !important;
+  color: #111827 !important;
+}
+
+.inv-summary-row__label,
+.inv-summary-row__value {
+  display: table-cell !important;
+  vertical-align: middle;
+}
+
+.inv-summary-row__value { text-align: right; font-weight: 600; }
+
+.inv-summary-row--sub {
+  background: #f3f4f6 !important;
+  font-weight: 700;
+}
+
+.inv-summary-row--highlight,
+.inv-summary-row--highlight .inv-summary-row__label,
+.inv-summary-row--highlight .inv-summary-row__value {
+  background: #111827 !important;
+  color: #ffffff !important;
+}
+
+.inv-remark,
+.inv-notice {
+  background: #fff !important;
+  border: 1px solid #d1d5db !important;
+  border-left: 3px solid #0f766e !important;
+  color: #374151 !important;
+}
+
+.inv-signatures {
+  display: table !important;
+  width: 100% !important;
+  table-layout: fixed;
+  margin-top: 22px !important;
+}
+
+.inv-sign {
+  display: table-cell !important;
+  width: 50%;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.inv-sign__line {
+  border-top: 1px solid #9ca3af !important;
+  color: #374151 !important;
+  font-weight: 700;
+}
+
+.inv-footer {
+  color: #4b5563 !important;
+  border-top: 1px dashed #9ca3af !important;
+}
+
+.bk-list-head {
+  display: table !important;
+  width: 100% !important;
+  border-bottom: 1.5px solid #17365d !important;
+  color: #17365d !important;
+}
+.bk-list-head span { display: table-cell !important; }
+.bk-list-head span:last-child { text-align: right; color: #64748b !important; }
+
+.invoice-page--a5 .inv-header { padding: 7px 10px 6px !important; }
+.invoice-page--a5 .inv-body { padding: 8px 10px 9px !important; }
+.invoice-page--a5 .inv-info-grid { border-spacing: 5px 0; }
+.invoice-page--a5 .inv-block { padding: 4px 6px !important; }
+
+.invoice-page--pos-80mm .inv-info-grid,
+.invoice-page--pos-58mm .inv-info-grid,
+.invoice-page--pos-80mm .inv-bottom,
+.invoice-page--pos-58mm .inv-bottom,
+.invoice-page--pos-80mm .inv-signatures,
+.invoice-page--pos-58mm .inv-signatures {
+  display: block !important;
+  border-spacing: 0;
+}
+
+.invoice-page--pos-80mm .inv-info-grid > .inv-block,
+.invoice-page--pos-58mm .inv-info-grid > .inv-block,
+.invoice-page--pos-80mm .inv-payment-col,
+.invoice-page--pos-58mm .inv-payment-col,
+.invoice-page--pos-80mm .inv-summary-col,
+.invoice-page--pos-58mm .inv-summary-col,
+.invoice-page--pos-80mm .inv-sign,
+.invoice-page--pos-58mm .inv-sign {
+  display: block !important;
+  width: 100% !important;
+}
+
+.invoice-page--pos-80mm .inv-info-grid > .inv-block + .inv-block,
+.invoice-page--pos-58mm .inv-info-grid > .inv-block + .inv-block,
+.invoice-page--pos-80mm .inv-summary-col,
+.invoice-page--pos-58mm .inv-summary-col {
+  margin-top: 8px;
+}

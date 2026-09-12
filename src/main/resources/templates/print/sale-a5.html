@@ -1,0 +1,13 @@
+<!-- Sale A5 — sale-header / sale-table / sale-footer -->
+<div class="invoice-page invoice-page--a5" xmlns:th="http://www.thymeleaf.org">
+  <div th:replace="~{print/fragments/sale-header :: render(${inv})}"></div>
+  <div class="inv-body">
+    <div th:replace="~{print/fragments/sale-table :: render(${inv})}"></div>
+    <th:block th:if="${inv.currentPage == inv.totalPages}">
+      <div th:replace="~{print/fragments/sale-footer :: last(${inv})}"></div>
+    </th:block>
+    <th:block th:if="${inv.currentPage < inv.totalPages}">
+      <div th:replace="~{print/fragments/sale-footer :: cont(${inv})}"></div>
+    </th:block>
+  </div>
+</div>

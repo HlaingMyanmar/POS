@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Booking Voucher Preview Mockup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #020617; color: #0f172a; }
+    .overlay { min-height: 100vh; display: flex; flex-direction: column; background: rgba(2,6,23,.92); }
+    header { background: #fff; border-bottom: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+    .top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; }
+    .icon { width: 40px; height: 40px; border-radius: 12px; background: #ecfdf5; color: #0F766E; display: grid; place-items: center; font-size: 18px; }
+    h1 { font-size: 16px; font-weight: 800; }
+    .sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+    .btn { border: 1px solid #e2e8f0; background: #fff; color: #475569; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
+    .btn-primary { background: #0F766E; border-color: #0F766E; color: #fff; border-radius: 12px; padding: 8px 16px; font-size: 14px; font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .btn-close { width: 40px; height: 40px; border: none; background: transparent; color: #64748b; border-radius: 8px; font-size: 18px; }
+    .paper-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid #f1f5f9; background: rgba(248,250,252,.8); }
+    .label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { border: 1px solid #e2e8f0; background: #fff; border-radius: 12px; padding: 8px 12px; min-width: 64px; text-align: left; }
+    .chip.active { border-color: #0F766E; background: #ecfdf5; color: #115e59; box-shadow: 0 1px 2px rgba(15,118,110,.12); }
+    .chip b { display: block; font-size: 14px; line-height: 1; }
+    .chip small { display: block; margin-top: 2px; font-size: 10px; color: #64748b; }
+    .zoom { margin-left: auto; display: flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; background: #fff; border-radius: 8px; padding: 4px; }
+    .zoom span { min-width: 48px; text-align: center; font-size: 12px; font-weight: 600; color: #475569; }
+    .preview { flex: 1; display: flex; justify-content: center; overflow: auto; padding: 32px; background: #F4F7FA; }
+    .paper { width: 302px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,.25); overflow: hidden; font-size: 11px; line-height: 1.35; }
+    .paper-inner { padding: 14px 12px 18px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .shop { text-align: center; border-bottom: 1px dashed #cbd5e1; padding-bottom: 10px; margin-bottom: 10px; }
+    .shop h2 { font-size: 13px; font-weight: 800; font-family: inherit; }
+    .shop p { color: #64748b; margin-top: 4px; font-size: 10px; }
+    .title { text-align: center; font-weight: 800; font-size: 12px; margin: 8px 0; letter-spacing: .04em; }
+    .row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
+    .sep { border-top: 1px dashed #cbd5e1; margin: 8px 0; }
+    .item { margin: 6px 0; }
+    .item b { display: block; }
+    .muted { color: #64748b; }
+    footer { border-top: 1px solid #1e293b; background: rgba(2,6,23,.8); color: #94a3b8; text-align: center; padding: 8px; font-size: 11px; }
+    .badge { display: inline-block; margin-top: 8px; padding: 2px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <header>
+      <div class="top">
+        <div style="display:flex;gap:12px;align-items:flex-start;min-width:0;flex:1">
+          <div class="icon">🧾</div>
+          <div>
+            <h1>လက်ခံ Voucher</h1>
+            <div class="sub">Booking #42 · လက်ခံဘောင်ချာ preview</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn">↻ Refresh</button>
+          <button class="btn">⬇ PDF</button>
+          <button class="btn-primary">🖨 ပရင့်ထုတ်မည်</button>
+          <button class="btn-close">✕</button>
+        </div>
+      </div>
+      <div class="paper-row">
+        <span class="label">စက္ကူ</span>
+        <div class="chips">
+          <div class="chip active"><b>80mm</b><small>Thermal</small></div>
+          <div class="chip"><b>58mm</b><small>Thermal</small></div>
+          <div class="chip"><b>A5</b><small>Half page</small></div>
+          <div class="chip"><b>A4</b><small>Full page</small></div>
+        </div>
+        <div class="zoom"><button class="btn-close" style="width:28px;height:28px">−</button><span>100%</span><button class="btn-close" style="width:28px;height:28px">+</button></div>
+      </div>
+    </header>
+
+    <div class="preview">
+      <div class="paper">
+        <div class="paper-inner">
+          <div class="shop">
+            <h2>SSPD Service Center</h2>
+            <p>No. 123, Main Road · 09-123456789</p>
+          </div>
+          <div class="title">BOOKING RECEIPT</div>
+          <div class="row"><span>BK-2026-0042</span><span>02/09/2026</span></div>
+          <div class="row"><span class="muted">Customer</span><span>U Aung Min</span></div>
+          <div class="row"><span class="muted">Phone</span><span>09-987654321</span></div>
+          <div class="sep"></div>
+          <div class="muted" style="font-weight:700;margin-bottom:4px">လက်ခံပစ္စည်း (2)</div>
+          <div class="item">
+            <b>1. iPhone 14 Pro</b>
+            <span class="muted">Smartphone · S/N ABC123</span>
+            <div>Screen flicker, battery drain</div>
+          </div>
+          <div class="item">
+            <b>2. MacBook Air M2</b>
+            <span class="muted">Laptop · S/N XYZ789</span>
+            <div>Keyboard not responding</div>
+          </div>
+          <div class="sep"></div>
+          <div class="row"><span class="muted">Complaint</span></div>
+          <div>Customer reported both devices stopped working after update.</div>
+          <div class="sep"></div>
+          <div class="row"><span class="muted">Received By</span><span>Staff Ko Hla</span></div>
+          <div style="text-align:center;margin-top:12px" class="muted">*** Customer Copy ***</div>
+          <div class="badge">UI Mockup — actual voucher from server HTML</div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Ctrl+P ပရင့် · Esc ပိတ်ရန် · Zoom slider ဖြင့် ကြည့်နိုင်ပါသည်</footer>
+  </div>
+</body>
+</html>

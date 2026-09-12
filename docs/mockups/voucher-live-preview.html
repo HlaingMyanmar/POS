@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voucher — Compact White + Table</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Pyidaungsu, Arial, sans-serif;
+      background: #eef2f7;
+      color: #0f172a;
+      padding: 28px 20px 48px;
+    }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    .sub { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 16px;
+      max-width: 720px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+    .label {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #4f46e5;
+      margin-bottom: 10px;
+    }
+    .sheet {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px 7px;
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .brand { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+    .logo {
+      width: 36px; height: 36px; border: 1px solid #e2e8f0; border-radius: 4px;
+      display: grid; place-items: center; font-size: 8px; font-weight: 900; color: #94a3b8; flex-shrink: 0;
+    }
+    .cname { font-size: 13px; font-weight: 800; line-height: 1.15; }
+    .csub { font-size: 8px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      border-left: 1px solid #e2e8f0;
+      padding-left: 10px;
+      text-align: right;
+    }
+    .title { font-size: 7.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; }
+    .copy { font-size: 7px; font-weight: 700; color: #94a3b8; }
+    .no { font-size: 12px; font-weight: 900; line-height: 1.15; }
+    .date { font-size: 8px; color: #64748b; }
+    .qr { width: 40px; height: 40px; border: 1px solid #e2e8f0; border-radius: 3px; display: block; }
+    .accent { height: 2px; background: #4f46e5; }
+    .info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 10px;
+      color: #475569;
+    }
+    .info b { color: #0f172a; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    th {
+      text-align: left;
+      padding: 7px 8px;
+      background: #f8fafc;
+      border-bottom: 1px solid #cbd5e1;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #334155;
+    }
+    td {
+      padding: 8px;
+      border-bottom: 1px dashed #e2e8f0;
+      vertical-align: top;
+      color: #334155;
+    }
+    .c { text-align: center; }
+    .r { text-align: right; }
+    .muted { color: #94a3b8; font-size: 9px; }
+    .war { color: #4f46e5; font-size: 9px; font-weight: 700; margin-top: 2px; }
+    .disc { color: #b45309; font-size: 9px; font-weight: 700; margin-top: 2px; }
+    .totals {
+      padding: 10px 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 10px;
+    }
+    .totals-box { width: 160px; margin-left: auto; }
+    .totals-box div { display: flex; justify-content: space-between; margin: 3px 0; }
+    .note {
+      margin-top: 16px; max-width: 720px; padding: 12px 14px;
+      background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px;
+      font-size: 13px; color: #065f46;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sale Voucher — Compact White + Table</h1>
+  <p class="sub">Header (QR ရှေ့) · Table: # / Service · Serial · Warranty · Dis · Qty · Unit Price · Amount</p>
+
+  <div class="card">
+    <div class="label">A4 / A5 Preview</div>
+    <div class="sheet">
+      <div class="header">
+        <div class="brand">
+          <div class="logo">LOGO</div>
+          <div>
+            <div class="cname">SSPD IT Solution Center</div>
+            <div class="csub">South Dagon · 09-252425319</div>
+          </div>
+        </div>
+        <div class="meta">
+          <svg class="qr" viewBox="0 0 40 40" aria-label="QR">
+            <rect width="40" height="40" fill="#fff"/>
+            <rect x="2" y="2" width="12" height="12" fill="#0f172a"/>
+            <rect x="4" y="4" width="8" height="8" fill="#fff"/>
+            <rect x="6" y="6" width="4" height="4" fill="#0f172a"/>
+            <rect x="26" y="2" width="12" height="12" fill="#0f172a"/>
+            <rect x="28" y="4" width="8" height="8" fill="#fff"/>
+            <rect x="30" y="6" width="4" height="4" fill="#0f172a"/>
+            <rect x="2" y="26" width="12" height="12" fill="#0f172a"/>
+            <rect x="4" y="28" width="8" height="8" fill="#fff"/>
+            <rect x="6" y="30" width="4" height="4" fill="#0f172a"/>
+            <rect x="18" y="18" width="3" height="3" fill="#0f172a"/>
+            <rect x="34" y="34" width="4" height="4" fill="#0f172a"/>
+          </svg>
+          <div>
+            <div class="title">SALES INVOICE</div>
+            <div class="copy">CUSTOMER COPY</div>
+            <div class="no">INV-000123</div>
+            <div class="date">04/09/2026 14:30</div>
+          </div>
+        </div>
+      </div>
+      <div class="accent"></div>
+
+      <div class="info">
+        <div><b>Customer</b><br/>Walk-in Customer</div>
+        <div><b>Cashier</b><br/>Admin</div>
+        <div><b>Phone</b><br/>09-123456789</div>
+        <div><b>Status</b><br/>PAID</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th class="c" style="width:5%">#</th>
+            <th style="width:24%">Service / Part</th>
+            <th style="width:16%">Serial</th>
+            <th style="width:12%">Warranty</th>
+            <th class="r" style="width:10%">Dis</th>
+            <th class="c" style="width:7%">Qty</th>
+            <th class="r" style="width:13%">Unit Price</th>
+            <th class="r" style="width:13%">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="c muted">1</td>
+            <td><b>iPhone 13 Display</b></td>
+            <td>SN:ABC-2048</td>
+            <td>1Year</td>
+            <td class="r">5,000</td>
+            <td class="c"><b>1</b></td>
+            <td class="r">85,000</td>
+            <td class="r"><b>80,000</b></td>
+          </tr>
+          <tr>
+            <td class="c muted">2</td>
+            <td><b>Battery Replacement</b></td>
+            <td class="muted">—</td>
+            <td>6Months</td>
+            <td class="r muted">—</td>
+            <td class="c"><b>1</b></td>
+            <td class="r">45,000</td>
+            <td class="r"><b>45,000</b></td>
+          </tr>
+          <tr>
+            <td class="c muted">3</td>
+            <td>
+              <b>Tempered Glass</b>
+              <div class="war" style="color:#047857">FOC</div>
+            </td>
+            <td class="muted">—</td>
+            <td class="muted">—</td>
+            <td class="r muted">—</td>
+            <td class="c"><b>1</b></td>
+            <td class="r">0</td>
+            <td class="r"><b>0</b></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div class="totals-box">
+          <div><span>Total</span><b>125,000</b></div>
+          <div><span>Overall Discount</span><b>0</b></div>
+          <div><span>Grand Total</span><b>125,000</b></div>
+          <div><span>Paid</span><b>100,000</b></div>
+          <div><span>Balance</span><b>25,000</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    Header: Logo+Company ဘယ် · QR ပြီးမှ Invoice meta ညာ။
+    Table: # · Service/Part · Serial · Warranty · Dis · Qty · Unit Price · Amount
+  </div>
+</body>
+</html>

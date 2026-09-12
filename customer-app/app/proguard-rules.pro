@@ -1,0 +1,8 @@
+-keep class com.sspd.servicemgmt.core.network.** { *; }
+-keepclassmembers class com.sspd.servicemgmt.core.network.** { *; }
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+-keep,allowobfuscation,allowshrinking interface retrofit2.Call
+-keep,allowobfuscation,allowshrinking class retrofit2.Response
+-keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
+-keep class com.google.gson.** { *; }

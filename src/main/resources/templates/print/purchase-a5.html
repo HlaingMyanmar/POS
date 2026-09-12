@@ -1,0 +1,13 @@
+<!-- Purchase A5 — purchase-header / purchase-table / purchase-footer -->
+<div class="invoice-page invoice-page--a5" xmlns:th="http://www.thymeleaf.org">
+  <div th:replace="~{print/fragments/purchase-header :: render(${inv})}"></div>
+  <div class="inv-body">
+    <div th:replace="~{print/fragments/purchase-table :: render(${inv})}"></div>
+    <th:block th:if="${inv.currentPage == inv.totalPages}">
+      <div th:replace="~{print/fragments/purchase-footer :: last(${inv})}"></div>
+    </th:block>
+    <th:block th:if="${inv.currentPage < inv.totalPages}">
+      <div th:replace="~{print/fragments/purchase-footer :: cont(${inv})}"></div>
+    </th:block>
+  </div>
+</div>

@@ -50,6 +50,7 @@ import {
   ChevronRight,
   ChevronDown,
   Smartphone,
+  Ticket,
   Terminal,
   CircleHelp,
   Video
@@ -165,6 +166,7 @@ const Layout: React.FC<LayoutProps> = ({
   const cachedOutlets = useRef<Map<string, React.ReactNode>>(new Map());
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
+  const [inventoryAlert, setInventoryAlert] = useState<null | { productName?: string; stockQty?: number; reorderLevel?: number }>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -206,6 +208,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'Warranty', icon: <Shield size={18} />, path: AppRoute.WARRANTIES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'ဈေးနှုန်းကမ်းလှမ်း', icon: <ClipboardList size={18} />, path: AppRoute.QUOTATIONS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_QUOTATION_READ' },
       { name: 'Customer App အော်ဒါ', icon: <Smartphone size={18} />, path: AppRoute.CUSTOMER_APP_ORDERS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
+      { name: 'Customer Promo', icon: <Ticket size={18} />, path: AppRoute.CUSTOMER_PROMO_CODES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'Delivery Charges', icon: <Truck size={18} />, path: AppRoute.DELIVERY_CHARGES, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_READ' },
       { name: 'Customer App အကောင့်', icon: <Smartphone size={18} />, path: AppRoute.CUSTOMER_APP_ACCOUNTS, group: 'ဖောက်သည်', permission: 'CAN_ACCESS_CUSTOMER_READ' },
       { name: 'ရောင်းပြန်ပို့', icon: <RotateCcw size={18} />, path: AppRoute.SALE_RETURNS, group: 'ရောင်းချရေး', permission: 'CAN_ACCESS_SALE_RETURN_READ' },
@@ -376,8 +379,25 @@ const Layout: React.FC<LayoutProps> = ({
     void loadAlertCount();
   });
 
+  useWebsocket('/topic/inventory-alert', (body) => {
+    try {
+      const alert = JSON.parse(body);
+      setInventoryAlert(alert);
+      window.setTimeout(() => setInventoryAlert(current => current === alert ? null : current), 10000);
+    } catch {
+      // Ignore malformed realtime frames.
+    }
+  });
+
   return (
     <div className={`h-screen overflow-x-hidden flex ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
+      {inventoryAlert && (
+        <div className="fixed right-5 top-5 z-[100] max-w-sm rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 shadow-xl">
+          <button type="button" onClick={() => setInventoryAlert(null)} className="float-right ml-3" aria-label="Dismiss"><X size={16} /></button>
+          <div className="font-bold">Low stock alert</div>
+          <div className="text-sm">{inventoryAlert.productName || 'Product'}: {inventoryAlert.stockQty ?? 0} left (reorder at {inventoryAlert.reorderLevel ?? 0})</div>
+        </div>
+      )}
       {/* Sidebar */}
       <div className={`hidden lg:flex flex-col h-screen ${isSidebarCollapsed ? 'w-20' : 'w-72'} ${isDark ? 'bg-slate-900 border-r border-slate-800' : 'bg-white border-r border-slate-200'} shadow-xl overflow-hidden transition-all duration-200`}>
         {/* Header — teal gradient matching mobile DrawerMenu */}

@@ -179,7 +179,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                 Button(
                     onClick = { vm.createCustomer() },
                     enabled = !state.creatingCustomer,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) {
                     if (state.creatingCustomer) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -536,7 +536,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                         onClick = { vm.dismissSerialSelector() },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                     ) {
                         Text("ပြီးပါပြီ (${selectedSerials.size})", fontWeight = FontWeight.Bold)
                     }
@@ -615,7 +615,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                             .height(52.dp),
                         shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                         enabled = !state.saving && state.canEditJob
                     ) {
                         if (state.saving) {
@@ -940,7 +940,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                             onClick = { vm.showPartScanner() },
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Warning)
+                            colors = ButtonDefaults.buttonColors(containerColor = Warning, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                         ) {
                             Icon(Icons.Outlined.QrCodeScanner, "ဘားကုဒ် ဖတ်ရန်", modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
@@ -1387,7 +1387,7 @@ private fun PartDraftCard(
                             Button(
                                 onClick = { val sn = serialInput.trim(); if (sn.isNotBlank()) { onSerialAdd(sn); serialInput = "" } },
                                 shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                             ) { Text("Add", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         }

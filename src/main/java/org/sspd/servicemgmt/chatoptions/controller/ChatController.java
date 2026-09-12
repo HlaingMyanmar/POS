@@ -45,17 +45,19 @@ public class ChatController {
             @AuthenticationPrincipal UserDetails principal,
             @RequestBody ChatMessageDTO req) {
 
-        ChatMessageDTO saved = saveAndBroadcast(principal.getUsername(), req.getContent());
+        ChatMessageDTO saved = saveAndBroadcast(principal.getUsername(), req.getContent(), req.getCustomerId());
         return ResponseEntity.ok(new ApiResponse<>(true, "Sent", saved));
     }
 
     // WebSocket: send a message (web uses this)
     @MessageMapping("/chat.send")
     public void sendWs(@Payload ChatMessageDTO req, Principal principal) {
-        saveAndBroadcast(principal.getName(), req.getContent());
+        saveAndBroadcast(principal.getName(), req.getContent(), req.getCustomerId());
     }
 
-    private ChatMessageDTO saveAndBroadcast(String username, String content) {
+    private ChatMessageDTO saveAndBroadcast(String username, String content, Integer customerId) {
+        if (content == null || content.trim().isEmpty()) throw new IllegalArgumentException("Message is required");
+        if (content.trim().length() > 2000) throw new IllegalArgumentException("Message is too long");
         String displayName = username;
         String role = "";
         try {
@@ -69,6 +71,7 @@ public class ChatController {
         } catch (Exception ignored) {}
 
         ChatMessage msg = ChatMessage.builder()
+                .customerId(customerId)
                 .senderUsername(username)
                 .senderName(displayName)
                 .senderRole(role)
@@ -78,13 +81,20 @@ public class ChatController {
         chatRepo.save(msg);
 
         ChatMessageDTO dto = toDto(msg);
-        messaging.convertAndSend("/topic/chat", dto);
+        if (customerId != null) {
+            messaging.convertAndSendToUser(
+                    org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth.usernameForCustomer(customerId),
+                    "/topic/chat", dto);
+        } else {
+            messaging.convertAndSend("/topic/chat", dto);
+        }
         return dto;
     }
 
     private ChatMessageDTO toDto(ChatMessage m) {
         return ChatMessageDTO.builder()
                 .id(m.getId())
+                .customerId(m.getCustomerId())
                 .senderUsername(m.getSenderUsername())
                 .senderName(m.getSenderName())
                 .senderRole(m.getSenderRole())

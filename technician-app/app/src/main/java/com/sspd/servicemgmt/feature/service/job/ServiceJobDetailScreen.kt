@@ -281,7 +281,7 @@ fun ServiceJobDetailScreen(
             confirmButton = {
                 Button(
                     onClick  = { vm.delete { onDeleted() } },
-                    colors   = ButtonDefaults.buttonColors(containerColor = Danger),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                     enabled  = !state.deleteLoading
                 ) {
                     if (state.deleteLoading)
@@ -414,7 +414,7 @@ fun ServiceJobDetailScreen(
                         showEstimateRejectDialog = false
                     },
                     enabled = !state.actionLoading && reason.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) { Text("ငြင်းပယ်မည်") }
             },
             dismissButton = { TextButton(onClick = { showEstimateRejectDialog = false }) { Text("မလုပ်တော့ပါ") } }
@@ -437,7 +437,7 @@ fun ServiceJobDetailScreen(
                 Button(
                     onClick = { if (reason.isNotBlank()) vm.voidSettlement(reason.trim()) },
                     enabled = reason.isNotBlank() && !state.actionLoading,
-                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) { Text("Void") }
             },
             dismissButton = { TextButton(onClick = { vm.dismissVoidDialog() }) { Text("မလုပ်တော့ပါ") } }
@@ -1218,7 +1218,7 @@ fun ServiceJobDetailScreen(
                         onClick = { vm.showSettleDialog() },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                         enabled = !state.actionLoading
                     ) {
                         Icon(Icons.Outlined.CheckCircle, null, modifier = Modifier.size(18.dp))
@@ -1234,7 +1234,7 @@ fun ServiceJobDetailScreen(
                         onClick = { vm.showPayDueDialog() },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Danger),
+                        colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                         enabled = !state.actionLoading
                     ) {
                         Icon(Icons.Outlined.Payment, null, modifier = Modifier.size(18.dp))
@@ -1262,7 +1262,7 @@ fun ServiceJobDetailScreen(
                         onClick = { vm.showReworkDialog() },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Warning),
+                        colors = ButtonDefaults.buttonColors(containerColor = Warning, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                         enabled = !state.actionLoading
                     ) {
                         Icon(Icons.Outlined.Replay, null, modifier = Modifier.size(18.dp))
@@ -1801,7 +1801,7 @@ private fun SettleDialog(
                     }
                 },
                 enabled = !loading,
-                colors  = ButtonDefaults.buttonColors(containerColor = Primary)
+                colors  = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (loading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text("အတည်ပြုရန်", fontWeight = FontWeight.Bold)
@@ -2011,7 +2011,7 @@ private fun JobPayDueDialog(
                     }
                 },
                 enabled = !loading,
-                colors  = ButtonDefaults.buttonColors(containerColor = Danger)
+                colors  = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (loading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text("ဆပ်မည်", fontWeight = FontWeight.Bold)
@@ -2313,7 +2313,7 @@ private fun ReworkDialog(
                     )
                 },
                 enabled = !loading,
-                colors = ButtonDefaults.buttonColors(containerColor = Warning)
+                colors = ButtonDefaults.buttonColors(containerColor = Warning, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (loading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text("Rework ဖန်တီးမည်", fontWeight = FontWeight.Bold)

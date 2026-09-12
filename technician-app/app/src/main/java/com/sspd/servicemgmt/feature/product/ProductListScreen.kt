@@ -503,7 +503,7 @@ private fun ProductEmptyState(
             Text(subtitle, fontSize = 13.sp, color = TextMuted)
             if (action != null && onAction != null) {
                 Spacer(Modifier.height(16.dp))
-                Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
+                Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)) {
                     Text(action, fontWeight = FontWeight.Bold)
                 }
             }

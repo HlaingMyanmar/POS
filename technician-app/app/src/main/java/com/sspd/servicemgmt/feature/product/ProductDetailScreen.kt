@@ -183,7 +183,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                         showAddSerialDialog = false
                     },
                     enabled = !state.addingSerial,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) {
                     if (state.addingSerial) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     else Text("ထည့်မည်", fontWeight = FontWeight.Bold)

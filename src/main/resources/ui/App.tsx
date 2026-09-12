@@ -28,6 +28,7 @@ import WarrantyLookupPage from './pages/WarrantyLookupPage';
 import QuotationManagement from './pages/QuotationManagement';
 import SaleReturnManagement from './pages/SaleReturnManagement';
 import CustomerAppOrdersPage from './pages/CustomerAppOrdersPage';
+import CustomerPromoCodesPage from './pages/CustomerPromoCodesPage';
 import DeliveryChargesPage from './pages/DeliveryChargesPage';
 import CustomerAppAccountsPage from './pages/CustomerAppAccountsPage';
 import CustomerShopPage from './pages/customer-shop/CustomerShopPage';
@@ -336,6 +337,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.WARRANTIES}          element={guard(<WarrantyLookupPage />,         'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.QUOTATIONS}          element={guard(<QuotationManagement />,        'CAN_ACCESS_QUOTATION_READ')} />
           <Route path={AppRoute.CUSTOMER_APP_ORDERS} element={guard(<CustomerAppOrdersPage />,      'CAN_ACCESS_SALE_READ')} />
+          <Route path={AppRoute.CUSTOMER_PROMO_CODES} element={guard(<CustomerPromoCodesPage />,    'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.DELIVERY_CHARGES} element={guard(<DeliveryChargesPage />,          'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.CUSTOMER_APP_ACCOUNTS} element={guard(<CustomerAppAccountsPage />,  'CAN_ACCESS_CUSTOMER_READ')} />
           <Route path={AppRoute.SALE_RETURNS}        element={guard(<SaleReturnManagement />,       'CAN_ACCESS_SALE_RETURN_READ')} />

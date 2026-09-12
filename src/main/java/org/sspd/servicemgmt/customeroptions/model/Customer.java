@@ -63,4 +63,12 @@ public class Customer {
     @Builder.Default
     @Column(name = "advance_balance", precision = 15, scale = 2, nullable = false)
     private java.math.BigDecimal advanceBalance = java.math.BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "loyalty_points", nullable = false)
+    private Integer loyaltyPoints = 0;
+
+    @Builder.Default
+    @Column(name = "loyalty_total_earned", nullable = false)
+    private Integer loyaltyTotalEarned = 0;
 }

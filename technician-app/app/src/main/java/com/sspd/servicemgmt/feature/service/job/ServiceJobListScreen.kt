@@ -50,6 +50,7 @@ fun ServiceJobListScreen(
 
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker   by remember { mutableStateOf(false) }
+    var filtersExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         TechnicianQueueFocus.bucket?.let {
@@ -120,7 +121,7 @@ fun ServiceJobListScreen(
             confirmButton = {
                 Button(
                     onClick  = { vm.delete() },
-                    colors   = ButtonDefaults.buttonColors(containerColor = Danger),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                     enabled  = !state.deleting
                 ) {
                     if (state.deleting)
@@ -150,6 +151,7 @@ fun ServiceJobListScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
+                modifier = Modifier.height(56.dp),
                 title = { Text("ဝန်ဆောင်မှုအလုပ်များ", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -178,25 +180,8 @@ fun ServiceJobListScreen(
                 singleLine = true
             )
 
-            val summaryMetrics = listOf(
-                "Total" to state.items.size.toString(),
-                "Active" to (counts[WORK_TAB_ACTIVE] ?: 0).toString(),
-                "Payment" to (counts[WORK_TAB_PAYMENT] ?: 0).toString(),
-                "Handover" to (counts[WORK_TAB_HANDOVER] ?: 0).toString(),
-                "Transfer" to (counts[WORK_TAB_TRANSFER] ?: 0).toString(),
-                "Sent" to (counts[WORK_TAB_SENT] ?: 0).toString()
-            )
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                summaryMetrics.forEach { (label, value) ->
-                    SummaryMetricCard(label = label, value = value)
-                }
-            }
-
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf(
@@ -223,6 +208,24 @@ fun ServiceJobListScreen(
             }
 
             // ── Date filter row ───────────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { filtersExpanded = !filtersExpanded }) {
+                    Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("စစ်ထုတ်ရန်", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        if (filtersExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        null,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+
+            if (filtersExpanded) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -296,6 +299,7 @@ fun ServiceJobListScreen(
                 }
             }
 
+            }
             if (state.loading && state.items.isEmpty() && state.sentHandovers.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppLoading()
@@ -360,7 +364,7 @@ fun ServiceJobListScreen(
                             border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("အပြင်ထွက် Visit", fontWeight = FontWeight.ExtraBold, color = Color(0xFF047857))
                                 Text(
                                     if (canOutdoorVisit) "Job တစ်ခုဖွင့်ပြီး «ထွက်ခွာပြီ» နှိပ်ပါ"

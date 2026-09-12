@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.saleoptions.model.Sale;
@@ -15,6 +16,10 @@ import java.util.Optional;
 
 @Repository
 public interface SaleRepository extends JpaRepository<Sale, Integer> {
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select distinct s from Sale s left join fetch s.details d left join fetch d.product where s.id = :id")
+    Optional<Sale> findLockedWithDetails(@Param("id") Integer id);
+
     Optional<Sale> findTopByOrderByIdDesc();
 
     List<Sale> findTop10ByOrderByIdDesc();

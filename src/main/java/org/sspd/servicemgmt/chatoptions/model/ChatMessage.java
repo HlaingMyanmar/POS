@@ -6,7 +6,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "chat_messages", indexes = {
-    @Index(name = "idx_chat_sent_at", columnList = "sent_at")
+    @Index(name = "idx_chat_sent_at", columnList = "sent_at"),
+    @Index(name = "idx_chat_customer_sent", columnList = "customer_id,sent_at")
 })
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
@@ -15,6 +16,9 @@ public class ChatMessage {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "customer_id")
+    private Integer customerId;
 
     @Column(name = "sender_username", nullable = false, length = 50)
     private String senderUsername;

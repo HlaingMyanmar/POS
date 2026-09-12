@@ -747,7 +747,7 @@ private fun LoginCard(
                 onClick  = onLogin,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape    = RoundedCornerShape(12.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = Primary),
+                colors   = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                 enabled  = !loading
             ) {
                 if (loading) {

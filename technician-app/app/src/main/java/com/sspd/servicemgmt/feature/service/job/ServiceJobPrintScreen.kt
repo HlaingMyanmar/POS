@@ -131,7 +131,7 @@ fun ServiceJobPrintScreen(onBack: () -> Unit) {
                             enabled = readyToPrint,
                             modifier = Modifier.weight(1.6f),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                         ) {
                             Icon(Icons.Outlined.Print, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
@@ -162,7 +162,7 @@ fun ServiceJobPrintScreen(onBack: () -> Unit) {
                         Text(state.error ?: "ချိတ်ဆက်မှု မအောင်မြင်ပါ", fontSize = 13.sp, color = TextMuted)
                         Button(
                             onClick = { vm.loadHtml(paper) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(18.dp))

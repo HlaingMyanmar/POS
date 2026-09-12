@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @Builder
 public class ChatMessageDTO {
     private Long id;
+    private Integer customerId;
     private String senderUsername;
     private String senderName;
     private String senderRole;

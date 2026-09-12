@@ -2,6 +2,8 @@ package org.sspd.servicemgmt.technicianvisitoptions.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.sspd.servicemgmt.technicianvisitoptions.realtime.TechnicianRealtimeRedis;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -70,6 +72,8 @@ public class TechnicianVisitService {
     private final StaffRepository staffs;
     private final UserRepository users;
     private final SimpMessagingTemplate messaging;
+    @Autowired(required = false)
+    private TechnicianRealtimeRedis realtimeRedis;
 
     @Transactional
     public TechnicianVisitDTO start(Integer jobId, String purpose, LocationPingRequest loc, Authentication auth) {
@@ -680,11 +684,13 @@ public class TechnicianVisitService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    messaging.convertAndSend("/topic/technician-location", dto);
+                    if (realtimeRedis != null) realtimeRedis.publish(dto);
+                    else messaging.convertAndSend("/topic/technician-location", dto);
                 }
             });
         } else {
-            messaging.convertAndSend("/topic/technician-location", dto);
+            if (realtimeRedis != null) realtimeRedis.publish(dto);
+            else messaging.convertAndSend("/topic/technician-location", dto);
         }
         return dto;
     }

@@ -1,6 +1,9 @@
 package org.sspd.servicemgmt.stockoptions.productserialoptions.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.model.ProductSerial;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus;
@@ -10,6 +13,10 @@ import java.util.Optional;
 
 @Repository
 public interface ProductSerialRepository extends JpaRepository<ProductSerial,Integer> {
+
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from ProductSerial s join fetch s.product where upper(s.serialNumber) = upper(:serial)")
+    Optional<ProductSerial> findLockedBySerialNumber(@Param("serial") String serial);
 
 
     Optional<ProductSerial> findBySerialNumber(String serialNumber);

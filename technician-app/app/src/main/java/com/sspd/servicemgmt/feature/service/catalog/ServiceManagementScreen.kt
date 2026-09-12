@@ -524,7 +524,7 @@ private fun ServiceTypeDialog(
                     onSave(name, desc, active)
                 },
                 enabled = !saving,
-                colors  = ButtonDefaults.buttonColors(containerColor = Primary)
+                colors  = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text(if (target != null) "ပြင်ဆင်မည်" else "သိမ်းဆည်းမည်", fontWeight = FontWeight.Bold)
@@ -793,7 +793,7 @@ private fun ServiceItemDialog(
                     }
                 },
                 enabled = !saving,
-                colors  = ButtonDefaults.buttonColors(containerColor = Primary)
+                colors  = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text(if (target != null) "ပြင်ဆင်မည်" else "သိမ်းဆည်းမည်", fontWeight = FontWeight.Bold)
@@ -829,7 +829,7 @@ private fun DeleteConfirmDialog(
         confirmButton = {
             Button(
                 onClick  = onConfirm, enabled = !saving,
-                colors   = ButtonDefaults.buttonColors(containerColor = Danger)
+                colors   = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text("ဖျက်မည်", fontWeight = FontWeight.Bold)
@@ -967,7 +967,7 @@ private fun SubTypesSheet(
                 }
                 Button(
                     onClick        = onAddSub,
-                    colors         = ButtonDefaults.buttonColors(containerColor = Primary),
+                    colors         = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     shape          = RoundedCornerShape(10.dp)
                 ) {
@@ -1078,7 +1078,7 @@ private fun SubTypeDialog(
                     onSave(name, desc, active)
                 },
                 enabled = !saving,
-                colors  = ButtonDefaults.buttonColors(containerColor = Violet)
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
             ) {
                 if (saving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else Text(if (target != null) "ပြင်ဆင်မည်" else "သိမ်းဆည်းမည်", fontWeight = FontWeight.Bold)

@@ -1213,6 +1213,7 @@ export enum AppRoute {
   OPENING_STOCK            = '/inventory/opening-stock',
   PAYMENT_TRANSACTIONS     = '/accounting/payment-transactions',
   CUSTOMER_APP_ORDERS      = '/crm/customer-app-orders',
+  CUSTOMER_PROMO_CODES     = '/crm/customer-promo-codes',
   DELIVERY_CHARGES         = '/crm/delivery-charges',
   CUSTOMER_APP_ACCOUNTS    = '/crm/customer-app-accounts',
   DAILY_SNAPSHOT           = '/reports/daily-snapshot'

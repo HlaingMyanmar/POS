@@ -21,6 +21,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sspd.servicemgmt.core.network.AppVersionDTO
 import com.sspd.servicemgmt.core.ui.theme.Primary
+import com.sspd.servicemgmt.core.ui.theme.BorderColor
+import com.sspd.servicemgmt.core.ui.theme.TextMuted
 
 @Composable
 fun UpdateDialog(
@@ -127,7 +129,7 @@ fun UpdateDialog(
                     enabled = !isDownloading && (isDone || update.downloadUrl.isNotBlank()),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) {
                     if (isDownloading) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)

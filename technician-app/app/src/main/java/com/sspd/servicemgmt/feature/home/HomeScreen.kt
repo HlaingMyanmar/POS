@@ -120,7 +120,7 @@ fun HomeScreen(
                         showLogoutConfirm = false
                         vm.logout()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) { Text("Logout") }
             },
             dismissButton = {
@@ -616,7 +616,7 @@ private fun OperationsPulseCard(
                     onClick = onCreditClick,
                     modifier = Modifier.weight(1f).height(42.dp),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted)
                 ) {
                     Icon(Icons.Outlined.Payments, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))

@@ -1,5 +1,6 @@
 package com.sspd.servicemgmt.feature.booking
 
+import android.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -252,7 +253,7 @@ private fun BookingFormFields(
         shape = RoundedCornerShape(12.dp)
     ) {
         if (saving) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-        else Text(if (isEdit) "ပြင်ဆင်မှု သိမ်းမည်" else "Booking သိမ်းမည်", fontWeight = FontWeight.ExtraBold)
+        else Text(if (isEdit) "ပြင်ဆင်မှု သိမ်းမည်" else "Booking သိမ်းမည်", fontWeight = FontWeight.ExtraBold,color = Color.White,)
     }
 }
 
@@ -273,7 +274,7 @@ private fun BookingFormPreviewBody(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Booking အသစ်", fontWeight = FontWeight.ExtraBold) },
+                    title = { Text("Booking အသစ်", fontWeight = FontWeight.ExtraBold, color = Color.White) },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White),
                 )
             }

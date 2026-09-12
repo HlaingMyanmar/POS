@@ -213,7 +213,7 @@ public class SaleService {
         // Payment tracking: skip for internal service-job sales (handled at ServiceJob level)
         if (!isServiceJobSale) {
             createPaymentTransaction(saved, dto);
-            createSaleJournal(saved, dto.getPaymentAccountId(), dto.getArAccountId(), dto.getPaymentMethodId(), dto.getPayments());
+            createSaleJournal(saved, dto.getPaymentAccountId(), dto.getArAccountId(), dto.getPaymentMethodId(), dto.getPayments(), dto.getCustomerAdvanceApplied());
             recordCustomerPayment(saved, dto, saved.getPaidAmount());
             creditAlertService.evaluateDueAlerts(saved);
             checkLargeCreditAlert(saved);
@@ -806,7 +806,7 @@ public class SaleService {
         journalWriter.write(entry);
     }
 
-    private void createSaleJournal(Sale sale, Integer paymentAccountId, Integer arAccountId, Integer paymentMethodId, List<PaymentTransactionDTO> payments) {
+    private void createSaleJournal(Sale sale, Integer paymentAccountId, Integer arAccountId, Integer paymentMethodId, List<PaymentTransactionDTO> payments, BigDecimal customerAdvanceApplied) {
         if (sale.getNetAmount() == null) return;
         BigDecimal net = sale.getNetAmount();
         BigDecimal paid = sale.getPaidAmount() != null ? sale.getPaidAmount() : BigDecimal.ZERO;
@@ -818,7 +818,18 @@ public class SaleService {
 
         List<JournalDetailDTO> details = new ArrayList<>();
 
-        List<PaymentLine> paymentLines = resolvePaymentLines(payments, paid, paymentMethodId, paymentAccountId);
+        BigDecimal advance = customerAdvanceApplied == null
+                ? BigDecimal.ZERO : customerAdvanceApplied.max(BigDecimal.ZERO).min(paid);
+        if (advance.signum() > 0) {
+            JournalDetailDTO drAdvance = new JournalDetailDTO();
+            drAdvance.setAccountId(accountResolver.custAdvance().getId());
+            drAdvance.setDebit(advance);
+            drAdvance.setCredit(BigDecimal.ZERO);
+            details.add(drAdvance);
+        }
+        BigDecimal cashPaid = paid.subtract(advance);
+        List<PaymentLine> paymentLines = cashPaid.signum() > 0
+                ? resolvePaymentLines(payments, cashPaid, paymentMethodId, paymentAccountId) : List.of();
         if (!paymentLines.isEmpty()) {
             for (PaymentLine line : paymentLines) {
                 JournalDetailDTO drCash = new JournalDetailDTO();
@@ -827,11 +838,11 @@ public class SaleService {
                 drCash.setCredit(BigDecimal.ZERO);
                 details.add(drCash);
             }
-        } else if (paid.compareTo(BigDecimal.ZERO) > 0) {
+        } else if (cashPaid.compareTo(BigDecimal.ZERO) > 0) {
             Integer cashOrBankAccount = resolveCashAccount(paymentMethodId, paymentAccountId);
             JournalDetailDTO drCash = new JournalDetailDTO();
             drCash.setAccountId(cashOrBankAccount);
-            drCash.setDebit(paid);
+            drCash.setDebit(cashPaid);
             drCash.setCredit(BigDecimal.ZERO);
             details.add(drCash);
         }
@@ -1187,3 +1198,5 @@ public class SaleService {
         customerPaymentService.recordSalePayment(sale, paymentDTO);
     }
 }
+
+

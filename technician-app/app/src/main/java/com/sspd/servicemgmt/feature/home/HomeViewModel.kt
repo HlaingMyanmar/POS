@@ -175,6 +175,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Clears stored user preferences and session tokens, triggering the logout flow. */
     fun logout() {
+        com.sspd.servicemgmt.core.network.TechnicianPushRegistration.unregister(getApplication())
         prefs.clear()
         _uiState.update { it.copy(isLoggedOut = true) }
     }

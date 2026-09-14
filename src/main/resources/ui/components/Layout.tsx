@@ -5,7 +5,6 @@ import {
   Activity,
   BarChart2,
   BarChart3,
-  Bell,
   Building2,
   CalendarDays,
   Barcode,
@@ -56,7 +55,6 @@ import {
   Video
 } from 'lucide-react';
 import { AppLanguage, AppRoute, AppTheme, User } from '../types';
-import { creditAlertService } from '../services/creditalertapiservice';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsHelp from './KeyboardShortcutsHelp';
@@ -165,7 +163,6 @@ const Layout: React.FC<LayoutProps> = ({
   // Cache each path's element on first visit — keeps components mounted (state preserved)
   const cachedOutlets = useRef<Map<string, React.ReactNode>>(new Map());
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [alertCount, setAlertCount] = useState(0);
   const [inventoryAlert, setInventoryAlert] = useState<null | { productName?: string; stockQty?: number; reorderLevel?: number }>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const location = useLocation();
@@ -362,22 +359,6 @@ const Layout: React.FC<LayoutProps> = ({
   );
   const isDark = theme === 'dark';
 
-  const loadAlertCount = useCallback(async () => {
-    try {
-      const alerts = await creditAlertService.getAllUnresolved();
-      setAlertCount((alerts || []).length);
-    } catch {
-      setAlertCount(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadAlertCount();
-  }, [loadAlertCount]);
-
-  useWebsocket('/topic/credit-alerts', () => {
-    void loadAlertCount();
-  });
 
   useWebsocket('/topic/inventory-alert', (body) => {
     try {
@@ -692,14 +673,6 @@ const Layout: React.FC<LayoutProps> = ({
 
                 {hasMenuAccess(user, 'CAN_ACCESS_SALE_READ') && <CustomerOrderNotification isDark={isDark} />}
 
-                <button className={`p-1.5 rounded-lg relative ${isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>
-                  <Bell size={18} />
-                  {alertCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[8px] font-bold rounded-full border border-white flex items-center justify-center leading-none">
-                      {alertCount > 9 ? '9+' : alertCount}
-                    </span>
-                  )}
-                </button>
 
                 <div className={`flex items-center gap-2 p-1 pr-2 rounded-lg min-w-0 ${isDark ? 'bg-slate-900 border border-slate-700' : 'bg-slate-50 border border-slate-100'}`}>
                   <div className="w-6 h-6 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">

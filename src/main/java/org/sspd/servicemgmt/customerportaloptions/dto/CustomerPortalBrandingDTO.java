@@ -21,4 +21,10 @@ public class CustomerPortalBrandingDTO {
     private java.math.BigDecimal pickupDepositPercent;
     /** When false, customer app only offers pickup. */
     private boolean deliveryEnabled;
+    private java.time.LocalTime deliveryOpensAt;
+    private java.time.LocalTime deliveryClosesAt;
+    private String deliveryDays;
+    private java.util.List<org.sspd.servicemgmt.customerportaloptions.support.DeliveryScheduleRules.DayWindowRow> deliveryWeekdays;
+    private java.util.List<org.sspd.servicemgmt.customerportaloptions.support.DeliveryScheduleRules.ClosedDate> deliveryClosedDates;
+    private Integer deliveryMinLeadDays;
 }

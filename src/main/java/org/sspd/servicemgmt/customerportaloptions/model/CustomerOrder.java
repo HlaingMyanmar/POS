@@ -93,6 +93,10 @@ public class CustomerOrder {
     @Column(name = "delivery_handler", length = 20)
     private String deliveryHandler;
 
+    @Builder.Default
+    @Column(name = "full_payment_required", nullable = false)
+    private boolean fullPaymentRequired = false;
+
     @Column(name = "quoted_delivery_charge", precision = 15, scale = 2)
     private java.math.BigDecimal quotedDeliveryCharge;
 

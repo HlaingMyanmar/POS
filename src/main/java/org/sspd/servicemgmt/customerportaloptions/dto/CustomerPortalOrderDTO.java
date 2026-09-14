@@ -67,6 +67,7 @@ public class CustomerPortalOrderDTO {
     private String shippingSnapshot;
     /** OWN or HANDOFF — set by shop before customer transfers. */
     private String deliveryHandler;
+    private boolean fullPaymentRequired;
     private BigDecimal quotedDeliveryCharge;
     private BigDecimal itemsTotal;
     private String promoCode;

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   CustomerOrder,
@@ -330,11 +330,12 @@ function OrderPaymentPanel({
       {pendingChoice && order.shippingState === 'ACCEPTED' && (
         <div className="space-y-2 rounded-lg bg-amber-50 p-2">
           <p className="text-xs font-semibold text-amber-900">ပို့ချိန် လက်ခံပြီးပါပြီ။ ငွေပေးချေနည်း ရွေးပါ။</p>
+          {(order.deliveryHandler === 'HANDOFF' || order.fullPaymentRequired) && <p className="text-xs">{order.deliveryHandler === 'HANDOFF' ? 'အခြား delivery နဲ့ ပို့မယ့် order ဖြစ်လို့' : 'ဆိုင်က ဒီ order ကို ငွေအပြည့် ကြိုတောင်းထားလို့'} စရံပေးပြီး ကျန်ငွေကို ပစ္စည်းရောက်မှ ရှင်းလို့မရပါ။ ငွေအပြည့်အကြေ ကြိုလွှဲရပါမယ်။</p>}
           <div className="flex flex-wrap gap-1">
             <button type="button" disabled={busy} onClick={() => void choosePay('TRANSFER')} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">
               ငွေအပြည့် လွှဲမည်
             </button>
-            <button type="button" disabled={busy} onClick={() => void choosePay('PAY_ON_COLLECTION')} className="rounded-lg border border-indigo-600 px-3 py-1.5 text-xs font-bold text-indigo-700 disabled:opacity-40">
+            <button type="button" hidden={order.deliveryHandler === 'HANDOFF' || order.fullPaymentRequired} disabled={busy} onClick={() => void choosePay('PAY_ON_COLLECTION')} className="rounded-lg border border-indigo-600 px-3 py-1.5 text-xs font-bold text-indigo-700 disabled:opacity-40">
               လက်ခံချိန် ရှင်းမည် (စရံကြို)
             </button>
           </div>

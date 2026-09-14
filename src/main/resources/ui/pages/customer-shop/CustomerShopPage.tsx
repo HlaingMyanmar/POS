@@ -1,4 +1,5 @@
 import { CheckoutFlow, DeliverySelection } from './CheckoutFlow';
+import { deliveryScheduleError, type DeliveryHours } from './deliverySchedule';
 import { CustomerOrderCard } from './CustomerOrderPayment';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -48,6 +49,13 @@ const CustomerShopPage: React.FC = () => {
   const [shopName, setShopName] = useState('SSPD');
   const [pickupDepositPercent, setPickupDepositPercent] = useState(30);
   const [deliveryEnabled, setDeliveryEnabled] = useState(true);
+  const [deliveryHours, setDeliveryHours] = useState<DeliveryHours>({
+    opensAt: '09:00', closesAt: '18:00',
+    days: 'MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY',
+    weekdays: [],
+    closedDates: [],
+    minLeadDays: 1,
+  });
   const [session, setSession] = useState<CustomerSession | null>(() => getCustomerSession());
   const [tab, setTab] = useState<Tab>('products');
   const [products, setProducts] = useState<CatalogProduct[]>([]);
@@ -150,6 +158,14 @@ const CustomerShopPage: React.FC = () => {
           if (pct >= 1 && pct <= 100) setPickupDepositPercent(pct);
           const enabled = res.data.deliveryEnabled !== false;
           setDeliveryEnabled(enabled);
+          setDeliveryHours({
+            opensAt: res.data.deliveryOpensAt || '09:00',
+            closesAt: res.data.deliveryClosesAt || '18:00',
+            days: res.data.deliveryDays || 'MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY',
+            weekdays: res.data.deliveryWeekdays || [],
+            closedDates: res.data.deliveryClosedDates || [],
+            minLeadDays: res.data.deliveryMinLeadDays ?? 1,
+          });
           if (!enabled) {
             setDelivery(prev => ({ ...prev, orderType: 'PICKUP', paymentChoice: 'TRANSFER' }));
           }
@@ -208,11 +224,9 @@ const CustomerShopPage: React.FC = () => {
     if (!cart.length) { setMessage('ခြင်းတောင်း ဗလာဖြစ်နေသည်'); return; }
     if (delivery.orderType === 'DELIVERY') {
       if (!deliveryEnabled) { setMessage('သွားပို့ ယာယီပိတ်ထားသည်။ ဆိုင်မှာလာယူ ရွေးပါ'); return; }
-      if (!delivery.requestedDeliveryAt) { setMessage('ပို့မည့် ရက်နှင့် အချိန် ရွေးပါ'); return; }
-      if (new Date(delivery.requestedDeliveryAt).getTime() <= Date.now()) {
-        setMessage('ပို့မည့်အချိန်သည် ယခုအချိန် နောက်မှ ဖြစ်ရမည်'); return;
-      }
-      if (!delivery.wardId) { setMessage('ပို့မည့် ရပ်ကွက် ရွေးပါ'); return; }
+      const scheduleError = deliveryScheduleError(delivery.requestedDeliveryAt, deliveryHours);
+      if (scheduleError) { setMessage(scheduleError); return; }
+      if (!delivery.townshipId) { setMessage('ပို့မည့် မြို့နယ် ရွေးပါ'); return; }
       if (delivery.deliveryLocationMode === 'PROFILE' && !session.address) {
         setTab('account'); setMessage('Profile လိပ်စာ ဖြည့်ပါ'); return;
       }
@@ -413,6 +427,7 @@ const CustomerShopPage: React.FC = () => {
               placing={placing}
               pickupDepositPercent={pickupDepositPercent}
               deliveryEnabled={deliveryEnabled}
+              deliveryHours={deliveryHours}
               onPlace={(promoCode) => void checkout(promoCode)}
               onNeedAuth={() => { setTab('account'); setMessage('အရင် ဝင်ပါ'); }}
               onBrowse={() => setTab('products')}

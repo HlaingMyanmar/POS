@@ -81,6 +81,47 @@ class CustomerOrderDeliveryPaymentChoiceTest {
     }
 
     @Test
+    void externalDeliveryConvertsUnstartedDepositChoiceToFullTransfer() {
+        CustomerOrderRepository orders = mock(CustomerOrderRepository.class);
+        CustomerStockReservationService stock = mock(CustomerStockReservationService.class);
+        CustomerOrder order = acceptedDelivery();
+        order.setDeliveryHandler("HANDOFF");
+        order.setPaymentChoice("PAY_ON_COLLECTION");
+        order.setDepositAmount(new BigDecimal("30000.00"));
+        order.setDepositPercent(new BigDecimal("30.00"));
+        when(orders.findLocked(42)).thenReturn(Optional.of(order));
+        when(orders.saveAndFlush(order)).thenReturn(order);
+        var payments = service(orders, stock, mock(DataEventPublisher.class), mock(CompanySettingsService.class));
+        payments.ensureTransferOpened(42);
+        assertEquals("TRANSFER", order.getPaymentChoice());
+        assertNull(order.getDepositAmount());
+        assertNull(order.getDepositPercent());
+        assertEquals("AWAITING_PAYMENT", order.getPaymentState());
+        verify(stock).reserve(order);
+    }
+
+    @Test
+    void externalDeliveryRejectsDepositChoiceAndAcceptsFullTransfer() {
+        CustomerOrderRepository orders = mock(CustomerOrderRepository.class);
+        CustomerStockReservationService stock = mock(CustomerStockReservationService.class);
+        CustomerOrder order = acceptedDelivery();
+        order.setDeliveryHandler("HANDOFF");
+        order.setDeliveryCharge(BigDecimal.ZERO);
+        when(orders.findLocked(42)).thenReturn(Optional.of(order));
+        when(orders.saveAndFlush(order)).thenReturn(order);
+        asCustomer(7);
+        var payments = service(orders, stock, mock(DataEventPublisher.class), mock(CompanySettingsService.class));
+        var error = assertThrows(IllegalArgumentException.class, () -> payments.choosePayment(42, "PAY_ON_COLLECTION"));
+        assertTrue(error.getMessage().contains("ငွေအပြည့်အကြေ ကြိုလွှဲရပါမယ်"));
+        assertEquals("PENDING", order.getPaymentChoice());
+        verify(stock, never()).reserve(order);
+        payments.choosePayment(42, "TRANSFER");
+        assertNull(order.getDepositAmount());
+        assertEquals(new BigDecimal("100000.00"), payments.expectedTransfer(order));
+        assertEquals("AWAITING_PAYMENT", order.getPaymentState());
+    }
+
+    @Test
     void acceptedQuoteDoesNotForcePrepaidUntilCustomerChooses() {
         CustomerOrderRepository orders = mock(CustomerOrderRepository.class);
         CustomerStockReservationService stock = mock(CustomerStockReservationService.class);

@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { BASE_URL } from './api';
 import { ApiResponse } from '../types';
 
@@ -73,6 +73,12 @@ export type CustomerBranding = {
   taglineMm?: string;
   pickupDepositPercent?: number;
   deliveryEnabled?: boolean;
+  deliveryOpensAt?: string;
+  deliveryClosesAt?: string;
+  deliveryDays?: string;
+  deliveryWeekdays?: { day?: string; open?: boolean; opensAt?: string; closesAt?: string }[];
+  deliveryClosedDates?: { date?: string; reason?: string | null }[];
+  deliveryMinLeadDays?: number;
 };
 
 export type CustomerOrder = {
@@ -88,6 +94,7 @@ export type CustomerOrder = {
   itemsTotal?: number;
   shippingReason?: string;
   deliveryHandler?: string;
+  fullPaymentRequired?: boolean;
   status: string;
   note?: string;
   total?: number;
@@ -298,6 +305,7 @@ export const customerPortalService = {
   deliveryLocations: () => customerApi.get<any, ApiResponse<any[]>>('/v1/customer-portal/delivery-locations'),
   deliveryQuote: (body: {
     orderType: string;
+    townshipId?: number;
     wardId?: number;
     lines: { productId: number; qty: number }[];
   }, signal?: AbortSignal) =>

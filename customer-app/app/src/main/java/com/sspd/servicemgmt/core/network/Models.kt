@@ -69,7 +69,25 @@ data class CustomerBranding(
     val hasLogo: Boolean? = null,
     val logoUrl: String? = null,
     val pickupDepositPercent: Double? = 30.0,
-    val deliveryEnabled: Boolean? = true
+    val deliveryEnabled: Boolean? = true,
+    val deliveryOpensAt: String? = "09:00",
+    val deliveryClosesAt: String? = "18:00",
+    val deliveryDays: String? = "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY",
+    val deliveryWeekdays: List<DeliveryWeekdayHours>? = null,
+    val deliveryClosedDates: List<DeliveryClosedDate>? = null,
+    val deliveryMinLeadDays: Int? = 1
+)
+
+data class DeliveryWeekdayHours(
+    val day: String? = null,
+    val open: Boolean? = true,
+    val opensAt: String? = "09:00",
+    val closesAt: String? = "18:00"
+)
+
+data class DeliveryClosedDate(
+    val date: String? = null,
+    val reason: String? = null
 )
 
 data class ChangePasswordRequest(
@@ -149,7 +167,7 @@ data class CustomerPaymentChannel(
 
 data class PaymentChannelRequest(val paymentMethodId: Int)
 
-data class DeliveryQuoteRequest(val orderType: String, val wardId: Int?, val lines: List<OrderLineRequest>)
+data class DeliveryQuoteRequest(val orderType: String, val townshipId: Int?, val wardId: Int?, val lines: List<OrderLineRequest>)
 data class DeliveryQuote(val state: String? = null, val weightKg: Double? = null, val baseCharge: Double? = null,
     val extraCharge: Double? = null, val deliveryCharge: Double? = null, val reason: String? = null)
 data class ShippingDecision(
@@ -158,7 +176,8 @@ data class ShippingDecision(
     val scheduledAt: String? = null,
     val reason: String? = null,
     val amount: Double? = null,
-    val handler: String? = null
+    val handler: String? = null,
+    val fullPaymentRequired: Boolean? = null
 )
 
 data class OrderTimelineEvent(
@@ -354,6 +373,7 @@ data class CustomerOrder(
     val wardName: String? = null,
     val deliveryCharge: Double? = 0.0,
     val deliveryHandler: String? = null,
+    val fullPaymentRequired: Boolean? = false,
     val quotedDeliveryCharge: Double? = 0.0,
     val shippingState: String? = null,
     val shippingVersion: Int? = null,

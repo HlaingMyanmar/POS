@@ -1,5 +1,7 @@
 package org.sspd.servicemgmt.customerportaloptions.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
@@ -107,6 +109,7 @@ public class CustomerPortalService {
     private final CustomerOrderRatingService orderRatings;
     private final CustomerPromoService promos;
     private final CustomerDeliveryMilestoneRepository deliveryMilestones;
+    private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
     public List<CustomerCatalogProductDTO> catalogProducts() {
@@ -266,12 +269,9 @@ public class CustomerPortalService {
         if ("DELIVERY".equalsIgnoreCase(order.getOrderType())) {
             deliveryPricing.requireDeliveryAvailable();
             java.time.LocalDateTime requested = req.getRequestedDeliveryAt();
-            if (requested == null) {
-                throw new IllegalArgumentException("ပို့မည့် ရက်နှင့် အချိန် ရွေးပါ");
-            }
-            if (!requested.isAfter(java.time.LocalDateTime.now())) {
-                throw new IllegalArgumentException("ပို့မည့်အချိန်သည် ယခုအချိန် နောက်မှ ဖြစ်ရမည်");
-            }
+
+            deliveryPricing.validateRequestedAt(requested);
+
             order.setRequestedDeliveryAt(requested);
             order.setDeliveryScheduledAt(requested);
             order.setPaymentChoice("PENDING");
@@ -327,8 +327,8 @@ public class CustomerPortalService {
             order.setDeliveryHandler(null);
             order.setDeliveryCharge(quote.deliveryCharge());
             order.setQuotedDeliveryCharge(quote.deliveryCharge());
-            try { order.setShippingSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(quote)); }
-            catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException(e); }
+            try { order.setShippingSnapshot(objectMapper.writeValueAsString(quote)); }
+            catch (JsonProcessingException e) { throw new IllegalStateException(e); }
         }
         CustomerOrder saved = orderRepository.saveAndFlush(order);
         if (!blank(req.getPromoCode())) {
@@ -361,6 +361,8 @@ public class CustomerPortalService {
                         finalSaved.getOrderNo() + " (" + finalSaved.getLines().size() + " items)"));
         return attachMilestones(toOrderDto(saved));
     }
+
+    public DeliveryPricingService.Policy deliveryPolicy() { return deliveryPricing.policy(); }
 
     public boolean deliveryEnabled() {
         return deliveryPricing.policy().isDeliveryEnabled();
@@ -994,6 +996,7 @@ public class CustomerPortalService {
         dto.setWardName(order.getWardName());
         dto.setDeliveryCharge(order.getDeliveryCharge() == null ? BigDecimal.ZERO : order.getDeliveryCharge());
         dto.setDeliveryHandler(order.getDeliveryHandler());
+        dto.setFullPaymentRequired(order.isFullPaymentRequired());
         dto.setQuotedDeliveryCharge(order.getQuotedDeliveryCharge());
         dto.setShippingState(order.getShippingState());
         dto.setShippingVersion(order.getShippingVersion());
@@ -1166,6 +1169,7 @@ public class CustomerPortalService {
             order.setDeliveryCharge(BigDecimal.ZERO);
             order.setQuotedDeliveryCharge(BigDecimal.ZERO);
             order.setDeliveryHandler(null);
+            order.setFullPaymentRequired(false);
             order.setDeliveryStatus(null);
             order.setDeliveryCurrentLocation(null);
             order.setDeliveryScheduledAt(null);
@@ -1174,29 +1178,32 @@ public class CustomerPortalService {
             return;
         }
 
-        if (req.getWardId() == null) {
-            throw new IllegalArgumentException("ပို့မည့် ရပ်ကွက် ရွေးပါ");
+        if (req.getTownshipId() == null) {
+            throw new IllegalArgumentException("ပို့မည့် မြို့နယ် ရွေးပါ");
         }
-        CustomerDeliveryWard ward = wardRepository.findWithTownshipAndRegionById(req.getWardId())
-                .orElseThrow(() -> new ResourceNotFoundException("ရပ်ကွက် မတွေ့ပါ"));
-        CustomerDeliveryTownship township = ward.getTownship();
-        if (township == null
-                || !Boolean.TRUE.equals(ward.getActive())
-                || !Boolean.TRUE.equals(township.getActive())
+        CustomerDeliveryTownship township = townshipRepository.findById(req.getTownshipId())
+                .orElseThrow(() -> new ResourceNotFoundException("မြို့နယ် မတွေ့ပါ"));
+        if (!Boolean.TRUE.equals(township.getActive())
                 || township.getRegion() == null
                 || !Boolean.TRUE.equals(township.getRegion().getActive())) {
-            throw new IllegalArgumentException("ဤရပ်ကွက်သို့ ယာယီ ပို့ဆောင်၍ မရပါ");
+            throw new IllegalArgumentException("ဤမြို့နယ်သို့ ယာယီ ပို့ဆောင်၍ မရပါ");
         }
-        if (req.getTownshipId() != null && !req.getTownshipId().equals(township.getId())) {
+        CustomerDeliveryWard ward = req.getWardId() == null ? null
+                : wardRepository.findWithTownshipAndRegionById(req.getWardId())
+                .orElseThrow(() -> new ResourceNotFoundException("ရပ်ကွက် မတွေ့ပါ"));
+        if (ward != null && (!Boolean.TRUE.equals(ward.getActive())
+                || ward.getTownship() == null || !township.getId().equals(ward.getTownship().getId()))) {
             throw new IllegalArgumentException("မြို့နယ် နှင့် ရပ်ကွက် ကိုက်ညီမှု မရှိပါ");
         }
         order.setTownshipId(township.getId());
         order.setTownshipName(township.getRegion().getName() + " · " + township.getName());
-        order.setWardId(ward.getId());
-        order.setWardName(ward.getName());
-        order.setDeliveryCharge(ward.getDeliveryCharge() == null ? BigDecimal.ZERO : ward.getDeliveryCharge());
+        order.setWardId(ward == null ? null : ward.getId());
+        order.setWardName(ward == null ? null : ward.getName());
+        BigDecimal areaCharge = ward == null ? township.getDeliveryCharge() : ward.getDeliveryCharge();
+        order.setDeliveryCharge(areaCharge == null ? BigDecimal.ZERO : areaCharge);
         order.setQuotedDeliveryCharge(order.getDeliveryCharge());
         order.setDeliveryHandler(null);
+        order.setFullPaymentRequired(false);
         order.setDeliveryStatus("PENDING");
 
         String mode = blank(req.getDeliveryLocationMode()) ? null : req.getDeliveryLocationMode().trim().toUpperCase();

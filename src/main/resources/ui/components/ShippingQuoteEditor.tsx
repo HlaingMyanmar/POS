@@ -17,6 +17,7 @@ function sameSlot(a?: string | null, b?: string) {
 export default function ShippingQuoteEditor({order,onUpdated}:{order:any;onUpdated:(o:any)=>void}) {
  const [amount,setAmount]=useState(String(order.quotedDeliveryCharge??order.deliveryCharge??''));
  const [handler,setHandler]=useState(order.deliveryHandler||'OWN');
+ const [fullPaymentRequired,setFullPaymentRequired]=useState(Boolean(order.fullPaymentRequired));
  const [reason,setReason]=useState('');
  const requestedLocal = toLocal(order.requestedDeliveryAt);
  const [scheduledAt,setScheduledAt]=useState(toLocal(order.deliveryScheduledAt || order.requestedDeliveryAt));
@@ -30,7 +31,7 @@ export default function ShippingQuoteEditor({order,onUpdated}:{order:any;onUpdat
   setBusy(true);setError('');
   try{
     const r=await api.post<any>('/v1/customer-orders/'+order.id+'/shipping-quote',{
-      amount:Number(amount),handler,reason:note,version:order.shippingVersion??0,
+      amount:Number(amount),handler,fullPaymentRequired: handoff || fullPaymentRequired,reason:note,version:order.shippingVersion??0,
       scheduledAt: when.length===16 ? when+':00' : when
     });
     onUpdated(r.data);
@@ -45,11 +46,15 @@ export default function ShippingQuoteEditor({order,onUpdated}:{order:any;onUpdat
   <p>{order.shippingWeightKg!=null?order.shippingWeightKg+' kg':'အလေးချိန် မပြည့်စုံသေးပါ'} · ပစ္စည်း {order.lines?.reduce((s:number,l:any)=>s+l.qty,0)} ခု</p>
   {canQuote && <>
    <select aria-label="ပို့ဆောင်သူ" className="border p-2 w-full" value={handler} onChange={e=>{
-    const next=e.target.value;setHandler(next);if(next==='HANDOFF')setAmount('0');
+    const next=e.target.value;setHandler(next);if(next==='HANDOFF'){setAmount('0');setFullPaymentRequired(true);}
    }}>
     <option value="OWN">ဆိုင်မှပို့ — ပို့ခ ကောက် / ဘောင်ချာထည့်</option>
     <option value="HANDOFF">အပြင်ပို့ အပ် — ဆိုင်ပို့ခ ၀ / ဘောင်ချာမထည့်</option>
    </select>
+   <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm font-bold text-amber-900">
+    <input type="checkbox" checked={handoff || fullPaymentRequired} disabled={handoff} onChange={e=>setFullPaymentRequired(e.target.checked)}/>
+    ငွေအပြည့် ကြိုတောင်းမည်
+   </label>
    <input aria-label="နောက်ဆုံးပို့ခ" type="number" min="0" step="0.01" className="border p-2 w-full" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="ဆိုင်ကောက်မည့် ပို့ခ (ကျပ်)" disabled={handoff}/>
    <button type="button" disabled={busy||amount===''||!requestedLocal} className="w-full rounded-lg bg-emerald-600 p-2 font-bold text-white disabled:opacity-40" onClick={()=>void send(requestedLocal, reason.trim() || 'တောင်းဆိုချိန် အဆင်ပြေသည်။')}>
      တောင်းဆိုချိန် အဆင်ပြေ — ပို့မည်

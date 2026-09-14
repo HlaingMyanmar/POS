@@ -45,6 +45,7 @@ public class CustomerPortalController {
     public ResponseEntity<ApiResponse<CustomerPortalBrandingDTO>> branding() {
         var s = companySettingsService.getSettings();
         boolean hasLogo = s.getLogoBase64() != null && !s.getLogoBase64().isBlank();
+        var deliveryPolicy = service.deliveryPolicy();
         // Do not embed large base64 in JSON — app loads /branding/logo instead (reliable on mobile).
         return ResponseEntity.ok(new ApiResponse<>(true, "Branding", CustomerPortalBrandingDTO.builder()
                 .companyName(s.getCompanyName())
@@ -55,7 +56,13 @@ public class CustomerPortalController {
                 .pickupDepositPercent(s.getPickupDepositPercent() != null
                         ? s.getPickupDepositPercent()
                         : new java.math.BigDecimal("30.00"))
-                .deliveryEnabled(service.deliveryEnabled())
+                .deliveryEnabled(deliveryPolicy.isDeliveryEnabled())
+                .deliveryOpensAt(deliveryPolicy.opensAt())
+                .deliveryClosesAt(deliveryPolicy.closesAt())
+                .deliveryDays(deliveryPolicy.deliveryDays())
+                .deliveryWeekdays(deliveryPolicy.weekdayHours())
+                .deliveryClosedDates(deliveryPolicy.closedDates())
+                .deliveryMinLeadDays(deliveryPolicy.minLeadDays())
                 .build()));
     }
 

@@ -21,6 +21,30 @@ class CustomerOrderDeliveryRulesTest {
     }
 
     @Test
+    void shopCanRequireFullPaymentForOwnDelivery() {
+        CustomerOrder order = delivery("PENDING", "DEPOSIT_PAID", CustomerOrderStatus.CONFIRMED);
+        order.setDeliveryHandler("OWN");
+        order.setFullPaymentRequired(true);
+        assertTrue(CustomerOrderDeliveryRules.requiresFullTransfer(order));
+        assertFalse(CustomerOrderDeliveryRules.dispatchReady(order));
+        order.setPaymentState("PAID");
+        assertTrue(CustomerOrderDeliveryRules.dispatchReady(order));
+    }
+    @Test
+    void externalDeliveryRequiresFullPaymentAndAllowsRemainderBeforeDispatch() {
+        CustomerOrder order = delivery("PACKED", "DEPOSIT_PAID", CustomerOrderStatus.CONFIRMED);
+        order.setDeliveryHandler("HANDOFF");
+        assertFalse(CustomerOrderDeliveryRules.dispatchReady(order));
+        assertTrue(CustomerOrderDeliveryRules.canCollectRemainder(order));
+        assertThrows(IllegalStateException.class,
+                () -> CustomerOrderDeliveryRules.assertStatusTransition(order, "HANDED_TO_RIDER"));
+        order.setPaymentState("REMAINDER_CHECKING");
+        assertFalse(CustomerOrderDeliveryRules.dispatchReady(order));
+        order.setPaymentState("PAID");
+        assertDoesNotThrow(() -> CustomerOrderDeliveryRules.assertStatusTransition(order, "HANDED_TO_RIDER"));
+    }
+
+    @Test
     void outsourcedDeliveryEndsAtRiderHandoff() {
         CustomerOrder order = delivery("PACKED", "PAID", CustomerOrderStatus.CONFIRMED);
         order.setDeliveryHandler("HANDOFF");

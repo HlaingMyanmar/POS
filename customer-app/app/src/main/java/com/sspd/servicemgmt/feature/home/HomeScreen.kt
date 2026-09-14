@@ -68,8 +68,24 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import retrofit2.Response
 
+private fun responseMessage(response: Response<*>, fallback: String): String {
+    response.body()?.let { body ->
+        runCatching {
+            val method = body.javaClass.methods.firstOrNull { it.name == "getMessage" && it.parameterCount == 0 }
+            val value = method?.invoke(body)?.toString()?.trim()
+            if (!value.isNullOrBlank()) return value
+        }
+    }
+    val raw = runCatching { response.errorBody()?.string().orEmpty() }.getOrDefault("")
+    if (raw.isNotBlank()) {
+        runCatching { JSONObject(raw).optString("message").trim() }
+            .getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    return fallback
+}
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = PreferenceManager(app)
     var products by mutableStateOf<List<CatalogProduct>>(emptyList()); private set
@@ -825,9 +841,6 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 if (townshipId == null || townshipId <= 0) {
                     message = "ပို့မည့် မြို့နယ် ရွေးပါ"; return@launch
                 }
-                if (wardId == null || wardId <= 0) {
-                    message = "ပို့မည့် ရပ်ကွက် ရွေးပါ"; return@launch
-                }
                 val mode = deliveryLocationMode?.trim()?.uppercase()
                 if (mode != "PROFILE" && mode != "OTHER") {
                     message = "ပို့မည့်နေရာ ရွေးပါ"; return@launch
@@ -847,19 +860,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 if (requested.length < 16) {
                     message = "ပို့မည့် ရက်နှင့် အချိန် ရွေးပါ"; return@launch
                 }
-                val quoteRes = runCatching {
-                    ApiClient.service.deliveryQuote(
-                        auth(),
-                        DeliveryQuoteRequest(orderType = "DELIVERY", wardId = wardId, lines = lines)
-                    )
-                }.getOrNull()
-                val quote = quoteRes?.body()?.data
-                if (quoteRes == null || !quoteRes.isSuccessful || quoteRes.body()?.success != true
-                    || quote?.deliveryCharge == null
-                ) {
-                    message = quoteRes?.body()?.message ?: "ပို့ဆောင်ခ အရင်တွက်ပြရပါမည်"
-                    return@launch
-                }
+
             }
 
             val app = getApplication<Application>()
@@ -925,7 +926,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                     ).joinToString(" — ")
                     loadMine()
                     openHistoryTab = true
-                } else message = res.body()?.message ?: "အော်ဒါ မတင်နိုင်ပါ"
+                } else message = responseMessage(res, "အော်ဒါ မတင်နိုင်ပါ")
             } catch (e: Exception) { message = e.message }
             } finally {
                 checkoutPlacing = false
@@ -1164,7 +1165,7 @@ fun HomeScaffold(
                                     showProducts -> "ပစ္စည်းများ"
                                     tab == 1 -> "Service ခေါ်ရန်"
                                     tab == 2 -> "ခြင်းတောင်း"
-                                    tab == 3 -> "Customer History"
+                                    tab == 3 -> "Order History"
                                     tab == 4 -> "ကျွန်ုပ်၏ Profile"
                                     tab == 5 -> "အကြိုက်စာရင်း"
                                     tab == 6 -> "Customer Support Chat"
@@ -1402,6 +1403,7 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
     var paymentChoice by remember { mutableStateOf("TRANSFER") }
     var pickupDepositPercent by remember { mutableStateOf(30.0) }
     var deliveryEnabled by remember { mutableStateOf(true) }
+    var deliveryHours by remember { mutableStateOf(DeliveryHoursConfig()) }
     var requestedDeliveryAt by remember { mutableStateOf<String?>(null) }
     var appliedPromo by remember { mutableStateOf<String?>(null) }
     var deliveryMode by remember { mutableStateOf("PROFILE") }
@@ -1427,6 +1429,9 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
             if (res.isSuccessful && pct != null && pct in 1.0..100.0) {
                 pickupDepositPercent = pct
             }
+            if (res.isSuccessful) {
+                deliveryHours = DeliveryHoursConfig.from(data)
+            }
             if (res.isSuccessful && data?.deliveryEnabled == false) {
                 deliveryEnabled = false
                 orderType = "PICKUP"
@@ -1446,10 +1451,10 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
 
     var quoteRetry by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(orderType, wardId, cartStamp, quoteRetry) {
+    LaunchedEffect(orderType, townshipId, wardId, cartStamp, quoteRetry) {
         deliveryQuote = null
         quoteError = null
-        if (orderType != "DELIVERY" || wardId == null || items.isEmpty()) {
+        if (orderType != "DELIVERY" || townshipId == null || items.isEmpty()) {
             quoteLoading = false
             return@LaunchedEffect
         }
@@ -1460,6 +1465,7 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
                 vm.auth(),
                 DeliveryQuoteRequest(
                     orderType = "DELIVERY",
+                    townshipId = townshipId,
                     wardId = wardId,
                     lines = items.map { OrderLineRequest(it.product.id, it.qty) }
                 )
@@ -1536,6 +1542,7 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
         quoteError = quoteError,
         onRetryQuote = { quoteRetry++ },
         deliveryEnabled = deliveryEnabled,
+        deliveryHours = deliveryHours,
         requestedDeliveryAt = requestedDeliveryAt,
         onRequestedDeliveryAtChange = { requestedDeliveryAt = it },
         onAppliedPromoChange = { appliedPromo = it }
@@ -1546,9 +1553,6 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
 private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager(context.applicationContext) }
-    val scope = rememberCoroutineScope()
-    var purchaseInvoiceError by remember { mutableStateOf<String?>(null) }
-    var selectedPurchaseForDialog by remember { mutableStateOf<CustomerPurchase?>(null) }
     var proofPickerKey by remember { mutableStateOf<String?>(null) }
     var pickedProofUri by remember { mutableStateOf<Uri?>(null) }
     val proofPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1742,130 +1746,6 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
             }
         }
 
-        item {
-            Text(
-                "ဝယ်ယူမှတ်တမ်း",
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        vm.purchasesError?.let { err ->
-            item { ErrorRetryBanner(err, onRetry = vm::retryPurchases) }
-        }
-        if (vm.purchases.isEmpty() && vm.purchasesError == null) {
-            item { Text("ဆိုင်က ဝယ်ထားတာ မရှိသေးပါ", style = MaterialTheme.typography.bodySmall, color = TextMuted) }
-        }
-        val linkedSaleIds = vm.orders.mapNotNull { it.completedSaleId }.toSet()
-        val otherPurchases = vm.purchases.filter { it.id !in linkedSaleIds }
-        if (otherPurchases.isEmpty() && linkedSaleIds.isNotEmpty() && vm.purchasesError == null) {
-            item {
-                Text(
-                    "App order မှ ထုတ်ထားသော ဘောင်ချာများကို အပေါ် Order History တွင် ကြည့်ပါ။",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
-                )
-            }
-        }
-        itemsIndexed(otherPurchases, key = { index, p -> "p-${p.id}-$index" }) { _, p ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(p.saleCode ?: "-", fontWeight = FontWeight.Bold)
-                    Text(listOfNotNull(p.saleDate?.take(10), p.paymentStatus).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-                    Text((p.lines ?: emptyList()).joinToString { "${it.productName} × ${it.qty}" }, style = MaterialTheme.typography.bodySmall)
-                    (p.lines ?: emptyList()).filter { (it.warrantyMonths ?: 0) > 0 }.forEach { line ->
-                        Text(
-                            listOfNotNull(
-                                "Warranty ${line.warrantyMonths} လ",
-                                line.serialNumber?.takeIf { it.isNotBlank() },
-                                line.warrantyStartDate,
-                                line.warrantyExpiryDate?.let { "→ $it" },
-                                when (line.warrantyStatus) {
-                                    "ACTIVE" -> "ကျန် ${line.warrantyDaysRemaining ?: 0} ရက်"
-                                    "EXPIRED" -> "သက်တမ်းကုန်"
-                                    else -> null
-                                }
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
-                        )
-                    }
-                    Text("${(p.netAmount ?: 0.0).toInt()} Ks", fontWeight = FontWeight.ExtraBold, color = Primary)
-                    TextButton(onClick = {
-                        selectedPurchaseForDialog = p
-                    }) {
-                        Text("Invoice ဖွင့်")
-                    }
-                    TextButton(onClick = {
-                        scope.launch {
-                            purchaseInvoiceError = SaleInvoiceOpener.shareForPurchase(
-                                context, p.id, p.saleCode
-                            )
-                        }
-                    }) {
-                        Text("Send")
-                    }
-                    purchaseInvoiceError?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
-                    }
-                }
-            }
-        }
-
-        item {
-            Text(
-                "Service မှတ်တမ်း",
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        vm.jobsError?.let { err ->
-            item { ErrorRetryBanner(err, onRetry = vm::retryJobs) }
-        }
-        if (vm.jobs.isEmpty() && vm.jobsError == null) {
-            item { Text("Service job မရှိသေးပါ", style = MaterialTheme.typography.bodySmall, color = TextMuted) }
-        }
-        itemsIndexed(vm.jobs, key = { index, j -> "j-${j.id}-$index" }) { _, j ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(j.jobNo ?: "-", fontWeight = FontWeight.Bold)
-                    Text(listOfNotNull(j.status, j.itemName, j.deviceType).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-                    if (!j.problemDesc.isNullOrBlank()) Text(j.problemDesc, style = MaterialTheme.typography.bodySmall)
-                    val services = (j.services ?: emptyList()).joinToString { it.name.orEmpty() }
-                    if (services.isNotBlank()) Text("Service: $services", style = MaterialTheme.typography.bodySmall)
-                    val parts = (j.parts ?: emptyList()).joinToString { "${it.productName} × ${it.qty}" }
-                    if (parts.isNotBlank()) Text("ပစ္စည်း: $parts", style = MaterialTheme.typography.bodySmall)
-                    Text("${(j.netAmount ?: 0.0).toInt()} Ks", fontWeight = FontWeight.ExtraBold, color = Primary)
-                }
-            }
-        }
-
-        item {
-            Text(
-                "Service တောင်းချက်",
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        vm.bookingsError?.let { err ->
-            item { ErrorRetryBanner(err, onRetry = vm::retryBookings) }
-        }
-        itemsIndexed(vm.bookings, key = { index, b -> "b-${b.id}-$index" }) { _, b ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(b.bookingNo ?: "-", fontWeight = FontWeight.Bold)
-                    Text(b.status ?: "", style = MaterialTheme.typography.bodySmall)
-                    Text(b.complaintNote ?: "", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-
-    selectedPurchaseForDialog?.let { p ->
-        SaleInvoiceViewerDialog(
-            purchaseSaleId = p.id,
-            saleCode = p.saleCode,
-            onDismiss = { selectedPurchaseForDialog = null }
-        )
     }
 }
 

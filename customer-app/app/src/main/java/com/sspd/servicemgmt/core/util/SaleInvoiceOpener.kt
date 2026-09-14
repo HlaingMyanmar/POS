@@ -53,6 +53,8 @@ object SaleInvoiceOpener {
 
         return withContext(Dispatchers.IO) {
             try {
+                cleanOldCache(context)
+
                 val response = fetch()
                 val body = response.body()
                 if (!response.isSuccessful || body == null) {
@@ -76,6 +78,22 @@ object SaleInvoiceOpener {
                 Result.failure(e)
             }
         }
+    }
+
+    private fun cleanOldCache(context: Context) {
+        try {
+            val cacheDir = context.cacheDir ?: return
+            val invoiceFiles = cacheDir.listFiles { _, name -> name.startsWith("invoice-") } ?: return
+            val sortedFiles = invoiceFiles.sortedBy { it.lastModified() }
+            val currentTime = System.currentTimeMillis()
+            val maxAgeMillis = 7L * 24 * 60 * 60 * 1000L // 7 days
+            for (file in sortedFiles) {
+                val age = currentTime - file.lastModified()
+                if (age > maxAgeMillis || sortedFiles.size > 15) {
+                    file.delete()
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     /**

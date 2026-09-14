@@ -18,10 +18,11 @@ class CustomerOrderShippingDecisionGuardTest {
     void shippingDecisionRecordCarriesRenegotiateFields() {
         var when = LocalDateTime.now().plusHours(2);
         var decision = new CustomerOrderPaymentService.ShippingDecision(
-                BigDecimal.ZERO, "OWN", "reschedule note", 3, false, when);
+                BigDecimal.ZERO, "OWN", "reschedule note", 3, false, true, when);
         assertFalse(decision.accept());
         assertEquals(3, decision.version());
         assertEquals(when, decision.scheduledAt());
+        assertTrue(decision.fullPaymentRequired());
         assertEquals("reschedule note", decision.reason());
     }
 

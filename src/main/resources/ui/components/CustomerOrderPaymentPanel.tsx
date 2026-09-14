@@ -1,4 +1,4 @@
-﻿import ShippingQuoteEditor from './ShippingQuoteEditor';
+import ShippingQuoteEditor from './ShippingQuoteEditor';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
@@ -23,6 +23,7 @@ export type PaymentOrder = {
   shippingWeightKg?: number;
   shippingReason?: string;
   deliveryHandler?: string | null;
+  fullPaymentRequired?: boolean;
   deliveryStatus?: string | null;
   requestedDeliveryAt?: string | null;
   deliveryScheduledAt?: string | null;
@@ -158,7 +159,7 @@ export default function CustomerOrderPaymentPanel({
     : 0;
   const remainderAtDoor = order.orderType === 'DELIVERY'
     && ['HANDED_TO_RIDER', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'DELIVERED'].includes((order.deliveryStatus || '').toUpperCase());
-  const canCollectRemainder = hasDeposit && state === 'DEPOSIT_PAID' && remainingAtShop > 0
+  const canCollectRemainder = order.deliveryHandler !== 'HANDOFF' && !order.fullPaymentRequired && hasDeposit && state === 'DEPOSIT_PAID' && remainingAtShop > 0
     && (order.orderType !== 'DELIVERY' || remainderAtDoor);
   const collectionOnly = order.paymentChoice === 'PAY_ON_COLLECTION' && !hasDeposit;
   const receivedConfirmed = Number(order.collectionAmount || 0) > 0

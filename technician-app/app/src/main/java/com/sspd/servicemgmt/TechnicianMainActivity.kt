@@ -25,6 +25,7 @@ class TechnicianMainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         TechnicianJobAlertWorker.schedule(this)
         TechnicianJobAlerts.createChannel(this)
+        com.sspd.servicemgmt.core.network.TechnicianPushRegistration.sync(this)
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -33,6 +34,7 @@ class TechnicianMainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
+                    com.sspd.servicemgmt.core.network.TechnicianPushRegistration.sync(this@TechnicianMainActivity)
                     TechnicianJobAlerts.checkAndNotify(this@TechnicianMainActivity)
                     delay(30_000)
                 }

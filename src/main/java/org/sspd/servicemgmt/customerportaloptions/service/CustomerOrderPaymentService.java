@@ -44,9 +44,10 @@ public class CustomerOrderPaymentService {
  private final CustomerLoyaltyService loyalty;
  private final AccountResolver accounts;
  private final JournalWriter journalWriter;
+ private final DeliveryPricingService deliveryPricing;
 
  public record ShippingDecision(BigDecimal amount,String handler,String reason,Integer version,Boolean accept,
-                              java.time.LocalDateTime scheduledAt) {}
+                              Boolean fullPaymentRequired, java.time.LocalDateTime scheduledAt) {}
  private void shippingReady(CustomerOrder o) {
   if("DELIVERY".equals(o.getOrderType()) && o.getShippingState()!=null
     && !Set.of("LEGACY","ACCEPTED").contains(o.getShippingState()))
@@ -61,7 +62,7 @@ public class CustomerOrderPaymentService {
  private void shippingAudit(CustomerOrder o,String action) {
   shippingJdbc.update("insert into customer_shipping_audit(order_id,quote_version,action,actor,details,created_at) values (?,?,?,?,?,?)",
    o.getId(),o.getShippingVersion(),action,actor(),
-   "handler="+o.getDeliveryHandler()+"; amount="+o.getDeliveryCharge()+"; "+o.getShippingReason(),LocalDateTime.now());
+   "handler="+o.getDeliveryHandler()+"; fullPayment="+o.isFullPaymentRequired()+"; amount="+o.getDeliveryCharge()+"; "+o.getShippingReason(),LocalDateTime.now());
  }
  @Transactional public void quoteShipping(Integer id,ShippingDecision request) {
   CustomerOrder o=locked(id);editableShipping(o);
@@ -74,8 +75,11 @@ public class CustomerOrderPaymentService {
   if("HANDOFF".equals(request.handler()) && request.amount().signum()!=0)
    throw new IllegalArgumentException("အပြင်ပို့ အပ်ရင် ဆိုင်ပို့ခ ၀ ဖြစ်ရမည် — ဘောင်ချာတွင် ပို့ခ မထည့်ပါ");
   if(request.scheduledAt()==null) throw new IllegalArgumentException("ပို့မည့် ရက်နှင့် အချိန် အတည်ပြုပါ");
+  deliveryPricing.validateRequestedAt(request.scheduledAt());
   o.setDeliveryScheduledAt(request.scheduledAt());
-  o.setDeliveryHandler(request.handler());o.setDeliveryCharge(request.amount());o.setQuotedDeliveryCharge(request.amount());
+  o.setDeliveryHandler(request.handler());
+  o.setFullPaymentRequired("HANDOFF".equals(request.handler()) || Boolean.TRUE.equals(request.fullPaymentRequired()));
+  o.setDeliveryCharge(request.amount());o.setQuotedDeliveryCharge(request.amount());
   o.setShippingReason(request.reason().trim());
   o.setShippingVersion(o.getShippingVersion()+1);
   o.setShippingState("QUOTED");
@@ -103,12 +107,15 @@ public class CustomerOrderPaymentService {
   if(request.accept()) {
    o.setShippingState("ACCEPTED");
    shippingAudit(o,"ACCEPTED");
-   changed(o,"Customer လက်ခံပြီးပါပြီ။ ငွေပေးချေနည်း ရွေးပါ — ငွေအပြည့်လွှဲ သို့မဟုတ် လက်ခံချိန်ရှင်း (စရံကြို)။");
+   changed(o,CustomerOrderDeliveryRules.requiresFullTransfer(o)
+    ? "Customer လက်ခံပြီးပါပြီ။ ဒီ order အတွက် ငွေအပြည့်အကြေ ကြိုလွှဲရပါမယ်။"
+    : "Customer လက်ခံပြီးပါပြီ။ ငွေပေးချေနည်း ရွေးပါ — ငွေအပြည့်လွှဲ သို့မဟုတ် လက်ခံချိန်ရှင်း (စရံကြို)။");
   } else {
    String customerNote = request.reason() == null ? "" : request.reason().trim();
    if(request.scheduledAt()!=null) {
     if(request.scheduledAt().isBefore(LocalDateTime.now().plusMinutes(15)))
      throw new IllegalArgumentException("ပြန်ညှိမည့် ပို့ချိန်သည် အနည်းဆုံး ၁၅ မိနစ် ကြာမှ ဖြစ်ရမည်");
+    deliveryPricing.validateRequestedAt(request.scheduledAt());
     o.setRequestedDeliveryAt(request.scheduledAt());
    }
    if(!customerNote.isBlank()) {
@@ -171,6 +178,10 @@ public class CustomerOrderPaymentService {
    throw new IllegalStateException("Payment method already chosen");
   String next = choice==null?"":choice.trim().toUpperCase();
   if(!Set.of("TRANSFER","PAY_ON_COLLECTION").contains(next)) throw new IllegalArgumentException("Invalid payment choice");
+  if(CustomerOrderDeliveryRules.requiresFullTransfer(o) && !"TRANSFER".equals(next))
+   throw new IllegalArgumentException("HANDOFF".equalsIgnoreCase(o.getDeliveryHandler())
+    ? "အခြား delivery နဲ့ ပို့မယ့် order ဖြစ်လို့ စရံပေးပြီး ကျန်ငွေကို ပစ္စည်းရောက်မှ ရှင်းလို့မရပါ။ ငွေအပြည့်အကြေ ကြိုလွှဲရပါမယ်။"
+    : "ဆိုင်က ဒီ order ကို ငွေအပြည့် ကြိုတောင်းထားလို့ စရံပေးပြီး ကျန်ငွေကို ပစ္စည်းရောက်မှ ရှင်းလို့မရပါ။ ငွေအပြည့်အကြေ ကြိုလွှဲရပါမယ်။");
   if("PICKUP".equalsIgnoreCase(o.getOrderType())) next="TRANSFER";
   o.setPaymentChoice(next);
   if("PAY_ON_COLLECTION".equals(next) || "PICKUP".equalsIgnoreCase(o.getOrderType())) applyDeposit(o);
@@ -202,6 +213,11 @@ public class CustomerOrderPaymentService {
 
  private void openHoldAfterChoice(CustomerOrder o) {
   if(o.isReservationActive() || !"NONE".equals(o.getPaymentState())) return;
+  if(CustomerOrderDeliveryRules.requiresFullTransfer(o)) {
+   o.setPaymentChoice("TRANSFER");
+   o.setDepositPercent(null);
+   o.setDepositAmount(null);
+  }
   if(total(o).signum()<=0) throw new IllegalStateException("Order total must be positive");
   boolean transfer=transferNow(o);
   o.setPaymentMethodId(null);
@@ -316,6 +332,11 @@ public class CustomerOrderPaymentService {
   if("PENDING".equalsIgnoreCase(o.getPaymentChoice()))
    throw new IllegalStateException("Customer must choose a payment method first");
   applyDeliveryHandler(o, request);
+  if(CustomerOrderDeliveryRules.requiresFullTransfer(o)) {
+   o.setPaymentChoice("TRANSFER");
+   o.setDepositPercent(null);
+   o.setDepositAmount(null);
+  }
   boolean transfer=transferNow(o);
   int minutes=request.getHoldMinutes()==null?(transfer?15:1440):request.getHoldMinutes();
   if(minutes<1 || minutes>(transfer?60:1440))throw new IllegalArgumentException("Invalid reservation duration");
@@ -354,6 +375,8 @@ public class CustomerOrderPaymentService {
    && CustomerOrderDeliveryRules.canCollectRemainder(o) && remainingDue(o).signum()>0;
   if(remainderStage) {
    var m=requireCollectionMethod(paymentMethodId);
+   if(CustomerOrderDeliveryRules.requiresFullTransfer(o) && isCash(m))
+    throw new IllegalArgumentException("အခြား delivery နဲ့ ပို့မယ့် order ဖြစ်လို့ ကျန်ငွေကို အွန်လိုင်းမှ အပြည့်အကြေ လွှဲရပါမယ်။");
    o.setCollectionPaymentMethodId(m.getId());
    o.setPaymentInstructions(isCash(m) ? "Pay the remaining amount in cash to the rider"
     : buildPayeeInstructions(m.getId()));
@@ -586,6 +609,8 @@ public class CustomerOrderPaymentService {
     throw new IllegalArgumentException("ကျန်ငွေ "+remain+" Ks နှင့် တူညီရမည်");
     method(request.getPaymentMethodId());
     var collectionMethod=methods.findById(request.getPaymentMethodId()).orElseThrow();
+    if(CustomerOrderDeliveryRules.requiresFullTransfer(o))
+     throw new IllegalStateException("အခြား delivery နဲ့ မပို့ခင် ကျန်ငွေကို အွန်လိုင်းမှ အပြည့်အကြေ လွှဲပြီး ဆိုင်က အတည်ပြုရပါမယ်။");
     if(!isCash(collectionMethod))
      throw new IllegalStateException("Online remainder requires customer transfer proof and shop approval");
     o.setCollectionPaymentMethodId(request.getPaymentMethodId());

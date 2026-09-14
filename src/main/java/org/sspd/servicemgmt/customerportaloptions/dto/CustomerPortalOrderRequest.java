@@ -24,7 +24,7 @@ public class CustomerPortalOrderRequest {
     private String deliveryPhone;
     /** Required when orderType = DELIVERY — township (kept for older clients). */
     private Integer townshipId;
-    /** Required when orderType = DELIVERY — ward for delivery charge. */
+    /** Optional ward override; township charge is used when omitted. */
     private Integer wardId;
 
     /** Customer-requested delivery local datetime (required for DELIVERY). */

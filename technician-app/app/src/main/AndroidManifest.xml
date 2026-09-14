@@ -65,6 +65,14 @@
         </activity>
 
         <service
+            android:name=".core.network.TechnicianPushMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".core.tracking.TechnicianLocationService"
             android:exported="false"
             android:foregroundServiceType="location" />

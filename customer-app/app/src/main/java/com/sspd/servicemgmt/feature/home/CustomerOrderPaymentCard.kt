@@ -1,6 +1,11 @@
-﻿package com.sspd.servicemgmt.feature.home
+package com.sspd.servicemgmt.feature.home
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.net.Uri
+import android.widget.Toast
+import java.util.Calendar
+import java.util.Locale
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -149,7 +154,7 @@ private fun isRemainderReady(order: CustomerOrder, remaining: Double): Boolean {
     val state = order.paymentState?.trim()?.uppercase().orEmpty()
     return state == "DEPOSIT_PAID" &&
         remaining > 0.0 &&
-        (order.orderType != "DELIVERY" || order.deliveryStatus in setOf(
+        (order.orderType != "DELIVERY" || order.deliveryHandler.equals("HANDOFF", ignoreCase = true) || order.deliveryStatus in setOf(
             "HANDED_TO_RIDER", "OUT_FOR_DELIVERY", "IN_TRANSIT", "DELIVERED"
         ))
 }
@@ -190,6 +195,13 @@ fun CustomerOrderPaymentCard(
     val scope = rememberCoroutineScope()
     var current by remember(order.id) { mutableStateOf(order) }
     LaunchedEffect(order) { current = order }
+    var deliveryHours by remember { mutableStateOf(DeliveryHoursConfig()) }
+    LaunchedEffect(Unit) {
+        runCatching {
+            val data = ApiClient.service.branding().body()?.data
+            deliveryHours = DeliveryHoursConfig.from(data)
+        }
+    }
 
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var image by remember(order.id) { mutableStateOf<Uri?>(null) }
@@ -305,7 +317,7 @@ fun CustomerOrderPaymentCard(
     val expired = expiry?.let { now >= it } ?: false
     val remainingSec = if (expiry != null && !expired) ((expiry - now).coerceAtLeast(0) / 1000) else 0L
     val statusUi = paymentStatusUi(state, expired && state == "AWAITING_PAYMENT")
-    val selectableChannels = if (remainderReady) channels
+    val selectableChannels = if (remainderReady && !current.deliveryHandler.equals("HANDOFF", ignoreCase = true)) channels
         else channels.filterNot { it.methodName.equals("CASH", ignoreCase = true) }
     val selectedChannel = selectableChannels.firstOrNull { it.id == selectedChannelId }
         ?: channels.firstOrNull { it.id == current.paymentMethodId }
@@ -346,9 +358,26 @@ fun CustomerOrderPaymentCard(
                             Text(it.replace('T', ' ').take(16), fontWeight = FontWeight.SemiBold)
                         }
                         if (current.shippingState == "QUOTED") {
-                            current.deliveryScheduledAt?.takeIf { it.isNotBlank() }?.let {
-                                Text("ဆိုင်အဆိုပြုချိန်", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                Text(it.replace('T', ' ').take(16), fontWeight = FontWeight.Bold, color = Primary)
+                            current.deliveryScheduledAt?.takeIf { it.isNotBlank() }?.let { scheduled ->
+                                val req = current.requestedDeliveryAt?.replace('T', ' ')?.take(16) ?: ""
+                                val sch = scheduled.replace('T', ' ').take(16)
+                                val changed = req.isNotBlank() && req != sch
+
+                                if (changed) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = WarningBg,
+                                        border = BorderStroke(1.dp, Warning.copy(alpha = 0.3f))
+                                    ) {
+                                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text("ဆိုင်အဆိုပြုချိန် (အချိန်ပြောင်းလဲထားသည် ⚠️)", style = MaterialTheme.typography.labelSmall, color = Warning, fontWeight = FontWeight.Bold)
+                                            Text(sch, fontWeight = FontWeight.Bold, color = Warning)
+                                        }
+                                    }
+                                } else {
+                                    Text("ဆိုင်အဆိုပြုချိန်", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                    Text(sch, fontWeight = FontWeight.Bold, color = Primary)
+                                }
                             }
                             Text(
                                 when (current.deliveryHandler) {
@@ -410,13 +439,48 @@ fun CustomerOrderPaymentCard(
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("အချိန်ပြန်ညှိမည်") }
                     if (renegotiateOpen) {
-                        OutlinedTextField(
-                            value = renegotiateAt,
-                            onValueChange = { renegotiateAt = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("ပို့ချိန်အသစ် (yyyy-MM-ddTHH:mm:ss)") },
-                            singleLine = true
-                        )
+                        OutlinedButton(
+                            onClick = {
+                                val cal = parseRequestedAt(renegotiateAt.takeIf { it.isNotBlank() } ?: current.requestedDeliveryAt)
+                                val minCal = minSelectableDate(deliveryHours)
+                                val datePickerDialog = DatePickerDialog(
+                                    context,
+                                    { _, y, m, d ->
+                                        cal.set(Calendar.YEAR, y)
+                                        cal.set(Calendar.MONTH, m)
+                                        cal.set(Calendar.DAY_OF_MONTH, d)
+                                        val window = windowFor(cal, deliveryHours)
+                                        val closed = deliveryClosedReason(cal, deliveryHours)
+                                        if (closed != null || window.open == false) {
+                                            Toast.makeText(context, closed ?: "ရွေးထားသောနေ့တွင် delivery ပိတ်ထားပါသည်", Toast.LENGTH_LONG).show()
+                                            return@DatePickerDialog
+                                        }
+                                        TimePickerDialog(
+                                            context,
+                                            { _, h, min ->
+                                                cal.set(Calendar.HOUR_OF_DAY, h)
+                                                cal.set(Calendar.MINUTE, min)
+                                                val next = formatRequestedAt(cal)
+                                                val err = deliveryScheduleError(next, deliveryHours)
+                                                if (err == null) renegotiateAt = next
+                                                else Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                            },
+                                            cal.get(Calendar.HOUR_OF_DAY),
+                                            cal.get(Calendar.MINUTE),
+                                            false
+                                        ).show()
+                                    },
+                                    cal.get(Calendar.YEAR),
+                                    cal.get(Calendar.MONTH),
+                                    cal.get(Calendar.DAY_OF_MONTH)
+                                )
+                                datePickerDialog.datePicker.minDate = minCal.timeInMillis
+                                datePickerDialog.show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (renegotiateAt.isBlank()) "ပို့ချိန်အသစ် ရွေးပါ (Date & Time)" else displayRequestedAt(renegotiateAt))
+                        }
                         OutlinedTextField(
                             value = renegotiateNote,
                             onValueChange = { renegotiateNote = it },
@@ -424,7 +488,7 @@ fun CustomerOrderPaymentCard(
                             label = { Text("မှတ်ချက်") }
                         )
                         OutlinedButton(
-                            enabled = !submitting && renegotiateAt.isNotBlank(),
+                            enabled = !submitting && renegotiateAt.isNotBlank() && deliveryScheduleError(renegotiateAt, deliveryHours) == null,
                             onClick = {
                                 scope.launch {
                                     submitting = true; error = null
@@ -556,6 +620,7 @@ fun CustomerOrderPaymentCard(
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("ပို့ချိန် လက်ခံပြီးပါပြီ", fontWeight = FontWeight.Bold, color = TextMain)
                 Text(
+                    if (current.deliveryHandler.equals("HANDOFF", ignoreCase = true) || current.fullPaymentRequired == true) (if (current.deliveryHandler.equals("HANDOFF", ignoreCase = true)) "အခြား delivery နဲ့ ပို့မယ့် order ဖြစ်လို့" else "ဆိုင်က ဒီ order ကို ငွေအပြည့် ကြိုတောင်းထားလို့") + " စရံပေးပြီး ကျန်ငွေကို ပစ္စည်းရောက်မှ ရှင်းလို့မရပါ။ ငွေအပြည့်အကြေ ကြိုလွှဲရပါမယ်။" else
                     "ငွေပေးချေနည်း ရွေးပါ။ အပြည့်လွှဲရင် ကျသင့်ငွေ (ပို့ခအပါ) ယခုလွှဲပါ။ လက်ခံချိန်ရှင်းရင် စရံကြိုလွှဲရပါမည်။",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
@@ -595,7 +660,7 @@ fun CustomerOrderPaymentCard(
                 ) {
                     Text("ငွေအပြည့် လွှဲမည်", fontWeight = FontWeight.Bold)
                 }
-                OutlinedButton(
+                if (!current.deliveryHandler.equals("HANDOFF", ignoreCase = true) && current.fullPaymentRequired != true) OutlinedButton(
                     onClick = {
                         choosingPay = true
                         error = null
@@ -1121,6 +1186,59 @@ fun CustomerOrderPaymentCard(
             }
         }
     }
+}
+
+private fun formatRequestedAt(cal: Calendar): String =
+    String.format(
+        Locale.US,
+        "%04d-%02d-%02dT%02d:%02d:00",
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH) + 1,
+        cal.get(Calendar.DAY_OF_MONTH),
+        cal.get(Calendar.HOUR_OF_DAY),
+        cal.get(Calendar.MINUTE)
+    )
+
+private fun parseRequestedAt(value: String?): Calendar {
+    val cal = Calendar.getInstance()
+    cal.add(Calendar.DAY_OF_MONTH, 1)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    if (value.isNullOrBlank() || value.length < 16) return cal
+    return runCatching {
+        val y = value.substring(0, 4).toInt()
+        val m = value.substring(5, 7).toInt() - 1
+        val d = value.substring(8, 10).toInt()
+        val h = value.substring(11, 13).toInt()
+        val min = value.substring(14, 16).toInt()
+        Calendar.getInstance().apply {
+            set(y, m, d, h, min, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+    }.getOrDefault(cal)
+}
+
+private fun displayRequestedAt(value: String?): String {
+    if (value.isNullOrBlank()) return "ပို့ချိန်အသစ် ရွေးပါ"
+    val cal = parseRequestedAt(value)
+    val hour24 = cal.get(Calendar.HOUR_OF_DAY)
+    val minute = cal.get(Calendar.MINUTE)
+    val amPm = if (hour24 >= 12) "PM" else "AM"
+    val hour12 = when {
+        hour24 == 0 -> 12
+        hour24 > 12 -> hour24 - 12
+        else -> hour24
+    }
+    return String.format(
+        Locale.US,
+        "%02d/%02d/%04d · %d:%02d %s",
+        cal.get(Calendar.DAY_OF_MONTH),
+        cal.get(Calendar.MONTH) + 1,
+        cal.get(Calendar.YEAR),
+        hour12,
+        minute,
+        amPm
+    )
 }
 
 @Composable

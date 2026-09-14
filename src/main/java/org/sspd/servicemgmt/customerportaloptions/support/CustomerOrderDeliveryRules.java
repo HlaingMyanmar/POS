@@ -37,7 +37,14 @@ public final class CustomerOrderDeliveryRules {
 
     public static boolean paymentReady(CustomerOrder order) {
         String pay = order.getPaymentState() == null ? "" : order.getPaymentState().trim().toUpperCase();
+        if (requiresFullTransfer(order) && "DEPOSIT_PAID".equals(pay)) return false;
         return DISPATCH_PAYMENTS.contains(pay);
+    }
+
+    public static boolean requiresFullTransfer(CustomerOrder order) {
+        return "DELIVERY".equalsIgnoreCase(order.getOrderType())
+                && (order.isFullPaymentRequired()
+                || "HANDOFF".equalsIgnoreCase(order.getDeliveryHandler() == null ? "" : order.getDeliveryHandler().trim()));
     }
 
     public static boolean dispatchReady(CustomerOrder order) {
@@ -59,6 +66,7 @@ public final class CustomerOrderDeliveryRules {
         String pay = order.getPaymentState() == null ? "" : order.getPaymentState().trim().toUpperCase();
         if (!"DEPOSIT_PAID".equals(pay)) return false;
         if (!"DELIVERY".equalsIgnoreCase(order.getOrderType())) return true;
+        if (requiresFullTransfer(order)) return true;
         return awaitingCustomerReceipt(order.getDeliveryStatus());
     }
 

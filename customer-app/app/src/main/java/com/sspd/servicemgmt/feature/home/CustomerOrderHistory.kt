@@ -22,8 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.Sort
@@ -62,9 +60,6 @@ import androidx.compose.ui.unit.Dp
 import com.sspd.servicemgmt.core.feature.CustomerAppFeatures
 import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.OrderRatingRequest
-import com.sspd.servicemgmt.core.network.ReturnLineRequest
-import com.sspd.servicemgmt.core.network.ReturnRequest
-import com.sspd.servicemgmt.core.network.ProductReturn
 import com.sspd.servicemgmt.core.network.CustomerOrder
 import com.sspd.servicemgmt.core.network.CustomerPurchase
 import com.sspd.servicemgmt.core.network.OrderDeliveryMilestone
@@ -378,7 +373,15 @@ fun CustomerOrderHistoryCard(
             } else {
             HorizontalDivider(color = BorderColor.copy(alpha = 0.8f))
 
+            if (needsAttention) {
+                PrimaryActionBanner(order)
+            }
 
+            OrderLifecycleTimeline(order)
+
+            PaymentSummaryCard(order)
+
+            SectionHeader("အချက်အလက်")
 
             Text(
                 "ပါဝင်သော ပစ္စည်းများ",
@@ -423,6 +426,8 @@ fun CustomerOrderHistoryCard(
                     }
                 }
             }
+
+            SectionHeader("ငွေပေးချေမှု")
 
                 CustomerOrderPaymentCard(
                     order,
@@ -639,8 +644,28 @@ fun CustomerOrderHistoryCard(
                         order.deliveryCurrentLocation?.takeIf { it.isNotBlank() }?.let {
                             Text("လက်ရှိနေရာ · $it", style = MaterialTheme.typography.bodySmall, color = TextMain)
                         }
-                        order.deliveryScheduledAt?.takeIf { it.isNotBlank() }?.let {
-                            Text("ပို့မည့်အချိန် · ${formatOrderDate(it)}", style = MaterialTheme.typography.bodySmall, color = TextMain)
+                        order.deliveryScheduledAt?.takeIf { it.isNotBlank() }?.let { scheduled ->
+                            val req = order.requestedDeliveryAt?.replace('T', ' ')?.take(16) ?: ""
+                            val sch = scheduled.replace('T', ' ').take(16)
+                            val changed = req.isNotBlank() && req != sch
+
+                            if (changed) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = WarningBg,
+                                    border = BorderStroke(1.dp, Warning.copy(alpha = 0.25f))
+                                ) {
+                                    Text(
+                                        "ပို့မည့်အချိန် (ဆိုင်ပြောင်းထားသည်) · ${formatOrderDate(scheduled)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Warning,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            } else {
+                                Text("ပို့မည့်အချိန် · ${formatOrderDate(scheduled)}", style = MaterialTheme.typography.bodySmall, color = TextMain)
+                            }
                         }
                         order.deliveryPersonPhone?.takeIf { it.isNotBlank() }?.let {
                             Text("ပို့သူ ဖုန်း · $it", style = MaterialTheme.typography.bodySmall, color = Primary)
@@ -665,6 +690,8 @@ fun CustomerOrderHistoryCard(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+
+            SectionHeader("လုပ်ဆောင်ရန်")
 
             CustomerReceiptConfirmBlock(
                 order = order,
@@ -861,141 +888,7 @@ private fun StarRatingBar(
     }
 }
 
-@Composable
-private fun OrderReturnBlock(order: CustomerOrder) {
-    if (!CustomerAppFeatures.ORDER_RETURNS) return
-    val saleId = order.completedSaleId ?: order.completedSale?.id ?: return
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var reason by remember(order.id) { mutableStateOf("") }
-    var qtyText by remember(order.id) { mutableStateOf(order.lines.orEmpty().associate { (it.productId ?: 0) to "0" }) }
-    var message by remember(order.id) { mutableStateOf<String?>(null) }
-    var busy by remember(order.id) { mutableStateOf(false) }
-    var formOpen by remember(order.id) { mutableStateOf(false) }
-    var existing by remember(order.id) { mutableStateOf<List<ProductReturn>>(emptyList()) }
 
-    fun reload() {
-        scope.launch {
-            try {
-                val prefs = PreferenceManager(context)
-                val res = ApiClient.service.orderReturns(ApiClient.bearer(prefs.authToken), order.id)
-                existing = res.body()?.data.orEmpty()
-            } catch (_: Exception) { }
-        }
-    }
-    LaunchedEffect(order.id) { reload() }
-
-    val chosenCount = order.lines.orEmpty().sumOf { line ->
-        val max = line.qty ?: 0
-        (qtyText[line.productId ?: 0]?.toIntOrNull() ?: 0).coerceIn(0, max)
-    }
-    val statusNames = mapOf(
-        "REQUESTED" to "ဆိုင်က စစ်ဆေးနေသည်",
-        "APPROVED" to "ပြန်ပို့ခွင့်ပြုပြီး",
-        "REJECTED" to "တောင်းဆိုချက် ငြင်းပယ်ပြီး",
-        "RETURNED" to "ဆိုင်သို့ ပစ္စည်းရောက်ပြီး",
-        "INSPECTING" to "ပစ္စည်းစစ်ဆေးနေသည်",
-        "REFUNDED" to "ငွေပြန်အမ်းပြီး",
-        "REPLACED" to "ပစ္စည်းအစားထိုးပြီး",
-        "CLOSED" to "လုပ်ငန်းစဉ် ပိတ်ပြီး"
-    )
-    val deliveryNames = mapOf(
-        "PICKUP_REQUESTED" to "Rider လာယူရန် စောင့်နေသည်",
-        "PICKED_UP" to "Rider ပစ္စည်းယူပြီး",
-        "RETURN_IN_TRANSIT" to "ဆိုင်သို့ ပို့နေသည်",
-        "RECEIVED_BY_SHOP" to "ဆိုင်က ပစ္စည်းလက်ခံပြီး"
-    )
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = SurfaceSoft,
-        border = BorderStroke(1.dp, BorderColor)
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(20.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("ပစ္စည်းပြန်ပို့ခြင်း", fontWeight = FontWeight.Bold, color = TextMain)
-                    Text("တင်ပြီးနောက် ဆိုင်စစ်ဆေးမှုနှင့် ပြန်ပို့အခြေအနေကို ဒီနေရာမှာ ကြည့်နိုင်သည်", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                }
-            }
-
-            existing.forEach { item ->
-                Surface(shape = RoundedCornerShape(12.dp), color = CardBg, border = BorderStroke(1.dp, BorderColor)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(item.returnNo ?: "Return", fontWeight = FontWeight.Bold, color = Primary)
-                            Text(statusNames[item.status] ?: item.status.orEmpty(), fontWeight = FontWeight.Bold, color = TextMain, fontSize = 12.sp)
-                        }
-                        Text(deliveryNames[item.deliveryStatus ?: "PICKUP_REQUESTED"] ?: item.deliveryStatus.orEmpty(), style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                        item.lines.forEach { line ->
-                            val replacement = line.replacementSerialNumber?.let { serial -> " → $serial" }.orEmpty()
-                            Text("• ${line.productName ?: "Product"} × ${line.qty}${replacement}", style = MaterialTheme.typography.bodySmall, color = TextMain)
-                        }
-                    }
-                }
-            }
-
-            OutlinedButton(onClick = { formOpen = !formOpen; message = null }, modifier = Modifier.fillMaxWidth().height(46.dp)) {
-                Icon(if (formOpen) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (formOpen) "တောင်းဆိုမှု form ပိတ်မည်" else "ပစ္စည်းပြန်ပို့ တောင်းဆိုမည်", fontWeight = FontWeight.Bold)
-            }
-
-            if (formOpen) {
-                Surface(shape = RoundedCornerShape(12.dp), color = CardBg, border = BorderStroke(1.dp, BorderColor)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("၁။ ပြန်ပို့မည့် ပစ္စည်းနှင့် အရေအတွက်ရွေးပါ", fontWeight = FontWeight.Bold, color = TextMain)
-                        order.lines.orEmpty().forEach { line ->
-                            val id = line.productId ?: return@forEach
-                            val max = line.qty ?: 0
-                            val qty = (qtyText[id]?.toIntOrNull() ?: 0).coerceIn(0, max)
-                            Surface(shape = RoundedCornerShape(10.dp), color = SurfaceSoft) {
-                                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(line.productName ?: "Product", fontWeight = FontWeight.SemiBold, color = TextMain, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text("ဝယ်ထား ${line.qty} ခု · ပြန်ပို့ ${qty} ခု", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                    }
-                                    OutlinedButton(onClick = { qtyText = qtyText + (id to (qty - 1).coerceAtLeast(0).toString()) }, enabled = qty > 0) { Text("−") }
-                                    Text(qty.toString(), fontWeight = FontWeight.Bold, color = TextMain)
-                                    OutlinedButton(onClick = { qtyText = qtyText + (id to (qty + 1).coerceAtMost(max).toString()) }, enabled = qty < max) { Text("+") }
-                                }
-                            }
-                        }
-                        Text("ရွေးထားသော စုစုပေါင်း $chosenCount ခု", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Primary)
-                        Text("၂။ ပြန်ပို့ရသည့် အကြောင်းရင်းရေးပါ", fontWeight = FontWeight.Bold, color = TextMain)
-                        OutlinedTextField(value = reason, onValueChange = { reason = it }, placeholder = { Text("ဥပမာ — ပစ္စည်းပျက်စီးနေသည် / မှားယွင်းရောက်ရှိသည်") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-                        Text("မှတ်ချက် — ငွေစရံပြန်အမ်းခြင်းနှင့် ပစ္စည်းပြန်ပို့ခြင်းမှာ သီးခြားလုပ်ငန်းစဉ်ဖြစ်သည်။", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                        Button(
-                            enabled = !busy && chosenCount > 0 && reason.trim().length >= 3,
-                            onClick = {
-                                val lines = order.lines.orEmpty().mapNotNull { line ->
-                                    val id = line.productId ?: return@mapNotNull null
-                                    val q = (qtyText[id]?.toIntOrNull() ?: 0).coerceIn(0, line.qty ?: 0)
-                                    if (q <= 0) null else ReturnLineRequest(id, q, null)
-                                }
-                                busy = true; message = null
-                                scope.launch {
-                                    try {
-                                        val prefs = PreferenceManager(context)
-                                        val res = ApiClient.service.requestReturn(ApiClient.bearer(prefs.authToken), order.id, ReturnRequest(reason.trim(), null, saleId, lines))
-                                        if (res.isSuccessful) {
-                                            message = "တောင်းဆိုချက် တင်ပြီးပါပြီ။ ဆိုင်က စစ်ဆေးပေးပါမည်။"
-                                            reason = ""; qtyText = order.lines.orEmpty().associate { (it.productId ?: 0) to "0" }; formOpen = false; reload()
-                                        } else message = res.body()?.message ?: "မတင်နိုင်ပါ"
-                                    } catch (e: Exception) { message = e.message ?: "မတင်နိုင်ပါ" } finally { busy = false }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                        ) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = OnPrimary, strokeWidth = 2.dp) else Text("တောင်းဆိုချက် အတည်ပြုတင်မည်", fontWeight = FontWeight.Bold) }
-                    }
-                }
-            }
-            message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Primary, fontWeight = FontWeight.SemiBold) }
-        }
-    }
-}
 @Composable
 private fun OrderRatingBlock(
     order: CustomerOrder,
@@ -1276,6 +1169,147 @@ private fun OrderLineRow(line: OrderLine) {
             fontWeight = FontWeight.Bold,
             color = TextMain
         )
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = PrimaryDark
+        )
+        Spacer(Modifier.width(8.dp))
+        HorizontalDivider(color = BorderColor.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun PrimaryActionBanner(order: CustomerOrder) {
+    val pay = order.paymentState?.trim()?.uppercase().orEmpty()
+    val awaitingReceipt = order.awaitingCustomerReceipt == true || order.customerReceiptState.equals("NOT_RECEIVED", true)
+    val needsPayment = pay in setOf("AWAITING_PAYMENT", "EXPIRED", "REJECTED") ||
+        ((pay.isBlank() || pay == "NONE") && order.status.equals("PENDING", true))
+    val (title, desc) = when {
+        awaitingReceipt -> "ပစ္စည်း လက်ထဲ ရောက်ပြီလား?" to "ရောက်ပြီဆိုရင် အောက်မှာ အတည်ပြုပေးပါ"
+        needsPayment -> "ငွေလွှဲရန် ကျန်နေပါသည်" to "အောက်က ငွေပေးချေမှု အပိုင်းမှာ ဆက်လုပ်ပါ"
+        else -> "ဆက်လုပ်ဆောင်ရန် ကျန်ပါသည်" to "အောက်မှာ အသေးစိတ် ကြည့်ပါ"
+    }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = WarningBg,
+        border = BorderStroke(1.dp, Warning.copy(alpha = 0.3f))
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, fontWeight = FontWeight.Bold, color = Warning, style = MaterialTheme.typography.titleSmall)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = TextMain)
+        }
+    }
+}
+
+@Composable
+private fun OrderLifecycleTimeline(order: CustomerOrder) {
+    val events = order.timeline.orEmpty()
+    if (events.isEmpty()) return
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        Text(
+            "အော်ဒါ ဖြစ်စဉ်",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = PrimaryDark,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        val reversed = events.asReversed().take(8)
+        reversed.forEachIndexed { index, ev ->
+            val isLatest = index == 0
+            val isLast = index == reversed.size - 1
+            val stamp = ev.at?.takeIf { it.isNotBlank() }?.let { formatOrderDate(it) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(20.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .size(if (isLatest) 12.dp else 8.dp)
+                            .clip(CircleShape)
+                            .background(if (isLatest) Primary else TextMuted.copy(alpha = 0.4f))
+                    )
+                    if (!isLast) {
+                        Box(
+                            modifier = Modifier
+                                .width(2.dp)
+                                .height(28.dp)
+                                .background(if (isLatest) Primary.copy(alpha = 0.3f) else BorderColor)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f).padding(bottom = if (!isLast) 6.dp else 0.dp)) {
+                    Text(
+                        ev.action?.replace('_', ' ') ?: "—",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (isLatest) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isLatest) Primary else TextMain
+                    )
+                    stamp?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = TextMuted, fontSize = 11.sp)
+                    }
+                    ev.details?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentSummaryCard(order: CustomerOrder) {
+    val total = order.total ?: 0.0
+    val deposit = order.depositAmount ?: 0.0
+    val remaining = order.remainingAmount ?: (total - deposit)
+    val payNow = orderPayNowAmount(order)
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = SurfaceSoft,
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "ငွေပေးချေမှု အကျဉ်း",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextMain
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("စုစုပေါင်း", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text(money(total), fontWeight = FontWeight.Bold, color = TextMain)
+            }
+            if (deposit > 0.0) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("စရံ", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    Text(money(deposit), style = MaterialTheme.typography.bodySmall, color = TextMain)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("ကျန်ငွေ", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    Text(money(remaining), style = MaterialTheme.typography.bodySmall, color = TextMain)
+                }
+            }
+            if (payNow > 0.0) {
+                HorizontalDivider(color = BorderColor)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("ပေးရန်", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = PrimaryDark)
+                    Text(money(payNow), fontWeight = FontWeight.Bold, color = Primary)
+                }
+            }
+        }
     }
 }
 
@@ -1641,20 +1675,7 @@ private fun OrderCancelledPreview() {
     }
 }
 
-@Preview(
-    name = "8 · Return Block Card",
-    showBackground = true,
-    backgroundColor = 0xFFF4F7FA,
-    widthDp = 390
-)
-@Composable
-private fun OrderReturnBlockPreview() {
-    AppTheme {
-        Surface(color = ScreenBg, modifier = Modifier.padding(12.dp)) {
-            OrderReturnBlock(sampleOrders()[3])
-        }
-    }
-}
+
 
 @Preview(
     name = "9 · Rating Block Card",

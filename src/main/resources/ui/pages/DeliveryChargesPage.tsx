@@ -66,6 +66,7 @@ const emptyTownshipForm = (regionId?: number) => ({
   id: undefined as number | undefined,
   regionId: regionId ?? 0,
   name: '',
+  deliveryCharge: '0',
   active: true,
   sortOrder: 0,
 });
@@ -206,14 +207,8 @@ const DeliveryChargesPage: React.FC = () => {
     return { regionCount, townshipCount, wardCount: tabWards.length, min, max };
   }, [regions, townships, wards, tab]);
 
-  const townshipChargeLabel = (townshipId: number) => {
-    const list = wards.filter((w) => w.townshipId === townshipId);
-    if (!list.length) return 'Charge မရှိသေး';
-    const vals = list.map((w) => Number(w.deliveryCharge) || 0);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    return min === max ? `${money(min)} Ks` : `${money(min)} – ${money(max)} Ks`;
-  };
+  const townshipChargeLabel = (township: Township) => `${money(township.deliveryCharge)} Ks`;
+
 
   const toastSaved = (title: string) =>
     Swal.fire({ icon: 'success', title, toast: true, position: 'top-end', showConfirmButton: false, timer: 1400 });
@@ -251,6 +246,7 @@ const DeliveryChargesPage: React.FC = () => {
         id: townshipForm.id,
         regionId,
         name,
+        deliveryCharge: Number(townshipForm.deliveryCharge) || 0,
         active: townshipForm.active,
         sortOrder: townshipForm.sortOrder,
       });
@@ -314,6 +310,7 @@ const DeliveryChargesPage: React.FC = () => {
       id: t.id,
       regionId: t.regionId,
       name: t.name,
+      deliveryCharge: String(t.deliveryCharge ?? 0),
       active: t.active,
       sortOrder: t.sortOrder ?? 0,
     });
@@ -611,7 +608,7 @@ const DeliveryChargesPage: React.FC = () => {
                           <p className="text-[11px] text-slate-400">{wardCount} ရပ်ကွက်</p>
                         </td>
                         <td className="whitespace-nowrap px-3 py-3 text-right text-xs font-bold text-indigo-700">
-                          {townshipChargeLabel(t.id)}
+                          {townshipChargeLabel(t)}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <StatusPill active={t.active} />
@@ -652,6 +649,19 @@ const DeliveryChargesPage: React.FC = () => {
                 placeholder="ဥပမာ — တောင်ဒဂုံ"
                 disabled={!selectedRegionId}
               />
+              <label className="block text-xs font-bold text-slate-600">
+                Overall ပို့ခ (ရပ်ကွက်မရွေးလျှင် သုံးမည်)
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={townshipForm.deliveryCharge}
+                  onChange={(e) => setTownshipForm((f) => ({ ...f, deliveryCharge: e.target.value }))}
+                  className={`${fieldClass} mt-1`}
+                  placeholder="ဥပမာ — 3000"
+                  disabled={!selectedRegionId}
+                />
+              </label>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="number"

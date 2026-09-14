@@ -1,5 +1,7 @@
 package com.sspd.servicemgmt.feature.home
 
+import android.widget.Toast
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.BackHandler
@@ -9,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,9 +45,11 @@ import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.rounded.ShoppingCart
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -174,14 +179,23 @@ private fun parseRequestedAt(value: String?): Calendar {
 private fun displayRequestedAt(value: String?): String {
     if (value.isNullOrBlank()) return "ရက်နှင့် အချိန် ရွေးပါ"
     val cal = parseRequestedAt(value)
+    val hour24 = cal.get(Calendar.HOUR_OF_DAY)
+    val minute = cal.get(Calendar.MINUTE)
+    val amPm = if (hour24 >= 12) "PM" else "AM"
+    val hour12 = when {
+        hour24 == 0 -> 12
+        hour24 > 12 -> hour24 - 12
+        else -> hour24
+    }
     return String.format(
         Locale.US,
-        "%02d/%02d/%04d · %02d:%02d",
+        "%02d/%02d/%04d · %d:%02d %s",
         cal.get(Calendar.DAY_OF_MONTH),
         cal.get(Calendar.MONTH) + 1,
         cal.get(Calendar.YEAR),
-        cal.get(Calendar.HOUR_OF_DAY),
-        cal.get(Calendar.MINUTE)
+        hour12,
+        minute,
+        amPm
     )
 }
 
@@ -224,6 +238,7 @@ fun CustomerCartScreen(
     quoteError: String? = null,
     onRetryQuote: () -> Unit = {},
     deliveryEnabled: Boolean = true,
+    deliveryHours: DeliveryHoursConfig = DeliveryHoursConfig(),
     requestedDeliveryAt: String? = null,
     onRequestedDeliveryAtChange: (String) -> Unit = {},
     onAppliedPromoChange: (String?) -> Unit = {}
@@ -314,7 +329,7 @@ fun CustomerCartScreen(
     }
     val path = checkoutPath(orderType)
     val stepIndex = path.indexOf(step).coerceAtLeast(0)
-    val fulfillmentReady = orderType != "DELIVERY" || selectedWard != null
+    val fulfillmentReady = orderType != "DELIVERY" || selectedTownship != null
     val quoteReady = orderType != "DELIVERY"
         || (!quoteLoading && quoteError.isNullOrBlank() && quotedDeliveryCharge != null)
     val recipientReady = if (deliveryMode == "PROFILE") {
@@ -322,10 +337,7 @@ fun CustomerCartScreen(
     } else {
         deliveryPhone.isNotBlank() && deliveryAddress.isNotBlank()
     }
-    val scheduleReady = orderType != "DELIVERY" || (
-        !requestedDeliveryAt.isNullOrBlank() &&
-            parseRequestedAt(requestedDeliveryAt).timeInMillis > System.currentTimeMillis()
-    )
+    val scheduleReady = orderType != "DELIVERY" || deliveryScheduleError(requestedDeliveryAt, deliveryHours) == null
 
     fun goNext() {
         val idx = path.indexOf(step)
@@ -342,7 +354,7 @@ fun CustomerCartScreen(
         CartStep.CART -> "ခြင်းတောင်း"
         CartStep.ORDER -> "ပစ္စည်းစာရင်း စစ်ဆေးရန်"
         CartStep.FULFILLMENT -> "ပို့ဆောင်ပုံ"
-        CartStep.RECIPIENT -> "လက်ခံမည့်သူနှင့် လိပ်စာ"
+        CartStep.RECIPIENT -> "လက်ခံမည့်သူ / ပို့မည့်နေရာ"
         CartStep.SCHEDULE -> "ပို့ချိန်"
         CartStep.PAYMENT -> "ငွေပေးချေနည်း"
         CartStep.CONFIRM -> "အော်ဒါတင်မည်"
@@ -549,7 +561,7 @@ fun CustomerCartScreen(
                     CheckoutNextBar(
                         caption = if (orderType == "DELIVERY") {
                             when {
-                                selectedWard == null -> "ရပ်ကွက် ရွေးပါ"
+                                selectedTownship == null -> "မြို့နယ် ရွေးပါ"
                                 quoteLoading -> "ပို့ခတွက်နေသည်…"
                                 !quoteError.isNullOrBlank() -> "ပို့ခ ပြန်တွက်ပါ"
                                 quotedDeliveryCharge != null -> money(quotedDeliveryCharge)
@@ -567,7 +579,7 @@ fun CustomerCartScreen(
             CartStep.RECIPIENT -> {
                 CheckoutStepHeader(
                     title = stepTitle(),
-                    subtitle = "အဆင့် ${stepIndex + 1} / ${path.size} · ပို့မည့်သူ",
+                    subtitle = "အဆင့် ${stepIndex + 1} / ${path.size} · ပို့မည့်နေရာ",
                     stepIndex = stepIndex,
                     totalSteps = path.size,
                     onBack = ::goBack
@@ -588,14 +600,19 @@ fun CustomerCartScreen(
                             deliveryAddress = deliveryAddress,
                             onDeliveryAddressChange = onDeliveryAddressChange,
                             profileAddress = profileAddress,
-                            profilePhone = profilePhone
+                            profilePhone = profilePhone,
+                            regionName = selectedRegion?.name,
+                            townshipName = selectedTownship?.name,
+                            wardName = selectedWard?.name,
+                            quotedCharge = quotedDeliveryCharge,
+                            onEditArea = { step = CartStep.FULFILLMENT }
                         )
                     }
                     item { Spacer(Modifier.height(4.dp)) }
                 }
                 CheckoutNextBar(
-                    caption = if (deliveryMode == "PROFILE") "Profile လိပ်စာ" else "အခြားနေရာ",
-                    detail = "လက်ခံမည့်သူနှင့် လိပ်စာ",
+                    caption = if (deliveryMode == "PROFILE") "Profile လိပ်စာ" else "အသေးစိတ်လိပ်စာ",
+                    detail = "လက်ခံမည့်သူ / ပို့မည့်နေရာ",
                     buttonLabel = "ပို့ချိန် ရွေးမည်",
                     enabled = recipientReady,
                     onClick = ::goNext
@@ -620,7 +637,8 @@ fun CustomerCartScreen(
                     item {
                         CartScheduleCard(
                             requestedDeliveryAt = requestedDeliveryAt,
-                            onRequestedDeliveryAtChange = onRequestedDeliveryAtChange
+                            onRequestedDeliveryAtChange = onRequestedDeliveryAtChange,
+                            hours = deliveryHours
                         )
                     }
                     item { Spacer(Modifier.height(4.dp)) }
@@ -1582,7 +1600,8 @@ private fun DeliveryQuotePreview(
 @Composable
 private fun CartScheduleCard(
     requestedDeliveryAt: String?,
-    onRequestedDeliveryAtChange: (String) -> Unit
+    onRequestedDeliveryAtChange: (String) -> Unit,
+    hours: DeliveryHoursConfig
 ) {
     val context = LocalContext.current
     val cal = parseRequestedAt(requestedDeliveryAt)
@@ -1602,30 +1621,73 @@ private fun CartScheduleCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Warning.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Warning.copy(alpha = 0.35f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Outlined.Warning, null, tint = Warning, modifier = Modifier.size(18.dp))
+                    Text(
+                        "အသိပေးချက် · ${scheduleHint(hours)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMain,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
             OutlinedButton(
                 onClick = {
-                    android.app.DatePickerDialog(
+                    val minCal = minSelectableDate(hours)
+                    val datePickerDialog = android.app.DatePickerDialog(
                         context,
                         { _, y, m, d ->
                             cal.set(Calendar.YEAR, y)
                             cal.set(Calendar.MONTH, m)
                             cal.set(Calendar.DAY_OF_MONTH, d)
+                            val dayError = deliveryScheduleError(
+                                formatRequestedAt(cal.apply {
+                                    val openHour = windowFor(this, hours).opensAt?.take(5)?.split(':')
+                                    set(Calendar.HOUR_OF_DAY, openHour?.getOrNull(0)?.toIntOrNull() ?: 9)
+                                    set(Calendar.MINUTE, openHour?.getOrNull(1)?.toIntOrNull() ?: 0)
+                                }),
+                                hours
+                            )
+                            if (dayError != null && !dayError.contains("အချိန်")) {
+                                Toast.makeText(context, dayError, Toast.LENGTH_LONG).show()
+                                return@DatePickerDialog
+                            }
+                            val window = windowFor(cal, hours)
+                            val openHour = window.opensAt?.take(5)?.split(':')
+                            val startHour = openHour?.getOrNull(0)?.toIntOrNull() ?: 9
                             android.app.TimePickerDialog(
                                 context,
                                 { _, h, min ->
                                     cal.set(Calendar.HOUR_OF_DAY, h)
                                     cal.set(Calendar.MINUTE, min)
-                                    onRequestedDeliveryAtChange(formatRequestedAt(cal))
+                                    val next = formatRequestedAt(cal)
+                                    val error = deliveryScheduleError(next, hours)
+                                    if (error == null) onRequestedDeliveryAtChange(next)
+                                    else Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                                 },
-                                cal.get(Calendar.HOUR_OF_DAY),
+                                cal.get(Calendar.HOUR_OF_DAY).takeIf { hour ->
+                                    val closeHour = window.closesAt?.take(5)?.split(':')?.getOrNull(0)?.toIntOrNull() ?: 18
+                                    hour in startHour until closeHour
+                                } ?: startHour,
                                 cal.get(Calendar.MINUTE),
-                                true
+                                false
                             ).show()
                         },
                         cal.get(Calendar.YEAR),
                         cal.get(Calendar.MONTH),
                         cal.get(Calendar.DAY_OF_MONTH)
-                    ).show()
+                    )
+                    datePickerDialog.datePicker.minDate = minCal.timeInMillis
+                    datePickerDialog.show()
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1640,6 +1702,9 @@ private fun CartFulfillmentCard(
     orderType: String,
     onOrderTypeChange: (String) -> Unit,
     deliveryEnabled: Boolean = true,
+    deliveryOpensAt: String = "09:00",
+    deliveryClosesAt: String = "18:00",
+    deliveryDays: String = "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY",
     locations: List<DeliveryRegion>,
     selectedRegionId: Int?,
     onRegionChange: (Int?) -> Unit,
@@ -1947,8 +2012,18 @@ private fun CartRecipientCard(
     deliveryAddress: String,
     onDeliveryAddressChange: (String) -> Unit,
     profileAddress: String?,
-    profilePhone: String?
+    profilePhone: String?,
+    regionName: String? = null,
+    townshipName: String? = null,
+    wardName: String? = null,
+    quotedCharge: Double? = null,
+    onEditArea: () -> Unit = {}
 ) {
+    val areaLine = listOfNotNull(
+        regionName?.takeIf { it.isNotBlank() },
+        townshipName?.takeIf { it.isNotBlank() },
+        wardName?.takeIf { it.isNotBlank() }
+    ).joinToString(" · ")
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = PanelShape,
@@ -1972,16 +2047,39 @@ private fun CartRecipientCard(
                 }
                 Column {
                     Text(
-                        "ပို့ဆောင်သူ",
+                        "လက်ခံမည့်သူ / ပို့မည့်နေရာ",
                         fontWeight = FontWeight.Bold,
                         color = TextMain,
                         style = MaterialTheme.typography.titleSmall
                     )
                     Text(
-                        "ပို့မည့်သူ နှင့် လက်ခံမည့်နေရာ",
+                        "ဖုန်းနှင့် အသေးစိတ်လမ်းကြောင်း",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
+                }
+            }
+            if (areaLine.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = PrimaryLight.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Outlined.Place, null, tint = Primary, modifier = Modifier.size(18.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("ပို့မည့်ဒေသ", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                            Text(areaLine, fontWeight = FontWeight.SemiBold, color = TextMain, style = MaterialTheme.typography.bodySmall)
+                            quotedCharge?.let {
+                                Text("ပို့ခ ${money(it)}", style = MaterialTheme.typography.labelSmall, color = Primary)
+                            }
+                        }
+                        TextButton(onClick = onEditArea) { Text("ပြင်မည်") }
+                    }
                 }
             }
             ChoiceChip(
@@ -2027,11 +2125,24 @@ private fun CartRecipientCard(
                     shape = FieldShape,
                     colors = cartFieldColors()
                 )
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = PrimaryLight.copy(alpha = 0.3f),
+                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f))
+                ) {
+                    Text(
+                        "မြို့နယ်/ရပ်ကွက် ရွေးပြီးပါပြီ။ ဒီမှာ အိမ်နံပါတ်နဲ့ လမ်းအမည်သာ ဖြည့်ပါ။",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Primary,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
                 OutlinedTextField(
                     value = deliveryAddress,
                     onValueChange = onDeliveryAddressChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("ပို့မည့် လိပ်စာ / Address") },
+                    label = { Text("အသေးစိတ်လိပ်စာ (အိမ်နံပါတ်၊ လမ်းအမည်)") },
+                    placeholder = { Text("ဥပမာ — အမှတ် ၁၂၊ ဗိုလ်ချုပ်လမ်း၊ ၃ လွှာ") },
                     minLines = 2,
                     maxLines = 4,
                     shape = FieldShape,

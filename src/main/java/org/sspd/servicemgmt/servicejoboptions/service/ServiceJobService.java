@@ -136,6 +136,7 @@ public class ServiceJobService {
     private final ServiceJobHandoverRepository handoverRepository;
     private final CompanySettingsRepository companySettingsRepository;
     private final CustomerNotifier customerNotifier;
+    private final org.sspd.servicemgmt.customerportaloptions.service.CustomerFcmService customerFcmService;
 
     private static final Collection<AssignmentStatus> VISIBLE_ASSIGNMENT_STATUSES = EnumSet.of(
             AssignmentStatus.PENDING,
@@ -288,6 +289,7 @@ public class ServiceJobService {
         ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
         BigDecimal previousEstimate = job.getEstimatedCost() != null ? job.getEstimatedCost() : BigDecimal.ZERO;
+        Integer previousAssignedStaffId = job.getAssignedStaff() == null ? null : job.getAssignedStaff().getId();
 
         assertEditable(job);
         assertAssignmentAcceptedForEdit(job.getId());
@@ -359,6 +361,9 @@ public class ServiceJobService {
         ServiceJobDTO updated = toDto(job);
         recordActivity(job, "UPDATED", null, job.getStatus() != null ? job.getStatus().name() : null, "Job updated");
         broadcastJobEvent( "JOB_UPDATED");
+        if (job.getAssignedStaff() != null && !java.util.Objects.equals(previousAssignedStaffId, job.getAssignedStaff().getId())) {
+            customerFcmService.sendTechnicianAlertAsync(job.getAssignedStaff().getId());
+        }
         return updated;
     }
 

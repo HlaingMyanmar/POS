@@ -30,7 +30,8 @@ class DeliveryPricingIT extends AbstractMysqlIntegrationTest {
   wardId=jdbc.queryForObject("select id from customer_delivery_wards where township_id=? and name=?",Integer.class,townshipId,"shipping-ward-"+suffix);
   jdbc.update("insert into products(name,product_code,product_type,archived,has_serial,stock_qty,quarantined_qty,customer_reserved_qty,reorder_level,warranty_months,version,selling_price) values (?,?,'New',false,false,20,0,0,0,0,0,1000)","shipping-test-"+suffix,"SHIP-"+suffix);
   productId=jdbc.queryForObject("select id from products where product_code=?",Integer.class,"SHIP-"+suffix);
-    pricing.savePolicy(new DeliveryPricingService.Policy(new BigDecimal("2.000"),new BigDecimal("1000.00"),new BigDecimal("20.000"),10,true));
+    pricing.savePolicy(new DeliveryPricingService.Policy(new BigDecimal("2.000"),new BigDecimal("1000.00"),new BigDecimal("20.000"),10,true,
+      null,null,null,null,null,null));
  }
  @Test void standardUsesBasePlusRoundedExcessWeight() {
   pricing.saveProfile(productId,new DeliveryPricingService.Profile(new BigDecimal("1.250"),"STANDARD",8));

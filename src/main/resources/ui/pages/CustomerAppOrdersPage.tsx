@@ -1,18 +1,21 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Ban,
+  Bell,
+  Check,
+  Clock,
   MapPin,
   Package,
   RefreshCw,
   Search,
   Smartphone,
   Truck,
+  Wallet,
   X,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import CustomerOrderPaymentPanel, { PaymentOrder, paymentStateLabel } from '../components/CustomerOrderPaymentPanel';
 import ShippingQuoteEditor from '../components/ShippingQuoteEditor';
-import { AppRoute } from '../types';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useCustomerOrderLiveSync } from '../hooks/useCustomerOrderLiveSync';
 import Swal from 'sweetalert2';
@@ -60,6 +63,7 @@ type Order = PaymentOrder & {
   shippingState?: string | null;
   shippingVersion?: number | null;
   shippingRenegotiated?: boolean;
+  fullPaymentRequired?: boolean;
   deliveryPersonPhone?: string | null;
   deliveredAt?: string | null;
   customerReceiptState?: string | null;
@@ -117,19 +121,6 @@ const paymentStateStyle = (s?: string | null) => {
   return 'bg-slate-100 text-slate-600';
 };
 
-const deliveryStatusStyle = (s?: string | null, receipt?: string | null) => {
-  if (receipt === 'CONFIRMED') return 'bg-emerald-100 text-emerald-800';
-  if (receipt === 'NOT_RECEIVED') return 'bg-rose-100 text-rose-800';
-  if (s === 'PENDING') return 'bg-amber-100 text-amber-800';
-  if (s === 'PACKING') return 'bg-orange-100 text-orange-800';
-  if (s === 'PACKED') return 'bg-amber-100 text-amber-800';
-  if (s === 'HANDED_TO_RIDER') return 'bg-violet-100 text-violet-800';
-  if (s === 'OUT_FOR_DELIVERY') return 'bg-sky-100 text-sky-800';
-  if (s === 'IN_TRANSIT') return 'bg-indigo-100 text-indigo-800';
-  if (s === 'DELIVERED') return 'bg-amber-100 text-amber-800';
-  return 'bg-slate-100 text-slate-500';
-};
-
 const orderTypeLabel = (t?: string | null) => {
   if (t === 'DELIVERY') return 'သွားပို့';
   if (t === 'PICKUP') return 'ဆိုင်လာယူ';
@@ -162,12 +153,14 @@ const DELIVERY_STEPS = [
 const deliveryStepsFor = (order: { deliveryHandler?: string | null }) =>
   order.deliveryHandler?.trim().toUpperCase() === 'HANDOFF' ? DELIVERY_STEPS.slice(0, 4) : DELIVERY_STEPS;
 
-const deliveryPayReady = (order: { paymentState?: string | null; status?: string | null }) => {
+const deliveryPayReady = (order: { paymentState?: string | null; status?: string | null; deliveryHandler?: string | null; fullPaymentRequired?: boolean }) => {
   const pay = (order.paymentState || '').toUpperCase();
-  return (pay === 'PAID' || pay === 'FULFILLED' || pay === 'DEPOSIT_PAID') && order.status !== 'CANCELLED';
+  return (pay === 'PAID' || pay === 'FULFILLED' || (pay === 'DEPOSIT_PAID' && order.deliveryHandler?.trim().toUpperCase() !== 'HANDOFF' && !order.fullPaymentRequired)) && order.status !== 'CANCELLED';
 };
 
 const deliveryDispatchReady = (order: {
+  deliveryHandler?: string | null;
+  fullPaymentRequired?: boolean;
   paymentState?: string | null;
   status?: string | null;
   shippingState?: string | null;
@@ -179,6 +172,7 @@ const deliveryDispatchReady = (order: {
 };
 
 const deliveryBlockedReason = (order: {
+  deliveryHandler?: string | null;
   paymentState?: string | null;
   status?: string | null;
   shippingState?: string | null;
@@ -195,6 +189,7 @@ const deliveryBlockedReason = (order: {
     return 'ပို့ချိန်/ပို့ခ အဆိုပြုချက်ကို Customer ဆီ အရင်ပို့ပြီး သူလက်ခံမှသာ ထုပ်ပိုး/ပို့နိုင်သည်။';
   }
   if (!deliveryPayReady(order)) {
+    if (order.deliveryHandler?.trim().toUpperCase() === 'HANDOFF') return 'External delivery requires full payment verified before dispatch.';
     return 'စရံရပြီး သို့မဟုတ် ငွေအပြည့်ရပြီးမှသာ ထုပ်ပိုး/ပို့ဆောင်မှု စနိုင်သည်။ ကျန်ငွေကို ပို့ရောက်ချိန် ချေနိုင်သည်။';
   }
   if (order.status !== 'CONFIRMED' && order.completedSaleId == null) {
@@ -231,6 +226,134 @@ const locationModeLabel = (m?: string | null) => {
 };
 
 const money = (n?: number | null) => Number(n || 0).toLocaleString();
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+const localYmd = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+const isTodayOrder = (order: {
+  createdAt?: string | null;
+  requestedDeliveryAt?: string | null;
+  deliveryScheduledAt?: string | null;
+}) => {
+  const today = todayYmd();
+  return [order.createdAt, order.requestedDeliveryAt, order.deliveryScheduledAt].some((value) => localYmd(value) === today);
+};
+
+const productSummary = (lines?: OrderLine[] | null) => {
+  const list = lines || [];
+  if (!list.length) return '—';
+  const first = `${list[0].productName} × ${list[0].qty}`;
+  const extra = list.length - 1;
+  return extra > 0 ? `${first} · နောက်ထပ် ${extra}` : first;
+};
+
+const productSummaryTitle = (lines?: OrderLine[] | null) =>
+  (lines || []).map((l) => `${l.productName} × ${l.qty}`).join(', ');
+
+type NextStep = {
+  label: string;
+  tone: 'now' | 'wait' | 'done' | 'alert';
+  action: 'detail' | 'payment' | 'confirm' | 'none';
+};
+
+const nextStepTone = (tone: NextStep['tone']) => {
+  if (tone === 'now') return 'bg-amber-50 text-amber-900';
+  if (tone === 'alert') return 'bg-rose-50 text-rose-800';
+  if (tone === 'done') return 'bg-emerald-50 text-emerald-800';
+  return 'bg-slate-100 text-slate-600';
+};
+
+const staffNextStep = (order: {
+  status?: string | null;
+  orderType?: string | null;
+  shippingState?: string | null;
+  shippingRenegotiated?: boolean;
+  fullPaymentRequired?: boolean;
+  paymentState?: string | null;
+  deliveryStatus?: string | null;
+  customerReceiptState?: string | null;
+  awaitingCustomerReceipt?: boolean;
+  completedSaleId?: number | null;
+}): NextStep => {
+  const ship = (order.shippingState || 'LEGACY').toUpperCase();
+  const pay = (order.paymentState || 'NONE').toUpperCase();
+  const delivery = (order.deliveryStatus || 'PENDING').toUpperCase();
+  const receipt = (order.customerReceiptState || '').toUpperCase();
+  const isDelivery = order.orderType === 'DELIVERY';
+
+  if (order.status === 'CANCELLED') return { label: 'ပယ်ဖျက်ပြီး', tone: 'done', action: 'none' };
+  if (receipt === 'NOT_RECEIVED') return { label: 'ပစ္စည်းမရောက် — ပြန်စစ်ပါ', tone: 'alert', action: 'detail' };
+  if (isDelivery && ['AWAITING_SHOP', 'NEEDS_QUOTE'].includes(ship)) {
+    return {
+      label: order.shippingRenegotiated ? 'ပို့ချိန် ပြန်ပို့ပါ' : 'ပို့ချိန် အတည်ပြုပါ',
+      tone: 'now',
+      action: 'detail',
+    };
+  }
+  if (ship === 'QUOTED') return { label: 'ဖောက်သည် လက်ခံစောင့်', tone: 'wait', action: 'none' };
+  if (['PROOF_SUBMITTED', 'CHECKING', 'REVIEW', 'LATE_REVIEW'].includes(pay)) {
+    return { label: 'ငွေလွှဲ စစ်ပါ', tone: 'now', action: 'payment' };
+  }
+  if (['REMAINDER_PROOF_SUBMITTED', 'REMAINDER_CHECKING'].includes(pay)) {
+    return { label: 'ကျန်ငွေ စစ်ပါ', tone: 'now', action: 'payment' };
+  }
+  if (order.status === 'PENDING') return { label: 'အော်ဒါ လက်ခံပါ', tone: 'now', action: 'confirm' };
+  if (pay === 'AWAITING_PAYMENT') return { label: 'ဖောက်သည် ငွေလွှဲစောင့်', tone: 'wait', action: 'none' };
+  if (pay === 'DEPOSIT_PAID') {
+    const atDoor = ['HANDED_TO_RIDER', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'DELIVERED'].includes(delivery);
+    if (isDelivery && !atDoor) return { label: 'ထုပ်ပိုး / ပို့ပါ', tone: 'now', action: 'detail' };
+    return { label: 'ကျန်ငွေ လက်ခံပါ', tone: 'now', action: 'payment' };
+  }
+  if (pay === 'PAID' && !order.completedSaleId) return { label: 'ဘောင်ချာထုတ်ပါ', tone: 'now', action: 'payment' };
+  if (order.awaitingCustomerReceipt) return { label: 'ဖောက်သည် လက်ခံစောင့်', tone: 'wait', action: 'none' };
+  if (isDelivery && pay === 'FULFILLED' && receipt !== 'CONFIRMED' && delivery !== 'DELIVERED') {
+    return { label: 'ပို့ဆောင်မှု ဆက်လုပ်ပါ', tone: 'now', action: 'detail' };
+  }
+  if (pay === 'FULFILLED' || receipt === 'CONFIRMED' || order.completedSaleId) {
+    return { label: 'ပြီးပါပြီ', tone: 'done', action: 'none' };
+  }
+  return { label: 'အသေးစိတ် ကြည့်ပါ', tone: 'wait', action: 'detail' };
+};
+
+const isOpenOrder = (order: Parameters<typeof staffNextStep>[0]) => staffNextStep(order).tone !== 'done';
+
+type DetailTab = 'overview' | 'quote' | 'delivery';
+
+const staffDetailTab = (order: {
+  status?: string | null;
+  orderType?: string | null;
+  shippingState?: string | null;
+  shippingRenegotiated?: boolean;
+  fullPaymentRequired?: boolean;
+  paymentState?: string | null;
+  deliveryStatus?: string | null;
+  customerReceiptState?: string | null;
+  awaitingCustomerReceipt?: boolean;
+  completedSaleId?: number | null;
+}): DetailTab => {
+  if (order.orderType !== 'DELIVERY') return 'overview';
+  const ship = (order.shippingState || 'LEGACY').toUpperCase();
+  const receipt = (order.customerReceiptState || '').toUpperCase();
+  const delivery = (order.deliveryStatus || 'PENDING').toUpperCase();
+  const step = staffNextStep(order);
+  if (['AWAITING_SHOP', 'NEEDS_QUOTE'].includes(ship)) return 'quote';
+  if (ship === 'QUOTED') return 'quote';
+  if (receipt === 'NOT_RECEIVED' || order.awaitingCustomerReceipt) return 'delivery';
+  if (step.action === 'detail') return 'delivery';
+  if (delivery !== 'PENDING' && receipt !== 'CONFIRMED') return 'delivery';
+  return 'overview';
+};
 
 const mapsUrl = (lat: number, lng: number) =>
   `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
@@ -305,6 +428,15 @@ const OrderDetailModal: React.FC<{
   const [deliveryPersonPhone, setDeliveryPersonPhone] = useState(order.deliveryPersonPhone || '');
   const [deliveryNote, setDeliveryNote] = useState('');
   const [savingDelivery, setSavingDelivery] = useState(false);
+  const [tab, setTab] = useState<DetailTab>(() => staffDetailTab(order));
+  const step = staffNextStep(order);
+  const ship = (order.shippingState || '').toUpperCase();
+  const quoteNeedsAction = isDelivery && ['AWAITING_SHOP', 'NEEDS_QUOTE', 'QUOTED'].includes(ship);
+  const deliveryNeedsAction = isDelivery && !quoteNeedsAction && staffDetailTab(order) === 'delivery';
+
+  useEffect(() => {
+    setTab(staffDetailTab(order));
+  }, [order.id]);
 
   useEffect(() => {
     setDeliveryStatus(order.deliveryStatus || 'PENDING');
@@ -336,7 +468,7 @@ const OrderDetailModal: React.FC<{
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
@@ -368,41 +500,79 @@ const OrderDetailModal: React.FC<{
           </button>
         </div>
 
+        {isDelivery && (
+          <div className="flex gap-1 border-b px-5 pt-1">
+            {([
+              ['overview', 'အနှစ်ချုပ်', Package],
+              ['quote', 'ပို့ချိန် / ပို့ခ', Clock],
+              ['delivery', 'ပို့ဆောင်မှု', Truck],
+            ] as const).map(([id, label, Icon]) => {
+              const active = tab === id;
+              const urgent = !active && ((id === 'quote' && quoteNeedsAction) || (id === 'delivery' && deliveryNeedsAction));
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold ${
+                    active
+                      ? 'border-indigo-600 text-indigo-700'
+                      : urgent
+                        ? 'border-transparent text-amber-800'
+                        : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Icon size={13} />
+                  {label}
+                  {urgent ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px]">လုပ်ရန်</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {isDelivery && order.requestedDeliveryAt && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="text-[11px] font-bold uppercase text-amber-700">Customer တောင်းဆိုချိန်</div>
-              <div className="text-base font-black text-amber-950">
-                {new Date(order.requestedDeliveryAt).toLocaleString()}
-              </div>
-              {order.deliveryScheduledAt && (
-                <div className="mt-1 text-sm text-amber-900">
-                  ဆိုင်အဆိုပြုချိန်: <b>{new Date(order.deliveryScheduledAt).toLocaleString()}</b>
-                </div>
-              )}
-            </div>
-          )}
-          {isDelivery && (
+          <button
+            type="button"
+            onClick={() => {
+              if (step.action === 'payment') {
+                onPayment();
+                return;
+              }
+              if (isDelivery && ['AWAITING_SHOP', 'NEEDS_QUOTE', 'QUOTED'].includes(ship)) {
+                setTab('quote');
+                return;
+              }
+              if (step.action === 'detail' || step.action === 'confirm') {
+                if (isDelivery && step.action === 'detail') setTab('delivery');
+                else setTab('overview');
+              }
+            }}
+            className={`w-full rounded-xl px-3 py-2 text-left text-sm font-semibold ${nextStepTone(step.tone)}`}
+          >
+            ယခုလုပ်ရန် · {step.label}
+          </button>
+          {tab === 'quote' && isDelivery && (
             <ShippingQuoteEditor order={order} onUpdated={onQuoteUpdated} />
           )}
-          {(order.orderType || order.townshipName || order.deliveryAddress) && (
+          {tab === 'delivery' && (order.orderType || order.townshipName || order.deliveryAddress) && (
             <div className="rounded-xl border bg-indigo-50/40 p-4">
               <div className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                 <Truck size={15} className="text-indigo-600" />
-                Delivery info
+                ပို့ဆောင်မှု
               </div>
               <div className="grid gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <span className="text-[11px] font-bold uppercase text-slate-400">Type</span>
+                  <span className="text-[11px] font-bold text-slate-400">အမျိုးအစား</span>
                   <div className="font-semibold text-slate-800">{orderTypeLabel(order.orderType)}</div>
                 </div>
                 <div>
-                  <span className="text-[11px] font-bold uppercase text-slate-400">Location mode</span>
+                  <span className="text-[11px] font-bold text-slate-400">လိပ်စာအမျိုးအစား</span>
                   <div className="font-semibold text-slate-800">{locationModeLabel(order.deliveryLocationMode)}</div>
                 </div>
                 {order.townshipName && (
                   <div>
-                    <span className="text-[11px] font-bold uppercase text-slate-400">Township</span>
+                    <span className="text-[11px] font-bold text-slate-400">မြို့နယ်</span>
                     <div className="font-semibold text-slate-800">
                       {order.townshipName}
                       {order.wardName ? ` · ${order.wardName}` : ''}
@@ -414,37 +584,37 @@ const OrderDetailModal: React.FC<{
                 )}
                 {order.orderType === 'DELIVERY' && (
                   <div>
-                    <span className="text-[11px] font-bold uppercase text-slate-400">ပို့မည့်ပုံ</span>
+                    <span className="text-[11px] font-bold text-slate-400">ပို့မည့်ပုံ</span>
                     <div className="font-semibold text-slate-800">{deliveryHandlerLabel(order.deliveryHandler)}</div>
                   </div>
                 )}
                 {order.deliveryAddress && (
                   <div className="sm:col-span-2">
-                    <span className="text-[11px] font-bold uppercase text-slate-400">Address</span>
+                    <span className="text-[11px] font-bold text-slate-400">လိပ်စာ</span>
                     <div className="text-slate-700">{order.deliveryAddress}</div>
                   </div>
                 )}
                 {order.requestedDeliveryAt && (
                   <div>
-                    <span className="text-[11px] font-bold uppercase text-slate-400">Customer တောင်းဆိုချိန်</span>
+                    <span className="text-[11px] font-bold text-slate-400">ဖောက်သည် တောင်းဆိုချိန်</span>
                     <div className="font-semibold text-slate-800">{new Date(order.requestedDeliveryAt).toLocaleString()}</div>
                   </div>
                 )}
                 {order.deliveryPhone && (
                   <div>
-                    <span className="text-[11px] font-bold uppercase text-slate-400">ပို့ဖုန်း</span>
+                    <span className="text-[11px] font-bold text-slate-400">ပို့ဖုန်း</span>
                     <div className="font-semibold text-slate-800">{order.deliveryPhone}</div>
                   </div>
                 )}
                 {order.deliveredAt && (
                   <div>
-                    <span className="text-[11px] font-bold uppercase text-slate-400">ဆိုင်က ပို့ပြီးဟု မှတ်ချိန်</span>
+                    <span className="text-[11px] font-bold text-slate-400">ဆိုင်က ပို့ပြီးဟု မှတ်ချိန်</span>
                     <div className="text-slate-700">{new Date(order.deliveredAt).toLocaleString()}</div>
                   </div>
                 )}
                 {order.customerReceivedAt && (
                   <div>
-                    <span className="text-[11px] font-bold uppercase text-slate-400">ဖောက်သည် အတည်ပြုချိန်</span>
+                    <span className="text-[11px] font-bold text-slate-400">ဖောက်သည် အတည်ပြုချိန်</span>
                     <div className="font-semibold text-emerald-800">{new Date(order.customerReceivedAt).toLocaleString()}</div>
                   </div>
                 )}
@@ -464,7 +634,7 @@ const OrderDetailModal: React.FC<{
             </div>
           )}
 
-          {isDelivery && (
+          {tab === 'delivery' && isDelivery && (
             <div className="rounded-xl border p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700">
                 <Truck size={15} className="text-indigo-600" />
@@ -501,12 +671,12 @@ const OrderDetailModal: React.FC<{
                     className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-slate-50"
                   >
                     {([
-                      ['PENDING', 'မပို့သေး (PENDING)'],
-                      ['PACKING', 'ထုပ်ပိုးနေသည် (PACKING)'],
-                      ['PACKED', 'ထုပ်ပိုးပြီး (PACKED)'],
-                      ['HANDED_TO_RIDER', 'Rider ထံ အပ်ပြီး (HANDED_TO_RIDER)'],
-                      ['OUT_FOR_DELIVERY', 'လာပို့နေပြီ (OUT_FOR_DELIVERY)'],
-                      ['IN_TRANSIT', 'လမ်းမှာ (IN_TRANSIT)'],
+                      ['PENDING', 'မပို့သေး'],
+                      ['PACKING', 'ထုပ်ပိုးနေသည်'],
+                      ['PACKED', 'ထုပ်ပိုးပြီး'],
+                      ['HANDED_TO_RIDER', 'Rider ထံ အပ်ပြီး'],
+                      ['OUT_FOR_DELIVERY', 'လာပို့နေပြီ'],
+                      ['IN_TRANSIT', 'လမ်းမှာ'],
                       ['DELIVERED', 'ဆိုင်က ပို့ပြီး (ဖောက်သည်အတည်ပြု စောင့်)'],
                     ] as const).filter(([value]) => deliveryStepsFor(order).some(step => step === value) || value === order.deliveryStatus).map(([value, label]) => (
                       <option key={value} value={value} disabled={!allowedDeliveryStatuses(order).includes(value)}>
@@ -580,13 +750,62 @@ const OrderDetailModal: React.FC<{
             </div>
           )}
 
+          {tab === 'overview' && (
+            <>
+              {isDelivery && (
+                <div className="rounded-xl border bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1 text-sm">
+                      <div className="font-bold text-slate-800">
+                        {orderTypeLabel(order.orderType)}
+                        <span className="ml-2 font-semibold text-indigo-700">
+                          {deliveryStatusLabel(order.deliveryStatus, order.customerReceiptState)}
+                        </span>
+                      </div>
+                      {(order.townshipName || order.deliveryAddress) && (
+                        <div className="text-slate-600">
+                          {order.townshipName}
+                          {order.wardName ? ` · ${order.wardName}` : ''}
+                          {order.deliveryAddress ? ` · ${order.deliveryAddress}` : ''}
+                        </div>
+                      )}
+                      {order.requestedDeliveryAt && (
+                        <div className="text-xs text-slate-500">
+                          တောင်းဆိုချိန် {new Date(order.requestedDeliveryAt).toLocaleString()}
+                          {order.deliveryScheduledAt
+                            ? ` · ပို့ချိန် ${new Date(order.deliveryScheduledAt).toLocaleString()}`
+                            : ''}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                    {quoteNeedsAction && (
+                      <button
+                        type="button"
+                        onClick={() => setTab('quote')}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900"
+                      >
+                        ပို့ချိန် / ပို့ခ
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setTab('delivery')}
+                      className="rounded-lg border border-indigo-200 px-3 py-1.5 text-[11px] font-bold text-indigo-700"
+                    >
+                      ပို့ဆောင်မှု ပြင်မည်
+                    </button>
+                    </div>
+                  </div>
+                </div>
+              )}
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
               <Package size={15} className="text-indigo-600" />
               ပစ္စည်းစာရင်း
             </div>
-            <div className="overflow-hidden rounded-xl border">
-              <table className="w-full min-w-[1050px] text-sm">
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left">ပစ္စည်း</th>
@@ -660,6 +879,8 @@ const OrderDetailModal: React.FC<{
               )}
             </div>
           )}
+            </>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-4">
@@ -667,7 +888,7 @@ const OrderDetailModal: React.FC<{
             {order.depositAmount != null ? (
               <div className="space-y-0.5">
                 <div className="text-[11px] text-slate-400">
-                စရံ {order.depositPercent ?? 0}% · {money(order.depositAmount)} ကြိုလွှဲ
+                  စရံ {order.depositPercent ?? 0}% · {money(order.depositAmount)} ကြိုလွှဲ
                   {order.remainingAmount ? ` · ကျန် ${money(order.remainingAmount)} ပို့ရောက်ချိန်` : ''}
                 </div>
                 <div className="text-[11px] font-semibold text-amber-800">စရံလွှဲပြီးမှ ပယ်ဖျက်ပါက စရံ ဆုံးရှုံးမည်</div>
@@ -687,38 +908,24 @@ const OrderDetailModal: React.FC<{
               </>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: 'အော်ဒါအားလုံး', value: tabCounts.ALL, tone: 'border-slate-200 bg-white text-slate-800' },
-          { label: 'အခုလုပ်ရန်', value: tabCounts.CONFIRM_TIME + tabCounts.VERIFY_PAYMENT, tone: 'border-amber-200 bg-amber-50 text-amber-900' },
-          { label: 'ပို့ဆောင်ရန်', value: tabCounts.DELIVER, tone: 'border-sky-200 bg-sky-50 text-sky-900' },
-          { label: 'လက်ခံမှုစစ်ရန်', value: tabCounts.RECEIPT, tone: 'border-rose-200 bg-rose-50 text-rose-900' },
-        ].map((item) => <div key={item.label} className={`rounded-xl border p-3 shadow-sm ${item.tone}`}><p className="text-xs font-semibold opacity-70">{item.label}</p><p className="mt-1 text-2xl font-black">{item.value}</p></div>)}
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Order နံပါတ်၊ Customer၊ ဖုန်း ရှာရန်" className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></div>
-          <p className="text-xs font-semibold text-slate-500">လုပ်ရန်ရှိသော order များကို အပေါ်ဆုံးတွင် အလိုအလျောက်ပြထားသည်</p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="flex flex-wrap gap-2">
             {order.status === 'PENDING' && (
               <button
                 type="button"
                 onClick={onConfirm}
-                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"
               >
-                လက်ခံ · Stock ဖယ်ထား
+                <Check size={14} />
+                လက်ခံ
               </button>
             )}
             {order.status !== 'CANCELLED' && (
               <button
                 type="button"
                 onClick={onPayment}
-                className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700"
               >
+                <Wallet size={14} />
                 ငွေပေးချေမှု
               </button>
             )}
@@ -726,16 +933,18 @@ const OrderDetailModal: React.FC<{
               <button
                 type="button"
                 onClick={onCancel}
-                className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white"
               >
+                <Ban size={14} />
                 ပယ်ဖျက်
               </button>
             )}
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border px-3 py-2 text-xs font-bold text-slate-600"
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold text-slate-600"
             >
+              <X size={14} />
               ပိတ်မည်
             </button>
           </div>
@@ -751,7 +960,10 @@ const CustomerAppOrdersPage: React.FC = () => {
   const [selected, setSelected] = useState<Order | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [search, setSearch] = useState('');
-  const [workTab, setWorkTab] = useState<'ALL' | 'CONFIRM_TIME' | 'RENEGOTIATED' | 'VERIFY_PAYMENT' | 'DELIVER' | 'RECEIPT' | 'RATINGS'>('ALL');
+  const [workTab, setWorkTab] = useState<'OPEN' | 'TODAY' | 'DONE' | 'CONFIRM_TIME' | 'VERIFY_PAYMENT' | 'DELIVER' | 'RECEIPT' | 'RATINGS'>('OPEN');
+  const [doneFrom, setDoneFrom] = useState(todayYmd);
+  const [doneTo, setDoneTo] = useState(todayYmd);
+  const [dismissedWork, setDismissedWork] = useState('');
   const [ratings, setRatings] = useState<{
     id: number;
     orderNo?: string;
@@ -765,9 +977,6 @@ const CustomerAppOrdersPage: React.FC = () => {
     hidden?: boolean;
     hideReason?: string;
   }[]>([]);
-  const proofAlertOpen = useRef(false);
-  const timeAlertOpen = useRef(false);
-  const receiptAlertOpen = useRef(false);
 
   const load = useCallback(async (opts?: { silent?: boolean; orderId?: number }) => {
     if (!opts?.silent) setLoading(true);
@@ -805,69 +1014,13 @@ const CustomerAppOrdersPage: React.FC = () => {
   useRefreshOnTabActivate(() => { void load({ silent: true }); });
   useCustomerOrderLiveSync((orderId) => load({ silent: true, orderId }));
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (timeAlertOpen.current) return;
-      const awaiting = rows.filter((o) => o.orderType === 'DELIVERY' && o.shippingState === 'AWAITING_SHOP');
-      if (!awaiting.length) return;
-      timeAlertOpen.current = true;
-      void Swal.fire({
-        icon: 'info',
-        title: 'ပို့ချိန် အတည်ပြုရန်',
-        text: `${awaiting.map((o) => o.orderNo).join(', ')} — Customer တောင်းဆိုချိန်ကို ချက်ချင်း အတည်ပြုပါ။ အဆင်မပြေရင် လုပ်ငန်းအချိန် ပို့ပါ။`,
-        confirmButtonText: 'ဖွင့်မည်',
-      }).then((res) => {
-        timeAlertOpen.current = false;
-        if (res.isConfirmed && awaiting[0]) setPaymentOrder(awaiting[0]);
-      });
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [rows]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (proofAlertOpen.current) return;
-      const pending = rows.filter((o) => o.paymentState === 'PROOF_SUBMITTED');
-      if (!pending.length) return;
-      proofAlertOpen.current = true;
-      void Swal.fire({
-        icon: 'warning',
-        title: 'ငွေလွှဲ ချက်ချင်း အတည်ပြုရန်',
-        text: `${pending.map((o) => o.orderNo).join(', ')} — ငွေလွှဲအချက်အလက် ရောက်ပြီးပါပြီ။ ချက်ချင်း အတည်ပြုမည် နှိပ်ပါ။`,
-        confirmButtonText: 'ငွေပေးချေမှု ဖွင့်မည်',
-      }).then((res) => {
-        proofAlertOpen.current = false;
-        if (res.isConfirmed && pending[0]) setPaymentOrder(pending[0]);
-      });
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [rows]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (receiptAlertOpen.current) return;
-      const missing = rows.filter((o) => (o.customerReceiptState || '').toUpperCase() === 'NOT_RECEIVED');
-      if (!missing.length) return;
-      receiptAlertOpen.current = true;
-      void Swal.fire({
-        icon: 'warning',
-        title: 'ပစ္စည်း မရောက်သေး',
-        text: `${missing.map((o) => o.orderNo).join(', ')} — ဖောက်သည်က လက်ထဲ မရောက်သေးဟု ပြောပါသည်။ ပို့ဆောင်မှု ပြန်စစ်ပါ။`,
-        confirmButtonText: 'ဖွင့်မည်',
-      }).then((res) => {
-        receiptAlertOpen.current = false;
-        if (res.isConfirmed && missing[0]) setSelected(missing[0]);
-      });
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [rows]);
-
   const patchStatus = async (id: number, status: string) => {
     if (status === 'CONFIRMED') {
       const order = rows.find((o) => o.id === id) || selected;
       const ship = (order?.shippingState || '').toUpperCase();
       if (order?.orderType === 'DELIVERY' && ship && !['LEGACY', 'ACCEPTED'].includes(ship)) {
-        setPaymentOrder(order);
+        setPaymentOrder(null);
+        setSelected(order);
         return;
       }
       const collectionOnly = order?.paymentChoice === 'PAY_ON_COLLECTION' && !(Number(order?.depositAmount) > 0);
@@ -925,28 +1078,35 @@ const CustomerAppOrdersPage: React.FC = () => {
     }
   };
 
-  const tableColSpan = 10;
+  const tableColSpan = 7;
+  const searching = search.trim().length > 0;
 
   const filteredRows = rows.filter((o) => {
     const ship = (o.shippingState || '').toUpperCase();
     const pay = (o.paymentState || '').toUpperCase();
+    if (searching) return true;
+    if (workTab === 'OPEN') return isOpenOrder(o);
+    if (workTab === 'TODAY') return isTodayOrder(o);
+    if (workTab === 'DONE') {
+      if (isOpenOrder(o)) return false;
+      const ymd = localYmd(o.createdAt);
+      return ymd >= doneFrom && ymd <= doneTo;
+    }
     if (workTab === 'CONFIRM_TIME') {
       return o.orderType === 'DELIVERY' && ship === 'AWAITING_SHOP' && o.status !== 'CANCELLED';
-    }
-    if (workTab === 'RENEGOTIATED') {
-      return o.orderType === 'DELIVERY' && ship === 'AWAITING_SHOP' && o.shippingRenegotiated === true && o.status !== 'CANCELLED';
     }
     if (workTab === 'VERIFY_PAYMENT') {
       if (['PROOF_SUBMITTED', 'CHECKING', 'REVIEW', 'LATE_REVIEW'].includes(pay)) return true;
       return pay === 'DEPOSIT_PAID' && o.orderType !== 'DELIVERY';
     }
     if (workTab === 'DELIVER') {
+      if (!isOpenOrder(o)) return false;
       return pay === 'PAID' || pay === 'FULFILLED' || (o.orderType === 'DELIVERY' && pay === 'DEPOSIT_PAID');
     }
     if (workTab === 'RECEIPT') {
       return o.awaitingCustomerReceipt === true || (o.customerReceiptState || '').toUpperCase() === 'NOT_RECEIVED';
     }
-    return true;
+    return isOpenOrder(o);
   });
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -962,15 +1122,17 @@ const CustomerAppOrdersPage: React.FC = () => {
     return urgent(a) - urgent(b) || Number(b.id) - Number(a.id);
   });
   const tabCounts = {
-    ALL: rows.length,
+    OPEN: rows.filter(isOpenOrder).length,
+    TODAY: rows.filter(isTodayOrder).length,
+    DONE: rows.filter((o) => !isOpenOrder(o) && localYmd(o.createdAt) >= doneFrom && localYmd(o.createdAt) <= doneTo).length,
     CONFIRM_TIME: rows.filter((o) => o.orderType === 'DELIVERY' && (o.shippingState || '').toUpperCase() === 'AWAITING_SHOP' && o.status !== 'CANCELLED').length,
-    RENEGOTIATED: rows.filter((o) => o.orderType === 'DELIVERY' && (o.shippingState || '').toUpperCase() === 'AWAITING_SHOP' && o.shippingRenegotiated === true && o.status !== 'CANCELLED').length,
     VERIFY_PAYMENT: rows.filter((o) => {
       const pay = (o.paymentState || '').toUpperCase();
       if (['PROOF_SUBMITTED', 'CHECKING', 'REVIEW', 'LATE_REVIEW'].includes(pay)) return true;
       return pay === 'DEPOSIT_PAID' && o.orderType !== 'DELIVERY';
     }).length,
     DELIVER: rows.filter((o) => {
+      if (!isOpenOrder(o)) return false;
       const pay = (o.paymentState || '').toUpperCase();
       return pay === 'PAID' || pay === 'FULFILLED' || (o.orderType === 'DELIVERY' && pay === 'DEPOSIT_PAID');
     }).length,
@@ -978,14 +1140,41 @@ const CustomerAppOrdersPage: React.FC = () => {
     RATINGS: ratings.length,
   };
 
-  const workTabs: { id: typeof workTab; label: string }[] = [
-    { id: 'ALL', label: `အားလုံး (${tabCounts.ALL})` },
-    { id: 'CONFIRM_TIME', label: `ပို့ချိန်အတည်ပြုရန် (${tabCounts.CONFIRM_TIME})` },
-    { id: 'RENEGOTIATED', label: `Customer ပြန်ညှိထားသည် (${tabCounts.RENEGOTIATED})` },
-    { id: 'VERIFY_PAYMENT', label: `ငွေစစ်ရန် (${tabCounts.VERIFY_PAYMENT})` },
-    { id: 'DELIVER', label: `ပို့ရန် (${tabCounts.DELIVER})` },
-    { id: 'RECEIPT', label: `ဖောက်သည်လက်ခံ (${tabCounts.RECEIPT})` },
-    { id: 'RATINGS', label: `အဆင့်သတ် (${tabCounts.RATINGS})` },
+  const timeOrders = rows.filter((o) => o.orderType === 'DELIVERY' && (o.shippingState || '').toUpperCase() === 'AWAITING_SHOP' && o.status !== 'CANCELLED');
+  const proofOrders = rows.filter((o) => ['PROOF_SUBMITTED', 'CHECKING', 'REVIEW', 'LATE_REVIEW'].includes((o.paymentState || '').toUpperCase()));
+  const receiptOrders = rows.filter((o) => (o.customerReceiptState || '').toUpperCase() === 'NOT_RECEIVED');
+  const workSignature = [
+    timeOrders.map((o) => o.id).sort((a, b) => a - b).join(','),
+    proofOrders.map((o) => o.id).sort((a, b) => a - b).join(','),
+    receiptOrders.map((o) => o.id).sort((a, b) => a - b).join(','),
+  ].join('|');
+  const workParts = [
+    timeOrders.length ? `ပို့ချိန် ${timeOrders.length}` : '',
+    proofOrders.length ? `ငွေစစ်ရန် ${proofOrders.length}` : '',
+    receiptOrders.length ? `ပစ္စည်းမရောက် ${receiptOrders.length}` : '',
+  ].filter(Boolean);
+  const showWorkBanner = workParts.length > 0 && dismissedWork !== workSignature;
+
+  const openDetail = (order: Order) => {
+    setPaymentOrder(null);
+    setSelected(order);
+  };
+  const openPayment = (order: Order) => {
+    setSelected(null);
+    setPaymentOrder(order);
+  };
+
+  const scopeTabs: { id: typeof workTab; label: string; count: number; urgent?: boolean }[] = [
+    { id: 'OPEN', label: 'လုပ်ရန်', count: tabCounts.OPEN, urgent: true },
+    { id: 'TODAY', label: 'ဒီနေ့', count: tabCounts.TODAY },
+    { id: 'DONE', label: 'ပြီးပါပြီ', count: tabCounts.DONE },
+  ];
+  const queueTabs: { id: typeof workTab; label: string; count: number; urgent?: boolean }[] = [
+    { id: 'CONFIRM_TIME', label: 'ပို့ချိန်', count: tabCounts.CONFIRM_TIME, urgent: true },
+    { id: 'VERIFY_PAYMENT', label: 'ငွေစစ်ရန်', count: tabCounts.VERIFY_PAYMENT, urgent: true },
+    { id: 'DELIVER', label: 'ပို့ရန်', count: tabCounts.DELIVER },
+    { id: 'RECEIPT', label: 'လက်ခံမှု', count: tabCounts.RECEIPT, urgent: true },
+    { id: 'RATINGS', label: 'အဆင့်သတ်', count: tabCounts.RATINGS },
   ];
 
   return (
@@ -996,63 +1185,151 @@ const CustomerAppOrdersPage: React.FC = () => {
             <Smartphone size={16} className="text-indigo-600" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Customer App Orders</h2>
-            <p className="text-xs text-slate-500">
-              ဖောက်သည် app သို့မဟုတ်{' '}
-              <Link to={AppRoute.CUSTOMER_SHOP} className="font-bold text-indigo-600">ဝဘ်ဆိုင်</Link>
-              {' '}မှ တင်သော ပစ္စည်းအော်ဒါများ —{' '}
-              <Link to={AppRoute.DELIVERY_CHARGES} className="font-bold text-indigo-600">Delivery Charges</Link>
-              {' '}သတ်မှတ် · row နှိပ်ပြီး item အသေးစိတ် ကြည့်ပါ
-            </p>
+            <h2 className="text-xl font-bold text-slate-800">ဖောက်သည် အော်ဒါများ</h2>
+            <p className="text-xs text-slate-500">ပုံမှန် · လုပ်ရန်ကျန် · ရှာရင် အော်ဒါဟောင်းပါ ထွက်မည်</p>
           </div>
         </div>
         <button onClick={() => load()} className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border rounded-lg text-xs font-medium text-slate-600">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: 'အော်ဒါအားလုံး', value: tabCounts.ALL, tone: 'border-slate-200 bg-white text-slate-800' },
-          { label: 'အခုလုပ်ရန်', value: tabCounts.CONFIRM_TIME + tabCounts.VERIFY_PAYMENT, tone: 'border-amber-200 bg-amber-50 text-amber-900' },
-          { label: 'ပို့ဆောင်ရန်', value: tabCounts.DELIVER, tone: 'border-sky-200 bg-sky-50 text-sky-900' },
-          { label: 'လက်ခံမှုစစ်ရန်', value: tabCounts.RECEIPT, tone: 'border-rose-200 bg-rose-50 text-rose-900' },
-        ].map((item) => <div key={item.label} className={`rounded-xl border p-3 shadow-sm ${item.tone}`}><p className="text-xs font-semibold opacity-70">{item.label}</p><p className="mt-1 text-2xl font-black">{item.value}</p></div>)}
-      </div>
+      {showWorkBanner && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+          <Bell size={14} className="shrink-0 text-amber-800" />
+          <p className="min-w-0 flex-1 text-xs font-semibold text-amber-950">
+            လုပ်ရန်ရှိသည် · {workParts.join(' · ')}
+          </p>
+          {timeOrders[0] && (
+            <button type="button" onClick={() => { setWorkTab('CONFIRM_TIME'); openDetail(timeOrders[0]); }} className="rounded-md bg-white px-2 py-1 text-[11px] font-bold text-amber-900">
+              ပို့ချိန် ဖွင့်
+            </button>
+          )}
+          {proofOrders[0] && (
+            <button type="button" onClick={() => { setWorkTab('VERIFY_PAYMENT'); openPayment(proofOrders[0]); }} className="rounded-md bg-white px-2 py-1 text-[11px] font-bold text-amber-900">
+              ငွေစစ်ရန်
+            </button>
+          )}
+          {receiptOrders[0] && (
+            <button type="button" onClick={() => { setWorkTab('RECEIPT'); openDetail(receiptOrders[0]); }} className="rounded-md bg-white px-2 py-1 text-[11px] font-bold text-amber-900">
+              မရောက်သေး
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setDismissedWork(workSignature)}
+            className="rounded-md p-1 text-amber-800 hover:bg-white/70"
+            aria-label="ပိတ်မည်"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-sm"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Order နံပါတ်၊ Customer၊ ဖုန်း ရှာရန်" className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></div>
-          <p className="text-xs font-semibold text-slate-500">လုပ်ရန်ရှိသော order များကို အပေါ်ဆုံးတွင် အလိုအလျောက်ပြထားသည်</p>
+          <div className="relative w-full lg:max-w-sm">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="အော်ဒါနံပါတ် / နာမည် / ဖုန်း — အားလုံးထဲမှ ရှာမည်"
+              className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-9 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="ရှာဖွေမှု ဖျက်မည်"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {workTab === 'DONE' && !searching ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
+              <label className="flex items-center gap-1">
+                စတင်
+                <input type="date" value={doneFrom} onChange={(e) => setDoneFrom(e.target.value)} className="rounded-md border px-2 py-1" />
+              </label>
+              <label className="flex items-center gap-1">
+                ပြီး
+                <input type="date" value={doneTo} onChange={(e) => setDoneTo(e.target.value)} className="rounded-md border px-2 py-1" />
+              </label>
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-500">
+              {searching ? 'ရှာဖွေမှုသည် အော်ဒါအားလုံးထဲမှ ရှာသည်' : 'အရေးကြီးသော အော်ဒါများကို အပေါ်ဆုံးတွင် ပြထားသည်'}
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-        {workTabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setWorkTab(t.id)}
-            className={`rounded-full px-3 py-1.5 text-xs font-bold border ${
-              workTab === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {scopeTabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setWorkTab(t.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                workTab === t.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600'
+              }`}
+            >
+              {t.label}
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                  workTab === t.id
+                    ? 'bg-white/20 text-white'
+                    : t.urgent && t.count > 0
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+          {queueTabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setWorkTab(t.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                workTab === t.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600'
+              }`}
+            >
+              {t.label}
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                  workTab === t.id
+                    ? 'bg-white/20 text-white'
+                    : t.urgent && t.count > 0
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {workTab === 'RATINGS' ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[1050px] text-sm">
-            <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-slate-50 text-[11px] font-bold text-slate-500">
               <tr>
-                <th className="px-4 py-2 text-left">Customer</th>
-                <th className="px-4 py-2 text-left">Order</th>
+                <th className="px-4 py-2 text-left">ဖောက်သည်</th>
+                <th className="px-4 py-2 text-left">အော်ဒါ</th>
                 <th className="px-4 py-2">ပစ္စည်း</th>
                 <th className="px-4 py-2">ပို့/ဝန်ဆောင်</th>
                 <th className="px-4 py-2 text-left">မှတ်ချက်</th>
-                <th className="px-4 py-2">Moderate</th>
+                <th className="px-4 py-2">ပြင်ဆင်ရန်</th>
               </tr>
             </thead>
             <tbody>
@@ -1094,94 +1371,118 @@ const CustomerAppOrdersPage: React.FC = () => {
         </div>
       ) : (
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[1050px] text-sm">
-          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-slate-50 text-[11px] font-bold text-slate-500">
             <tr>
-              <th className="px-4 py-2 text-left">အော်ဒါနံပါတ်</th>
+              <th className="px-4 py-2 text-left">အော်ဒါ</th>
               <th className="px-4 py-2 text-left">ဖောက်သည်</th>
-              <th className="px-4 py-2 text-left">အမျိုးအစား</th>
-              <th className="px-4 py-2 text-left">ပို့ဆောင်မှု</th>
               <th className="px-4 py-2 text-left">ပစ္စည်း</th>
-              <th className="px-4 py-2 text-left">GPS</th>
-              <th className="px-4 py-2 text-right">စုစုပေါင်း</th>
-              <th className="px-4 py-2">အခြေအနေ</th>
-              <th className="px-4 py-2">ငွေပေးချေမှု</th>
-              <th className="px-4 py-2"></th>
+              <th className="px-4 py-2 text-left">ရက်</th>
+              <th className="px-4 py-2 text-right">ငွေ</th>
+              <th className="px-4 py-2 text-left">ယခုလုပ်ရန်</th>
+              <th className="px-4 py-2 text-right">လုပ်ဆောင်ချက်</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={tableColSpan} className="py-12 text-center text-slate-400">ဖတ်နေသည်…</td></tr>
             ) : visibleRows.length === 0 ? (
-              <tr><td colSpan={tableColSpan} className="py-12 text-center text-slate-400">ဤ tab တွင် အော်ဒါ မရှိပါ</td></tr>
-            ) : visibleRows.map((o) => (
+              <tr>
+                <td colSpan={tableColSpan} className="py-12 text-center text-slate-400">
+                  {searching
+                    ? 'ရှာမတွေ့ပါ'
+                    : workTab === 'TODAY'
+                      ? 'ဒီနေ့တင် / ဒီနေ့ပို့ရမည့် အော်ဒါ မရှိပါ'
+                      : workTab === 'DONE'
+                        ? 'ဤရက်အတွင်း ပြီးသွားသော အော်ဒါ မရှိပါ'
+                        : workTab === 'OPEN'
+                          ? 'လုပ်ရန်ကျန် အော်ဒါ မရှိပါ'
+                          : 'ဤစာရင်းတွင် အော်ဒါ မရှိပါ'}
+                </td>
+              </tr>
+            ) : visibleRows.map((o) => {
+              const step = staffNextStep(o);
+              return (
               <tr
                 key={o.id}
                 className="border-t cursor-pointer transition-colors hover:bg-indigo-50/60"
-                onClick={() => setSelected(o)}
-                title="နှိပ်ပြီး item အသေးစိတ်ကြည့်မည်"
+                onClick={() => openDetail(o)}
+                title="နှိပ်ပြီး အသေးစိတ်ကြည့်မည်"
               >
-                <td className="px-4 py-3 font-semibold text-indigo-700">{o.orderNo}</td>
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-indigo-700">{o.orderNo}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {orderTypeLabel(o.orderType)}
+                    {o.orderType === 'DELIVERY' ? ` · ${deliveryStatusLabel(o.deliveryStatus, o.customerReceiptState)}` : ''}
+                  </div>
+                </td>
                 <td className="px-4 py-3">
                   <b>{o.customerName}</b>
                   <div className="text-xs text-slate-500">{o.customerPhone}</div>
                 </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                      o.orderType === 'DELIVERY'
-                        ? 'bg-indigo-50 text-indigo-700'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {orderTypeLabel(o.orderType)}
-                  </span>
+                <td className="max-w-[200px] px-4 py-3 text-xs text-slate-600" title={productSummaryTitle(o.lines)}>
+                  {productSummary(o.lines)}
                 </td>
-                <td className="px-4 py-3">
-                  {o.orderType === 'DELIVERY' ? (
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${deliveryStatusStyle(o.deliveryStatus, o.customerReceiptState)}`}>
-                      {deliveryStatusLabel(o.deliveryStatus, o.customerReceiptState)}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400">—</span>
+                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
+                  <div>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '—'}</div>
+                  {(o.deliveryScheduledAt || o.requestedDeliveryAt) && (
+                    <div className="text-[11px] text-indigo-600">
+                      ပို့ {new Date(o.deliveryScheduledAt || o.requestedDeliveryAt || '').toLocaleString()}
+                    </div>
                   )}
                 </td>
-                <td className="px-4 py-3 text-xs text-slate-600">
-                  {(o.lines || []).map((l) => `${l.productName} × ${l.qty}`).join(', ') || '—'}
+                <td className="px-4 py-3 text-right">
+                  <div className="font-bold">{money(o.total)} Ks</div>
+                  <div className="text-[11px] text-slate-500">{paymentStateLabel(o.paymentState)}</div>
                 </td>
-                <td className="px-4 py-3"><OrderGpsCell order={o} /></td>
-                <td className="px-4 py-3 text-right font-bold">{money(o.total)}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusStyle(o.status)}`}>
-                    {orderStatusLabel(o.status)}
+                <td className="px-4 py-3">
+                  <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${nextStepTone(step.tone)}`}>
+                    {step.label}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${paymentStateStyle(o.paymentState)}`}>
-                    {paymentStateLabel(o.paymentState)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right space-x-1" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={()=>setPaymentOrder(o)} className="rounded-lg border border-indigo-200 px-2 py-1 text-[11px] font-bold text-indigo-700">ငွေပေးချေမှု</button>
-                  {o.status === 'PENDING' && (
+                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                  {step.action === 'confirm' && (
                     <button
+                      type="button"
                       onClick={() => patchStatus(o.id, 'CONFIRMED')}
-                      className="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white"
+                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white"
                     >
-                      လက်ခံ · Stock ဖယ်ထား
+                      <Check size={12} />
+                      လက်ခံ
                     </button>
                   )}
-                  {(o.status === 'PENDING' || o.status === 'CONFIRMED') && (
+                  {step.action === 'payment' && (
                     <button
-                      onClick={() => patchStatus(o.id, 'CANCELLED')}
-                      className="rounded-lg bg-rose-600 px-2 py-1 text-[11px] font-bold text-white"
+                      type="button"
+                      onClick={() => openPayment(o)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white"
                     >
-                      ပယ်ဖျက်
+                      <Wallet size={12} />
+                      ငွေစစ်ရန်
+                    </button>
+                  )}
+                  {step.action === 'detail' && (
+                    <button
+                      type="button"
+                      onClick={() => openDetail(o)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700"
+                    >
+                      ဖွင့်မည်
+                    </button>
+                  )}
+                  {step.action === 'none' && (
+                    <button
+                      type="button"
+                      onClick={() => openDetail(o)}
+                      className="text-[11px] font-bold text-slate-500 hover:text-indigo-700"
+                    >
+                      ကြည့်မည်
                     </button>
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1193,7 +1494,7 @@ const CustomerAppOrdersPage: React.FC = () => {
           order={selected}
           onClose={() => setSelected(null)}
           onConfirm={() => void patchStatus(selected.id, 'CONFIRMED')}
-          onPayment={() => setPaymentOrder(selected)}
+          onPayment={() => openPayment(selected)}
           onCancel={() => void patchStatus(selected.id, 'CANCELLED')}
           onDeliverySave={(payload) => patchDelivery(selected.id, payload)}
           onQuoteUpdated={(updated) => {

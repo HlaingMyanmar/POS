@@ -471,6 +471,7 @@ fun TechnicianAppNavigation() {
                 navigation(startDestination = Screen.Login.route, route = AUTH_GRAPH) {
                     screen(Screen.Login.route) {
                         LoginScreen(onSuccess = {
+                            com.sspd.servicemgmt.core.network.TechnicianPushRegistration.sync(context)
                             nav.navigate(MAIN_GRAPH) {
                                 popUpTo(AUTH_GRAPH) { inclusive = true }
                             }

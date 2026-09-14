@@ -81,6 +81,23 @@ public class CustomerFcmService {
   }catch(Exception e){log.warn("FCM send failed for customer {}: {}",id,e.getMessage());}
  }
 
+ public void sendTechnicianAlertAsync(Integer staffId){
+  if(credentials==null||staffId==null||staffId<=0)return;
+  executor.execute(()->sendTechnicianAlert(staffId));
+ }
+ private void sendTechnicianAlert(Integer staffId){
+  try{
+   Map<String,Object> message=new LinkedHashMap<>();message.put("topic","technician_staff_"+staffId);
+   message.put("notification",Map.of("title","New service job","body","Open Technician App to view your assigned jobs"));
+   message.put("data",Map.of("type","TECHNICIAN_JOB_REFRESH"));
+   message.put("android",Map.of("priority","HIGH","notification",Map.of("channel_id","technician_new_jobs")));
+   var request=HttpRequest.newBuilder(URI.create("https://fcm.googleapis.com/v1/projects/"+credentials.projectId()+"/messages:send"))
+    .header("Authorization","Bearer "+accessToken()).header("Content-Type","application/json")
+    .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("message",message)))).build();
+   var response=http.send(request,HttpResponse.BodyHandlers.ofString());
+   if(response.statusCode()/100!=2)log.warn("FCM rejected technician alert: {}",response.statusCode());
+  }catch(Exception e){log.warn("FCM technician alert failed: {}",e.getMessage());}
+ }
  private synchronized String accessToken()throws Exception{
   if(accessToken!=null&&accessToken.expiresAt().isAfter(Instant.now().plusSeconds(60)))return accessToken.value();
   long now=Instant.now().getEpochSecond();String header=b64(json.writeValueAsBytes(Map.of("alg","RS256","typ","JWT")));

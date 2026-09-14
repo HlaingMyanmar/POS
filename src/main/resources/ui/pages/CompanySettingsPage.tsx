@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import { companySettingsService } from '../services/api';
 import { CompanySettings, setCompanySettingsCache } from '../utils/companySettings';
+import { DeliveryPolicyEditor } from '../components/ShippingSettings';
 
 const emptySettings: CompanySettings = {
   companyName: '',
@@ -396,6 +397,10 @@ const CompanySettingsPage: React.FC = () => {
                 {settings.footerNote || 'Thank you'}
               </div>
             </div>
+          </div>
+
+          <div className="lg:col-span-3">
+            <DeliveryPolicyEditor />
           </div>
         </div>
       )}

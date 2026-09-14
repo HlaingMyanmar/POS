@@ -5,6 +5,153 @@ import { api } from '../services/api';
 const fieldClass =
   'mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-50';
 
+const WEEKDAYS = [
+  ['MONDAY', 'တနင်္လာ'],
+  ['TUESDAY', 'အင်္ဂါ'],
+  ['WEDNESDAY', 'ဗုဒ္ဓဟူး'],
+  ['THURSDAY', 'ကြာသပတေး'],
+  ['FRIDAY', 'သောကြာ'],
+  ['SATURDAY', 'စနေ'],
+  ['SUNDAY', 'တနင်္ဂနွေ'],
+] as const;
+
+function sliceTime(value?: string | null, fallback = '09:00') {
+  const text = String(value || fallback);
+  return text.length >= 5 ? text.slice(0, 5) : fallback;
+}
+
+function weekdayRows(form: any) {
+  const existing = Array.isArray(form?.weekdayHours) ? form.weekdayHours : [];
+  const byDay = Object.fromEntries(existing.filter(Boolean).map((row: any) => [row.day, row]));
+  const openDays = String(form?.deliveryDays || '').split(',').filter(Boolean);
+  return WEEKDAYS.map(([day]) => {
+    const row = byDay[day];
+    return {
+      day,
+      open: row ? row.open !== false : openDays.includes(day) || openDays.length === 0,
+      opensAt: sliceTime(row?.opensAt || form?.opensAt, '09:00'),
+      closesAt: sliceTime(row?.closesAt || form?.closesAt, '18:00'),
+    };
+  });
+}
+
+function DeliveryHoursEditor({ form, setForm }: { form: any; setForm: (next: any) => void }) {
+  const rows = weekdayRows(form);
+  const closedDates: { date?: string; reason?: string }[] = Array.isArray(form.closedDates) ? form.closedDates : [];
+  const minLeadDays = form.minLeadDays == null ? 1 : Number(form.minLeadDays);
+  const patchHours = (nextRows: typeof rows) => {
+    const open = nextRows.filter(row => row.open);
+    setForm({
+      ...form,
+      weekdayHours: nextRows,
+      deliveryDays: open.map(row => row.day).join(','),
+      opensAt: open[0]?.opensAt || form.opensAt || '09:00',
+      closesAt: open[0]?.closesAt || form.closesAt || '18:00',
+    });
+  };
+  return (
+    <div className="space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+      <p className="text-sm font-black text-slate-800">နေ့စဉ် Order လက်ခံမည့်အချိန်</p>
+      <p className="text-xs text-slate-500">နေ့တစ်နေ့ချင်း ဖွင့်/ပိတ်နှင့် အချိန် သတ်မှတ်ပါ။ Customer Web နှင့် App က ဤအချိန်အတွင်းသာ ရွေးနိုင်သည်။</p>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-xs font-bold text-slate-600">ပုံသေ စချိန်
+          <input type="time" className={fieldClass} value={sliceTime(form.opensAt, '09:00')} onChange={e => setForm({ ...form, opensAt: e.target.value })}/>
+        </label>
+        <label className="text-xs font-bold text-slate-600">ပုံသေ ဆုံးချိန်
+          <input type="time" className={fieldClass} value={sliceTime(form.closesAt, '18:00')} onChange={e => setForm({ ...form, closesAt: e.target.value })}/>
+        </label>
+      </div>
+      <button
+        type="button"
+        className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-bold text-indigo-700"
+        onClick={() => patchHours(rows.map(row => row.open ? { ...row, opensAt: sliceTime(form.opensAt, '09:00'), closesAt: sliceTime(form.closesAt, '18:00') } : row))}
+      >
+        ဖွင့်ရက်အားလုံးကို ပုံသေအချိန်သို့ ကူးထည့်
+      </button>
+      <div className="space-y-2">
+        {rows.map((row, index) => {
+          const label = WEEKDAYS[index][1];
+          return (
+            <div key={row.day} className="flex flex-wrap items-center gap-2 rounded-lg border border-white bg-white/80 p-2">
+              <label className="flex min-w-[7.5rem] items-center gap-2 text-xs font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={row.open}
+                  onChange={e => patchHours(rows.map(item => item.day === row.day ? { ...item, open: e.target.checked } : item))}
+                />
+                {label}
+              </label>
+              {row.open ? (
+                <>
+                  <input type="time" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm font-semibold" value={row.opensAt} onChange={e => patchHours(rows.map(item => item.day === row.day ? { ...item, opensAt: e.target.value } : item))}/>
+                  <span className="text-xs text-slate-400">—</span>
+                  <input type="time" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm font-semibold" value={row.closesAt} onChange={e => patchHours(rows.map(item => item.day === row.day ? { ...item, closesAt: e.target.value } : item))}/>
+                </>
+              ) : (
+                <span className="text-xs font-semibold text-rose-600">ပိတ်ရက်</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <label className="block text-xs font-bold text-slate-600">
+        အနည်းဆုံး ကြိုမှာရက်
+        <input
+          type="number"
+          min={0}
+          max={30}
+          className={fieldClass}
+          value={minLeadDays}
+          onChange={e => setForm({ ...form, minLeadDays: e.target.value === '' ? 1 : Number(e.target.value) })}
+        />
+      </label>
+      <p className="text-xs text-slate-500">၀ = ယနေ့ ရွေးနိုင်သည်။ ၁ = မနက်ဖြန်မှ။</p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">အထူးပိတ်ရက်</p>
+          <button
+            type="button"
+            className="text-xs font-bold text-indigo-700"
+            onClick={() => setForm({ ...form, closedDates: [...closedDates, { date: '', reason: '' }] })}
+          >
+            ရက်ထည့်
+          </button>
+        </div>
+        {closedDates.length === 0 && <p className="text-xs text-slate-400">ရက်စွဲအလိုက် ပိတ်ရက် မရှိသေးပါ။</p>}
+        {closedDates.map((item, index) => (
+          <div key={index} className="grid gap-2 sm:grid-cols-[9rem_1fr_auto]">
+            <input
+              type="date"
+              className={fieldClass}
+              value={String(item.date || '').slice(0, 10)}
+              onChange={e => setForm({
+                ...form,
+                closedDates: closedDates.map((row, i) => i === index ? { ...row, date: e.target.value } : row),
+              })}
+            />
+            <input
+              className={fieldClass}
+              placeholder="အကြောင်းပြချက်"
+              value={item.reason || ''}
+              onChange={e => setForm({
+                ...form,
+                closedDates: closedDates.map((row, i) => i === index ? { ...row, reason: e.target.value } : row),
+              })}
+            />
+            <button
+              type="button"
+              className="rounded-lg border px-2 text-xs font-bold text-rose-600"
+              onClick={() => setForm({ ...form, closedDates: closedDates.filter((_, i) => i !== index) })}
+            >
+              ဖျက်
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ShippingEditor({ productId, policy = false }: { productId?: number; policy?: boolean }) {
   const [form, setForm] = useState<any>(null);
   const [message, setMessage] = useState('');
@@ -68,21 +215,21 @@ function ShippingEditor({ productId, policy = false }: { productId?: number; pol
       <div className="space-y-4 p-5">
         {form && (
           <>
-            {!policy && (
-              <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400">
-                ပို့ဆောင်ရေးအမျိုးအစား
-                <select
-                  className={fieldClass}
-                  value={form.shippingClass}
-                  onChange={(e) => setForm({ ...form, shippingClass: e.target.value })}
-                >
-                  <option value="STANDARD">ပုံမှန်</option>
-                  <option value="BULKY">အရွယ်ကြီး</option>
-                  <option value="MANUAL">ဆိုင်မှတွက်ရန်</option>
-                </select>
-              </label>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className={`grid gap-3 ${policy ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3'}`}>
+              {!policy && (
+                <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  ပို့ဆောင်ရေးအမျိုးအစား
+                  <select
+                    className={fieldClass}
+                    value={form.shippingClass}
+                    onChange={(e) => setForm({ ...form, shippingClass: e.target.value })}
+                  >
+                    <option value="STANDARD">ပုံမှန်</option>
+                    <option value="BULKY">အရွယ်ကြီး</option>
+                    <option value="MANUAL">ဆိုင်မှတွက်ရန်</option>
+                  </select>
+                </label>
+              )}
               {fields.map(([key, label]) => (
                 <label key={key} className="block text-[11px] font-black uppercase tracking-wider text-slate-400">
                   {label}
@@ -99,6 +246,9 @@ function ShippingEditor({ productId, policy = false }: { productId?: number; pol
                 </label>
               ))}
             </div>
+            {policy && (
+              <DeliveryHoursEditor form={form} setForm={setForm} />
+            )}
             {policy && (
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <input
@@ -122,7 +272,12 @@ function ShippingEditor({ productId, policy = false }: { productId?: number; pol
                   setBusy(true);
                   setMessage('');
                   try {
-                    await api.put(url, form);
+                    await api.put(url, {
+                      ...form,
+                      weekdayHours: policy ? weekdayRows(form) : undefined,
+                      closedDates: policy ? (Array.isArray(form.closedDates) ? form.closedDates.filter((d: any) => d?.date) : []) : undefined,
+                      minLeadDays: policy ? Number(form.minLeadDays ?? 1) : undefined,
+                    });
                     setMessage('သိမ်းပြီးပါပြီ');
                   } catch (e: any) {
                     setMessage(e.message || 'သိမ်းမရပါ');

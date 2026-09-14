@@ -6,6 +6,14 @@ import {
   DeliveryQuote,
   customerPortalService,
 } from '../../services/customerPortalApi';
+import {
+  deliveryScheduleError,
+  earliestOpeningInput,
+  scheduleHint,
+  type DeliveryHours,
+} from './deliverySchedule';
+
+export { deliveryScheduleError } from './deliverySchedule';
 
 export type DeliverySelection = {
   orderType: 'PICKUP' | 'DELIVERY';
@@ -67,6 +75,7 @@ export function CheckoutFlow({
   placing,
   pickupDepositPercent,
   deliveryEnabled = true,
+  deliveryHours,
   onPlace,
   onNeedAuth,
   onBrowse,
@@ -81,6 +90,7 @@ export function CheckoutFlow({
   placing: boolean;
   pickupDepositPercent: number;
   deliveryEnabled?: boolean;
+  deliveryHours?: DeliveryHours;
   onPlace: (promoCode?: string) => void;
   onNeedAuth: () => void;
   onBrowse: () => void;
@@ -115,15 +125,15 @@ export function CheckoutFlow({
   const ward = township?.wards?.find(w => w.id === value.wardId);
   const grandTotal = billedItems + quotedFee;
   const fulfillmentReady = value.orderType !== 'DELIVERY' || (
-    !!value.wardId
+    !!value.townshipId
     && (value.deliveryLocationMode === 'PROFILE'
       ? !!session?.address
       : !!(value.deliveryPhone?.trim() && value.deliveryAddress?.trim()))
   );
   const quoteReady = value.orderType !== 'DELIVERY'
     || (!quoteLoading && !quoteError && quote?.deliveryCharge != null);
-  const scheduleReady = value.orderType !== 'DELIVERY'
-    || (!!value.requestedDeliveryAt && new Date(value.requestedDeliveryAt).getTime() > Date.now());
+  const scheduleError = value.orderType === 'DELIVERY' ? deliveryScheduleError(value.requestedDeliveryAt, deliveryHours) : '';
+  const scheduleReady = value.orderType !== 'DELIVERY' || !scheduleError;
 
   useEffect(() => {
     customerPortalService.deliveryLocations()
@@ -165,7 +175,7 @@ export function CheckoutFlow({
     const controller = new AbortController();
     setQuote(null);
     setQuoteError('');
-    if (value.orderType !== 'DELIVERY' || !value.wardId || !session || !cart.length) {
+    if (value.orderType !== 'DELIVERY' || !value.townshipId || !session || !cart.length) {
       setQuoteLoading(false);
       return;
     }
@@ -173,6 +183,7 @@ export function CheckoutFlow({
     const timer = window.setTimeout(() => {
       customerPortalService.deliveryQuote({
         orderType: 'DELIVERY',
+        townshipId: value.townshipId,
         wardId: value.wardId,
         lines: JSON.parse(linesKey),
       }, controller.signal)
@@ -181,7 +192,7 @@ export function CheckoutFlow({
         .finally(() => { if (active) setQuoteLoading(false); });
     }, 300);
     return () => { active = false; window.clearTimeout(timer); controller.abort(); };
-  }, [linesKey, value.orderType, value.wardId, session, cart.length]);
+  }, [linesKey, value.orderType, value.townshipId, value.wardId, session, cart.length]);
 
   const path = stepsFor(value.orderType);
   const idx = Math.max(0, path.indexOf(step));
@@ -307,14 +318,26 @@ export function CheckoutFlow({
                   </p>
                 ) : (
                   <>
+                    {(township || ward) && (
+                      <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
+                        ပို့မည့်ဒေသ · {[township?.name, ward?.name].filter(Boolean).join(' · ')} — အောက်တွင် အိမ်နံပါတ်နဲ့ လမ်းအမည်သာ ဖြည့်ပါ။
+                      </p>
+                    )}
                     <input value={value.deliveryPhone || ''} onChange={e => onChange({ ...value, deliveryPhone: e.target.value })} placeholder="လက်ခံမည့်သူ ဖုန်း" className="w-full rounded-xl border px-3 py-2 text-sm" />
-                    <textarea value={value.deliveryAddress || ''} onChange={e => onChange({ ...value, deliveryAddress: e.target.value })} placeholder="ပို့မည့် လိပ်စာ" rows={2} className="w-full rounded-xl border px-3 py-2 text-sm" />
+                    <textarea
+                      value={value.deliveryAddress || ''}
+                      onChange={e => onChange({ ...value, deliveryAddress: e.target.value })}
+                      placeholder="ဥပမာ — အမှတ် ၁၂၊ ဗိုလ်ချုပ်လမ်း၊ ၃ လွှာ"
+                      aria-label="အသေးစိတ်လိပ်စာ (အိမ်နံပါတ်၊ လမ်းအမည်)"
+                      rows={2}
+                      className="w-full rounded-xl border px-3 py-2 text-sm"
+                    />
                   </>
                 )}
                 <p className="text-sm">
                   {quoteLoading ? 'ပို့ခတွက်နေသည်…'
                     : quote?.deliveryCharge != null ? `ပို့ခ ${money(quote.deliveryCharge)}`
-                    : ward ? 'ပို့ခ စောင့်နေသည်' : 'ရပ်ကွက် ရွေးပါ'}
+                    : township ? 'ပို့ခ စောင့်နေသည်' : 'မြို့နယ် ရွေးပါ'}
                 </p>
                 {quote?.weightKg != null && <p className="text-xs text-slate-500">{quote.weightKg} kg{quote.baseCharge != null ? ` · အခြေခံ ${money(quote.baseCharge)}` : ''}{quote.extraCharge != null ? ` + အလေးချိန်ကျော်ခ ${money(quote.extraCharge)}` : ''}</p>}
                 {quoteError && <p role="alert" className="text-xs text-rose-600">{quoteError}</p>}
@@ -325,7 +348,7 @@ export function CheckoutFlow({
             )}
           </div>
           <Nav
-            caption={value.orderType === 'DELIVERY' ? (quoteLoading ? 'တွက်နေသည်' : quote?.deliveryCharge != null ? money(quotedFee) : 'ရပ်ကွက် ရွေးပါ') : 'ပို့ခ မလိုပါ'}
+            caption={value.orderType === 'DELIVERY' ? (quoteLoading ? 'တွက်နေသည်' : quote?.deliveryCharge != null ? money(quotedFee) : 'မြို့နယ် ရွေးပါ') : 'ပို့ခ မလိုပါ'}
             back
             onBack={goBack}
             next={value.orderType === 'DELIVERY' ? 'ပို့ချိန် ရွေးမည်' : 'ငွေပေးချေနည်း ရွေးမည်'}
@@ -343,10 +366,13 @@ export function CheckoutFlow({
             <input
               aria-label="ပို့မည့်အချိန်"
               type="datetime-local"
+              min={earliestOpeningInput(deliveryHours)}
+              step={1800}
               className="w-full rounded-xl border p-2"
               value={toLocalInput(value.requestedDeliveryAt)}
               onChange={e => onChange({ ...value, requestedDeliveryAt: toApiDateTime(e.target.value) })}
             />
+            <p className={`text-xs ${scheduleError ? 'text-rose-600' : 'text-slate-500'}`}>{scheduleError || scheduleHint(deliveryHours)}</p>
           </div>
           <Nav
             caption={value.requestedDeliveryAt ? new Date(value.requestedDeliveryAt).toLocaleString() : 'ရက်ချိန်း ရွေးပါ'}
@@ -364,7 +390,7 @@ export function CheckoutFlow({
           <div className="space-y-2 rounded-xl border bg-white p-3 text-sm">
             <Row label="ပစ္စည်းဖိုး" value={money(itemsTotal)} />
             {value.orderType === 'DELIVERY' && (
-              <Row label="ပို့ဆောင်ခ (ခန့်မှန်း)" value={quote?.deliveryCharge != null ? money(quotedFee) : 'ရပ်ကွက် ရွေးပါ'} />
+              <Row label="ပို့ဆောင်ခ (ခန့်မှန်း)" value={quote?.deliveryCharge != null ? money(quotedFee) : 'မြို့နယ် ရွေးပါ'} />
             )}
             <Row label="စုစုပေါင်း" value={money(grandTotal)} strong />
             {value.orderType === 'DELIVERY' && value.requestedDeliveryAt && (

@@ -1,5 +1,6 @@
 package com.sspd.servicemgmt.feature.booking
 
+import android.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -198,9 +199,9 @@ private fun BookingListContent(
 
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.DateRange, null, tint = TextMuted, modifier = Modifier.size(16.dp))
-            FilterChip(selected = fromDate != null, onClick = onFromDateClick, label = { Text(fromDate ?: "မှ ရက်", fontSize = 11.sp) }, modifier = Modifier.weight(1f))
+            FilterChip(selected = fromDate != null, onClick = onFromDateClick, label = { Text(fromDate ?: "ရက် မှ", fontSize = 11.sp) }, modifier = Modifier.weight(1f))
             Text("—", color = TextMuted)
-            FilterChip(selected = toDate != null, onClick = onToDateClick, label = { Text(toDate ?: "အထိ ရက်", fontSize = 11.sp) }, modifier = Modifier.weight(1f))
+            FilterChip(selected = toDate != null, onClick = onToDateClick, label = { Text(toDate ?: "ရက် အထိ", fontSize = 11.sp) }, modifier = Modifier.weight(1f))
             if (fromDate != null || toDate != null) IconButton(onClick = onClearDateFilter) { Icon(Icons.Outlined.Clear, null, tint = Danger) }
         }
 
@@ -320,7 +321,7 @@ private fun BookingListPreviewShell(content: @Composable (Modifier: Modifier) ->
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("ပစ္စည်းလက်ခံ", fontWeight = FontWeight.ExtraBold) },
+                    title = { Text("ပစ္စည်းလက်ခံ", fontWeight = FontWeight.ExtraBold,color = Color.White) },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary, titleContentColor = Color.White),
                 )
             },
@@ -330,7 +331,7 @@ private fun BookingListPreviewShell(content: @Composable (Modifier: Modifier) ->
                     containerColor = Primary,
                     contentColor = Color.White,
                     icon = { Icon(Icons.Outlined.Add, null) },
-                    text = { Text("Booking အသစ်", fontWeight = FontWeight.Bold) },
+                    text = { Text("Booking အသစ်", fontWeight = FontWeight.Bold,color = Color.White) },
                 )
             },
         ) { padding -> content(Modifier.padding(padding)) }

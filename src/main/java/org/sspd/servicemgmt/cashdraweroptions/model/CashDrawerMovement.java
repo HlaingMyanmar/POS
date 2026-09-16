@@ -24,4 +24,11 @@ public class CashDrawerMovement {
     private LocalDateTime createdAt;
     @Column(nullable = false, columnDefinition = "TEXT")
     private String reason;
+    @Column(name = "reference_type", length = 40)
+    private String referenceType;
+    @Column(name = "reference_id")
+    private Integer referenceId;
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean reversed = Boolean.FALSE;
 }

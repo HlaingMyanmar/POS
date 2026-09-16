@@ -57,6 +57,7 @@ public class CoaSeeder implements CommandLineRunner {
         seed(AccountCode.SALES,             "Product Sales",                      AccountType.Income, incomeParent);
         seed(AccountCode.CONSULTING_REVENUE,"Consulting Revenue",                 AccountType.Income, incomeParent);
         seed(AccountCode.SERVICE_REVENUE,   "Service Revenue",                    AccountType.Income, incomeParent);
+        seed(AccountCode.DELIVERY_INCOME,   "Delivery Income",                    AccountType.Income, incomeParent);
         seed(AccountCode.COMMISSION,        "Commission",                         AccountType.Income, incomeParent);
         seed(AccountCode.INVENTORY_GAIN,    "Inventory Gain",                     AccountType.Income, incomeParent);
         seed(AccountCode.PURCHASE_RTN,      "Purchase Returns & Allowances",      AccountType.Income, incomeParent);

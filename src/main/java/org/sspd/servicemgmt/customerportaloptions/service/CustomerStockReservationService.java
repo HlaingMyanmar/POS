@@ -22,6 +22,7 @@ public class CustomerStockReservationService {
   return result;
  }
  public int reserved(Product p) { return p.getCustomerReservedQty()==null?0:p.getCustomerReservedQty(); }
+ /** Available for a walk-in/POS sale after subtracting active customer-order holds. Serials are locked so two cashiers cannot take reserved units. */
  public int availableLocked(Product p) {
   int physical;
   if(Boolean.TRUE.equals(p.getHasSerial())) {
@@ -30,6 +31,9 @@ public class CustomerStockReservationService {
     .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList().size();
   } else physical=(p.getStockQty()==null?0:p.getStockQty())-(p.getQuarantinedQty()==null?0:p.getQuarantinedQty());
   return Math.max(0, physical-reserved(p));
+ }
+ public void assertSellable(Product p, int qty) {
+  if(availableLocked(p)<qty) throw new IllegalStateException("Insufficient available stock (customer orders reserved): " + p.getName());
  }
  public Map<Integer,Integer> quantities(CustomerOrder order) {
   Map<Integer,Integer> amounts=new TreeMap<>();

@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.journaloption.entry.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,10 +43,22 @@ public class JournalWriter {
 
     private static final String ACCOUNTING_TOPIC = "/topic/accounting";
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     /**
      * True when a non-reversed original journal exists under the given reference prefix
      * (e.g. {@code SJ-001-SETTLE}). Reversal rows ({@code *-REV} / {@code reversalOf != null}) are ignored.
      */
+    @Transactional(readOnly = true)
+    public boolean hasActiveReference(String referenceNo) {
+        if (referenceNo == null || referenceNo.isBlank()) return false;
+        return journalRepository.findByReferenceNo(referenceNo)
+                .filter(journal -> journal.getReversalOf() == null)
+                .filter(journal -> !"REVERSED".equals(journal.getStatus()))
+                .isPresent();
+    }
+
     @Transactional(readOnly = true)
     public boolean hasActiveReferencePrefix(String referencePrefix) {
         if (referencePrefix == null || referencePrefix.isBlank()) return false;
@@ -56,13 +69,12 @@ public class JournalWriter {
 
     @Transactional
     public JournalEntryDTO write(JournalEntryDTO dto) {
-        if (dto.getReferenceNo() != null && !dto.getReferenceNo().isBlank()) {
-            journalRepository.findByReferenceNo(dto.getReferenceNo()).ifPresent(existing -> {
-                if (existing.getReversalOf() == null && !"REVERSED".equals(existing.getStatus())) {
-                    throw new IllegalStateException(
-                            "Journal already posted for reference: " + dto.getReferenceNo());
-                }
-            });
+        validate(dto);
+        if (dto.getReferenceNo() != null && dto.getReferenceNo().isBlank()) {
+            dto.setReferenceNo(null);
+        }
+        if (dto.getReferenceNo() != null && journalRepository.existsByReferenceNo(dto.getReferenceNo())) {
+            throw new IllegalStateException("Journal already posted for reference: " + dto.getReferenceNo());
         }
 
         BigDecimal totalDebit  = dto.getDetails().stream()
@@ -72,18 +84,28 @@ public class JournalWriter {
                 .map(d -> d.getCredit() != null ? d.getCredit() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        if (totalDebit.compareTo(BigDecimal.ZERO) <= 0 || totalCredit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Journal debit and credit totals must be greater than zero.");
+        }
         if (totalDebit.compareTo(totalCredit) != 0) {
             throw new RuntimeException(
                 "Accounting Error: Debit (" + totalDebit + ") and Credit (" + totalCredit + ") must be equal!");
         }
 
+        lockAccounts(dto.getDetails().stream().map(JournalDetailDTO::getAccountId).toList());
         JournalEntry journal = journalMapper.toEntity(dto);
         if (journal.getStatus() == null || journal.getStatus().isBlank()) journal.setStatus("POSTED");
         if (dto.getStaffId() != null) {
             journal.setStaff(staffRepository.findById(dto.getStaffId())
                     .orElseThrow(() -> new ResourceNotFoundException("Staff not found")));
         }
-        JournalEntry saved = journalRepository.save(journal);
+        JournalEntry saved;
+        try {
+            saved = journalRepository.save(journal);
+            entityManager.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new IllegalStateException("Journal already posted for reference: " + dto.getReferenceNo(), ex);
+        }
 
         for (JournalDetailDTO detailDto : dto.getDetails()) {
             ChartOfAccount account = coaRepository.findById(detailDto.getAccountId())
@@ -97,7 +119,7 @@ public class JournalWriter {
                     .credit(detailDto.getCredit())
                     .build());
 
-            updateAccountBalance(account, detailDto.getDebit(), detailDto.getCredit());
+            updateAccountBalance(account, detailDto.getDebit(), detailDto.getCredit(), saved.getEntryDate());
         }
 
         messagingTemplate.convertAndSend(ACCOUNTING_TOPIC, "JOURNAL_CREATED");
@@ -115,6 +137,7 @@ public class JournalWriter {
             if ("REVERSED".equals(journal.getStatus()) || journalRepository.findByReferenceNo(referenceNo + "-REV").isPresent()) {
                 return;
             }
+            lockAccounts(journal.getDetails().stream().map(detail -> detail.getAccount().getId()).toList());
             LocalDateTime now = LocalDateTime.now();
             JournalEntry reversal = JournalEntry.builder()
                     .entryDate(now)
@@ -128,6 +151,7 @@ public class JournalWriter {
                     .reversalReason(reason)
                     .build();
             reversal = journalRepository.save(reversal);
+            entityManager.flush();
             for (JournalDetail detail : journal.getDetails()) {
                 BigDecimal reversedDebit = detail.getCredit() != null ? detail.getCredit() : BigDecimal.ZERO;
                 BigDecimal reversedCredit = detail.getDebit() != null ? detail.getDebit() : BigDecimal.ZERO;
@@ -137,7 +161,7 @@ public class JournalWriter {
                         .debit(reversedDebit)
                         .credit(reversedCredit)
                         .build());
-                updateAccountBalance(detail.getAccount(), reversedDebit, reversedCredit);
+                updateAccountBalance(detail.getAccount(), reversedDebit, reversedCredit, reversal.getEntryDate());
             }
             journal.setStatus("REVERSED");
             journal.setReversedBy(actor);
@@ -157,30 +181,57 @@ public class JournalWriter {
                 .forEach(reference -> reverseByReferenceNo(reference, actor, reason));
     }
 
-    private void updateAccountBalance(ChartOfAccount account, BigDecimal debit, BigDecimal credit) {
-        String year = String.valueOf(LocalDateTime.now().getYear());
-        AccountBalance balance = balanceRepository
-                .findByAccountIdAndFiscalYear(account.getId(), year)
-                .orElse(new AccountBalance(null, account, year, BigDecimal.ZERO, BigDecimal.ZERO, LocalDateTime.now()));
+    private void validate(JournalEntryDTO dto) {
+        if (dto.getDetails() == null || dto.getDetails().isEmpty()) {
+            throw new IllegalArgumentException("Journal details are required");
+        }
+        for (JournalDetailDTO detail : dto.getDetails()) {
+            if (detail.getAccountId() == null) {
+                throw new IllegalArgumentException("Account is required on every journal line");
+            }
+            BigDecimal debit = detail.getDebit() != null ? detail.getDebit() : BigDecimal.ZERO;
+            BigDecimal credit = detail.getCredit() != null ? detail.getCredit() : BigDecimal.ZERO;
+            if (debit.signum() < 0 || credit.signum() < 0) {
+                throw new IllegalArgumentException("Journal debit and credit cannot be negative");
+            }
+            if (debit.signum() > 0 && credit.signum() > 0) {
+                throw new IllegalArgumentException("A journal line cannot have both debit and credit");
+            }
+            if (debit.signum() == 0 && credit.signum() == 0) {
+                throw new IllegalArgumentException("A journal line must have a debit or a credit");
+            }
+        }
+    }
+
+    private void updateAccountBalance(ChartOfAccount account, BigDecimal debit, BigDecimal credit,
+                                      LocalDateTime entryDate) {
+        LocalDateTime effectiveDate = entryDate != null ? entryDate : LocalDateTime.now();
+        String year = String.valueOf(effectiveDate.getYear());
+        // Persist preceding lines before refreshing a previously managed balance.
+        entityManager.flush();
+        AccountBalance balance = balanceRepository.findForUpdate(account.getId(), year).orElse(null);
+        if (balance == null) {
+            balance = new AccountBalance(null, account, year, BigDecimal.ZERO, BigDecimal.ZERO, LocalDateTime.now());
+        } else {
+            entityManager.refresh(balance, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
 
         String accountType = String.valueOf(account.getAccountType());
         boolean debitNormal = "Asset".equals(accountType) || "Expense".equals(accountType);
-        BigDecimal netChange = debitNormal ? debit.subtract(credit) : credit.subtract(debit);
+        BigDecimal safeDebit = debit == null ? BigDecimal.ZERO : debit;
+        BigDecimal safeCredit = credit == null ? BigDecimal.ZERO : credit;
+        BigDecimal netChange = debitNormal ? safeDebit.subtract(safeCredit) : safeCredit.subtract(safeDebit);
 
         balance.setCurrentBalance(balance.getCurrentBalance().add(netChange));
         balance.setLastUpdated(LocalDateTime.now());
         balanceRepository.save(balance);
     }
 
-    private void reverseAccountBalance(ChartOfAccount account, BigDecimal debit, BigDecimal credit) {
-        String year = String.valueOf(LocalDateTime.now().getYear());
-        balanceRepository.findByAccountIdAndFiscalYear(account.getId(), year).ifPresent(balance -> {
-            String accountType = String.valueOf(account.getAccountType());
-            boolean debitNormal = "Asset".equals(accountType) || "Expense".equals(accountType);
-            BigDecimal netChange = debitNormal ? credit.subtract(debit) : debit.subtract(credit);
-            balance.setCurrentBalance(balance.getCurrentBalance().add(netChange));
-            balance.setLastUpdated(LocalDateTime.now());
-            balanceRepository.save(balance);
-        });
+    private void lockAccounts(java.util.List<Integer> accountIds) {
+        // Parent locks also serialize creation of missing fiscal-year balances.
+        accountIds.stream().distinct().sorted().forEach(id ->
+                coaRepository.findByIdForUpdate(id).orElseThrow(() ->
+                        new ResourceNotFoundException("Account not found with ID: " + id)));
     }
+
 }

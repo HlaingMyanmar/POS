@@ -20,14 +20,14 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
 
     // တစ်ခုတည်းသော account code အတွက် net credit (Income normal balance)
     @Query("SELECT COALESCE(SUM(jd.credit) - SUM(jd.debit), 0) FROM JournalDetail jd " +
-           "WHERE jd.account.code = :code AND jd.journalEntry.entryDate BETWEEN :from AND :to")
+           "WHERE jd.account.code = :code AND jd.journalEntry.entryDate >= :from AND jd.journalEntry.entryDate < :to")
     BigDecimal netCreditByCode(@Param("code") String code,
                                @Param("from") LocalDateTime from,
                                @Param("to") LocalDateTime to);
 
     // တစ်ခုတည်းသော account code အတွက် net debit (Expense normal balance)
     @Query("SELECT COALESCE(SUM(jd.debit) - SUM(jd.credit), 0) FROM JournalDetail jd " +
-           "WHERE jd.account.code = :code AND jd.journalEntry.entryDate BETWEEN :from AND :to")
+           "WHERE jd.account.code = :code AND jd.journalEntry.entryDate >= :from AND jd.journalEntry.entryDate < :to")
     BigDecimal netDebitByCode(@Param("code") String code,
                               @Param("from") LocalDateTime from,
                               @Param("to") LocalDateTime to);
@@ -38,7 +38,7 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
            "FROM JournalDetail jd " +
            "WHERE jd.account.accountType = :type " +
            "AND jd.account.code NOT IN :excludeCodes " +
-           "AND jd.journalEntry.entryDate BETWEEN :from AND :to " +
+           "AND jd.journalEntry.entryDate >= :from AND jd.journalEntry.entryDate < :to " +
            "GROUP BY jd.account.code, jd.account.accountName " +
            "ORDER BY jd.account.code")
     List<Object[]> sumCreditNetExclude(@Param("type") AccountType type,
@@ -52,7 +52,7 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
            "FROM JournalDetail jd " +
            "WHERE jd.account.accountType = :type " +
            "AND jd.account.code NOT IN :excludeCodes " +
-           "AND jd.journalEntry.entryDate BETWEEN :from AND :to " +
+           "AND jd.journalEntry.entryDate >= :from AND jd.journalEntry.entryDate < :to " +
            "GROUP BY jd.account.code, jd.account.accountName " +
            "ORDER BY jd.account.code")
     List<Object[]> sumDebitNetExclude(@Param("type") AccountType type,
@@ -65,7 +65,7 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
     @Query("SELECT jd.account.code, jd.account.accountName, jd.account.accountType, " +
            "COALESCE(SUM(jd.debit), 0), COALESCE(SUM(jd.credit), 0) " +
            "FROM JournalDetail jd " +
-           "WHERE jd.journalEntry.entryDate <= :asOf " +
+           "WHERE jd.journalEntry.entryDate < :asOf " +
            "GROUP BY jd.account.code, jd.account.accountName, jd.account.accountType " +
            "ORDER BY jd.account.accountType, jd.account.code")
     List<Object[]> trialBalance(@Param("asOf") LocalDateTime asOf);
@@ -77,7 +77,7 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
            "COALESCE(SUM(jd.debit) - SUM(jd.credit), 0) " +
            "FROM JournalDetail jd " +
            "WHERE jd.account.accountType = :type " +
-           "AND jd.journalEntry.entryDate <= :asOf " +
+           "AND jd.journalEntry.entryDate < :asOf " +
            "GROUP BY jd.account.code, jd.account.accountName " +
            "ORDER BY jd.account.code")
     List<Object[]> netDebitBalanceByType(@Param("type") AccountType type,
@@ -88,7 +88,7 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
            "COALESCE(SUM(jd.credit) - SUM(jd.debit), 0) " +
            "FROM JournalDetail jd " +
            "WHERE jd.account.accountType = :type " +
-           "AND jd.journalEntry.entryDate <= :asOf " +
+           "AND jd.journalEntry.entryDate < :asOf " +
            "GROUP BY jd.account.code, jd.account.accountName " +
            "ORDER BY jd.account.code")
     List<Object[]> netCreditBalanceByType(@Param("type") AccountType type,
@@ -96,13 +96,13 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
 
     // Aggregate net debit for a type (for P/L in balance sheet)
     @Query("SELECT COALESCE(SUM(jd.debit) - SUM(jd.credit), 0) FROM JournalDetail jd " +
-           "WHERE jd.account.accountType = :type AND jd.journalEntry.entryDate <= :asOf")
+           "WHERE jd.account.accountType = :type AND jd.journalEntry.entryDate < :asOf")
     BigDecimal totalNetDebitByType(@Param("type") AccountType type,
                                    @Param("asOf") LocalDateTime asOf);
 
     // Aggregate net credit for a type (for P/L in balance sheet)
     @Query("SELECT COALESCE(SUM(jd.credit) - SUM(jd.debit), 0) FROM JournalDetail jd " +
-           "WHERE jd.account.accountType = :type AND jd.journalEntry.entryDate <= :asOf")
+           "WHERE jd.account.accountType = :type AND jd.journalEntry.entryDate < :asOf")
     BigDecimal totalNetCreditByType(@Param("type") AccountType type,
                                     @Param("asOf") LocalDateTime asOf);
 }

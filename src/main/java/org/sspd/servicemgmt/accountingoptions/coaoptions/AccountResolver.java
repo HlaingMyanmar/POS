@@ -43,6 +43,7 @@ public class AccountResolver {
     public ChartOfAccount inventoryGain()   { return get(AccountCode.INVENTORY_GAIN); }
     public ChartOfAccount inventoryOver()   { return get(AccountCode.INVENTORY_OVER); }
     public ChartOfAccount serviceRevenue() { return get(AccountCode.SERVICE_REVENUE); }
+    public ChartOfAccount deliveryIncome() { return get(AccountCode.DELIVERY_INCOME); }
     public ChartOfAccount commission()     { return get(AccountCode.COMMISSION); }
     public ChartOfAccount otherIncome()    { return get(AccountCode.OTHER_INCOME); }
 

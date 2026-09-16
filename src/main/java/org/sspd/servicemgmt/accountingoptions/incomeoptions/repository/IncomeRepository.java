@@ -18,7 +18,7 @@ public interface IncomeRepository extends JpaRepository<Income, Integer> {
         SELECT COALESCE(SUM(i.amount), 0)
         FROM Income i
         WHERE (:from IS NULL OR i.incomeDate >= :from)
-          AND (:to   IS NULL OR i.incomeDate <= :to)
+          AND (:to   IS NULL OR i.incomeDate < :to)
         """)
     BigDecimal sumInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

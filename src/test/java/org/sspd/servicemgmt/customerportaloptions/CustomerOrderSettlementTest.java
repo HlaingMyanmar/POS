@@ -128,7 +128,11 @@ class CustomerOrderSettlementTest {
         PaymentMethod wave = new PaymentMethod();
         wave.setId(8);
         wave.setActive(true);
+        PaymentMethod deposit = new PaymentMethod();
+        deposit.setId(3);
+        deposit.setActive(true);
         when(methods.findById(8)).thenReturn(Optional.of(wave));
+        when(methods.findById(3)).thenReturn(Optional.of(deposit));
 
         OrderPaymentRequest request = new OrderPaymentRequest();
         request.setAction("REFUNDED");
@@ -146,12 +150,11 @@ class CustomerOrderSettlementTest {
         assertEquals(8, order.getSettlementPaymentMethodId());
         assertEquals("WAVE-RF-1", order.getSettlementReference());
         ArgumentCaptor<PaymentTransaction> captor = ArgumentCaptor.forClass(PaymentTransaction.class);
-        verify(txs).save(captor.capture());
-        assertEquals(ReferenceType.Customer_Order, captor.getValue().getReferenceType());
-        assertEquals(42, captor.getValue().getReferenceId());
-        assertEquals(new BigDecimal("-10000.00"), captor.getValue().getAmount());
-        assertEquals("WAVE-RF-1", captor.getValue().getTransactionNo());
-        assertEquals(8, captor.getValue().getPaymentMethod().getId());
+        verify(txs, times(2)).save(captor.capture());
+        assertEquals(new BigDecimal("30000.00"), captor.getAllValues().get(0).getAmount());
+        assertEquals(new BigDecimal("-10000.00"), captor.getAllValues().get(1).getAmount());
+        assertEquals("WAVE-RF-1", captor.getAllValues().get(1).getTransactionNo());
+        assertEquals(8, captor.getAllValues().get(1).getPaymentMethod().getId());
         verify(stock).release(order);
     }
 
@@ -162,7 +165,11 @@ class CustomerOrderSettlementTest {
         PaymentMethod wave = new PaymentMethod();
         wave.setId(8);
         wave.setActive(true);
+        PaymentMethod deposit = new PaymentMethod();
+        deposit.setId(3);
+        deposit.setActive(true);
         when(methods.findById(8)).thenReturn(Optional.of(wave));
+        when(methods.findById(3)).thenReturn(Optional.of(deposit));
         CustomerOrder order = depositPaid();
         when(orders.findLocked(42)).thenReturn(Optional.of(order));
 

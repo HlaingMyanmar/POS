@@ -10,7 +10,12 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.reposito
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
 import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
+import org.sspd.servicemgmt.purchaseoptions.model.Purchase;
+import org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.model.PurchaseReturn;
+import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnRepository;
+import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
+import org.sspd.servicemgmt.supplieroptions.model.Supplier;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -34,7 +39,7 @@ class PurchaseReturnAccountingRegressionTest {
         JournalWriter writer = mock(JournalWriter.class);
         AccountResolver accounts = mock(AccountResolver.class);
         when(accounts.supplierAdvance()).thenReturn(account(11));
-        when(accounts.purchaseRtn()).thenReturn(account(22));
+        when(accounts.inventory()).thenReturn(account(22));
         PurchaseReturnService service = construct(Map.of(
                 JournalWriter.class, writer,
                 AccountResolver.class, accounts));
@@ -64,7 +69,7 @@ class PurchaseReturnAccountingRegressionTest {
         AccountResolver accounts = mock(AccountResolver.class);
         CashDrawerService cashDrawer = mock(CashDrawerService.class);
         PaymentTransactionRepository transactions = mock(PaymentTransactionRepository.class);
-        when(accounts.purchaseRtn()).thenReturn(account(22));
+        when(accounts.inventory()).thenReturn(account(22));
         when(accounts.cash()).thenReturn(account(31));
         PurchaseReturnService service = construct(Map.of(
                 JournalWriter.class, writer,
@@ -103,7 +108,7 @@ class PurchaseReturnAccountingRegressionTest {
         JournalWriter writer = mock(JournalWriter.class);
         AccountResolver accounts = mock(AccountResolver.class);
         when(accounts.supplierAdvance()).thenReturn(account(11));
-        when(accounts.purchaseRtn()).thenReturn(account(22));
+        when(accounts.inventory()).thenReturn(account(22));
         when(accounts.transportation()).thenReturn(account(33));
         PurchaseReturnService service = construct(Map.of(JournalWriter.class, writer, AccountResolver.class, accounts));
         PurchaseReturn purchaseReturn = PurchaseReturn.builder().id(9).returnNo("PRN-9")
@@ -145,6 +150,45 @@ class PurchaseReturnAccountingRegressionTest {
 
         verify(transactions, never()).save(any(PaymentTransaction.class));
         verify(writer, never()).write(any(JournalEntryDTO.class));
+    }
+
+    @Test
+    void recalculateKeepsAppliedReturnCreditOffTheSourceVoucher() throws Exception {
+        PurchaseReturnRepository returns = mock(PurchaseReturnRepository.class);
+        PurchaseRepository purchases = mock(PurchaseRepository.class);
+        org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierCreditApplicationRepository credits =
+                mock(org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierCreditApplicationRepository.class);
+        Supplier supplier = Supplier.builder().id(1).build();
+        Purchase purchase = Purchase.builder()
+                .id(8)
+                .supplier(supplier)
+                .totalAmount(new BigDecimal("200.00"))
+                .discountAmount(BigDecimal.ZERO)
+                .otherCharges(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .withholdingTaxAmount(BigDecimal.ZERO)
+                .paidAmount(new BigDecimal("200.00"))
+                .netAmount(new BigDecimal("200.00"))
+                .build();
+        when(returns.findByPurchaseId(8)).thenReturn(List.of(
+                PurchaseReturn.builder().status("SETTLED").totalReturnAmount(new BigDecimal("100.00"))
+                        .supplierShippingPortion(BigDecimal.ZERO).refundAmount(BigDecimal.ZERO).build(),
+                PurchaseReturn.builder().status("SETTLED").totalReturnAmount(new BigDecimal("20.00"))
+                        .supplierShippingPortion(BigDecimal.ZERO).refundAmount(BigDecimal.ZERO).build()));
+        when(credits.findBySupplierIdOrderByIdDesc(1)).thenReturn(List.of(
+                org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication.builder()
+                        .returnCreditSources("8:60.00")
+                        .targetPurchase(Purchase.builder().id(9).status(PurchaseStatus.CONFIRMED).build())
+                        .build()));
+        PurchaseReturnService service = construct(Map.of(
+                PurchaseReturnRepository.class, returns,
+                PurchaseRepository.class, purchases,
+                org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierCreditApplicationRepository.class, credits));
+
+        invoke(service, "recalculatePurchaseFinancials", new Class<?>[]{Purchase.class}, purchase);
+
+        assertEquals(new BigDecimal("60.00"), purchase.getSupplierCreditAmount());
+        assertEquals(new BigDecimal("80.00"), purchase.getNetAmount());
     }
 
     private PurchaseReturnService construct(Map<Class<?>, Object> overrides) throws Exception {

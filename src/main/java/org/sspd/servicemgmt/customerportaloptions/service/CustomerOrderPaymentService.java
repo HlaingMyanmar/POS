@@ -19,6 +19,8 @@ import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
 import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
+import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
+import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.sspd.servicemgmt.saleoptions.service.SaleService;
 import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
@@ -45,6 +47,8 @@ public class CustomerOrderPaymentService {
  private final AccountResolver accounts;
  private final JournalWriter journalWriter;
  private final DeliveryPricingService deliveryPricing;
+ private final CustomerPaymentService customerCredit;
+ private final CashDrawerService cashDrawer;
 
  public record ShippingDecision(BigDecimal amount,String handler,String reason,Integer version,Boolean accept,
                               Boolean fullPaymentRequired, java.time.LocalDateTime scheduledAt) {}
@@ -667,7 +671,8 @@ public class CustomerOrderPaymentService {
   sale.setSaleDate(LocalDateTime.now());sale.setPaymentMethodId(o.getPaymentMethodId());
   sale.setPaidAmount(total(o));sale.setDeliveryCharge(zero(o.getDeliveryCharge()));
   sale.setPayments(salePayments(o));
-  sale.setCustomerAdvanceApplied(advanceReceivedForSale(o));
+  BigDecimal advance=advanceReceivedForSale(o);
+  sale.setCustomerAdvanceApplied(advance);
   sale.setRemark("Customer order " + o.getOrderNo()
     + (hasDeposit(o) ? " — စရံ "+expectedTransfer(o)+" / ကျန် "+remain : "")
     + ("HANDOFF".equals(o.getDeliveryHandler()) ? " — ပြင်ပို့ အပ် (ဆိုင်ပို့ခ မထည့်)" : ""));
@@ -686,6 +691,7 @@ public class CustomerOrderPaymentService {
   // Releasing and recording the sale share one transaction: rollback restores the hold.
   stock.release(o);orders.flush();
   var completed=sales.save(sale);o.setCompletedSaleId(completed.getId());o.setPaymentState("FULFILLED");
+  if(customerCredit!=null && o.getCustomer()!=null) customerCredit.reduceAdvanceBalance(o.getCustomer(), advance);
   // SaleService has now posted the same split payments against the sale.
   if(paymentTransactions!=null) paymentTransactions.deleteByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order);
   // Legacy unit tests construct this service reflectively; Spring always injects the hook in production.
@@ -755,21 +761,60 @@ public class CustomerOrderPaymentService {
   tx.setPaymentDate(LocalDateTime.now());
   tx.setTransactionNo(reference);
   paymentTransactions.save(tx);
+  if(cashDrawer!=null && isCash(method)) cashDrawer.recordCashRefund(amount);
  }
 
  private void recordReceivedTransaction(CustomerOrder o, BigDecimal amount, Integer methodId, String reference, String stage) {
-  if(paymentTransactions==null || amount==null || amount.signum()<=0 || methodId==null) return;
+  if(amount==null || amount.signum()<=0 || methodId==null) return;
   String transactionNo=(reference==null||reference.isBlank())?stage+"-"+o.getOrderNo():reference.trim();
-  boolean exists=paymentTransactions.findByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order)
-    .stream().anyMatch(tx -> !Boolean.TRUE.equals(tx.getReversed()) && transactionNo.equals(tx.getTransactionNo()));
-  if(!exists) {
-   var method=methods.findById(methodId).orElseThrow(() -> new IllegalArgumentException("Choose an active payment method"));
-   PaymentTransaction tx=new PaymentTransaction();
-   tx.setReferenceId(o.getId());tx.setReferenceType(ReferenceType.Customer_Order);tx.setPaymentMethod(method);
-   tx.setAmount(amount.setScale(2, RoundingMode.HALF_UP));tx.setPaymentDate(LocalDateTime.now());tx.setTransactionNo(transactionNo);
-   paymentTransactions.save(tx);
+  if(paymentTransactions!=null) {
+   boolean exists=paymentTransactions.findByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order)
+     .stream().anyMatch(tx -> !Boolean.TRUE.equals(tx.getReversed()) && transactionNo.equals(tx.getTransactionNo()));
+   if(!exists) {
+    var method=methods.findById(methodId).orElseThrow(() -> new IllegalArgumentException("Choose an active payment method"));
+    PaymentTransaction tx=new PaymentTransaction();
+    tx.setReferenceId(o.getId());tx.setReferenceType(ReferenceType.Customer_Order);tx.setPaymentMethod(method);
+    tx.setAmount(amount.setScale(2, RoundingMode.HALF_UP));tx.setPaymentDate(LocalDateTime.now());tx.setTransactionNo(transactionNo);
+    paymentTransactions.save(tx);
+   }
   }
   postAdvanceReceiptJournal(o, amount, methodId, stage);
+ }
+
+ private void ensureAdvanceReceiptForRefund(CustomerOrder o, CustomerOrderPaymentProof proof) {
+  if(advanceReceivedForSale(o).signum()>0) return;
+  Integer methodId=o.getPaymentMethodId();
+  if(methodId==null && proof!=null) methodId=proof.getPaymentMethodId();
+  if(methodId==null) throw new IllegalStateException("Refund requires the received payment method");
+  BigDecimal amount=confirmedReceived(o, proof);
+  if(amount.signum()<=0) throw new IllegalStateException("ပြန်အမ်းရန် လက်ခံပြီးငွေ မရှိပါ");
+  String ref=proof==null?null:proof.getTransactionReference();
+  String stage=hasDeposit(o) && (o.getCollectionAmount()==null || o.getCollectionAmount().signum()<=0) ? "DEPOSIT" : "FULL";
+  recordReceivedTransaction(o, amount, methodId, ref, stage);
+ }
+
+ @Transactional(readOnly = true)
+ public boolean isCompletedCustomerOrderSale(Integer saleId) {
+  return saleId!=null && orders.findFirstByCompletedSaleId(saleId).isPresent();
+ }
+
+ /** After POS voids the linked sale: keep the receipt journals as customer advance and reopen the order. */
+ @Transactional public boolean restoreAfterVoidedSale(Integer saleId, String reason) {
+  if(saleId==null) return false;
+  CustomerOrder found=orders.findFirstByCompletedSaleId(saleId).orElse(null);
+  if(found==null) return false;
+  CustomerOrder o=locked(found.getId());
+  if(o.getCompletedSaleId()==null) return false;
+  o.setCompletedSaleId(null);
+  o.setPaymentState("PAID");
+  if(o.getStatus()==CustomerOrderStatus.CANCELLED) o.setStatus(CustomerOrderStatus.CONFIRMED);
+  stock.reserve(o);
+  BigDecimal restore=advanceReceivedForSale(o);
+  if(customerCredit!=null && o.getCustomer()!=null && restore.signum()>0)
+   customerCredit.addAdvanceBalance(o.getCustomer(), restore);
+  changed(o,"Sale ကို ပယ်ဖျက်လိုက်ပါသည်။ လက်ခံပြီးငွေကို customer advance အဖြစ် ထားပါသည်။ ပြန်ဘောင်ချာထုတ်နိုင် / ပြန်အမ်းနိုင်ပါသည်။"
+    +(reason==null||reason.isBlank()?"":" — "+reason.trim()));
+  return true;
  }
 
  private String advanceJournalRef(CustomerOrder o, String stage) {
@@ -789,6 +834,8 @@ public class CustomerOrderPaymentService {
   entry.setDetails(List.of(journalLine(method.getAccount().getId(), amount, BigDecimal.ZERO),
     journalLine(accounts.custAdvance().getId(), BigDecimal.ZERO, amount)));
   journalWriter.write(entry);
+  if(customerCredit!=null && o.getCustomer()!=null) customerCredit.addAdvanceBalance(o.getCustomer(), amount);
+  if(cashDrawer!=null && isCash(method)) cashDrawer.recordCashSale(amount);
  }
 
  private BigDecimal advanceReceivedForSale(CustomerOrder o) {
@@ -823,6 +870,7 @@ public class CustomerOrderPaymentService {
   JournalEntryDTO entry=new JournalEntryDTO();entry.setReferenceNo(ref);entry.setEntryDate(LocalDateTime.now());
   entry.setDescription("Customer order advance settlement - "+o.getOrderNo()+" ("+action+")");entry.setDetails(lines);
   journalWriter.write(entry);
+  if(customerCredit!=null && o.getCustomer()!=null) customerCredit.reduceAdvanceBalance(o.getCustomer(), journaled);
  }
  private String settlementReference(OrderPaymentRequest request) {
   String ref = request.getTransactionNo()==null ? null : request.getTransactionNo().trim().toUpperCase(Locale.ROOT);
@@ -851,7 +899,8 @@ public class CustomerOrderPaymentService {
   if(!Set.of("DEPOSIT_PAID","PAID","REFUND_REQUIRED","CHECKING","REVIEW","LATE_REVIEW").contains(o.getPaymentState()))
    throw new IllegalStateException("Refund must follow a received or queued payment");
   note(request.getNote());
-  BigDecimal received = confirmedReceived(o, proof);
+  ensureAdvanceReceiptForRefund(o, proof);
+  BigDecimal received = advanceReceivedForSale(o).signum()>0 ? advanceReceivedForSale(o) : confirmedReceived(o, proof);
   if(received.signum()<=0) throw new IllegalStateException("ပြန်အမ်းရန် လက်ခံပြီးငွေ မရှိပါ");
   BigDecimal amount = request.getAmount();
   if(amount==null || amount.signum()<=0 || amount.scale()>2 || amount.precision()>15 || amount.compareTo(received)>0)

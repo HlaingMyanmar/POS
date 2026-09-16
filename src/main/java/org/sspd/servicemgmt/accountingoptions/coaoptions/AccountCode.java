@@ -37,6 +37,7 @@ public final class AccountCode {
     public static final String PURCHASE_RTN         = "INC-007";  // Purchase Returns & Allowances
     public static final String INVENTORY_OVER       = "INC-008";  // Inventory Over
     public static final String SERVICE_REVENUE = "INC-009"; // id=39
+    public static final String DELIVERY_INCOME = "INC-012"; // Delivery charges billed to customers
     public static final String COMMISSION      = "INC-010"; // id=40
     public static final String OTHER_INCOME    = "INC-011"; // id=41//  ← new
 

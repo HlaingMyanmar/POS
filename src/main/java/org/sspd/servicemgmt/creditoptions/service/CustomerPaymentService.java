@@ -21,6 +21,7 @@ import org.sspd.servicemgmt.creditoptions.model.CustomerCreditApplication;
 import org.sspd.servicemgmt.creditoptions.model.CustomerPayment;
 import org.sspd.servicemgmt.creditoptions.model.CustomerPaymentAllocation;
 import org.sspd.servicemgmt.creditoptions.repository.CustomerCreditApplicationRepository;
+import org.sspd.servicemgmt.creditoptions.repository.CustomerPaymentAllocationRepository;
 import org.sspd.servicemgmt.creditoptions.repository.CustomerPaymentRepository;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
@@ -47,6 +48,7 @@ import java.util.*;
 public class CustomerPaymentService {
 
     private final CustomerPaymentRepository repository;
+    private final CustomerPaymentAllocationRepository allocationRepository;
     private final CustomerCreditApplicationRepository creditApplicationRepository;
     private final CustomerRepository customerRepository;
     private final SaleRepository saleRepository;
@@ -69,6 +71,9 @@ public class CustomerPaymentService {
             throw new RuntimeException("Use sale payment API for settling invoices");
         }
         CustomerPayment payment = toEntity(dto, null);
+        Customer lockedCustomer = customerRepository.findByIdForUpdate(dto.getCustomerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        payment.setCustomer(lockedCustomer);
         payment.setAdvanceAmount(safe(dto.getAmount()));
         payment.setAllocatedAmount(BigDecimal.ZERO);
         CustomerPayment saved = repository.save(payment);
@@ -88,7 +93,7 @@ public class CustomerPaymentService {
         periodGuard.assertOpen(LocalDateTime.now(), "record customer payment");
         if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0)
             throw new RuntimeException("Payment amount must be greater than zero.");
-        Customer customer = customerRepository.findById(request.getCustomerId())
+        Customer customer = customerRepository.findByIdForUpdate(request.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
         PaymentMethod method = paymentMethodRepository.findById(request.getPaymentMethodId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment method not found"));
@@ -150,7 +155,7 @@ public class CustomerPaymentService {
     @Transactional
     public CustomerPaymentDTO voidPayment(Integer id, String reason, Integer staffId) {
         periodGuard.assertOpen(LocalDateTime.now(), "void customer payment");
-        CustomerPayment payment = repository.findById(id)
+        CustomerPayment payment = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer payment not found"));
         if (Boolean.TRUE.equals(payment.getVoided()))
             throw new IllegalStateException("Payment is already voided.");
@@ -161,8 +166,28 @@ public class CustomerPaymentService {
         if (payment.getAllocations() == null || payment.getAllocations().isEmpty())
             throw new IllegalStateException("Only allocated customer payments can be voided here.");
 
+        Customer customer = customerRepository.findByIdForUpdate(payment.getCustomer().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        BigDecimal advanceToReverse = safe(payment.getAdvanceAmount());
+        if (advanceToReverse.compareTo(safe(customer.getAdvanceBalance())) > 0)
+            throw new IllegalStateException("Payment advance has already been used and cannot be voided.");
+
         for (CustomerPaymentAllocation alloc : payment.getAllocations()) {
-            reverseFromSale(alloc.getSale(), safe(alloc.getAmount()));
+            Sale lockedSale = saleRepository.findLockedWithDetails(alloc.getSale().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Allocated sale not found"));
+            if (Boolean.TRUE.equals(lockedSale.getVoided()))
+                throw new IllegalStateException(
+                        "Cannot void payment: sale " + lockedSale.getSaleCode() + " is already voided.");
+            if (safe(alloc.getAmount()).compareTo(safe(lockedSale.getPaidAmount())) > 0)
+                throw new IllegalStateException(
+                        "Cannot void payment: sale " + lockedSale.getSaleCode()
+                                + " no longer has enough paid amount to reverse.");
+        }
+
+        for (CustomerPaymentAllocation alloc : payment.getAllocations()) {
+            Sale lockedSale = saleRepository.findLockedWithDetails(alloc.getSale().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Allocated sale not found"));
+            reverseFromSale(lockedSale, safe(alloc.getAmount()));
             paymentTransactionRepository.findByReferenceIdAndReferenceType(alloc.getSale().getId(), ReferenceType.Sale).stream()
                     .filter(tx -> payment.getTransactionNo() != null && payment.getTransactionNo().equals(tx.getTransactionNo()))
                     .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
@@ -174,14 +199,13 @@ public class CustomerPaymentService {
                         paymentTransactionRepository.save(tx);
                     });
         }
-        if (safe(payment.getAdvanceAmount()).signum() > 0) {
-            Customer customer = payment.getCustomer();
-            customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).subtract(safe(payment.getAdvanceAmount())).max(BigDecimal.ZERO));
+        if (advanceToReverse.signum() > 0) {
+            customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).subtract(advanceToReverse));
             customerRepository.save(customer);
         }
         journalWriter.reverseByReferenceNo(payment.getPaymentNo());
         if (isCash(payment.getPaymentMethod()))
-            cashDrawerService.recordCashRefund(payment.getAmount());
+            cashDrawerService.recordCashRefund(payment.getAmount(), "Customer_Payment", payment.getId());
 
         payment.setVoided(true);
         payment.setVoidedAt(LocalDateTime.now());
@@ -194,7 +218,7 @@ public class CustomerPaymentService {
     @Transactional
     public Map<String, Object> applyCredit(CustomerCreditApplyRequest request) {
         periodGuard.assertOpen(LocalDateTime.now(), "apply customer credit");
-        Customer customer = customerRepository.findById(request.getCustomerId())
+        Customer customer = customerRepository.findByIdForUpdate(request.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
         if (request.getStaffId() == null || !staffRepository.existsById(request.getStaffId()))
             throw new RuntimeException("Valid staff is required.");
@@ -208,7 +232,7 @@ public class CustomerPaymentService {
         }
         if (request.getSaleId() == null)
             throw new RuntimeException("Sale or service job is required.");
-        Sale target = saleRepository.findById(request.getSaleId())
+        Sale target = saleRepository.findLockedWithDetails(request.getSaleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found"));
         if (!customer.getId().equals(target.getCustomer().getId()))
             throw new RuntimeException("Target invoice belongs to another customer.");
@@ -249,7 +273,7 @@ public class CustomerPaymentService {
     }
 
     private Map<String, Object> applyCreditToJob(Customer customer, CustomerCreditApplyRequest request, BigDecimal amount) {
-        ServiceJob job = serviceJobRepository.findById(request.getServiceJobId())
+        ServiceJob job = serviceJobRepository.findByIdForUpdate(request.getServiceJobId())
                 .orElseThrow(() -> new ResourceNotFoundException("Service job not found"));
         if (!customer.getId().equals(job.getCustomer().getId()))
             throw new RuntimeException("Target job belongs to another customer.");
@@ -295,7 +319,7 @@ public class CustomerPaymentService {
     public List<Map<String, Object>> receivables(Integer customerId) {
         customerRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
-        List<Map<String, Object>> rows = saleRepository.findCustomerReceivablesFifo(customerId).stream().map(s -> {
+        List<Map<String, Object>> rows = saleRepository.findCustomerReceivablesFifoReadOnly(customerId).stream().map(s -> {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("saleId", s.getId());
             row.put("saleCode", s.getSaleCode());
@@ -348,6 +372,71 @@ public class CustomerPaymentService {
     }
 
     @Transactional
+    public void reverseAccountingForVoidedSale(Integer saleId) {
+        Set<Integer> seenPayments = new HashSet<>();
+        for (CustomerPaymentAllocation alloc : allocationRepository.findBySaleId(saleId)) {
+            CustomerPayment payment = repository.findByIdForUpdate(alloc.getCustomerPayment().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Customer payment not found"));
+            if (!seenPayments.add(payment.getId())) continue;
+            if (Boolean.TRUE.equals(payment.getVoided())) continue;
+            if (safe(payment.getAdvanceAmount()).signum() > 0) {
+                throw new IllegalStateException(
+                        "Cannot void sale: customer payment " + payment.getPaymentNo()
+                                + " still has unallocated advance. Void the payment first.");
+            }
+            boolean shared = payment.getAllocations() != null && payment.getAllocations().stream()
+                    .anyMatch(item -> item.getSale() != null
+                            && !saleId.equals(item.getSale().getId())
+                            && !Boolean.TRUE.equals(item.getSale().getVoided()));
+            if (shared) {
+                throw new IllegalStateException(
+                        "Cannot void sale: customer payment " + payment.getPaymentNo()
+                                + " is allocated to other invoices. Void the payment first.");
+            }
+            if (journalWriter.hasActiveReference(payment.getPaymentNo())) {
+                journalWriter.reverseByReferenceNo(payment.getPaymentNo());
+            }
+            payment.setVoided(true);
+            payment.setVoidedAt(LocalDateTime.now());
+            payment.setVoidedBy(currentUsername());
+            payment.setVoidReason("Sale voided");
+            repository.save(payment);
+        }
+        // Direct receipts have a sale foreign key but no allocation rows.
+        // SaleService reverses their journals under the sale references.
+        for (CustomerPayment payment : repository.findBySaleId(saleId)) {
+            CustomerPayment locked = repository.findByIdForUpdate(payment.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Customer payment not found"));
+            if (Boolean.TRUE.equals(locked.getVoided())) continue;
+            locked.setVoided(true);
+            locked.setVoidedAt(LocalDateTime.now());
+            locked.setVoidedBy(currentUsername());
+            locked.setVoidReason("Sale voided");
+            repository.save(locked);
+        }
+        for (CustomerCreditApplication application : creditApplicationRepository.findBySaleIdOrderByIdDesc(saleId)) {
+            if (!journalWriter.hasActiveReference(application.getApplicationNo())) continue;
+            journalWriter.reverseByReferenceNo(application.getApplicationNo());
+            Customer customer = customerRepository.findByIdForUpdate(application.getCustomer().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+            customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).add(safe(application.getAmount())));
+            customerRepository.save(customer);
+        }
+    }
+
+    @Transactional
+    public void reverseAccountingForVoidedServiceJob(Integer serviceJobId) {
+        for (CustomerCreditApplication application : creditApplicationRepository.findByServiceJobIdOrderByIdDesc(serviceJobId)) {
+            if (!journalWriter.hasActiveReference(application.getApplicationNo())) continue;
+            journalWriter.reverseByReferenceNo(application.getApplicationNo());
+            Customer customer = customerRepository.findByIdForUpdate(application.getCustomer().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+            customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).add(safe(application.getAmount())));
+            customerRepository.save(customer);
+        }
+    }
+
+    @Transactional
     public void recordSalePayment(Sale sale, CustomerPaymentDTO dto) {
         CustomerPayment payment = toEntity(dto, sale);
         payment.setAllocatedAmount(safe(dto.getAmount()));
@@ -358,16 +447,26 @@ public class CustomerPaymentService {
         }
     }
 
+    @Transactional
     public void addAdvanceBalance(Customer customer, BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) return;
-        customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).add(amount));
-        customerRepository.save(customer);
+        Customer locked = customerRepository.findByIdForUpdate(customer.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        locked.setAdvanceBalance(safe(locked.getAdvanceBalance()).add(amount));
+        customerRepository.save(locked);
+        customer.setAdvanceBalance(locked.getAdvanceBalance());
     }
 
+    @Transactional
     public void reduceAdvanceBalance(Customer customer, BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) return;
-        customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).subtract(amount).max(BigDecimal.ZERO));
-        customerRepository.save(customer);
+        Customer locked = customerRepository.findByIdForUpdate(customer.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        if (amount.compareTo(safe(locked.getAdvanceBalance())) > 0)
+            throw new IllegalStateException("Insufficient customer credit.");
+        locked.setAdvanceBalance(safe(locked.getAdvanceBalance()).subtract(amount));
+        customerRepository.save(locked);
+        customer.setAdvanceBalance(locked.getAdvanceBalance());
     }
 
     private List<AllocationWork> resolveAllocations(CustomerPaymentRequest request, Customer customer) {
@@ -377,7 +476,7 @@ public class CustomerPaymentService {
             for (var requested : request.getAllocations()) {
                 if (requested.getSaleId() == null || !seen.add(requested.getSaleId()))
                     throw new RuntimeException("Duplicate or missing sale allocation.");
-                Sale sale = saleRepository.findById(requested.getSaleId())
+                Sale sale = saleRepository.findLockedWithDetails(requested.getSaleId())
                         .orElseThrow(() -> new ResourceNotFoundException("Sale not found"));
                 if (!customer.getId().equals(sale.getCustomer().getId()))
                     throw new RuntimeException("Allocated sale belongs to another customer.");
@@ -426,7 +525,12 @@ public class CustomerPaymentService {
     }
 
     private void reverseFromSale(Sale sale, BigDecimal amount) {
-        BigDecimal newPaid = safe(sale.getPaidAmount()).subtract(amount).max(BigDecimal.ZERO);
+        if (Boolean.TRUE.equals(sale.getVoided()))
+            throw new IllegalStateException("Cannot reverse payment on a voided sale.");
+        if (amount.compareTo(safe(sale.getPaidAmount())) > 0)
+            throw new IllegalStateException(
+                    "Cannot reverse more than the remaining paid amount on " + sale.getSaleCode() + ".");
+        BigDecimal newPaid = safe(sale.getPaidAmount()).subtract(amount);
         BigDecimal newDue = safe(sale.getDueAmount()).add(amount);
         sale.setPaidAmount(newPaid);
         sale.setDueAmount(newDue);

@@ -1,5 +1,7 @@
 package org.sspd.servicemgmt.journaloption.entry.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.ToString;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
@@ -16,6 +18,8 @@ public class JournalEntryDTO {
     private String description;
     private Integer staffId;
     private String staffName;
+    @NotEmpty(message = "Journal details are required")
+    @Valid
     private List<JournalDetailDTO> details;
     private String status;
     private Integer reversalOfId;

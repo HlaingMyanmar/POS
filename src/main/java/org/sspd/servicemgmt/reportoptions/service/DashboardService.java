@@ -64,7 +64,7 @@ public class DashboardService {
         BigDecimal totalSales     = safe(saleRepository.sumTotalNetAmount());
         BigDecimal totalPurchases = safe(purchaseRepository.sumTotalAmount());
         long totalCustomers       = customerRepository.count();
-        long totalServices        = saleRepository.count();
+        long totalServices        = serviceJobRepository.countActiveJobs();
 
         // ── Today ──────────────────────────────────────
         BigDecimal todaySalesAmount = safe(saleRepository.sumSalesFrom(todayStart));

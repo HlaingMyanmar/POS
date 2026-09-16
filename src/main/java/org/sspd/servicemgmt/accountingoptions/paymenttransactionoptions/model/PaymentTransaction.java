@@ -32,6 +32,7 @@ public class PaymentTransaction {
 
     private BigDecimal amount;
     private LocalDateTime paymentDate = LocalDateTime.now();
+    @Column(unique = true)
     private String transactionNo;
     @Column(nullable = false)
     private Boolean reversed = false;
@@ -39,4 +40,10 @@ public class PaymentTransaction {
     private String reversedBy;
     @Column(columnDefinition = "TEXT")
     private String reversalReason;
+
+    public void assignGeneratedNumberIfBlank() {
+        if (id != null && (transactionNo == null || transactionNo.isBlank())) {
+            transactionNo = String.format("TXN-%06d", id);
+        }
+    }
 }

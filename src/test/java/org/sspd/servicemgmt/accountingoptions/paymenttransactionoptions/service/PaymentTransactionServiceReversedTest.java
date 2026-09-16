@@ -64,6 +64,7 @@ class PaymentTransactionServiceReversedTest {
         PaymentTransactionDTO saved = service.saveInternalTransaction(dto);
 
         assertEquals(Boolean.FALSE, saved.getReversed());
+        assertEquals("TXN-000001", saved.getTransactionNo());
         assertFalse(Boolean.TRUE.equals(saved.getReversed()));
     }
 }

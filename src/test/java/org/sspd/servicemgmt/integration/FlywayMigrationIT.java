@@ -17,12 +17,12 @@ class FlywayMigrationIT extends AbstractMysqlIntegrationTest {
     private JdbcTemplate jdbc;
 
     @Test
-    void flywayAppliedThroughLatestServiceJobMigrations() {
+    void flywayAppliedThroughLatestMigrations() {
         Integer latest = jdbc.queryForObject(
                 "SELECT MAX(CAST(SUBSTRING(version, 1) AS UNSIGNED)) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertTrue(latest != null && latest >= 113,
-                "Expected Flyway version >= 113 but was " + latest);
+        assertTrue(latest != null && latest >= 159,
+                "Expected Flyway version >= 159 but was " + latest);
 
         Integer jobs = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'service_jobs'",

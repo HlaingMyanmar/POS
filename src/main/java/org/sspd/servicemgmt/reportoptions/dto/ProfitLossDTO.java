@@ -16,8 +16,9 @@ public class ProfitLossDTO {
     // ── Section 1: Revenue ──────────────────────────
     private BigDecimal grossSales;       // Product Sales (INC-002)
     private BigDecimal serviceRevenue;   // Service Revenue (INC-003)
+    private BigDecimal deliveryRevenue;  // Delivery Income (INC-012)
     private BigDecimal salesReturns;     // Sales Returns (EXP-010)
-    private BigDecimal netRevenue;       // grossSales - salesReturns
+    private BigDecimal netRevenue;       // grossSales + serviceRevenue + deliveryRevenue - salesReturns
 
     // ── Section 2: Cost of Goods ────────────────────
     private BigDecimal purchases;        // Purchases (EXP-007)

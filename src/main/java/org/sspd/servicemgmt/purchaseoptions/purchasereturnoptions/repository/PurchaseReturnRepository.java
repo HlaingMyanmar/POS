@@ -33,7 +33,7 @@ public interface PurchaseReturnRepository extends JpaRepository<PurchaseReturn, 
         SELECT COALESCE(SUM(r.totalReturnAmount), 0)
         FROM PurchaseReturn r
         WHERE (:from IS NULL OR r.returnDate >= :from)
-          AND (:to   IS NULL OR r.returnDate <= :to)
+          AND (:to   IS NULL OR r.returnDate < :to)
           AND r.status = 'SETTLED'
         """)
     BigDecimal sumInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);

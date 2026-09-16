@@ -3,6 +3,7 @@ package org.sspd.servicemgmt.saleoptions.salereturnoptions.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,6 +16,10 @@ import java.util.Optional;
 
 @Repository
 public interface SaleReturnRepository extends JpaRepository<SaleReturn, Integer> {
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from SaleReturn r where r.id = :id")
+    Optional<SaleReturn> findByIdForUpdate(@Param("id") Integer id);
+
     Optional<SaleReturn> findByReturnCode(String returnCode);
     Optional<SaleReturn> findTopByOrderByIdDesc();
     @Query("SELECT r FROM SaleReturn r WHERE r.sale.id = :saleId AND (r.deleted = false OR r.deleted IS NULL)")
@@ -31,7 +36,7 @@ public interface SaleReturnRepository extends JpaRepository<SaleReturn, Integer>
         FROM SaleReturn r
         WHERE (r.deleted = false OR r.deleted IS NULL)
           AND (:from IS NULL OR r.returnDate >= :from)
-          AND (:to   IS NULL OR r.returnDate <= :to)
+          AND (:to   IS NULL OR r.returnDate < :to)
         """)
     BigDecimal sumInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 

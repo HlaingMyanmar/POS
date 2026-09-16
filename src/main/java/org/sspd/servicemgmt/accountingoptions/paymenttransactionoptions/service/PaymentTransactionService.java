@@ -54,30 +54,22 @@ public class PaymentTransactionService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
     @Transactional
     public PaymentTransactionDTO save(PaymentTransactionDTO dto) {
-        PaymentTransaction entity = mapper.toEntity(dto);
-        applyNotNullDefaults(entity);
-
-        if (dto.getPaymentMethodId() != null) {
-            PaymentMethod method = paymentMethodRepository.findById(dto.getPaymentMethodId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
-            entity.setPaymentMethod(method);
-        }
-
-        if (dto.getTransactionNo() == null || dto.getTransactionNo().trim().isEmpty()) {
-            entity.setTransactionNo(generateTransactionNo());
-        }
-
-        if ("Purchase".equalsIgnoreCase(dto.getReferenceType())) {
-            throw new RuntimeException("Use /api/v1/payment-transactions/pay-purchase-debt for purchase debt payment.");
-        }
-
-        PaymentTransaction savedEntity = repository.save(entity);
-        messagingTemplate.convertAndSend(TRANSACTION_TOPIC, "TRANSACTION_CREATED");
-        return mapper.toDto(savedEntity);
+        throw new IllegalStateException(
+                "Payment transactions cannot be created independently. Record payments through the sale, service, return, customer-payment, purchase-debt, opening-balance, or transfer APIs so paid/due, journal, and cash drawer stay in sync.");
     }
 
     @Transactional
     public PaymentTransactionDTO saveInternalTransaction(PaymentTransactionDTO dto) {
+        return saveOpeningBalanceTransaction(dto);
+    }
+
+    @Transactional
+    public PaymentTransactionDTO saveOpeningBalanceTransaction(PaymentTransactionDTO dto) {
+        if (dto.getReferenceType() == null || !"Opening_Balance".equalsIgnoreCase(dto.getReferenceType())) {
+            throw new IllegalStateException(
+                    "Only opening-balance payment rows can be recorded through this method.");
+        }
+        dto.setReferenceType("Opening_Balance");
         PaymentTransaction entity = mapper.toEntity(dto);
         applyNotNullDefaults(entity);
 
@@ -85,15 +77,11 @@ public class PaymentTransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
         entity.setPaymentMethod(method);
 
-        if (dto.getTransactionNo() == null || dto.getTransactionNo().trim().isEmpty()) {
-            entity.setTransactionNo(generateTransactionNo());
-        }
-
         if (entity.getPaymentDate() == null) {
             entity.setPaymentDate(java.time.LocalDateTime.now());
         }
 
-        PaymentTransaction savedEntity = repository.save(entity);
+        PaymentTransaction savedEntity = persistTransaction(entity);
 
         messagingTemplate.convertAndSend("/topic/payment-transaction", "TRANSACTION_CREATED");
         return mapper.toDto(savedEntity);
@@ -105,11 +93,17 @@ public class PaymentTransactionService {
         }
     }
 
-    private String generateTransactionNo() {
-        Integer lastId = repository.findTopByOrderByIdDesc()
-                .map(PaymentTransaction::getId)
-                .orElse(0);
-        return String.format("TXN-%06d", lastId + 1);
+    private PaymentTransaction persistTransaction(PaymentTransaction entity) {
+        if (entity.getTransactionNo() != null && entity.getTransactionNo().isBlank()) {
+            entity.setTransactionNo(null);
+        }
+        boolean generate = entity.getTransactionNo() == null;
+        PaymentTransaction saved = repository.save(entity);
+        if (generate) {
+            saved.assignGeneratedNumberIfBlank();
+            saved = repository.save(saved);
+        }
+        return saved;
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
@@ -137,16 +131,17 @@ public class PaymentTransactionService {
         // ပေးမည့်အကောင့်တွင် လက်ကျန်မလောက်ရင် transfer မလုပ်ရ — minus မဖြစ်ရ
         paymentBalanceValidator.validateSufficientBalance(from, amount);
 
-        String txNo = dto.getTransactionNo() == null || dto.getTransactionNo().isBlank()
-                ? generateTransactionNo()
-                : dto.getTransactionNo();
-
         PaymentTransaction out = new PaymentTransaction();
         out.setReferenceId(0);
         out.setReferenceType(ReferenceType.Transfer);
         out.setPaymentMethod(from);
         out.setAmount(amount.negate());
         out.setPaymentDate(LocalDateTime.now());
+        out.setTransactionNo(null);
+        out = persistTransaction(out);
+        String txNo = dto.getTransactionNo() == null || dto.getTransactionNo().isBlank()
+                ? out.getTransactionNo()
+                : dto.getTransactionNo().trim();
         out.setTransactionNo(txNo + "-OUT");
         repository.save(out);
 

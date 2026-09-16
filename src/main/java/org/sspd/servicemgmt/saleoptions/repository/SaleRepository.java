@@ -25,34 +25,34 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
     List<Sale> findTop10ByOrderByIdDesc();
     List<Sale> findByCustomerIdOrderBySaleDateDescIdDesc(Integer customerId);
 
-    @Query("select coalesce(sum(s.netAmount), 0) from Sale s")
+    @Query("select coalesce(sum(s.netAmount), 0) from Sale s where coalesce(s.voided, false) = false")
     BigDecimal sumTotalNetAmount();
 
-    @Query("select coalesce(sum(s.netAmount), 0) from Sale s where s.saleDate >= :from")
+    @Query("select coalesce(sum(s.netAmount), 0) from Sale s where s.saleDate >= :from and coalesce(s.voided, false) = false")
     BigDecimal sumSalesFrom(@org.springframework.data.repository.query.Param("from") LocalDateTime from);
 
-    @Query("select count(s) from Sale s where s.saleDate >= :from")
+    @Query("select count(s) from Sale s where s.saleDate >= :from and coalesce(s.voided, false) = false")
     long countSalesFrom(@org.springframework.data.repository.query.Param("from") LocalDateTime from);
 
-    @Query("select coalesce(sum(s.netAmount), 0) from Sale s where s.saleDate >= :from and s.saleDate < :to")
+    @Query("select coalesce(sum(s.netAmount), 0) from Sale s where s.saleDate >= :from and s.saleDate < :to and coalesce(s.voided, false) = false")
     BigDecimal sumSalesInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query("select count(s) from Sale s where s.saleDate >= :from and s.saleDate < :to")
+    @Query("select count(s) from Sale s where s.saleDate >= :from and s.saleDate < :to and coalesce(s.voided, false) = false")
     long countSalesInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query("select coalesce(sum(s.dueAmount), 0) from Sale s where s.creditStatus = 'Overdue' and s.dueAmount > 0")
+    @Query("select coalesce(sum(s.dueAmount), 0) from Sale s where s.creditStatus = 'Overdue' and s.dueAmount > 0 and coalesce(s.voided, false) = false")
     BigDecimal sumOverdueAR();
 
-    @Query("select count(s) from Sale s where s.creditStatus = 'Overdue' and s.dueAmount > 0")
+    @Query("select count(s) from Sale s where s.creditStatus = 'Overdue' and s.dueAmount > 0 and coalesce(s.voided, false) = false")
     long countOverdueAR();
 
-    @Query("select coalesce(sum(s.dueAmount), 0) from Sale s where s.dueAmount > 0")
+    @Query("select coalesce(sum(s.dueAmount), 0) from Sale s where s.dueAmount > 0 and coalesce(s.voided, false) = false")
     BigDecimal sumAllPendingAR();
 
-    @Query("select count(s) from Sale s where s.dueAmount > 0")
+    @Query("select count(s) from Sale s where s.dueAmount > 0 and coalesce(s.voided, false) = false")
     long countAllPendingAR();
 
-    @Query("select coalesce(sum(s.dueAmount),0) from Sale s where s.customer.id = :customerId and (:excludeId is null or s.id <> :excludeId)")
+    @Query("select coalesce(sum(s.dueAmount),0) from Sale s where s.customer.id = :customerId and coalesce(s.voided, false) = false and (:excludeId is null or s.id <> :excludeId)")
     BigDecimal sumOutstandingDue(Integer customerId, Integer excludeId);
 
     @Query("""
@@ -71,6 +71,7 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
 
     List<Sale> findByDueAmountGreaterThan(BigDecimal amount);
 
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("""
         SELECT s FROM Sale s
          WHERE s.customer.id = :customerId
@@ -80,6 +81,15 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
         """)
     List<Sale> findCustomerReceivablesFifo(@Param("customerId") Integer customerId);
 
+    @Query("""
+        SELECT s FROM Sale s
+         WHERE s.customer.id = :customerId
+           AND s.dueAmount > 0
+           AND (s.voided = false OR s.voided IS NULL)
+         ORDER BY CASE WHEN s.dueDate IS NULL THEN 1 ELSE 0 END, s.dueDate, s.id
+        """)
+    List<Sale> findCustomerReceivablesFifoReadOnly(@Param("customerId") Integer customerId);
+
     List<Sale> findByCreditStatusInAndDueAmountGreaterThan(java.util.Collection<org.sspd.servicemgmt.saleoptions.model.CreditStatus> statuses, BigDecimal amount);
 
     @Query("""
@@ -87,6 +97,7 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
                COUNT(s), COALESCE(SUM(s.netAmount), 0)
         FROM Sale s
         WHERE s.saleDate >= :from AND s.saleDate < :to
+          AND COALESCE(s.voided, false) = false
         GROUP BY s.staff.id, s.staff.name, s.staff.role
         """)
     List<Object[]> staffSaleStats(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
@@ -97,6 +108,7 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
         FROM Sale s
         WHERE (:from IS NULL OR s.saleDate >= :from)
           AND (:to   IS NULL OR s.saleDate <  :to)
+          AND COALESCE(s.voided, false) = false
         GROUP BY FUNCTION('YEAR', s.saleDate), FUNCTION('MONTH', s.saleDate)
         ORDER BY FUNCTION('YEAR', s.saleDate) DESC, FUNCTION('MONTH', s.saleDate) DESC
         """)
@@ -107,6 +119,7 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
         FROM Sale s
         WHERE (:from IS NULL OR s.saleDate >= :from)
           AND (:to   IS NULL OR s.saleDate <  :to)
+          AND COALESCE(s.voided, false) = false
         GROUP BY s.customer.id, s.customer.name
         ORDER BY SUM(s.netAmount) DESC
         """)
@@ -118,6 +131,16 @@ public interface SaleRepository extends JpaRepository<Sale, Integer> {
         FROM Sale s
         WHERE (:from IS NULL OR s.saleDate >= :from)
           AND (:to   IS NULL OR s.saleDate <  :to)
+          AND COALESCE(s.voided, false) = false
         """)
     List<Object[]> salesTotals(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("""
+        SELECT COALESCE(SUM(s.deliveryCharge), 0)
+        FROM Sale s
+        WHERE (:from IS NULL OR s.saleDate >= :from)
+          AND (:to   IS NULL OR s.saleDate <  :to)
+          AND COALESCE(s.voided, false) = false
+        """)
+    BigDecimal sumDeliveryChargesInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

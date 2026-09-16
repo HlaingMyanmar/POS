@@ -28,7 +28,7 @@ public interface StockAdjustmentRepository extends JpaRepository<StockAdjustment
         ), 0)
         FROM StockAdjustment sa
         WHERE (:from IS NULL OR sa.createdAt >= :from)
-          AND (:to   IS NULL OR sa.createdAt <= :to)
+          AND (:to   IS NULL OR sa.createdAt < :to)
         """)
     BigDecimal sumLossValueInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

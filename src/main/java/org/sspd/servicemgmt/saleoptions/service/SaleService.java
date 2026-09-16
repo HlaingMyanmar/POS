@@ -18,6 +18,7 @@ import org.sspd.servicemgmt.saleoptions.dto.SalePaymentDTO;
 import org.sspd.servicemgmt.saleoptions.model.CreditStatus;
 import org.sspd.servicemgmt.saleoptions.model.Sale;
 import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
+import org.sspd.servicemgmt.saleoptions.salereturnoptions.repository.SaleReturnRepository;
 import org.sspd.servicemgmt.saleoptions.saledetails.dto.SaleDetailDTO;
 import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
@@ -52,6 +53,8 @@ import org.sspd.servicemgmt.creditoptions.service.CreditService;
 import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.creditoptions.repository.CreditOverrideLogRepository;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
+import org.sspd.servicemgmt.customerportaloptions.service.CustomerOrderPaymentService;
+import org.springframework.beans.factory.ObjectProvider;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -74,6 +77,7 @@ public class SaleService {
     private BigDecimal largeCreditAlertThreshold;
 
     private final SaleRepository saleRepository;
+    private final SaleReturnRepository saleReturnRepository;
     private final CustomerRepository customerRepository;
     private final StaffRepository staffRepository;
     private final UserRepository userRepository;
@@ -93,6 +97,7 @@ public class SaleService {
     private final CompanySettingsService companySettingsService;
     private final SimpMessagingTemplate messagingTemplate;
     private final CashDrawerService cashDrawerService;
+    private final ObjectProvider<CustomerOrderPaymentService> customerOrderPayments;
 
     private static final BigDecimal CASHIER_DISCOUNT_PERCENT = new BigDecimal("5");
     private static final BigDecimal MANAGER_DISCOUNT_PERCENT = new BigDecimal("20");
@@ -100,7 +105,7 @@ public class SaleService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_UPDATE')")
     @Transactional
     public SaleDTO payDue(Integer saleId, SalePaymentDTO dto) {
-        Sale sale = saleRepository.findById(saleId)
+        Sale sale = saleRepository.findLockedWithDetails(saleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + saleId));
         if (Boolean.TRUE.equals(sale.getVoided())) {
             throw new RuntimeException("Cannot record payment for a voided sale.");
@@ -380,31 +385,44 @@ public class SaleService {
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_VOID','CAN_ACCESS_SALE_DELETE')")
     @Transactional
     public SaleDTO voidSale(Integer id, String reason) {
-        Sale existing = saleRepository.findById(id)
+        Sale existing = saleRepository.findLockedWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + id));
-        if (Boolean.TRUE.equals(existing.getVoided())) {
-            throw new RuntimeException("Voided sale cannot be updated.");
-        }
         if (Boolean.TRUE.equals(existing.getVoided())) {
             throw new RuntimeException("Sale is already voided");
         }
         if (reason == null || reason.isBlank()) {
             throw new RuntimeException("Void reason is required");
         }
+        if (!saleReturnRepository.findAllBySaleIdAndDeletedFalse(existing.getId()).isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot void sale with returns. Void the sale returns first.");
+        }
 
+        customerPaymentService.reverseAccountingForVoidedSale(existing.getId());
         reverseStock(existing);
-        recordVoidedCashRefund(existing);
-        paymentTransactionRepository.deleteByReferenceIdAndReferenceType(existing.getId(), ReferenceType.Sale);
+        CustomerOrderPaymentService portalOrders = customerOrderPayments.getIfAvailable();
+        boolean customerOrderSale = portalOrders != null && portalOrders.isCompletedCustomerOrderSale(existing.getId());
+        // Customer-order cash already hit the drawer at receipt time; void restores advance, it is not a cash refund.
+        if (!customerOrderSale) {
+            recordVoidedCashRefund(existing, reason.trim());
+        }
+        markSaleTransactionsReversed(existing.getId(), reason.trim());
         journalWriter.reverseByReferenceNo(existing.getSaleCode());
         journalWriter.reverseByReferenceNo(existing.getSaleCode() + "-COGS");
         journalWriter.reverseByReferenceNo(existing.getSaleCode() + "-PAY");
         journalWriter.reverseByReferenceNo(existing.getSaleCode() + "-ADJ");
+        journalWriter.reverseByReferencePrefix(existing.getSaleCode() + "-PAY-", currentUsername(), reason.trim());
+        journalWriter.reverseByReferencePrefix(existing.getSaleCode() + "-ADJ-", currentUsername(), reason.trim());
+        journalWriter.reverseByReferenceNo("DELIVERY-RECLASS-" + existing.getId());
 
         existing.setVoided(Boolean.TRUE);
         existing.setVoidReason(reason.trim());
         existing.setVoidedBy(currentUsername());
         existing.setVoidedAt(LocalDateTime.now());
         Sale saved = saleRepository.save(existing);
+        if (customerOrderSale) {
+            portalOrders.restoreAfterVoidedSale(existing.getId(), reason.trim());
+        }
         messagingTemplate.convertAndSend("/topic/sales", "SALE_VOIDED");
         return mapper.toDto(saved);
     }
@@ -461,9 +479,7 @@ public class SaleService {
             requested.merge(d.getProductId(), d.getQty(), Math::addExact);
         }
         var lockedProducts = customerStock.lockProducts(requested.keySet());
-        requested.forEach((id,qty) -> {
-            if (customerStock.availableLocked(lockedProducts.get(id)) < qty) throw new IllegalStateException("Insufficient available stock (customer orders reserved): " + lockedProducts.get(id).getName());
-        });
+        requested.forEach((id,qty) -> customerStock.assertSellable(lockedProducts.get(id), qty));
         List<SaleDetail> detailEntities = new ArrayList<>();
         for (SaleDetailDTO d : detailDTOs) {
             Product product = lockedProducts.get(d.getProductId());
@@ -513,8 +529,9 @@ public class SaleService {
                     throw new RuntimeException("Line discount cannot exceed line amount for product: " + product.getName());
                 }
 
+                customerStock.assertSellable(product, serials.size());
                 for (String sn : serials) {
-                    ProductSerial serial = serialRepository.findBySerialNumber(sn)
+                    ProductSerial serial = serialRepository.findLockedBySerialNumber(sn)
                             .orElseThrow(() -> new RuntimeException("Serial number '" + sn + "' not found"));
                     if (!serial.getProduct().getId().equals(product.getId())) {
                         throw new RuntimeException("Serial number '" + sn + "' does not belong to product: " + product.getName());
@@ -637,15 +654,27 @@ public class SaleService {
         }
     }
 
-    private void recordVoidedCashRefund(Sale sale) {
+    private void recordVoidedCashRefund(Sale sale, String reason) {
         BigDecimal cashPaid = paymentTransactionRepository
                 .findByReferenceIdAndReferenceType(sale.getId(), ReferenceType.Sale).stream()
+                .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
                 .filter(tx -> tx.getPaymentMethod() != null && tx.getPaymentMethod().getAccount() != null)
                 .filter(tx -> tx.getPaymentMethod().getAccount().getId().equals(accountResolver.cash().getId()))
                 .map(PaymentTransaction::getAmount)
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        cashDrawerService.recordCashRefund(cashPaid);
+        cashDrawerService.recordCashRefund(cashPaid, ReferenceType.Sale.name(), sale.getId());
+    }
+
+    private void markSaleTransactionsReversed(Integer saleId, String reason) {
+        paymentTransactionRepository.findByReferenceIdAndReferenceType(saleId, ReferenceType.Sale).forEach(tx -> {
+            if (Boolean.TRUE.equals(tx.getReversed())) return;
+            tx.setReversed(true);
+            tx.setReversedAt(LocalDateTime.now());
+            tx.setReversedBy(currentUsername());
+            tx.setReversalReason(reason);
+            paymentTransactionRepository.save(tx);
+        });
     }
 
     private String currentUsername() {
@@ -864,8 +893,16 @@ public class SaleService {
         crSales.setAccountId(accountResolver.sales().getId()); // Product Sale income
         crSales.setDebit(BigDecimal.ZERO);
         BigDecimal tax = sale.getTaxAmount() != null ? sale.getTaxAmount() : BigDecimal.ZERO;
-        crSales.setCredit(net.subtract(tax));
+        BigDecimal delivery = sale.getDeliveryCharge() != null ? sale.getDeliveryCharge() : BigDecimal.ZERO;
+        crSales.setCredit(net.subtract(tax).subtract(delivery));
         details.add(crSales);
+        if (delivery.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO crDelivery = new JournalDetailDTO();
+            crDelivery.setAccountId(accountResolver.deliveryIncome().getId());
+            crDelivery.setDebit(BigDecimal.ZERO);
+            crDelivery.setCredit(delivery);
+            details.add(crDelivery);
+        }
         if (tax.compareTo(BigDecimal.ZERO) > 0) {
             JournalDetailDTO crTax = new JournalDetailDTO();
             crTax.setAccountId(accountResolver.taxPayable().getId());
@@ -916,7 +953,7 @@ public class SaleService {
         details.add(crAR);
 
         JournalEntryDTO journalDTO = new JournalEntryDTO();
-        journalDTO.setReferenceNo(sale.getSaleCode() + "-PAY");
+        journalDTO.setReferenceNo(sale.getSaleCode() + "-PAY-" + java.util.UUID.randomUUID());
         journalDTO.setEntryDate(LocalDateTime.now());
         journalDTO.setDescription("AR collection for sale " + sale.getSaleCode());
         journalDTO.setStaffId(sale.getStaff() != null ? sale.getStaff().getId() : null);
@@ -961,7 +998,7 @@ public class SaleService {
         }
 
         JournalEntryDTO journalDTO = new JournalEntryDTO();
-        journalDTO.setReferenceNo(sale.getSaleCode() + "-ADJ");
+        journalDTO.setReferenceNo(sale.getSaleCode() + "-ADJ-" + java.util.UUID.randomUUID());
         journalDTO.setEntryDate(LocalDateTime.now());
         journalDTO.setDescription("Payment adjustment for sale " + sale.getSaleCode());
         journalDTO.setStaffId(sale.getStaff() != null ? sale.getStaff().getId() : null);
@@ -971,6 +1008,9 @@ public class SaleService {
     private void createPaymentTransaction(Sale sale, SaleDTO dto) {
         BigDecimal paid = dto.getPaidAmount() != null ? dto.getPaidAmount() : BigDecimal.ZERO;
         if (paid.compareTo(BigDecimal.ZERO) <= 0) return;
+        BigDecimal advance = dto.getCustomerAdvanceApplied() == null
+                ? BigDecimal.ZERO : dto.getCustomerAdvanceApplied().max(BigDecimal.ZERO).min(paid);
+        BigDecimal drawerRemaining = paid.subtract(advance);
         List<PaymentLine> lines = resolvePaymentLines(dto.getPayments(), paid, dto.getPaymentMethodId(), dto.getPaymentAccountId());
         if (!lines.isEmpty()) {
             for (PaymentLine line : lines) {
@@ -984,7 +1024,7 @@ public class SaleService {
                         ? generateTransactionNo()
                         : line.transactionNo());
                 paymentTransactionRepository.save(paymentTx);
-                recordDrawerCashSale(line.method(), line.amount());
+                drawerRemaining = recordDrawerForNonAdvance(line.method(), line.amount(), drawerRemaining, sale.getId());
             }
             return;
         }
@@ -1002,13 +1042,23 @@ public class SaleService {
                 : dto.getTransactionNo();
         paymentTx.setTransactionNo(txnNo);
         paymentTransactionRepository.save(paymentTx);
-        recordDrawerCashSale(method, paid);
+        recordDrawerForNonAdvance(method, paid, drawerRemaining, sale.getId());
     }
 
-    private void recordDrawerCashSale(PaymentMethod method, BigDecimal amount) {
+    private BigDecimal recordDrawerForNonAdvance(PaymentMethod method, BigDecimal lineAmount, BigDecimal drawerRemaining,
+            Integer saleId) {
+        if (drawerRemaining == null || drawerRemaining.signum() <= 0 || lineAmount == null || lineAmount.signum() <= 0) {
+            return drawerRemaining == null ? BigDecimal.ZERO : drawerRemaining;
+        }
+        BigDecimal applied = lineAmount.min(drawerRemaining);
+        recordDrawerCashSale(method, applied, saleId);
+        return drawerRemaining.subtract(applied);
+    }
+
+    private void recordDrawerCashSale(PaymentMethod method, BigDecimal amount, Integer saleId) {
         if (method != null && method.getAccount() != null
                 && method.getAccount().getId().equals(accountResolver.cash().getId())) {
-            cashDrawerService.recordCashSale(amount);
+            cashDrawerService.recordCashSale(amount, ReferenceType.Sale.name(), saleId);
         }
     }
 
@@ -1200,5 +1250,3 @@ public class SaleService {
         customerPaymentService.recordSalePayment(sale, paymentDTO);
     }
 }
-
-

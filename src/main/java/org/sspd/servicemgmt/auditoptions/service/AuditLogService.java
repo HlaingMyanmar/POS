@@ -40,7 +40,7 @@ public class AuditLogService {
         LocalDateTime from = (dateFrom != null && !dateFrom.isBlank())
                 ? LocalDateTime.parse(dateFrom + "T00:00:00") : null;
         LocalDateTime to   = (dateTo   != null && !dateTo.isBlank())
-                ? LocalDateTime.parse(dateTo   + "T23:59:59") : null;
+                ? java.time.LocalDate.parse(dateTo).plusDays(1).atStartOfDay() : null;
 
         return repository.search(actor, action, module, from, to, PageRequest.of(page, size))
                 .map(this::toDto);

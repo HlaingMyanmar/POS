@@ -20,6 +20,7 @@ public interface SaleDetailRepository extends JpaRepository<SaleDetail, Integer>
         FROM SaleDetail d
         WHERE (:from IS NULL OR d.sale.saleDate >= :from)
           AND (:to   IS NULL OR d.sale.saleDate <  :to)
+          AND COALESCE(d.sale.voided, false) = false
           AND d.foc = false
         GROUP BY d.product.id, d.product.name, d.product.productCode
         ORDER BY SUM(d.qty) DESC
@@ -31,6 +32,7 @@ public interface SaleDetailRepository extends JpaRepository<SaleDetail, Integer>
                SUM(d.qty), SUM(d.subtotal)
         FROM SaleDetail d
         WHERE d.foc = false
+          AND COALESCE(d.sale.voided, false) = false
         GROUP BY FUNCTION('YEAR', d.sale.saleDate), FUNCTION('MONTH', d.sale.saleDate)
         ORDER BY FUNCTION('YEAR', d.sale.saleDate) DESC, FUNCTION('MONTH', d.sale.saleDate) DESC
         """)
@@ -40,7 +42,8 @@ public interface SaleDetailRepository extends JpaRepository<SaleDetail, Integer>
         SELECT COALESCE(SUM(d.subtotal - COALESCE(d.costPriceSnapshot, 0) * d.qty), 0)
         FROM SaleDetail d
         WHERE (:from IS NULL OR d.sale.saleDate >= :from)
-          AND (:to   IS NULL OR d.sale.saleDate <= :to)
+          AND (:to   IS NULL OR d.sale.saleDate < :to)
+          AND COALESCE(d.sale.voided, false) = false
           AND d.foc = false
         """)
     BigDecimal saleProfitInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);

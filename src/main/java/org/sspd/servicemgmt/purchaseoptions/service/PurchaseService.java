@@ -46,6 +46,9 @@ import org.sspd.servicemgmt.supplieroptions.repository.SupplierRepository;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -85,8 +88,10 @@ public class PurchaseService {
     private final CashDrawerService cashDrawerService;
     private final org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnRepository purchaseReturnRepository;
     private final org.sspd.servicemgmt.purchaseoptions.purchaseorderoptions.repository.PurchaseOrderRepository purchaseOrderRepository;
+    private final org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierCreditApplicationRepository supplierCreditApplicationRepository;
     private final org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard periodGuard;
     private final org.sspd.servicemgmt.purchaseoptions.budget.service.PurchaseBudgetService purchaseBudgetService;
+    private final EntityManager entityManager;
 
     private static final String PURCHASE_TOPIC = "/topic/purchase";
 
@@ -365,11 +370,11 @@ public class PurchaseService {
         BigDecimal withholding = safe(p.getWithholdingTaxAmount());
         BigDecimal grossBeforeWithholding = safe(p.getNetAmount()).add(withholding);
         BigDecimal purchaseCost = grossBeforeWithholding.subtract(tax);
-        JournalDetailDTO drPurchases = new JournalDetailDTO();
-        drPurchases.setAccountId(accounts.purchases().getId());  // EXP-007, id=20
-        drPurchases.setDebit(purchaseCost);
-        drPurchases.setCredit(BigDecimal.ZERO);
-        if (purchaseCost.signum() > 0) details.add(drPurchases);
+        JournalDetailDTO drInventory = new JournalDetailDTO();
+        drInventory.setAccountId(accounts.inventory().getId());
+        drInventory.setDebit(purchaseCost);
+        drInventory.setCredit(BigDecimal.ZERO);
+        if (purchaseCost.signum() > 0) details.add(drInventory);
         if (tax.signum() > 0) {
             JournalDetailDTO drInputVat = new JournalDetailDTO();
             drInputVat.setAccountId(accounts.inputTaxReceivable().getId());
@@ -843,7 +848,7 @@ public class PurchaseService {
         if (date == null || date.isBlank()) return null;
         try {
             LocalDate d = LocalDate.parse(date);
-            return endOfDay ? d.atTime(23, 59, 59) : d.atStartOfDay();
+            return endOfDay ? d.plusDays(1).atStartOfDay() : d.atStartOfDay();
         } catch (Exception e) {
             return null;
         }
@@ -1266,8 +1271,13 @@ public class PurchaseService {
         if (reason == null || reason.isBlank())
             throw new IllegalArgumentException("Cancellation reason is required.");
         String cleanReason = reason.trim();
-        Purchase purchase = purchaseRepository.findById(id)
+        Integer supplierId = purchaseRepository.findSupplierIdById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        Supplier supplier = supplierRepository.findByIdForUpdate(supplierId)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        Purchase purchase = purchaseRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        entityManager.refresh(purchase, LockModeType.PESSIMISTIC_WRITE);
         periodGuard.assertOpen(purchase.getPurchaseDate(), "cancel purchase");
         periodGuard.assertOpen(LocalDateTime.now(), "post purchase cancellation reversal");
         if (purchase.isCancelled())
@@ -1318,7 +1328,9 @@ public class PurchaseService {
                 product.setStockQty(current - qty);
                 productRepository.save(product);
             } else {
-                // Serial product without stored serial rows — nothing to reverse on serials.
+                throw new IllegalStateException(
+                        "Cannot cancel. Serial product '" + product.getName()
+                                + "' has no stored serial numbers to reverse. Repair the purchase warranty serials first.");
             }
 
             stockMovementService.recordMovement(StockMovement.builder()
@@ -1334,8 +1346,15 @@ public class PurchaseService {
             if (tx.getAmount() != null && tx.getAmount().compareTo(BigDecimal.ZERO) > 0)
                 paidTotal = paidTotal.add(tx.getAmount());
         }
-        if (paidTotal.compareTo(BigDecimal.ZERO) <= 0 && purchase.getPaidAmount() != null)
-            paidTotal = purchase.getPaidAmount();
+        List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> creditApps =
+                supplierCreditApplicationRepository.findByTargetPurchaseIdOrderByIdDesc(purchase.getId());
+        BigDecimal creditApplied = BigDecimal.ZERO;
+        for (var application : creditApps) {
+            creditApplied = creditApplied.add(safe(application.getAmount()));
+        }
+        if (paidTotal.compareTo(BigDecimal.ZERO) <= 0 && purchase.getPaidAmount() != null) {
+            paidTotal = safe(purchase.getPaidAmount()).subtract(creditApplied).max(BigDecimal.ZERO);
+        }
 
         PaymentMethod refundMethod = null;
         if (paidTotal.compareTo(BigDecimal.ZERO) > 0) {
@@ -1349,7 +1368,8 @@ public class PurchaseService {
                 throw new RuntimeException("Payment method has no linked account.");
         }
 
-        createCancelJournal(purchase, paidTotal, refundMethod);
+        createCancelJournal(purchase, paidTotal, refundMethod, creditApplied);
+        restoreAppliedSupplierCredit(supplier, purchase.getId(), creditApps);
 
         LocalDateTime reversedAt = LocalDateTime.now();
         String actor = currentActor();
@@ -1362,7 +1382,9 @@ public class PurchaseService {
         }
         paymentTransactionRepository.saveAll(transactions);
         if (refundMethod != null && isCashMethod(refundMethod))
-            cashDrawerService.recordPurchaseCashIn(paidTotal, "Purchase cancellation " + purchase.getPurchaseCode() + ": " + cleanReason);
+            cashDrawerService.recordPurchaseCashIn(paidTotal,
+                    "Purchase cancellation " + purchase.getPurchaseCode() + ": " + cleanReason,
+                    ReferenceType.Purchase.name(), purchase.getId());
 
         purchase.setStatus(PurchaseStatus.CANCELLED);
         purchase.setDueAmount(BigDecimal.ZERO);
@@ -1382,7 +1404,7 @@ public class PurchaseService {
      * ✅ Cancel Journal — reverse purchases/VAT/payable, and bring paid money
      * back through the chosen refund method (may differ from the original cash/bank).
      */
-    private void createCancelJournal(Purchase p, BigDecimal paidTotal, PaymentMethod refundMethod) {
+    private void createCancelJournal(Purchase p, BigDecimal paidTotal, PaymentMethod refundMethod, BigDecimal creditApplied) {
         BigDecimal net = p.getNetAmount() != null ? p.getNetAmount()
                 : (p.getTotalAmount() != null ? p.getTotalAmount() : BigDecimal.ZERO);
         if (net.compareTo(BigDecimal.ZERO) <= 0 && safe(p.getWithholdingTaxAmount()).signum() <= 0) return;
@@ -1401,11 +1423,11 @@ public class PurchaseService {
         BigDecimal grossBeforeWithholding = safe(p.getNetAmount()).add(withholding);
         BigDecimal purchaseCost = grossBeforeWithholding.subtract(tax);
 
-        JournalDetailDTO crPurchases = new JournalDetailDTO();
-        crPurchases.setAccountId(accounts.purchases().getId());
-        crPurchases.setDebit(BigDecimal.ZERO);
-        crPurchases.setCredit(purchaseCost);
-        if (purchaseCost.signum() > 0) details.add(crPurchases);
+        JournalDetailDTO crInventory = new JournalDetailDTO();
+        crInventory.setAccountId(accounts.inventory().getId());
+        crInventory.setDebit(BigDecimal.ZERO);
+        crInventory.setCredit(purchaseCost);
+        if (purchaseCost.signum() > 0) details.add(crInventory);
         if (tax.signum() > 0) {
             JournalDetailDTO crInputVat = new JournalDetailDTO();
             crInputVat.setAccountId(accounts.inputTaxReceivable().getId());
@@ -1438,9 +1460,66 @@ public class PurchaseService {
             drRefund.setCredit(BigDecimal.ZERO);
             details.add(drRefund);
         }
+        BigDecimal restoredCredit = creditApplied != null ? creditApplied : BigDecimal.ZERO;
+        if (restoredCredit.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO drAdvance = new JournalDetailDTO();
+            drAdvance.setAccountId(accounts.supplierAdvance().getId());
+            drAdvance.setDebit(restoredCredit);
+            drAdvance.setCredit(BigDecimal.ZERO);
+            details.add(drAdvance);
+        }
 
         journalDTO.setDetails(details);
         journalWriter.write(journalDTO);
+    }
+
+    private void restoreAppliedSupplierCredit(Supplier supplier,
+            Integer cancelledPurchaseId,
+            List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> creditApps) {
+        if (creditApps == null || creditApps.isEmpty()) return;
+        for (var application : creditApps) {
+            supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).add(safe(application.getAdvanceUsed())));
+            BigDecimal remaining = restoreReturnCreditToRecordedSources(
+                    supplier.getId(), cancelledPurchaseId, application.getReturnCreditSources(),
+                    safe(application.getReturnCreditUsed()));
+            if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+                throw new IllegalStateException(
+                        "Cannot restore supplier return credit to its original voucher for "
+                                + application.getApplicationNo()
+                                + ". Source history is missing or the source voucher is no longer available.");
+            }
+        }
+    }
+
+    private BigDecimal restoreReturnCreditToRecordedSources(Integer supplierId, Integer cancelledPurchaseId,
+            String encodedSources, BigDecimal remaining) {
+        if (remaining.compareTo(BigDecimal.ZERO) <= 0 || encodedSources == null || encodedSources.isBlank()) {
+            return remaining;
+        }
+        for (String token : encodedSources.split(",")) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+            String[] parts = token.split(":");
+            if (parts.length != 2) continue;
+            Integer sourceId;
+            BigDecimal amount;
+            try {
+                sourceId = Integer.valueOf(parts[0].trim());
+                amount = new BigDecimal(parts[1].trim());
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            if (amount.compareTo(BigDecimal.ZERO) <= 0 || sourceId.equals(cancelledPurchaseId)) continue;
+            Purchase source = purchaseRepository.findByIdForUpdate(sourceId).orElse(null);
+            if (source == null || source.isCancelled() || source.getSupplier() == null
+                    || !supplierId.equals(source.getSupplier().getId())) {
+                continue;
+            }
+            BigDecimal restore = amount.min(remaining);
+            source.setSupplierCreditAmount(safe(source.getSupplierCreditAmount()).add(restore));
+            purchaseRepository.save(source);
+            remaining = remaining.subtract(restore);
+        }
+        return remaining;
     }
 
     private List<Integer> normalizeItemWarranties(PurchaseDetailDTO dDto) {

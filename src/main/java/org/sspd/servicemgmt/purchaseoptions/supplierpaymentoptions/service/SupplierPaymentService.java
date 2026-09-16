@@ -51,7 +51,7 @@ public class SupplierPaymentService {
         periodGuard.assertOpen(LocalDateTime.now(), "record supplier payment");
         if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0)
             throw new RuntimeException("Payment amount must be greater than zero.");
-        Supplier supplier = supplierRepository.findById(request.getSupplierId())
+        Supplier supplier = supplierRepository.findByIdForUpdate(request.getSupplierId())
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
         PaymentMethod method = paymentMethodRepository.findById(request.getPaymentMethodId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment method not found"));
@@ -105,7 +105,7 @@ public class SupplierPaymentService {
     @Transactional
     public SupplierPaymentDTO voidPayment(Integer id, String reason, Integer staffId) {
         periodGuard.assertOpen(LocalDateTime.now(), "void supplier payment");
-        SupplierPayment payment = supplierPaymentRepository.findById(id)
+        SupplierPayment payment = supplierPaymentRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier payment not found"));
         if (Boolean.TRUE.equals(payment.getVoided()))
             throw new IllegalStateException("Payment is already voided.");
@@ -114,16 +114,34 @@ public class SupplierPaymentService {
         if (staffId == null || !staffRepository.existsById(staffId))
             throw new IllegalArgumentException("Valid staff is required.");
 
+        Supplier supplier = supplierRepository.findByIdForUpdate(payment.getSupplier().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        BigDecimal advanceToReverse = safe(payment.getAdvanceAmount());
+        if (advanceToReverse.compareTo(safe(supplier.getAdvanceBalance())) > 0)
+            throw new IllegalStateException("Payment advance has already been used and cannot be voided.");
+
         for (SupplierPaymentAllocation alloc : payment.getAllocations()) {
-            Purchase purchase = alloc.getPurchase();
+            Purchase purchase = purchaseRepository.findByIdForUpdate(alloc.getPurchase().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Allocated purchase not found"));
+            if (purchase.isCancelled())
+                throw new IllegalStateException(
+                        "Cannot void payment: purchase " + purchase.getPurchaseCode() + " is cancelled.");
+            if (!purchase.isEffectivelyConfirmed())
+                throw new IllegalStateException(
+                        "Cannot void payment: purchase " + purchase.getPurchaseCode() + " is not confirmed.");
             if (safe(purchase.getReturnAmount()).signum() > 0)
                 throw new IllegalStateException(
                         "Cannot void payment: purchase " + purchase.getPurchaseCode()
                                 + " has returns after payment. Void returns first or reverse manually.");
+            if (safe(alloc.getAmount()).compareTo(safe(purchase.getPaidAmount())) > 0)
+                throw new IllegalStateException(
+                        "Cannot void payment: purchase " + purchase.getPurchaseCode()
+                                + " no longer has enough paid amount to reverse.");
         }
 
         for (SupplierPaymentAllocation alloc : payment.getAllocations()) {
-            Purchase purchase = alloc.getPurchase();
+            Purchase purchase = purchaseRepository.findByIdForUpdate(alloc.getPurchase().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Allocated purchase not found"));
             BigDecimal amount = safe(alloc.getAmount());
             purchase.setPaidAmount(safe(purchase.getPaidAmount()).subtract(amount).max(BigDecimal.ZERO));
             purchase.setDueAmount(safe(purchase.getDueAmount()).add(amount));
@@ -142,20 +160,21 @@ public class SupplierPaymentService {
                         paymentTransactionRepository.save(tx);
                     });
         }
-        if (safe(payment.getAdvanceAmount()).signum() > 0) {
-            Supplier supplier = payment.getSupplier();
-            supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).subtract(safe(payment.getAdvanceAmount())).max(BigDecimal.ZERO));
+        if (advanceToReverse.signum() > 0) {
+            supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).subtract(advanceToReverse));
             supplierRepository.save(supplier);
         }
         journalWriter.reverseByReferenceNo(payment.getPaymentNo());
         if (isCash(payment.getPaymentMethod()))
-            cashDrawerService.recordPurchaseCashIn(payment.getTotalAmount(), "Void supplier payment " + payment.getPaymentNo());
+            cashDrawerService.recordPurchaseCashIn(payment.getTotalAmount(),
+                    "Void supplier payment " + payment.getPaymentNo(),
+                    "Supplier_Payment", payment.getId());
 
         payment.setVoided(true);
         payment.setVoidedAt(LocalDateTime.now());
         payment.setVoidedBy(currentUsername());
         payment.setVoidReason(reason.trim());
-        syncSupplierBalance(payment.getSupplier());
+        syncSupplierBalance(supplier);
         return toDto(supplierPaymentRepository.save(payment));
     }
 
@@ -183,12 +202,13 @@ public class SupplierPaymentService {
     @Transactional
     public Map<String, Object> applyCredit(SupplierCreditApplyRequest request) {
         periodGuard.assertOpen(LocalDateTime.now(), "apply supplier credit");
-        Supplier supplier = supplierRepository.findById(request.getSupplierId())
+        Supplier supplier = supplierRepository.findByIdForUpdate(request.getSupplierId())
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
-        Purchase target = purchaseRepository.findById(request.getPurchaseId())
+        Purchase target = purchaseRepository.findByIdForUpdate(request.getPurchaseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
         if (target.getSupplier() == null || !supplier.getId().equals(target.getSupplier().getId()))
             throw new RuntimeException("Target voucher belongs to another supplier.");
+        requireConfirmedPurchase(target);
         if (request.getStaffId() == null || !staffRepository.existsById(request.getStaffId()))
             throw new RuntimeException("Valid staff is required.");
         BigDecimal amount = safe(request.getAmount());
@@ -196,7 +216,7 @@ public class SupplierPaymentService {
             throw new RuntimeException("Credit amount must be within target voucher due amount.");
 
         BigDecimal availableAdvance = safe(supplier.getAdvanceBalance());
-        List<Purchase> creditSources = purchaseRepository.findSupplierCreditSourcesFifo(supplier.getId());
+        List<Purchase> creditSources = purchaseRepository.findSupplierCreditSourcesFifoForUpdate(supplier.getId());
         BigDecimal availableReturnCredit = creditSources.stream().map(Purchase::getSupplierCreditAmount)
                 .map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (amount.compareTo(availableAdvance.add(availableReturnCredit)) > 0)
@@ -206,12 +226,16 @@ public class SupplierPaymentService {
         BigDecimal returnUsed = amount.subtract(advanceUsed);
         supplier.setAdvanceBalance(availableAdvance.subtract(advanceUsed));
         BigDecimal remainingReturn = returnUsed;
+        StringBuilder sourceUses = new StringBuilder();
         for (Purchase source : creditSources) {
             if (remainingReturn.compareTo(BigDecimal.ZERO) <= 0) break;
             BigDecimal used = remainingReturn.min(safe(source.getSupplierCreditAmount()));
+            if (used.compareTo(BigDecimal.ZERO) <= 0) continue;
             source.setSupplierCreditAmount(safe(source.getSupplierCreditAmount()).subtract(used));
             purchaseRepository.save(source);
             remainingReturn = remainingReturn.subtract(used);
+            if (sourceUses.length() > 0) sourceUses.append(',');
+            sourceUses.append(source.getId()).append(':').append(used.toPlainString());
         }
 
         target.setPaidAmount(safe(target.getPaidAmount()).add(amount));
@@ -221,7 +245,9 @@ public class SupplierPaymentService {
 
         var application = org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication.builder()
                 .applicationNo("PENDING").supplier(supplier).targetPurchase(target).amount(amount)
-                .advanceUsed(advanceUsed).returnCreditUsed(returnUsed).appliedAt(LocalDateTime.now())
+                .advanceUsed(advanceUsed).returnCreditUsed(returnUsed)
+                .returnCreditSources(sourceUses.length() > 0 ? sourceUses.toString() : null)
+                .appliedAt(LocalDateTime.now())
                 .appliedBy(currentUsername()).reason(request.getReason()).build();
         application = creditApplicationRepository.save(application);
         application.setApplicationNo(String.format("SCA-%06d", application.getId()));
@@ -272,10 +298,11 @@ public class SupplierPaymentService {
             for (var requested : request.getAllocations()) {
                 if (requested.getPurchaseId() == null || !seen.add(requested.getPurchaseId()))
                     throw new RuntimeException("Duplicate or missing purchase allocation.");
-                Purchase purchase = purchaseRepository.findById(requested.getPurchaseId())
+                Purchase purchase = purchaseRepository.findByIdForUpdate(requested.getPurchaseId())
                         .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
                 if (purchase.getSupplier() == null || !supplier.getId().equals(purchase.getSupplier().getId()))
                     throw new RuntimeException("Allocated purchase belongs to another supplier.");
+                requireConfirmedPurchase(purchase);
                 BigDecimal amount = safe(requested.getAmount());
                 if (amount.compareTo(BigDecimal.ZERO) <= 0 || amount.compareTo(safe(purchase.getDueAmount())) > 0)
                     throw new RuntimeException("Invalid allocation for " + purchase.getPurchaseCode());
@@ -284,7 +311,7 @@ public class SupplierPaymentService {
             return result;
         }
         BigDecimal remaining = request.getAmount();
-        for (Purchase purchase : purchaseRepository.findSupplierPayablesFifo(supplier.getId())) {
+        for (Purchase purchase : purchaseRepository.findSupplierPayablesFifoForUpdate(supplier.getId())) {
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
             BigDecimal amount = remaining.min(safe(purchase.getDueAmount()));
             if (amount.compareTo(BigDecimal.ZERO) > 0) {
@@ -312,6 +339,11 @@ public class SupplierPaymentService {
         JournalDetailDTO line = new JournalDetailDTO(); line.setAccountId(accountId);
         line.setDebit(debit); line.setCredit(credit); return line;
     }
+    private void requireConfirmedPurchase(Purchase purchase) {
+        if (!purchase.isEffectivelyConfirmed())
+            throw new RuntimeException("Cannot pay or apply credit to a draft or cancelled purchase.");
+    }
+
     private void syncSupplierBalance(Supplier supplier) {
         BigDecimal due = purchaseRepository.sumDueAmountBySupplierId(supplier.getId());
         BigDecimal credits = purchaseRepository.sumSupplierCreditAmountBySupplierId(supplier.getId());

@@ -10,6 +10,9 @@ import java.util.Optional;
 
 @Repository
 public interface ChartOfAccountRepository extends JpaRepository<ChartOfAccount, Integer> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select a from ChartOfAccount a where a.id = :id")
+    Optional<ChartOfAccount> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Integer id);
 
     // ၁။ အကောင့်ကုဒ်ဖြင့် ရှာဖွေရန်
     Optional<ChartOfAccount> findByCode(String code);

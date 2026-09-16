@@ -1227,15 +1227,9 @@ public class ServiceJobService {
 
         if (job.getSaleId() != null) {
             Integer saleId = job.getSaleId();
-            try {
-                saleService.voidSale(saleId, reason);
-                recordActivity(job, "INVENTORY_REVERSED", null, job.getStatus().name(),
-                        "Linked sale #" + saleId + " voided — inventory/COGS reversed");
-            }
-            catch (Exception ex) {
-                recordActivity(job, "INVENTORY_REVERSE_FAILED", null, job.getStatus().name(),
-                        "Linked sale #" + saleId + " void failed: " + ex.getMessage());
-            }
+            saleService.voidSale(saleId, reason);
+            recordActivity(job, "INVENTORY_REVERSED", null, job.getStatus().name(),
+                    "Linked sale #" + saleId + " voided — inventory/COGS reversed");
             job.setSaleId(null);
         }
 
@@ -1248,7 +1242,7 @@ public class ServiceJobService {
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (cashPaid.compareTo(BigDecimal.ZERO) > 0)
-            cashDrawerService.recordCashRefund(cashPaid);
+            cashDrawerService.recordCashRefund(cashPaid, ReferenceType.Service.name(), job.getId());
 
         paymentTransactionRepo.findByReferenceIdAndReferenceType(job.getId(), ReferenceType.Service).forEach(tx -> {
             tx.setReversed(true);
@@ -1264,6 +1258,7 @@ public class ServiceJobService {
                 ServiceJobSettlementJournalBuilder.settlementReferencePrefix(job.getJobNo()), actor, reason.trim());
         journalWriter.reverseByReferencePrefix(job.getJobNo() + "-PAY", actor, reason.trim());
         journalWriter.reverseByReferenceNo(job.getJobNo() + "-RETURN-COST", actor, reason.trim());
+        customerPaymentService.reverseAccountingForVoidedServiceJob(job.getId());
 
         job.setVoided(true);
         job.setVoidReason(reason.trim());
@@ -1289,6 +1284,7 @@ public class ServiceJobService {
     public ServiceJobDTO approveEstimate(Integer id) {
         ServiceJob job = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        assertEstimateMutable(job);
         job.setEstimateApproved(true);
         job.setEstimateApprovedAt(LocalDateTime.now());
         job.setEstimateApprovedBy(currentUsername());
@@ -1317,8 +1313,7 @@ public class ServiceJobService {
     public ServiceJobDTO holdEstimate(Integer id, String reason) {
         ServiceJob job = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
-        if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
-            throw new IllegalStateException("Closed jobs cannot be put on estimate hold");
+        assertEstimateMutable(job);
         job.setEstimateApproved(false);
         job.setEstimateApprovedAt(null);
         job.setEstimateApprovedBy(null);
@@ -1346,10 +1341,7 @@ public class ServiceJobService {
         String cleanReason = trimToNull(reason);
         if (cleanReason == null)
             throw new IllegalArgumentException("Job ငြင်းပယ်ရသည့် အကြောင်းရင်း လိုအပ်သည်");
-        if (job.getStatus() == ServiceJobStatus.DELIVERED)
-            throw new IllegalStateException("Delivered jobs cannot reject estimate");
-        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
-            throw new IllegalStateException("Settled jobs cannot reject estimate");
+        assertEstimateMutable(job);
         ServiceJobStatus from = job.getStatus();
         if (job.getLines() != null) {
             for (ServiceJobLine line : job.getLines()) {
@@ -1370,6 +1362,13 @@ public class ServiceJobService {
                 ServiceJobStatus.CANCELLED.name(), cleanReason);
         broadcastJobEvent( "JOB_ESTIMATE_REJECTED");
         return result;
+    }
+
+    static void assertEstimateMutable(ServiceJob job) {
+        if (job.getStatus() == ServiceJobStatus.DELIVERED || job.getStatus() == ServiceJobStatus.CANCELLED)
+            throw new IllegalStateException("Closed jobs cannot change estimate");
+        if (job.getPaymentStatus() != null && !Boolean.TRUE.equals(job.getVoided()))
+            throw new IllegalStateException("Settled jobs cannot change estimate");
     }
 
     static void assertEditable(ServiceJob job) {
@@ -1711,6 +1710,7 @@ public class ServiceJobService {
                     ? line.transactionNo()
                     : (userTransactionNo != null && !userTransactionNo.isBlank() ? userTransactionNo : generateTxnNo()));
             paymentTransactionRepo.save(tx);
+            recordJobCashDrawer(job, line.method(), line.amount());
         }
     }
 
@@ -1744,6 +1744,14 @@ public class ServiceJobService {
             return List.of(new PaymentLine(fallbackMethod, expectedTotal, null));
         }
         return lines;
+    }
+
+    private void recordJobCashDrawer(ServiceJob job, PaymentMethod method, BigDecimal amount) {
+        if (job == null || job.getId() == null || method == null || method.getAccount() == null
+                || amount == null || amount.signum() <= 0) return;
+        if (method.getAccount().getId().equals(accountResolver.cash().getId())) {
+            cashDrawerService.recordCashSale(amount, ReferenceType.Service.name(), job.getId());
+        }
     }
 
     private record PaymentLine(PaymentMethod method, BigDecimal amount, String transactionNo) {}

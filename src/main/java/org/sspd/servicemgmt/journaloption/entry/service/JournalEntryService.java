@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
 import org.sspd.servicemgmt.journaloption.entry.mapper.JournalMapper;
@@ -18,10 +19,12 @@ public class JournalEntryService {
     private final JournalEntryRepository journalRepository;
     private final JournalMapper journalMapper;
     private final JournalWriter journalWriter;
+    private final AccountingPeriodGuard periodGuard;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_JOURNAL_CREATE')")
     @Transactional
     public JournalEntryDTO save(JournalEntryDTO dto) {
+        periodGuard.assertOpen(dto.getEntryDate(), "post manual journal");
         return journalWriter.write(dto);
     }
 

@@ -3,6 +3,7 @@ package org.sspd.servicemgmt.purchaseoptions.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,6 +18,13 @@ import java.util.Optional;
 
 @Repository
 public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Purchase p where p.id = :id")
+    Optional<Purchase> findByIdForUpdate(@Param("id") Integer id);
+
+    @Query("select p.supplier.id from Purchase p where p.id = :id")
+    Optional<Integer> findSupplierIdById(@Param("id") Integer id);
+
     Optional<Purchase> findByPurchaseCode(String purchaseCode);
 
     Optional<Purchase> findTopByOrderByIdDesc();
@@ -32,7 +40,7 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
                                         @Param("invoiceNo") String invoiceNo,
                                         @Param("excludeId") Integer excludeId);
 
-    @org.springframework.data.jpa.repository.Query("select coalesce(sum(p.totalAmount), 0) from Purchase p")
+    @org.springframework.data.jpa.repository.Query("select coalesce(sum(p.totalAmount), 0) from Purchase p where p.status is null or p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED")
     java.math.BigDecimal sumTotalAmount();
 
     @Query("SELECT p FROM Purchase p WHERE p.supplier.id = :supplierId")
@@ -54,7 +62,7 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
     @Query("SELECT p FROM Purchase p WHERE " +
         "(:search IS NULL OR :search = '' OR LOWER(p.purchaseCode) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.supplier.name) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.supplier.code) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.supplier.phone) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.supplier.address) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(p.staff.name) LIKE LOWER(CONCAT('%',:search,'%'))) " +
         "AND (:from IS NULL OR p.purchaseDate >= :from) " +
-        "AND (:to IS NULL OR p.purchaseDate <= :to)")
+        "AND (:to IS NULL OR p.purchaseDate < :to)")
     Page<Purchase> findBySearchAndDateRange(@Param("search") String search, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to, Pageable pageable);
 
     @Query("""
@@ -62,7 +70,7 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
         FROM Purchase p
         WHERE (p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
           AND (:from IS NULL OR p.purchaseDate >= :from)
-          AND (:to IS NULL OR p.purchaseDate <= :to)
+          AND (:to IS NULL OR p.purchaseDate < :to)
         """)
     List<Object[]> findStatsByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
@@ -73,7 +81,7 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
         FROM Purchase p
         WHERE (p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
           AND (:from IS NULL OR p.purchaseDate >= :from)
-          AND (:to IS NULL OR p.purchaseDate <= :to)
+          AND (:to IS NULL OR p.purchaseDate < :to)
         GROUP BY FUNCTION('YEAR', p.purchaseDate), FUNCTION('MONTH', p.purchaseDate), FUNCTION('DAY', p.purchaseDate)
         ORDER BY FUNCTION('YEAR', p.purchaseDate), FUNCTION('MONTH', p.purchaseDate), FUNCTION('DAY', p.purchaseDate)
         """)
@@ -85,7 +93,7 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
         JOIN p.supplier s
         WHERE (p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
           AND (:from IS NULL OR p.purchaseDate >= :from)
-          AND (:to IS NULL OR p.purchaseDate <= :to)
+          AND (:to IS NULL OR p.purchaseDate < :to)
         GROUP BY s.id, s.name, s.code
         ORDER BY totalAmount DESC
         """)
@@ -110,6 +118,16 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
         """)
     List<Purchase> findSupplierPayablesFifo(@Param("supplierId") Integer supplierId);
 
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT p FROM Purchase p
+        WHERE p.supplier.id = :supplierId
+          AND (p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
+          AND p.dueAmount > 0
+        ORDER BY CASE WHEN p.dueDate IS NULL THEN 1 ELSE 0 END, p.dueDate ASC, p.purchaseDate ASC, p.id ASC
+        """)
+    List<Purchase> findSupplierPayablesFifoForUpdate(@Param("supplierId") Integer supplierId);
+
     @Query("""
         SELECT p FROM Purchase p
         WHERE p.supplier.id = :supplierId
@@ -118,6 +136,16 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
         ORDER BY p.purchaseDate ASC, p.id ASC
         """)
     List<Purchase> findSupplierCreditSourcesFifo(@Param("supplierId") Integer supplierId);
+
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT p FROM Purchase p
+        WHERE p.supplier.id = :supplierId
+          AND (p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED)
+          AND p.supplierCreditAmount > 0
+        ORDER BY p.purchaseDate ASC, p.id ASC
+        """)
+    List<Purchase> findSupplierCreditSourcesFifoForUpdate(@Param("supplierId") Integer supplierId);
 
     @Query("""
         SELECT p FROM Purchase p

@@ -90,8 +90,11 @@ public class SaleReturnService {
             throw new RuntimeException("Sale reference is required for sale return");
         }
 
-        Sale sale = saleRepository.findById(dto.getSaleId())
+        Sale sale = saleRepository.findLockedWithDetails(dto.getSaleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found"));
+        if (Boolean.TRUE.equals(sale.getVoided())) {
+            throw new IllegalStateException("Cannot return items from a voided sale");
+        }
 
         List<SaleReturn> existingReturns = saleReturnRepository.findAllBySaleIdAndDeletedFalse(sale.getId());
 
@@ -157,6 +160,7 @@ public class SaleReturnService {
                     serial.setStatus(restock ? SerialStatus.Available : SerialStatus.Damaged);
                     productSerialRepository.save(serial);
                 }
+                returnedSerials.addAll(serials);
             } else {
                 if (qty <= 0) {
                     throw new RuntimeException("Quantity must be greater than zero for product: " + product.getName());
@@ -192,6 +196,7 @@ public class SaleReturnService {
                     .restock(dDto.getRestock() == null || Boolean.TRUE.equals(dDto.getRestock()))
                     .build();
             detailEntities.add(detail);
+            returnedQtyByProduct.merge(product.getId(), qty, Integer::sum);
         }
 
         entity.setDetails(detailEntities);
@@ -228,10 +233,7 @@ public class SaleReturnService {
         saved.setReturnCode(generateReturnCode(saved.getId()));
         saved = saleReturnRepository.save(saved);
 
-        BigDecimal oldDue = sale.getDueAmount() != null ? sale.getDueAmount() : BigDecimal.ZERO;
-        BigDecimal creditPortion = total.subtract(refund).max(BigDecimal.ZERO);
-        BigDecimal leftoverCredit = creditPortion.subtract(creditPortion.min(oldDue)).max(BigDecimal.ZERO);
-        applySaleAdjustments(sale, total, refund);
+        BigDecimal leftoverCredit = applySaleAdjustments(sale, total, refund);
         if (leftoverCredit.signum() > 0) {
             saved.setCreditNoteNo(String.format("CN-%06d", saved.getId()));
             saved.setCreditPostedAmount(leftoverCredit);
@@ -305,7 +307,7 @@ public class SaleReturnService {
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_SALE_RETURN_DELETE','CAN_ACCESS_SALE_RETURN_UPDATE')")
     @Transactional
     public SaleReturnDTO voidReturn(Integer id, String reason) {
-        SaleReturn existing = saleReturnRepository.findById(id)
+        SaleReturn existing = saleReturnRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale return not found with id: " + id));
         if (Boolean.TRUE.equals(existing.getDeleted()) || "VOIDED".equalsIgnoreCase(existing.getStatus())) {
             throw new IllegalStateException("Sale return is already voided");
@@ -313,6 +315,12 @@ public class SaleReturnService {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("Void reason is required");
         }
+        if (existing.getSale() == null || existing.getSale().getId() == null) {
+            throw new IllegalStateException("Sale return is missing its parent sale");
+        }
+        Sale sale = saleRepository.findLockedWithDetails(existing.getSale().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Sale not found"));
+        existing.setSale(sale);
 
         List<SaleReturnDetail> details = saleReturnDetailRepository.findAllBySaleReturnIn(List.of(existing));
 
@@ -323,15 +331,27 @@ public class SaleReturnService {
                     : List.of();
             if (!serials.isEmpty()) {
                 for (String sn : serials) {
-                    productSerialRepository.findBySerialNumber(sn).ifPresent(serial -> {
-                        serial.setStatus(SerialStatus.Sold);
-                        productSerialRepository.save(serial);
-                    });
+                    ProductSerial serial = productSerialRepository.findLockedBySerialNumber(sn)
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "Serial number '" + sn + "' was not found and cannot be voided"));
+                    SerialStatus expected = Boolean.FALSE.equals(detail.getRestock())
+                            ? SerialStatus.Damaged : SerialStatus.Available;
+                    if (serial.getStatus() != expected) {
+                        throw new IllegalStateException(
+                                "Cannot void sale return: serial '" + sn + "' is now "
+                                        + serial.getStatus() + " and is no longer held from this return");
+                    }
+                    serial.setStatus(SerialStatus.Sold);
+                    productSerialRepository.save(serial);
                 }
             } else if (!Boolean.FALSE.equals(detail.getRestock())) {
                 int qty = detail.getQty() != null ? detail.getQty() : 0;
                 int current = product.getStockQty() != null ? product.getStockQty() : 0;
-                product.setStockQty(Math.max(0, current - qty));
+                if (current < qty) {
+                    throw new IllegalStateException(
+                            "Insufficient stock to void sale return for product: " + product.getName());
+                }
+                product.setStockQty(current - qty);
                 productRepository.save(product);
                 stockMovementService.recordMovement(StockMovement.builder()
                         .product(product)
@@ -343,11 +363,13 @@ public class SaleReturnService {
             }
         }
 
-        reverseSaleAdjustments(existing.getSale(), existing.getTotalReturnAmount(), existing.getRefundAmount());
+        reverseSaleAdjustments(existing.getSale(), existing.getTotalReturnAmount(),
+                existing.getRefundAmount(), existing.getCreditPostedAmount());
         if (existing.getCreditPostedAmount() != null && existing.getCreditPostedAmount().signum() > 0) {
             customerPaymentService.reduceAdvanceBalance(existing.getSale().getCustomer(), existing.getCreditPostedAmount());
         }
         journalWriter.reverseByReferenceNo(existing.getReturnCode());
+        reverseReturnCashDrawer(existing);
         paymentTransactionRepository.findByReferenceIdAndReferenceType(existing.getId(), ReferenceType.Sale_Return)
                 .forEach(tx -> {
                     tx.setReversed(true);
@@ -381,25 +403,18 @@ public class SaleReturnService {
         return auth != null ? auth.getName() : "SYSTEM";
     }
 
-    private void reverseSaleAdjustments(Sale sale, BigDecimal returnAmount, BigDecimal refundAmount) {
+    private void reverseSaleAdjustments(Sale sale, BigDecimal returnAmount, BigDecimal refundAmount,
+            BigDecimal leftoverCredit) {
         BigDecimal total  = returnAmount  != null ? returnAmount  : BigDecimal.ZERO;
         BigDecimal refund = refundAmount  != null ? refundAmount  : BigDecimal.ZERO;
+        BigDecimal leftover = leftoverCredit != null ? leftoverCredit : BigDecimal.ZERO;
 
         BigDecimal newTotal = (sale.getTotalAmount() != null ? sale.getTotalAmount() : BigDecimal.ZERO).add(total);
         BigDecimal newNet   = (sale.getNetAmount()   != null ? sale.getNetAmount()   : BigDecimal.ZERO).add(total);
-
-        boolean isCreditSale = sale.getDueDate() != null || sale.getCreditStatus() != CreditStatus.Not_Credit;
-        BigDecimal newPaid;
-        BigDecimal newDue;
-
-        if (isCreditSale) {
-            newPaid = sale.getPaidAmount() != null ? sale.getPaidAmount() : BigDecimal.ZERO;
-            newDue  = (sale.getDueAmount() != null ? sale.getDueAmount() : BigDecimal.ZERO).add(total);
-        } else {
-            newPaid = (sale.getPaidAmount() != null ? sale.getPaidAmount() : BigDecimal.ZERO).add(refund);
-            newDue  = newNet.subtract(newPaid);
-            if (newDue.compareTo(BigDecimal.ZERO) < 0) newDue = BigDecimal.ZERO;
-        }
+        BigDecimal newPaid = (sale.getPaidAmount() != null ? sale.getPaidAmount() : BigDecimal.ZERO)
+                .add(refund).add(leftover);
+        BigDecimal newDue = newNet.subtract(newPaid);
+        if (newDue.compareTo(BigDecimal.ZERO) < 0) newDue = BigDecimal.ZERO;
 
         sale.setTotalAmount(newTotal);
         sale.setNetAmount(newNet);
@@ -411,11 +426,10 @@ public class SaleReturnService {
         creditAlertService.evaluateDueAlerts(sale);
     }
 
-    private void applySaleAdjustments(Sale sale, BigDecimal returnAmount, BigDecimal refundAmount) {
+    private BigDecimal applySaleAdjustments(Sale sale, BigDecimal returnAmount, BigDecimal refundAmount) {
         BigDecimal oldTotal = sale.getTotalAmount() != null ? sale.getTotalAmount() : BigDecimal.ZERO;
         BigDecimal oldNet = sale.getNetAmount() != null ? sale.getNetAmount() : BigDecimal.ZERO;
         BigDecimal oldPaid = sale.getPaidAmount() != null ? sale.getPaidAmount() : BigDecimal.ZERO;
-        BigDecimal oldDue = sale.getDueAmount() != null ? sale.getDueAmount() : BigDecimal.ZERO;
 
         BigDecimal newTotal = oldTotal.subtract(returnAmount);
         if (newTotal.compareTo(BigDecimal.ZERO) < 0) newTotal = BigDecimal.ZERO;
@@ -423,22 +437,12 @@ public class SaleReturnService {
         BigDecimal newNet = oldNet.subtract(returnAmount);
         if (newNet.compareTo(BigDecimal.ZERO) < 0) newNet = BigDecimal.ZERO;
 
-        boolean isCreditSale = sale.getDueDate() != null || sale.getCreditStatus() != CreditStatus.Not_Credit;
-        BigDecimal newPaid = oldPaid;
-        BigDecimal newDue;
-
-        if (isCreditSale) {
-            // Credit sale: reduce outstanding due by the return amount, keep paid as-is.
-            newDue = oldDue.subtract(returnAmount);
-            if (newDue.compareTo(BigDecimal.ZERO) < 0) newDue = BigDecimal.ZERO;
-        } else {
-            // Cash/partial cash sale: reduce paid by the refund amount.
-            newPaid = oldPaid.subtract(refundAmount);
-            if (newPaid.compareTo(BigDecimal.ZERO) < 0) newPaid = BigDecimal.ZERO;
-            if (newPaid.compareTo(newNet) > 0) newPaid = newNet;
-            newDue = newNet.subtract(newPaid);
-            if (newDue.compareTo(BigDecimal.ZERO) < 0) newDue = BigDecimal.ZERO;
-        }
+        BigDecimal newPaid = oldPaid.subtract(refundAmount != null ? refundAmount : BigDecimal.ZERO);
+        if (newPaid.compareTo(BigDecimal.ZERO) < 0) newPaid = BigDecimal.ZERO;
+        BigDecimal leftoverCredit = newPaid.subtract(newNet).max(BigDecimal.ZERO);
+        newPaid = newPaid.subtract(leftoverCredit);
+        BigDecimal newDue = newNet.subtract(newPaid);
+        if (newDue.compareTo(BigDecimal.ZERO) < 0) newDue = BigDecimal.ZERO;
 
         sale.setTotalAmount(newTotal);
         sale.setNetAmount(newNet);
@@ -451,6 +455,20 @@ public class SaleReturnService {
         sale.setCreditStatus(calculateCreditStatus(newDue, sale.getDueDate()));
         saleRepository.save(sale);
         creditAlertService.evaluateDueAlerts(sale);
+        return leftoverCredit;
+    }
+
+    private void reverseReturnCashDrawer(SaleReturn saleReturn) {
+        BigDecimal cashRefunded = paymentTransactionRepository
+                .findByReferenceIdAndReferenceType(saleReturn.getId(), ReferenceType.Sale_Return).stream()
+                .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
+                .filter(tx -> tx.getPaymentMethod() != null && tx.getPaymentMethod().getAccount() != null)
+                .filter(tx -> tx.getPaymentMethod().getAccount().getId().equals(accountResolver.cash().getId()))
+                .map(PaymentTransaction::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        cashDrawerService.recordCompensatingCashIn(cashRefunded, ReferenceType.Sale_Return.name(),
+                saleReturn.getId(), "Void sale return " + saleReturn.getReturnCode());
     }
 
     private void recordStockMovements(List<SaleReturnDetail> details, Integer returnId) {
@@ -480,7 +498,7 @@ public class SaleReturnService {
             paymentTransactionRepository.save(paymentTx);
             if (line.method().getAccount() != null
                     && line.method().getAccount().getId().equals(accountResolver.cash().getId())) {
-                cashDrawerService.recordCashRefund(line.amount());
+                cashDrawerService.recordCashRefund(line.amount(), ReferenceType.Sale_Return.name(), saleReturn.getId());
             }
         }
     }
@@ -536,6 +554,20 @@ public class SaleReturnService {
             details.add(crAdvance);
         }
 
+        BigDecimal restockCost = restockInventoryCost(saleReturn);
+        if (restockCost.compareTo(BigDecimal.ZERO) > 0) {
+            JournalDetailDTO drInventory = new JournalDetailDTO();
+            drInventory.setAccountId(accountResolver.inventory().getId());
+            drInventory.setDebit(restockCost);
+            drInventory.setCredit(BigDecimal.ZERO);
+            details.add(drInventory);
+            JournalDetailDTO crCogs = new JournalDetailDTO();
+            crCogs.setAccountId(accountResolver.cogs().getId());
+            crCogs.setDebit(BigDecimal.ZERO);
+            crCogs.setCredit(restockCost);
+            details.add(crCogs);
+        }
+
         JournalEntryDTO journalDTO = new JournalEntryDTO();
         journalDTO.setReferenceNo(saleReturn.getReturnCode());
         journalDTO.setEntryDate(LocalDateTime.now());
@@ -568,6 +600,44 @@ public class SaleReturnService {
             throw new RuntimeException("Payment Method must be linked to an account");
         }
         return method.getAccount().getId();
+    }
+
+    private BigDecimal restockInventoryCost(SaleReturn saleReturn) {
+        if (saleReturn.getDetails() == null || saleReturn.getDetails().isEmpty()
+                || saleReturn.getSale() == null || saleReturn.getSale().getId() == null) {
+            return BigDecimal.ZERO;
+        }
+        Map<Integer, Integer> restockQtyByProduct = new HashMap<>();
+        for (SaleReturnDetail detail : saleReturn.getDetails()) {
+            if (Boolean.FALSE.equals(detail.getRestock()) || detail.getProduct() == null) continue;
+            int qty = detail.getQty() != null ? detail.getQty() : 0;
+            if (qty > 0) {
+                restockQtyByProduct.merge(detail.getProduct().getId(), qty, Integer::sum);
+            }
+        }
+        if (restockQtyByProduct.isEmpty()) return BigDecimal.ZERO;
+
+        Map<Integer, Integer> soldQtyByProduct = new HashMap<>();
+        Map<Integer, BigDecimal> soldCostByProduct = new HashMap<>();
+        for (SaleDetail saleDetail : saleDetailRepository.findAllBySaleId(saleReturn.getSale().getId())) {
+            if (saleDetail.getProduct() == null) continue;
+            int qty = saleDetail.getQty() != null ? saleDetail.getQty() : 0;
+            BigDecimal lineCost = (saleDetail.getCostPriceSnapshot() != null
+                    ? saleDetail.getCostPriceSnapshot() : BigDecimal.ZERO)
+                    .multiply(BigDecimal.valueOf(qty));
+            soldQtyByProduct.merge(saleDetail.getProduct().getId(), qty, Integer::sum);
+            soldCostByProduct.merge(saleDetail.getProduct().getId(), lineCost, BigDecimal::add);
+        }
+
+        BigDecimal totalCost = BigDecimal.ZERO;
+        for (Map.Entry<Integer, Integer> entry : restockQtyByProduct.entrySet()) {
+            int soldQty = soldQtyByProduct.getOrDefault(entry.getKey(), 0);
+            if (soldQty <= 0) continue;
+            BigDecimal soldCost = soldCostByProduct.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            totalCost = totalCost.add(soldCost.multiply(BigDecimal.valueOf(entry.getValue()))
+                    .divide(BigDecimal.valueOf(soldQty), 2, RoundingMode.HALF_UP));
+        }
+        return totalCost;
     }
 
     private Map<Integer, Integer> buildSoldQtyMap(Integer saleId) {
@@ -646,10 +716,10 @@ public class SaleReturnService {
     }
 
     private Map<Integer, Integer> buildReturnedQtyMap(List<SaleReturn> returns) {
-        if (returns == null || returns.isEmpty()) {
-            return Map.of();
-        }
         Map<Integer, Integer> map = new HashMap<>();
+        if (returns == null || returns.isEmpty()) {
+            return map;
+        }
         List<SaleReturnDetail> details = saleReturnDetailRepository.findAllBySaleReturnIn(returns);
         for (SaleReturnDetail d : details) {
             map.merge(d.getProduct().getId(), d.getQty() != null ? d.getQty() : 0, Integer::sum);
@@ -658,10 +728,10 @@ public class SaleReturnService {
     }
 
     private Set<String> buildReturnedSerials(List<SaleReturn> returns) {
-        if (returns == null || returns.isEmpty()) {
-            return Set.of();
-        }
         Set<String> serials = new HashSet<>();
+        if (returns == null || returns.isEmpty()) {
+            return serials;
+        }
         List<SaleReturnDetail> details = saleReturnDetailRepository.findAllBySaleReturnIn(returns);
         for (SaleReturnDetail d : details) {
             if (d.getSerialNumber() != null) {

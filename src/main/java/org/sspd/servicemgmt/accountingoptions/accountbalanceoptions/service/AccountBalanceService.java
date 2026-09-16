@@ -139,7 +139,7 @@ public class AccountBalanceService {
             payDto.setPaymentMethodId(paymentMethodId);
             payDto.setAmount(amount);
             payDto.setTransactionNo(openingRefNo);
-            paymentTransactionService.saveInternalTransaction(payDto);
+            paymentTransactionService.saveOpeningBalanceTransaction(payDto);
         }
 
         messagingTemplate.convertAndSend(BALANCE_TOPIC, "BALANCE_INITIALIZED");

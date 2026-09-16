@@ -344,6 +344,10 @@ export const customerPortalService = {
     const blob = await customerApi.get<any, Blob>(`/v1/customer-portal/orders/${orderId}/invoice.pdf`, { responseType: 'blob' });
     return blob;
   },
+  downloadPaymentReceipt: async (orderId: number) => {
+    const blob = await customerApi.get<any, Blob>(`/v1/customer-portal/orders/${orderId}/payment-receipt.pdf`, { responseType: 'blob' });
+    return blob;
+  },
   downloadPurchaseInvoice: async (saleId: number) => {
     const blob = await customerApi.get<any, Blob>(`/v1/customer-portal/history/purchases/${saleId}/invoice.pdf`, { responseType: 'blob' });
     return blob;

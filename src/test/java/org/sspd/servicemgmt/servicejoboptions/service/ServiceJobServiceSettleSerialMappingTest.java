@@ -104,6 +104,32 @@ class ServiceJobServiceSettleSerialMappingTest {
     }
 
     @Test
+    void rejectsEstimateChangesOnSettledDeliveredOrCancelledJobs() {
+        ServiceJob settled = ServiceJob.builder()
+                .status(ServiceJobStatus.COMPLETED)
+                .paymentStatus(org.sspd.servicemgmt.purchaseoptions.model.PaymentStatus.Paid)
+                .voided(false)
+                .build();
+        assertThrows(IllegalStateException.class, () -> ServiceJobService.assertEstimateMutable(settled));
+        assertThrows(IllegalStateException.class,
+                () -> ServiceJobService.assertEstimateMutable(ServiceJob.builder().status(ServiceJobStatus.DELIVERED).build()));
+        assertThrows(IllegalStateException.class,
+                () -> ServiceJobService.assertEstimateMutable(ServiceJob.builder().status(ServiceJobStatus.CANCELLED).build()));
+    }
+
+    @Test
+    void allowsEstimateChangesOnOpenOrVoidedJobs() {
+        assertDoesNotThrow(() -> ServiceJobService.assertEstimateMutable(
+                ServiceJob.builder().status(ServiceJobStatus.IN_PROGRESS).build()));
+        assertDoesNotThrow(() -> ServiceJobService.assertEstimateMutable(
+                ServiceJob.builder()
+                        .status(ServiceJobStatus.IN_PROGRESS)
+                        .paymentStatus(org.sspd.servicemgmt.purchaseoptions.model.PaymentStatus.Paid)
+                        .voided(true)
+                        .build()));
+    }
+
+    @Test
     void allowsEditingOpenJob() {
         ServiceJob open = ServiceJob.builder()
                 .status(ServiceJobStatus.IN_PROGRESS)

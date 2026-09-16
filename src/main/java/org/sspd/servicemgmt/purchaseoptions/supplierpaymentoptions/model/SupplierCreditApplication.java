@@ -17,6 +17,8 @@ public class SupplierCreditApplication {
     private BigDecimal amount;
     private BigDecimal advanceUsed;
     private BigDecimal returnCreditUsed;
+    @Column(name = "return_credit_sources", length = 1000)
+    private String returnCreditSources;
     private LocalDateTime appliedAt;
     private String appliedBy;
     private String reason;

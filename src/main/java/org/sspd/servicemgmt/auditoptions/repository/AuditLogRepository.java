@@ -17,7 +17,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Integer> {
           AND (:action IS NULL OR :action = '' OR a.action = :action)
           AND (:module IS NULL OR :module = '' OR LOWER(a.module) LIKE LOWER(CONCAT('%',:module,'%')))
           AND (:dateFrom IS NULL OR a.createdAt >= :dateFrom)
-          AND (:dateTo   IS NULL OR a.createdAt <= :dateTo)
+          AND (:dateTo   IS NULL OR a.createdAt < :dateTo)
         ORDER BY a.createdAt DESC
     """)
     Page<AuditLog> search(

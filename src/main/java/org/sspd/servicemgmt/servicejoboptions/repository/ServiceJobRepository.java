@@ -54,11 +54,14 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     List<ServiceJob> findByAssignedStaffId(Integer staffId);
     long countByStatus(ServiceJobStatus status);
 
-    @Query("select coalesce(sum(j.netAmount), 0) from ServiceJob j where j.receivedDate >= :from and j.receivedDate < :to")
+    @Query("select coalesce(sum(j.netAmount), 0) from ServiceJob j where j.receivedDate >= :from and j.receivedDate < :to and coalesce(j.voided, false) = false and j.status <> org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED")
     BigDecimal sumNetAmountInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query("select count(j) from ServiceJob j where j.receivedDate >= :from and j.receivedDate < :to")
+    @Query("select count(j) from ServiceJob j where j.receivedDate >= :from and j.receivedDate < :to and coalesce(j.voided, false) = false and j.status <> org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED")
     long countInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("select count(j) from ServiceJob j where coalesce(j.voided, false) = false and j.status <> org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED")
+    long countActiveJobs();
 
     @Query("select count(j) from ServiceJob j where j.dueAmount > 0 and j.status <> org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus.CANCELLED")
     long countPendingPayment();
@@ -306,6 +309,8 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
         FROM ServiceJob sj
         WHERE (:from IS NULL OR sj.receivedDate >= :from)
           AND (:to   IS NULL OR sj.receivedDate <  :to)
+          AND COALESCE(sj.voided, false) = false
+          AND sj.status <> 'CANCELLED'
         GROUP BY FUNCTION('YEAR', sj.receivedDate), FUNCTION('MONTH', sj.receivedDate)
         ORDER BY FUNCTION('YEAR', sj.receivedDate) DESC, FUNCTION('MONTH', sj.receivedDate) DESC
         """)
@@ -315,7 +320,8 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
         SELECT COALESCE(SUM(sj.netAmount), 0)
         FROM ServiceJob sj
         WHERE (:from IS NULL OR sj.receivedDate >= :from)
-          AND (:to   IS NULL OR sj.receivedDate <= :to)
+          AND (:to   IS NULL OR sj.receivedDate < :to)
+          AND COALESCE(sj.voided, false) = false
         """)
     BigDecimal sumNetAmountInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
@@ -323,7 +329,8 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
         SELECT COALESCE(SUM(sj.laborNetAmount), 0)
         FROM ServiceJob sj
         WHERE (:from IS NULL OR sj.receivedDate >= :from)
-          AND (:to   IS NULL OR sj.receivedDate <= :to)
+          AND (:to   IS NULL OR sj.receivedDate < :to)
+          AND COALESCE(sj.voided, false) = false
         """)
     BigDecimal sumLaborNetInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
@@ -331,13 +338,14 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
         SELECT COALESCE(SUM(sj.partsNetAmount), 0)
         FROM ServiceJob sj
         WHERE (:from IS NULL OR sj.receivedDate >= :from)
-          AND (:to   IS NULL OR sj.receivedDate <= :to)
+          AND (:to   IS NULL OR sj.receivedDate < :to)
+          AND COALESCE(sj.voided, false) = false
         """)
     BigDecimal sumPartsNetInRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     List<ServiceJob> findByDueAmountGreaterThan(BigDecimal amount);
 
-    @Query("select coalesce(sum(j.dueAmount),0) from ServiceJob j where j.customer.id = :customerId and (:excludeId is null or j.id <> :excludeId)")
+    @Query("select coalesce(sum(j.dueAmount),0) from ServiceJob j where j.customer.id = :customerId and coalesce(j.voided, false) = false and (:excludeId is null or j.id <> :excludeId)")
     BigDecimal sumOutstandingDue(@Param("customerId") Integer customerId, @Param("excludeId") Integer excludeId);
 
     @Query("""

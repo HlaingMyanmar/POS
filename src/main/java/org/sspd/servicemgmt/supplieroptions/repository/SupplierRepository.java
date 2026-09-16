@@ -2,6 +2,9 @@ package org.sspd.servicemgmt.supplieroptions.repository;
 
 import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.stereotype.Repository;
 import org.sspd.servicemgmt.supplieroptions.model.Supplier;
@@ -11,6 +14,9 @@ import java.util.Optional;
 
 @Repository
 public interface SupplierRepository extends JpaRepository<Supplier, Integer> {
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Supplier s where s.id = :id")
+    Optional<Supplier> findByIdForUpdate(@Param("id") Integer id);
 
     Optional<Supplier> findByCode(String code);
     boolean existsByCode(String code);

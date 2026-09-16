@@ -63,6 +63,7 @@ import com.sspd.servicemgmt.core.network.CustomerPaymentChannel
 import com.sspd.servicemgmt.core.network.PaymentChannelRequest
 import com.sspd.servicemgmt.core.network.OrderPaymentProofs
 import com.sspd.servicemgmt.core.network.ShippingDecision
+import com.sspd.servicemgmt.core.ui.component.SaleInvoiceViewerDialog
 import com.sspd.servicemgmt.core.ui.theme.BorderColor
 import com.sspd.servicemgmt.core.ui.theme.CardBg
 import com.sspd.servicemgmt.core.ui.theme.Danger
@@ -79,6 +80,7 @@ import com.sspd.servicemgmt.core.ui.theme.TextMuted
 import com.sspd.servicemgmt.core.ui.theme.Warning
 import com.sspd.servicemgmt.core.ui.theme.WarningBg
 import com.sspd.servicemgmt.core.util.PreferenceManager
+import com.sspd.servicemgmt.core.util.SaleInvoiceOpener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -248,6 +250,9 @@ fun CustomerOrderPaymentCard(
     var choosingChannel by remember { mutableStateOf(false) }
     var choosingPay by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showReceiptDialog by remember(order.id) { mutableStateOf(false) }
+    var receiptBusy by remember(order.id) { mutableStateOf(false) }
+    var receiptError by remember(order.id) { mutableStateOf<String?>(null) }
     var form by remember(order.id) { mutableStateOf(false) }
     var copiedHint by remember { mutableStateOf<String?>(null) }
     var channels by remember(order.id) { mutableStateOf<List<CustomerPaymentChannel>>(emptyList()) }
@@ -772,6 +777,83 @@ fun CustomerOrderPaymentCard(
                         color = TextMuted
                     )
                 }
+            }
+
+            if (state in setOf("DEPOSIT_PAID", "PAID", "FULFILLED")) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = SuccessBg,
+                    border = BorderStroke(1.dp, Success.copy(alpha = 0.25f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            if (state == "DEPOSIT_PAID") "စရံငွေ လက်ခံပြေစာ" else "ငွေလက်ခံပြေစာ",
+                            fontWeight = FontWeight.Bold,
+                            color = Success
+                        )
+                        Text(
+                            when (state) {
+                                "DEPOSIT_PAID" -> "ဆိုင်က စရံငွေ အတည်ပြုပြီးပါပြီ။ ပြေစာ ဖွင့် / ပို့နိုင်ပါသည်။"
+                                "FULFILLED" -> "ငွေဝင်မှု အတည်ပြုစာ။ Sale ဘောင်ချာကို အောက်တွင် သီးခြား ဖွင့်နိုင်ပါသည်။"
+                                else -> "ဆိုင်က ငွေဝင်မှု အတည်ပြုပြီးပါပြီ။ Sale ဘောင်ချာသည် ဘောင်ချာထုတ်ပြီးမှ ရပါမည်။"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { showReceiptDialog = true },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                            ) {
+                                Text("PDF ဖွင့်", fontWeight = FontWeight.SemiBold)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    receiptBusy = true
+                                    receiptError = null
+                                    scope.launch {
+                                        receiptError = SaleInvoiceOpener.sharePaymentReceipt(
+                                            context,
+                                            current.id,
+                                            current.orderNo
+                                        )
+                                        receiptBusy = false
+                                    }
+                                },
+                                enabled = !receiptBusy,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(if (receiptBusy) "ပို့နေသည်…" else "Send", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        receiptError?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
+                        }
+                    }
+                }
+            }
+            if (showReceiptDialog) {
+                SaleInvoiceViewerDialog(
+                    orderId = current.id,
+                    saleCode = current.orderNo,
+                    paymentReceipt = true,
+                    onDismiss = { showReceiptDialog = false }
+                )
             }
 
             if (state in setOf("PROOF_SUBMITTED", "CHECKING", "REVIEW", "LATE_REVIEW")) {

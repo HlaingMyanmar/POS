@@ -29,7 +29,8 @@ public class SalesRankingController {
             @RequestParam(required = false) String to) {
 
         LocalDateTime fromDt = from != null && !from.isBlank() ? LocalDateTime.parse(from + "T00:00:00") : null;
-        LocalDateTime toDt   = to   != null && !to.isBlank()   ? LocalDateTime.parse(to   + "T23:59:59") : null;
+        LocalDateTime toDt   = to   != null && !to.isBlank()
+                ? java.time.LocalDate.parse(to).plusDays(1).atStartOfDay() : null;
 
         List<Object[]> rows = saleDetailRepo.topProductsByQty(fromDt, toDt);
         List<Map<String, Object>> result = rows.stream().map(r -> {

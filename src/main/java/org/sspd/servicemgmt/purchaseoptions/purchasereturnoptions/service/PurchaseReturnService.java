@@ -81,6 +81,7 @@ public class PurchaseReturnService {
     private final PurchaseReturnReasonRepository returnReasonRepository;
     private final PurchaseReturnActivityRepository activityRepository;
     private final PurchaseReturnAttachmentRepository attachmentRepository;
+    private final org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierCreditApplicationRepository supplierCreditApplicationRepository;
 
     private static final String PURCHASE_RETURN_TOPIC = "/topic/purchase-return";
     private static final String STATUS_DRAFT = "DRAFT";
@@ -686,7 +687,9 @@ public class PurchaseReturnService {
         BigDecimal due = net.subtract(paid);
         if (due.compareTo(BigDecimal.ZERO) < 0) due = BigDecimal.ZERO;
 
-        BigDecimal supplierCredit = paid.subtract(net).subtract(refundedAmount);
+        BigDecimal generatedCredit = paid.subtract(net).subtract(refundedAmount);
+        if (generatedCredit.compareTo(BigDecimal.ZERO) < 0) generatedCredit = BigDecimal.ZERO;
+        BigDecimal supplierCredit = generatedCredit.subtract(appliedReturnCreditFrom(purchase));
         if (supplierCredit.compareTo(BigDecimal.ZERO) < 0) supplierCredit = BigDecimal.ZERO;
 
         purchase.setReturnAmount(returnAmount);
@@ -703,6 +706,36 @@ public class PurchaseReturnService {
             purchase.setPaymentStatus(PaymentStatus.Pending);
         }
         purchaseRepository.save(purchase);
+    }
+
+    private BigDecimal appliedReturnCreditFrom(Purchase purchase) {
+        if (purchase.getId() == null || purchase.getSupplier() == null || purchase.getSupplier().getId() == null) {
+            return BigDecimal.ZERO;
+        }
+        return supplierCreditApplicationRepository.findBySupplierIdOrderByIdDesc(purchase.getSupplier().getId())
+                .stream()
+                .filter(application -> application.getTargetPurchase() == null
+                        || !application.getTargetPurchase().isCancelled())
+                .map(application -> creditTakenFromSource(application.getReturnCreditSources(), purchase.getId()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal creditTakenFromSource(String encodedSources, Integer purchaseId) {
+        if (encodedSources == null || encodedSources.isBlank() || purchaseId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal used = BigDecimal.ZERO;
+        for (String token : encodedSources.split(",")) {
+            String[] parts = token.split(":");
+            if (parts.length != 2) continue;
+            try {
+                if (!purchaseId.equals(Integer.valueOf(parts[0].trim()))) continue;
+                used = used.add(new BigDecimal(parts[1].trim()));
+            } catch (NumberFormatException ignored) {
+                // skip malformed source history
+            }
+        }
+        return used;
     }
 
     private BigDecimal safe(BigDecimal value) {
@@ -940,12 +973,12 @@ public class PurchaseReturnService {
             throw new IllegalStateException("Purchase return journal settlement components do not equal expected supplier credit.");
         }
 
-        // Credit Purchase Return (COA code INC-007)
-        JournalDetailDTO crPurchaseReturn = new JournalDetailDTO();
-        crPurchaseReturn.setAccountId(accountResolver.purchaseRtn().getId());
-        crPurchaseReturn.setDebit(BigDecimal.ZERO);
-        crPurchaseReturn.setCredit(totalCredit.add(supplierShipping));
-        details.add(crPurchaseReturn);
+        // Perpetual inventory: returned merchandise reduces the Inventory asset.
+        JournalDetailDTO crInventory = new JournalDetailDTO();
+        crInventory.setAccountId(accountResolver.inventory().getId());
+        crInventory.setDebit(BigDecimal.ZERO);
+        crInventory.setCredit(totalCredit.add(supplierShipping));
+        details.add(crInventory);
 
         if (totalCredit.compareTo(BigDecimal.ZERO) > 0) {
             journalDTO.setDetails(details);
@@ -967,11 +1000,11 @@ public class PurchaseReturnService {
 
         List<JournalDetailDTO> details = new ArrayList<>();
 
-        JournalDetailDTO drPurchaseReturn = new JournalDetailDTO();
-        drPurchaseReturn.setAccountId(accountResolver.purchaseRtn().getId());
-        drPurchaseReturn.setDebit(total);
-        drPurchaseReturn.setCredit(BigDecimal.ZERO);
-        details.add(drPurchaseReturn);
+        JournalDetailDTO drInventory = new JournalDetailDTO();
+        drInventory.setAccountId(accountResolver.inventory().getId());
+        drInventory.setDebit(total);
+        drInventory.setCredit(BigDecimal.ZERO);
+        details.add(drInventory);
 
         if (payableReversal.compareTo(BigDecimal.ZERO) > 0) {
             JournalDetailDTO crPayable = new JournalDetailDTO();

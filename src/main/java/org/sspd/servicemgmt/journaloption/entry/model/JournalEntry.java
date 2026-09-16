@@ -11,9 +11,8 @@ import java.util.List;
 
 @Entity
 @Table(name = "journal_entries", indexes = {
-    @Index(name = "idx_je_entry_date",   columnList = "entryDate"),
-    @Index(name = "idx_je_reference_no", columnList = "referenceNo"),
-    @Index(name = "idx_je_staff",        columnList = "staff_id")
+    @Index(name = "idx_je_entry_date", columnList = "entryDate"),
+    @Index(name = "idx_je_staff", columnList = "staff_id")
 })
 @Getter
 @Setter
@@ -27,7 +26,8 @@ public class JournalEntry {
 
     private LocalDateTime entryDate = LocalDateTime.now();
 
-    private String referenceNo; // ဥပမာ - Purchase Code သို့မဟုတ် Invoice No
+    @Column(unique = true)
+    private String referenceNo;
 
     @Column(columnDefinition = "TEXT")
     private String description;

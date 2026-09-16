@@ -22,7 +22,7 @@ public class TrialBalanceService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_REPORT_READ')")
     @Transactional(readOnly = true)
     public TrialBalanceDTO getTrialBalance(LocalDate asOf) {
-        LocalDateTime asOfDt = asOf.atTime(23, 59, 59);
+        LocalDateTime asOfDt = asOf.plusDays(1).atStartOfDay();
 
         List<TrialBalanceLineItem> lines = repo.trialBalance(asOfDt).stream()
                 .map(row -> new TrialBalanceLineItem(

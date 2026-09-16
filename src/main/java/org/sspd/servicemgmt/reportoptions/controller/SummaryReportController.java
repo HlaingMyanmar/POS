@@ -10,13 +10,15 @@ import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnRepository;
 import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
 import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
-import org.sspd.servicemgmt.saleoptions.saledetails.repository.SaleDetailRepository;
 import org.sspd.servicemgmt.saleoptions.salereturnoptions.repository.SaleReturnRepository;
+import org.sspd.servicemgmt.reportoptions.dto.ProfitLossDTO;
+import org.sspd.servicemgmt.reportoptions.service.ProfitLossService;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.stockoptions.stockadjustmentoptions.repository.StockAdjustmentRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.Month;
 import java.time.YearMonth;
 import java.time.format.TextStyle;
@@ -33,7 +35,6 @@ import java.util.Map;
 public class SummaryReportController {
 
     private final SaleRepository saleRepo;
-    private final SaleDetailRepository saleDetailRepo;
     private final SaleReturnRepository saleReturnRepo;
     private final PurchaseRepository purchaseRepo;
     private final PurchaseReturnRepository purchaseReturnRepo;
@@ -41,6 +42,7 @@ public class SummaryReportController {
     private final IncomeRepository incomeRepo;
     private final ExpenseRepository expenseRepo;
     private final StockAdjustmentRepository stockAdjRepo;
+    private final ProfitLossService profitLossService;
 
     // ── Sales Summary ────────────────────────────────────────────────────────
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_READ')")
@@ -220,11 +222,12 @@ public class SummaryReportController {
         BigDecimal totalStockAdjLoss        = BigDecimal.ZERO;
         BigDecimal totalExp                 = BigDecimal.ZERO;
         BigDecimal totalSaleProfit          = BigDecimal.ZERO;
+        BigDecimal totalDeliveryIncome      = BigDecimal.ZERO;
+        BigDecimal totalNetProfit           = BigDecimal.ZERO;
 
         for (int m = 1; m <= 12; m++) {
             LocalDateTime fromDt = LocalDateTime.of(targetYear, m, 1, 0, 0, 0);
-            int lastDay = YearMonth.of(targetYear, m).lengthOfMonth();
-            LocalDateTime toDt = LocalDateTime.of(targetYear, m, lastDay, 23, 59, 59);
+            LocalDateTime toDt = YearMonth.of(targetYear, m).plusMonths(1).atDay(1).atStartOfDay();
 
             Map<String, Object> md = buildPeriodSummary(fromDt, toDt);
             md.put("month", m);
@@ -234,23 +237,19 @@ public class SummaryReportController {
             totalSaleRevenue    = totalSaleRevenue.add(bd(md.get("saleRevenue")));
             totalSaleReturn     = totalSaleReturn.add(bd(md.get("saleReturnAmount")));
             totalSaleProfit     = totalSaleProfit.add(bd(md.get("saleProfit")));
-            totalServiceRevenue = totalServiceRevenue.add(bd(md.get("serviceRevenue")));
+            totalDeliveryIncome = totalDeliveryIncome.add(bd(md.get("deliveryIncome")));
+            totalServiceRevenue = totalServiceRevenue.add(bd(md.get("totalServiceRevenue")));
             totalOtherIncome    = totalOtherIncome.add(bd(md.get("otherIncome")));
             totalPurchaseAmount = totalPurchaseAmount.add(bd(md.get("purchaseAmount")));
             totalPurchaseReturn = totalPurchaseReturn.add(bd(md.get("purchaseReturnAmount")));
             totalStockAdjLoss   = totalStockAdjLoss.add(bd(md.get("stockAdjLoss")));
             totalExp            = totalExp.add(bd(md.get("totalExpenses")));
+            totalNetProfit      = totalNetProfit.add(bd(md.get("netProfit")));
         }
 
         BigDecimal totalNetSaleRevenue  = totalSaleRevenue.subtract(totalSaleReturn);
         BigDecimal totalNetPurchaseCost = totalPurchaseAmount.subtract(totalPurchaseReturn);
         BigDecimal totalIncome          = totalNetSaleRevenue.add(totalServiceRevenue).add(totalOtherIncome);
-        BigDecimal totalNetProfit       = totalSaleProfit.subtract(totalSaleReturn)
-                                                         .add(totalServiceRevenue)
-                                                         .add(totalOtherIncome)
-                                                         .subtract(totalStockAdjLoss)
-                                                         .subtract(totalExp);
-
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("year",                      targetYear);
         result.put("months",                    months);
@@ -258,6 +257,7 @@ public class SummaryReportController {
         result.put("totalSaleReturnAmount",     totalSaleReturn);
         result.put("totalNetSaleRevenue",       totalNetSaleRevenue);
         result.put("totalServiceRevenue",       totalServiceRevenue);
+        result.put("totalDeliveryIncome",       totalDeliveryIncome);
         result.put("totalOtherIncome",          totalOtherIncome);
         result.put("totalIncome",               totalIncome);
         result.put("totalPurchaseAmount",       totalPurchaseAmount);
@@ -281,7 +281,7 @@ public class SummaryReportController {
             saleRevenue = r[1] != null ? (BigDecimal) r[1] : BigDecimal.ZERO;
         }
 
-        BigDecimal saleProfit = coalesce(saleDetailRepo.saleProfitInRange(fromDt, toDt));
+        BigDecimal deliveryIncome = coalesce(saleRepo.sumDeliveryChargesInRange(fromDt, toDt));
 
         BigDecimal saleReturnAmount = coalesce(saleReturnRepo.sumInRange(fromDt, toDt));
 
@@ -306,10 +306,14 @@ public class SummaryReportController {
         BigDecimal netPurchaseCost = purchaseAmount.subtract(purchaseReturnAmount);
         BigDecimal totalServiceRevenue = serviceRevenue.add(servicePartsRevenue);
         BigDecimal totalIncome     = netSaleRevenue.add(totalServiceRevenue).add(otherIncome);
-        BigDecimal grossProfit     = saleProfit.add(totalServiceRevenue).add(otherIncome);
-        BigDecimal netProfit       = grossProfit.subtract(saleReturnAmount)
-                                                .subtract(stockAdjLoss)
-                                                .subtract(totalExpenses);
+        LocalDate profitFrom = fromDt != null ? fromDt.toLocalDate() : LocalDate.of(1970, 1, 1);
+        LocalDate profitTo = toDt != null ? toDt.toLocalDate().minusDays(1) : LocalDate.now();
+        ProfitLossDTO profitLoss = profitLossService.calculateProfitLoss(profitFrom, profitTo);
+        BigDecimal grossProfit = profitLoss.getGrossProfit();
+        BigDecimal netProfit = profitLoss.getNetProfit();
+        BigDecimal saleProfit = profitLoss.getGrossSales()
+                .subtract(profitLoss.getSalesReturns())
+                .subtract(profitLoss.getCogs());
 
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("saleCount",            saleCount);
@@ -317,8 +321,10 @@ public class SummaryReportController {
         r.put("saleReturnAmount",     saleReturnAmount);
         r.put("netSaleRevenue",       netSaleRevenue);
         r.put("saleProfit",           saleProfit);
+        r.put("deliveryIncome",       deliveryIncome);
         r.put("serviceRevenue",       serviceRevenue);
         r.put("servicePartsRevenue",  servicePartsRevenue);
+        r.put("totalServiceRevenue",  totalServiceRevenue);
         r.put("serviceJobNet",        serviceJobNet);
         r.put("otherIncome",          otherIncome);
         r.put("totalIncome",          totalIncome);
@@ -344,8 +350,7 @@ public class SummaryReportController {
 
     private LocalDateTime parseDt(String s, boolean endOfDay) {
         if (s == null || s.isBlank()) return null;
-        return endOfDay
-                ? LocalDateTime.parse(s + "T23:59:59")
-                : LocalDateTime.parse(s + "T00:00:00");
+        LocalDate date = LocalDate.parse(s);
+        return endOfDay ? date.plusDays(1).atStartOfDay() : date.atStartOfDay();
     }
 }

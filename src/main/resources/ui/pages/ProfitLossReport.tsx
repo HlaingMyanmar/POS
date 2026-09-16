@@ -88,8 +88,8 @@ const ProfitLossReport: React.FC = () => {
   // Pie: expense + other income breakdown
   const pieData = data
     ? [
-        ...data.otherIncomeItems.map(i => ({ name: i.accountName, value: i.amount })),
-        ...data.expenseItems.map(i => ({ name: i.accountName, value: i.amount })),
+        ...data.otherIncomeItems.filter(i => i.amount > 0).map(i => ({ name: i.accountName, value: i.amount })),
+        ...data.expenseItems.filter(i => i.amount > 0).map(i => ({ name: i.accountName, value: i.amount })),
       ]
     : [];
 
@@ -173,6 +173,7 @@ const ProfitLossReport: React.FC = () => {
               <SecHead label="Revenue" />
               <DeductRow label="Gross Sales"    value={data.grossSales}    indent />
               <DeductRow label="Service Revenue" value={data.serviceRevenue} indent />
+              <DeductRow label="Delivery Income" value={data.deliveryRevenue} indent />
               <DeductRow label="(-) Sales Returns" value={data.salesReturns} indent deduct />
               <SubtotalRow label="Net Revenue" value={data.netRevenue} color="indigo" />
 

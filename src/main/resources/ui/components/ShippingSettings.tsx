@@ -29,8 +29,8 @@ function weekdayRows(form: any) {
     return {
       day,
       open: row ? row.open !== false : openDays.includes(day) || openDays.length === 0,
-      opensAt: sliceTime(row?.opensAt || form?.opensAt, '09:00'),
-      closesAt: sliceTime(row?.closesAt || form?.closesAt, '18:00'),
+      opensAt: sliceTime(form?.opensAt, '09:00'),
+      closesAt: sliceTime(form?.closesAt, '18:00'),
     };
   });
 }
@@ -45,8 +45,8 @@ function DeliveryHoursEditor({ form, setForm }: { form: any; setForm: (next: any
       ...form,
       weekdayHours: nextRows,
       deliveryDays: open.map(row => row.day).join(','),
-      opensAt: open[0]?.opensAt || form.opensAt || '09:00',
-      closesAt: open[0]?.closesAt || form.closesAt || '18:00',
+      opensAt: sliceTime(form.opensAt, '09:00'),
+      closesAt: sliceTime(form.closesAt, '18:00'),
     });
   };
   return (
@@ -61,13 +61,6 @@ function DeliveryHoursEditor({ form, setForm }: { form: any; setForm: (next: any
           <input type="time" className={fieldClass} value={sliceTime(form.closesAt, '18:00')} onChange={e => setForm({ ...form, closesAt: e.target.value })}/>
         </label>
       </div>
-      <button
-        type="button"
-        className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-bold text-indigo-700"
-        onClick={() => patchHours(rows.map(row => row.open ? { ...row, opensAt: sliceTime(form.opensAt, '09:00'), closesAt: sliceTime(form.closesAt, '18:00') } : row))}
-      >
-        ဖွင့်ရက်အားလုံးကို ပုံသေအချိန်သို့ ကူးထည့်
-      </button>
       <div className="space-y-2">
         {rows.map((row, index) => {
           const label = WEEKDAYS[index][1];
@@ -81,15 +74,9 @@ function DeliveryHoursEditor({ form, setForm }: { form: any; setForm: (next: any
                 />
                 {label}
               </label>
-              {row.open ? (
-                <>
-                  <input type="time" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm font-semibold" value={row.opensAt} onChange={e => patchHours(rows.map(item => item.day === row.day ? { ...item, opensAt: e.target.value } : item))}/>
-                  <span className="text-xs text-slate-400">—</span>
-                  <input type="time" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm font-semibold" value={row.closesAt} onChange={e => patchHours(rows.map(item => item.day === row.day ? { ...item, closesAt: e.target.value } : item))}/>
-                </>
-              ) : (
-                <span className="text-xs font-semibold text-rose-600">ပိတ်ရက်</span>
-              )}
+              <span className={`text-xs font-semibold ${row.open ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {row.open ? `${sliceTime(form.opensAt, '09:00')} - ${sliceTime(form.closesAt, '18:00')}` : 'ပိတ်ရက်'}
+              </span>
             </div>
           );
         })}

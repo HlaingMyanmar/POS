@@ -24,7 +24,7 @@ public class BalanceSheetService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_REPORT_READ')")
     @Transactional(readOnly = true)
     public BalanceSheetDTO getBalanceSheet(LocalDate asOf) {
-        LocalDateTime asOfDt = asOf.atTime(23, 59, 59);
+        LocalDateTime asOfDt = asOf.plusDays(1).atStartOfDay();
 
         // Assets: normal balance DR — net = DR - CR (positive means asset balance)
         List<Object[]> assetRows = repo.netDebitBalanceByType(AccountType.Asset, asOfDt);

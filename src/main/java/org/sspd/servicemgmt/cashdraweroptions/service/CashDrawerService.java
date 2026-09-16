@@ -15,6 +15,11 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class CashDrawerService {
+    public static final String SALE_TYPE = "SALE";
+    public static final String REFUND_TYPE = "REFUND";
+    public static final String IN_TYPE = "IN";
+    public static final String OUT_TYPE = "OUT";
+
     private final CashDrawerSessionRepository sessionRepository;
     private final CashDrawerMovementRepository movementRepository;
 
@@ -57,22 +62,97 @@ public class CashDrawerService {
 
     @Transactional
     public void recordCashSale(BigDecimal amount) {
-        updateAutomaticTotal(amount, true);
+        recordCashSale(amount, null, null);
+    }
+
+    @Transactional
+    public void recordCashSale(BigDecimal amount, String referenceType, Integer referenceId) {
+        recordOnOpenSession(SALE_TYPE, amount, referenceType, referenceId,
+                movementReason("Cash sale", referenceType, referenceId), false);
     }
 
     @Transactional
     public void recordCashRefund(BigDecimal amount) {
-        updateAutomaticTotal(amount, false);
+        recordCashRefund(amount, null, null);
+    }
+
+    @Transactional
+    public void recordCashRefund(BigDecimal amount, String referenceType, Integer referenceId) {
+        recordOnOpenSession(REFUND_TYPE, amount, referenceType, referenceId,
+                movementReason("Cash refund", referenceType, referenceId), true);
+    }
+
+    @Transactional
+    public void recordCompensatingCashIn(BigDecimal amount, String referenceType, Integer referenceId, String reason) {
+        recordOnOpenSession(IN_TYPE, amount, referenceType, referenceId,
+                reason == null || reason.isBlank() ? movementReason("Cash in", referenceType, referenceId) : reason.trim(),
+                true);
+    }
+
+    @Transactional
+    public void reverseCashRefund(String referenceType, Integer referenceId, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) return;
+        if (referenceType == null || referenceType.isBlank() || referenceId == null) {
+            throw new IllegalStateException("Cash refund reversal requires the original drawer reference");
+        }
+        List<CashDrawerMovement> refunds = movementRepository
+                .findByTypeAndReferenceTypeAndReferenceIdAndReversedFalseOrderByIdAsc(
+                        REFUND_TYPE, referenceType, referenceId);
+        if (refunds.isEmpty()) {
+            throw new IllegalStateException(
+                    "Original cash drawer refund was not found; will not reverse against another cashier session");
+        }
+        BigDecimal recorded = refunds.stream()
+                .map(CashDrawerMovement::getAmount)
+                .filter(value -> value != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (recorded.compareTo(amount) != 0) {
+            throw new IllegalStateException(
+                    "Original cash drawer refund " + recorded + " does not match reversal amount " + amount);
+        }
+        for (CashDrawerMovement refund : refunds) {
+            if (refund.getSession() == null || refund.getSession().getId() == null) {
+                throw new IllegalStateException("Original cash drawer refund is missing its session");
+            }
+            CashDrawerSession session = sessionRepository.findByIdForUpdate(refund.getSession().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Cash drawer session not found"));
+            if (!"OPEN".equals(session.getStatus())) {
+                throw new IllegalStateException(
+                        "Closed cash drawer sessions cannot be restated. Record a compensating movement on the current session instead.");
+            }
+            BigDecimal reverseAmount = refund.getAmount() != null ? refund.getAmount() : BigDecimal.ZERO;
+            BigDecimal current = safe(session.getCashRefunds());
+            if (current.compareTo(reverseAmount) < 0) {
+                throw new IllegalStateException(
+                        "Original cash drawer session does not have enough recorded refunds to reverse");
+            }
+            session.setCashRefunds(current.subtract(reverseAmount));
+            sessionRepository.save(session);
+            refund.setReversed(Boolean.TRUE);
+            movementRepository.save(refund);
+        }
     }
 
     @Transactional
     public void recordPurchaseCashOut(BigDecimal amount, String reason) {
-        recordAutomaticMovement(amount, reason, "OUT");
+        recordPurchaseCashOut(amount, reason, null, null);
+    }
+
+    @Transactional
+    public void recordPurchaseCashOut(BigDecimal amount, String reason, String referenceType, Integer referenceId) {
+        recordOnOpenSession(OUT_TYPE, amount, referenceType, referenceId,
+                reason == null || reason.isBlank() ? "Purchase cash movement" : reason.trim(), false);
     }
 
     @Transactional
     public void recordPurchaseCashIn(BigDecimal amount, String reason) {
-        recordAutomaticMovement(amount, reason, "IN");
+        recordPurchaseCashIn(amount, reason, null, null);
+    }
+
+    @Transactional
+    public void recordPurchaseCashIn(BigDecimal amount, String reason, String referenceType, Integer referenceId) {
+        recordOnOpenSession(IN_TYPE, amount, referenceType, referenceId,
+                reason == null || reason.isBlank() ? "Purchase cash movement" : reason.trim(), true);
     }
 
     @Transactional(readOnly = true)
@@ -97,11 +177,32 @@ public class CashDrawerService {
         return sessionRepository.save(session);
     }
 
-    private void updateAutomaticTotal(BigDecimal value, boolean sale) {
-        if (value == null || value.signum() <= 0) return;
-        sessionRepository.findFirstByOpenedByAndStatusOrderByOpenedAtDesc(actor(), "OPEN").ifPresent(session -> {
-            if (sale) session.setCashSales(session.getCashSales().add(value));
-            else session.setCashRefunds(session.getCashRefunds().add(value));
+    private void recordOnOpenSession(String type, BigDecimal amount, String referenceType, Integer referenceId,
+            String reason, boolean uniqueByReference) {
+        if (amount == null || amount.signum() <= 0) return;
+        if (uniqueByReference && referenceType != null && !referenceType.isBlank() && referenceId != null
+                && movementRepository.existsByTypeAndReferenceTypeAndReferenceIdAndReversedFalse(
+                        type, referenceType, referenceId)) {
+            throw new IllegalStateException(
+                    "Cash drawer already has a " + type + " movement for " + referenceType + " #" + referenceId);
+        }
+        String movementActor = actor();
+        sessionRepository.findFirstByOpenedByAndStatusOrderByOpenedAtDesc(movementActor, "OPEN").ifPresent(session -> {
+            if (SALE_TYPE.equals(type)) session.setCashSales(safe(session.getCashSales()).add(amount));
+            else if (REFUND_TYPE.equals(type)) session.setCashRefunds(safe(session.getCashRefunds()).add(amount));
+            else if (IN_TYPE.equals(type)) session.setCashIn(safe(session.getCashIn()).add(amount));
+            else session.setCashOut(safe(session.getCashOut()).add(amount));
+            movementRepository.save(CashDrawerMovement.builder()
+                    .session(session)
+                    .type(type)
+                    .amount(amount)
+                    .actor(movementActor)
+                    .createdAt(LocalDateTime.now())
+                    .reason(reason)
+                    .referenceType(referenceType)
+                    .referenceId(referenceId)
+                    .reversed(Boolean.FALSE)
+                    .build());
             sessionRepository.save(session);
         });
     }
@@ -113,17 +214,13 @@ public class CashDrawerService {
         return session;
     }
 
-    private void recordAutomaticMovement(BigDecimal value, String reason, String type) {
-        if (value == null || value.signum() <= 0) return;
-        String movementReason = reason == null || reason.isBlank() ? "Purchase cash movement" : reason.trim();
-        String movementActor = actor();
-        sessionRepository.findFirstByOpenedByAndStatusOrderByOpenedAtDesc(movementActor, "OPEN").ifPresent(session -> {
-            if ("IN".equals(type)) session.setCashIn(session.getCashIn().add(value));
-            else session.setCashOut(session.getCashOut().add(value));
-            movementRepository.save(CashDrawerMovement.builder().session(session).type(type).amount(value)
-                    .actor(movementActor).createdAt(LocalDateTime.now()).reason(movementReason).build());
-            sessionRepository.save(session);
-        });
+    private String movementReason(String prefix, String referenceType, Integer referenceId) {
+        if (referenceType == null || referenceId == null) return prefix;
+        return prefix + " " + referenceType + " #" + referenceId;
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     private BigDecimal nonNegative(BigDecimal value, String label) {

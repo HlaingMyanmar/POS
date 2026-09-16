@@ -17,6 +17,7 @@ import org.sspd.servicemgmt.customerportaloptions.repository.CustomerOrderReposi
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerOrderPaymentService;
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerStockReservationService;
 import org.sspd.servicemgmt.dataevent.DataEventPublisher;
+import org.sspd.servicemgmt.journaloption.entry.service.JournalWriter;
 import org.sspd.servicemgmt.saleoptions.dto.SaleDTO;
 import org.sspd.servicemgmt.saleoptions.service.SaleService;
 import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
@@ -28,6 +29,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 class CustomerOrderDepositPaymentTest {
@@ -288,6 +290,10 @@ class CustomerOrderDepositPaymentTest {
         CustomerOrderPaymentService payments = service(orders, proofs, stock, events);
         ReflectionTestUtils.setField(payments, "sales", sales);
         ReflectionTestUtils.setField(payments, "methods", methods);
+        JournalWriter writer = mock(JournalWriter.class);
+        ReflectionTestUtils.setField(payments, "journalWriter", writer);
+        when(writer.hasActiveReferencePrefix(contains("ADV-DEPOSIT"))).thenReturn(true);
+        when(writer.hasActiveReferencePrefix(contains("ADV-REMAINDER"))).thenReturn(true);
 
         Integer saleId = payments.fulfill(42, new OrderPaymentRequest());
         assertEquals(99, saleId);
@@ -303,5 +309,6 @@ class CustomerOrderDepositPaymentTest {
         assertEquals(8, lines.get(1).getPaymentMethodId());
         assertEquals(new BigDecimal("70000.00"), lines.get(1).getAmount());
         assertEquals(new BigDecimal("100000.00"), sale.getValue().getPaidAmount());
+        assertEquals(new BigDecimal("100000.00"), sale.getValue().getCustomerAdvanceApplied());
     }
 }

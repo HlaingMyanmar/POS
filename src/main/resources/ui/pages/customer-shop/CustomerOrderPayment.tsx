@@ -225,6 +225,7 @@ function OrderPaymentPanel({
     const transfer = !pendingChoice && ((order.paymentChoice || 'TRANSFER') === 'TRANSFER' || Number(order.depositAmount || 0) > 0);
     const canUpload = transfer && ['AWAITING_PAYMENT', 'EXPIRED', 'REJECTED'].includes(order.paymentState || '');
   const invoiceReady = !!order.completedSaleId || !!order.completedSale?.id;
+  const receiptReady = ['DEPOSIT_PAID', 'PAID', 'FULFILLED'].includes(order.paymentState || '');
   const deposit = Number(order.depositAmount || 0);
   const remainder = Number(order.remainingAmount || 0);
   const depositConfirmed = ['DEPOSIT_PAID', 'REMAINDER_PROOF_SUBMITTED', 'REMAINDER_CHECKING', 'PAID', 'FULFILLED'].includes(order.paymentState || '');
@@ -274,6 +275,32 @@ function OrderPaymentPanel({
       setFile(null);
     } catch (e: any) {
       setError(e?.message || 'အထောက်အထား တင်မရပါ');
+    } finally { setBusy(false); }
+  };
+
+  const downloadReceipt = async () => {
+    setBusy(true); setError('');
+    try {
+      const blob = await customerPortalService.downloadPaymentReceipt(order.id);
+      await openPdfBlob(blob, `payment-receipt-${order.orderNo}.pdf`);
+    } catch (e: any) {
+      setError(e?.message || 'ငွေလက်ခံပြေစာ မရနိုင်သေးပါ');
+    } finally { setBusy(false); }
+  };
+
+  const shareReceipt = async () => {
+    setBusy(true); setError('');
+    try {
+      const blob = await customerPortalService.downloadPaymentReceipt(order.id);
+      const file = new File([blob], `payment-receipt-${order.orderNo}.pdf`, { type: 'application/pdf' });
+      const nav = navigator as Navigator & { share?: (data: ShareData & { files?: File[] }) => Promise<void>; canShare?: (data: { files?: File[] }) => boolean };
+      if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
+        await nav.share({ title: `ငွေလက်ခံပြေစာ ${order.orderNo}`, files: [file] });
+      } else {
+        await openPdfBlob(blob, `payment-receipt-${order.orderNo}.pdf`);
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') setError(e?.message || 'ငွေလက်ခံပြေစာ မပို့နိုင်ပါ');
     } finally { setBusy(false); }
   };
 
@@ -368,7 +395,7 @@ function OrderPaymentPanel({
         <p className="flex items-center gap-2 rounded-lg bg-sky-50 p-2 text-xs font-semibold text-sky-800">
           <Loader2 className="h-4 w-4 animate-spin" /> {order.paymentState === 'LATE_REVIEW'
             ? 'နောက်ကျ အထောက်အထား ရပါပြီ။ ဆိုင်က stock ပြန်စစ်ပြီး ဆက်ရောင်းမလား / ငွေပြန်အမ်းမလား ဆုံးဖြတ်ပါမည်။'
-            : 'ဆိုင်မှ ချက်ချင်း အတည်ပြုနေသည် — ခဏစောင့်ပါ။ Invoice မကြာမီ ရပါမည်။'}
+            : 'ဆိုင်မှ ချက်ချင်း အတည်ပြုနေသည် — ခဏစောင့်ပါ။ ငွေလက်ခံပြေစာ မကြာမီ ရပါမည်။'}
         </p>
       )}
       {order.orderType === 'DELIVERY' && order.shippingState === 'ACCEPTED' && (
@@ -424,6 +451,28 @@ function OrderPaymentPanel({
           <button type="button" disabled={busy || !file || !(Number(amount) > 0)} onClick={() => void submit()} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">
             {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : 'ပြေစာတင်မည်'}
           </button>
+        </div>
+      )}
+      {receiptReady && (
+        <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-xs font-bold text-emerald-900">
+            {order.paymentState === 'DEPOSIT_PAID' ? 'စရံငွေ လက်ခံပြေစာ' : 'ငွေလက်ခံပြေစာ'}
+          </p>
+          <p className="text-xs text-emerald-800">
+            {order.paymentState === 'DEPOSIT_PAID'
+              ? 'ဆိုင်က စရံငွေ အတည်ပြုပြီးပါပြီ။ ပြေစာ ဖွင့် / ပို့နိုင်ပါသည်။'
+              : order.paymentState === 'FULFILLED'
+                ? 'ငွေဝင်မှု အတည်ပြုစာ။ Sale ဘောင်ချာကို အောက်တွင် သီးခြား ဖွင့်နိုင်ပါသည်။'
+                : 'ဆိုင်က ငွေဝင်မှု အတည်ပြုပြီးပါပြီ။ Sale ဘောင်ချာသည် ဘောင်ချာထုတ်ပြီးမှ ရပါမည်။'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void downloadReceipt()} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
+              {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : 'ပြေစာ ဖွင့်'}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void shareReceipt()} className="rounded-lg border border-emerald-700 px-3 py-1.5 text-xs font-semibold text-emerald-800 disabled:opacity-40">
+              Send
+            </button>
+          </div>
         </div>
       )}
       {invoiceReady && deposit > 0 && (

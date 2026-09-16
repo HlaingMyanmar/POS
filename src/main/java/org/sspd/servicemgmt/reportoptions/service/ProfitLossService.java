@@ -25,6 +25,7 @@ public class ProfitLossService {
     private static final List<String> REVENUE_INCOME_CODES = List.of(
             AccountCode.SALES,        // INC-002
             AccountCode.SERVICE_REVENUE, // INC-003
+            AccountCode.DELIVERY_INCOME, // INC-012
             AccountCode.PURCHASE_RTN  // INC-007
     );
 
@@ -38,14 +39,20 @@ public class ProfitLossService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_REPORT_READ')")
     @Transactional(readOnly = true)
     public ProfitLossDTO getProfitLoss(LocalDate from, LocalDate to) {
+        return calculateProfitLoss(from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public ProfitLossDTO calculateProfitLoss(LocalDate from, LocalDate to) {
         LocalDateTime fromDt = from.atStartOfDay();
-        LocalDateTime toDt   = to.atTime(23, 59, 59);
+        LocalDateTime toDt   = to.plusDays(1).atStartOfDay();
 
         // ── Section 1: Revenue ───────────────────────────────────────────────
         BigDecimal grossSales     = credit(AccountCode.SALES, fromDt, toDt);
         BigDecimal serviceRevenue = credit(AccountCode.SERVICE_REVENUE, fromDt, toDt);
+        BigDecimal deliveryRevenue = credit(AccountCode.DELIVERY_INCOME, fromDt, toDt);
         BigDecimal salesReturns   = debit(AccountCode.SALES_RTN, fromDt, toDt);
-        BigDecimal netRevenue     = grossSales.add(serviceRevenue).subtract(salesReturns);
+        BigDecimal netRevenue     = grossSales.add(serviceRevenue).add(deliveryRevenue).subtract(salesReturns);
 
         // ── Section 2: Purchases ─────────────────────────────────────────────
         BigDecimal purchases       = debit(AccountCode.PURCHASES,    fromDt, toDt);
@@ -78,6 +85,7 @@ public class ProfitLossService {
                 .to(to)
                 .grossSales(grossSales)
                 .serviceRevenue(serviceRevenue)
+                .deliveryRevenue(deliveryRevenue)
                 .salesReturns(salesReturns)
                 .netRevenue(netRevenue)
                 .purchases(purchases)
@@ -95,12 +103,12 @@ public class ProfitLossService {
 
     private BigDecimal credit(String code, LocalDateTime from, LocalDateTime to) {
         BigDecimal val = journalDetailRepository.netCreditByCode(code, from, to);
-        return val != null ? val.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        return val != null ? val : BigDecimal.ZERO;
     }
 
     private BigDecimal debit(String code, LocalDateTime from, LocalDateTime to) {
         BigDecimal val = journalDetailRepository.netDebitByCode(code, from, to);
-        return val != null ? val.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        return val != null ? val : BigDecimal.ZERO;
     }
 
     private List<ProfitLossLineItem> toLineItems(List<Object[]> rows) {
@@ -108,8 +116,8 @@ public class ProfitLossService {
                 .map(row -> new ProfitLossLineItem(
                         (String) row[0],
                         (String) row[1],
-                        ((BigDecimal) row[2]).abs()))
-                .filter(item -> item.getAmount().compareTo(BigDecimal.ZERO) > 0)
+                        (BigDecimal) row[2]))
+                .filter(item -> item.getAmount().compareTo(BigDecimal.ZERO) != 0)
                 .toList();
     }
 

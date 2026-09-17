@@ -417,10 +417,10 @@ fun ProductListContent(
                     else -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxSize().padding(bottom = 80.dp)
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             items(filtered, key = { it.id }) { product ->
                                 ProductGridCard(product, onClick = { onProductClick(product.id) })

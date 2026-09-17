@@ -168,12 +168,6 @@ private fun BookingListContent(
     }
 
     Column(modifier.fillMaxSize().background(ScreenBg)) {
-        AppPullRefresh(
-            refreshing = refreshing,
-            onRefresh = onRefresh,
-            modifier = Modifier.weight(1f)
-        ) {
-        Column(Modifier.fillMaxSize()) {
         AppSearchField(
             value = search,
             onValueChange = onSearchChange,
@@ -205,7 +199,12 @@ private fun BookingListContent(
             if (fromDate != null || toDate != null) IconButton(onClick = onClearDateFilter) { Icon(Icons.Outlined.Clear, null, tint = Danger) }
         }
 
-        when {
+        AppPullRefresh(
+            refreshing = refreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.weight(1f)
+        ) {
+            when {
             loading && items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AppLoading() }
             filtered.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -221,9 +220,8 @@ private fun BookingListContent(
                 item { Spacer(Modifier.height(88.dp)) }
             }
         }
-        }
-        }
     }
+}
 }
 
 @Composable

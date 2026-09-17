@@ -156,7 +156,6 @@ fun ServiceJobListScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                modifier = Modifier.height(56.dp),
                 title = { Text("ဝန်ဆောင်မှုအလုပ်များ", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -167,14 +166,7 @@ fun ServiceJobListScreen(
             )
         },
     ) { padding ->
-        AppPullRefresh(
-            refreshing = state.refreshing,
-            onRefresh = { vm.refresh() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-        Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
             OutlinedTextField(
                 value = state.search,
                 onValueChange = vm::setSearch,
@@ -304,8 +296,12 @@ fun ServiceJobListScreen(
                 }
             }
 
-            }
-            if (state.loading && state.items.isEmpty() && state.sentHandovers.isEmpty()) {
+            AppPullRefresh(
+                refreshing = state.refreshing,
+                onRefresh = { vm.refresh() },
+                modifier = Modifier.weight(1f)
+            ) {
+                if (state.loading && state.items.isEmpty() && state.sentHandovers.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppLoading()
                 }
@@ -389,6 +385,7 @@ fun ServiceJobListScreen(
         }
         }
     }
+}
 }
 
 @Composable

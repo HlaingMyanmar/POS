@@ -37,6 +37,7 @@ import com.sspd.servicemgmt.core.navigation.Screen
 import com.sspd.servicemgmt.core.tracking.VisitTracker
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.UpdateDialog
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 import com.sspd.servicemgmt.core.connectivity.ServerStatus
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.HandoverDTO
@@ -151,7 +152,11 @@ fun HomeScreen(
             }
         }
     ) {
-        Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = { vm.pullToRefresh() }
+        ) {
+            Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
 
             // ── Hero Banner ───────────────────────────────────────────────────
             Box(
@@ -278,6 +283,7 @@ Box(
             }
         }
     }
+}
 }
 
 // ── Data holder ───────────────────────────────────────────────────────────────
@@ -988,6 +994,10 @@ fun DrawerContent(
 
                 // User row
                 Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onNavigate(Screen.Account.route) }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -1034,6 +1044,11 @@ fun DrawerContent(
             DrawerMenuItem("ဝန်ဆောင်မှု", Icons.Outlined.MiscellaneousServices, Screen.ServiceMgmt.route, onNavigate)
             DrawerMenuItem("လေ့ကျင့်ရေး ဗီဒီယို", Icons.Outlined.VideoLibrary, Screen.Videos.route, onNavigate)
             DrawerMenuItem("Chat", Icons.Outlined.Chat, Screen.Chat.route, onNavigate)
+
+            DrawerSection("Settings")
+            DrawerMenuItem("အကောင့်သတ်မှတ်ချက်", Icons.Outlined.Person, Screen.Account.route, onNavigate)
+            DrawerMenuItem("လုံခြုံရေးနှင့် ဆက်တင်များ", Icons.Outlined.Security, Screen.SecuritySettings.route, onNavigate)
+            DrawerMenuItem("Software Update", Icons.Outlined.SystemUpdate, Screen.SoftwareUpdate.route, onNavigate)
         }
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

@@ -163,12 +163,7 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
             }
         }
     ) { padding ->
-        AppPullRefresh(
-            refreshing = state.refreshing,
-            onRefresh = { vm.refresh() },
-            modifier = Modifier.fillMaxSize().padding(padding)
-        ) {
-        Column(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).background(ScreenBg)) {
 
             if (!catalogReadOnly) {
                 TabRow(selectedTabIndex = selectedTab, containerColor = CardBg, contentColor = Primary) {
@@ -219,7 +214,12 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                 singleLine = true, shape = RoundedCornerShape(12.dp)
             )
 
-            if (state.loading && state.types.isEmpty() && state.items.isEmpty()) {
+            AppPullRefresh(
+                refreshing = state.refreshing,
+                onRefresh = { vm.refresh() },
+                modifier = Modifier.weight(1f)
+            ) {
+                if (state.loading && state.types.isEmpty() && state.items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AppLoading()
                 }
@@ -241,8 +241,8 @@ fun ServiceManagementScreen(onBack: () -> Unit) {
                 )
             }
         }
-        }
     }
+}
 }
 
 // ── Types List ────────────────────────────────────────────────────────────────

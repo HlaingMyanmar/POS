@@ -54,7 +54,7 @@ public interface SaleDetailRepository extends JpaRepository<SaleDetail, Integer>
         JOIN FETCH s.customer
         JOIN FETCH d.product
         WHERE COALESCE(s.voided, false) = false
-          AND COALESCE(d.warrantyMonths, 0) > 0
+          AND (COALESCE(d.warrantyMonths, 0) > 0 OR d.warrantyExpiryDate IS NOT NULL)
           AND (:saleId IS NULL OR s.id = :saleId)
           AND (:customerId IS NULL OR s.customer.id = :customerId)
           AND (:serial IS NULL OR :serial = '' OR LOWER(d.serialNumber) = LOWER(:serial))

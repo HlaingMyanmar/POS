@@ -44,6 +44,7 @@ import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { getFromSession } from '../utils/storageHelper';
+import { fmtProductWarranty, fmtWarrantyDuration } from '../utils/warrantyFormat';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import {
   AppRoute,
@@ -139,12 +140,12 @@ const fmtDate = (v?: string) => {
 };
 
 const formatProductWarranty = (product?: ProductDTO, detail?: Partial<SaleDetailDTO>) => {
-  const warrantyTerms = String((detail as any)?.warrantyTerms || product?.warrantyTerms || '').trim();
-  const warrantyMonths = Number(detail?.warrantyMonths ?? product?.warrantyMonths ?? 0) || 0;
-
-  if (warrantyTerms) return warrantyTerms;
-  if (warrantyMonths > 0) return `${warrantyMonths} month${warrantyMonths > 1 ? 's' : ''} warranty`;
-  return 'No warranty';
+  return fmtProductWarranty(
+    String((detail as any)?.warrantyTerms || product?.warrantyTerms || ''),
+    Number(detail?.warrantyMonths ?? product?.warrantyMonths ?? 0) || 0,
+    detail?.warrantyStartDate,
+    detail?.warrantyExpiryDate
+  ) || 'No warranty';
 };
 
 const getSaleState = (row: SaleDTO): SaleState => {
@@ -2359,7 +2360,7 @@ const SaleManagement: React.FC = () => {
                             <td className="px-4 py-3 text-right text-violet-700">{Number(d.customVoucherPrice) > 0 ? money(Number(d.customVoucherPrice)) : '—'}</td>
                             <td className="px-4 py-3 text-right font-semibold text-violet-700">{Number(d.customerMargin) ? money(Number(d.customerMargin)) : '—'}</td>
                             <td className="px-4 py-3 text-xs text-slate-500">{isSerialProduct(d.productId) ? (d.serialNumbers?.length ? d.serialNumbers.join(', ') : '—') : <span className="text-slate-400">Qty only</span>}</td>
-                            <td className="px-4 py-3 text-center text-xs text-slate-500">{Number(d.warrantyMonths || 0) > 0 ? `${d.warrantyMonths} mo.` : '—'}</td>
+                            <td className="px-4 py-3 text-center text-xs text-slate-500">{fmtWarrantyDuration(d.warrantyMonths, d.warrantyStartDate, d.warrantyExpiryDate) || '—'}</td>
                             <td className="px-4 py-3 text-center text-xs text-slate-500">{d.warrantyStartDate || '—'}</td>
                             <td className="px-4 py-3 text-center text-xs text-slate-500">{d.warrantyExpiryDate || '—'}</td>
                             <td className="px-4 py-3 text-center text-xs">

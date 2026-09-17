@@ -46,6 +46,8 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Integer> {
     @Query("SELECT p FROM Purchase p WHERE p.supplier.id = :supplierId")
     List<Purchase> findBySupplierId(@Param("supplierId") Integer supplierId);
 
+    boolean existsBySupplier_Id(Integer supplierId);
+
     @Query("SELECT COALESCE(SUM(p.dueAmount), 0) FROM Purchase p WHERE " +
            "(p.status IS NULL OR p.status = org.sspd.servicemgmt.purchaseoptions.model.PurchaseStatus.CONFIRMED) " +
            "AND p.supplier.id = :supplierId")

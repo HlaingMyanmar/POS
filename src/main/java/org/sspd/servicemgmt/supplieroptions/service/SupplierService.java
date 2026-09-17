@@ -22,6 +22,9 @@ public class SupplierService {
     private static final String SUPPLIER_TOPIC = "/topic/supplier";
     private final SupplierRepository supplierRepository;
     private final SupplierMapper mapper;
+    private final org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository purchaseRepository;
+    private final org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierPaymentRepository supplierPaymentRepository;
+    private final org.sspd.servicemgmt.purchaseoptions.purchasereturnoptions.repository.PurchaseReturnRepository purchaseReturnRepository;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_SUPPLIER_CREATE')")
     @Transactional
@@ -31,18 +34,16 @@ public class SupplierService {
             throw new RuntimeException("Supplier '" + dto.getName() + "' is already registered!");
         }
         Supplier entity = mapper.toEntity(dto);
-        Integer lastId = supplierRepository.findTopByOrderByIdDesc()
-                .map(Supplier::getId)
-                .orElse(0);
-        String generatedCode = String.format("SUP-%03d", lastId + 1);
-        entity.setCode(generatedCode);
         if (entity.getOpeningBalance() != null) {
             entity.setCurrentBalance(entity.getOpeningBalance());
         } else {
             entity.setCurrentBalance(java.math.BigDecimal.ZERO);
             entity.setOpeningBalance(java.math.BigDecimal.ZERO);
         }
+        entity.setCode("PENDING");
         Supplier savedEntity = supplierRepository.save(entity);
+        savedEntity.setCode(String.format("SUP-%03d", savedEntity.getId()));
+        savedEntity = supplierRepository.save(savedEntity);
         messagingTemplate.convertAndSend(SUPPLIER_TOPIC, "SUPPLIER_CREATED");
         return mapper.toDto(savedEntity);
     }
@@ -92,13 +93,29 @@ public class SupplierService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_SUPPLIER_DELETE')")
     @Transactional
     public void delete(Integer id) {
-        Supplier existingEntity = supplierRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Supplier Not Found with Id : " + id));
-        if (existingEntity.getCurrentBalance().compareTo(java.math.BigDecimal.ZERO) > 0) {
+        Supplier existingEntity = supplierRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier Not Found with Id : "+id));
+        if (nonzero(existingEntity.getCurrentBalance())) {
             throw new RuntimeException("Cannot delete supplier with outstanding balance!");
+        }
+        if (nonzero(existingEntity.getAdvanceBalance())) {
+            throw new RuntimeException("Cannot delete supplier with advance balance!");
+        }
+        if (purchaseRepository.existsBySupplier_Id(id)) {
+            throw new RuntimeException("Cannot delete supplier with purchase history!");
+        }
+        if (supplierPaymentRepository.existsBySupplier_Id(id)) {
+            throw new RuntimeException("Cannot delete supplier with payment history!");
+        }
+        if (purchaseReturnRepository.existsByPurchase_Supplier_Id(id)) {
+            throw new RuntimeException("Cannot delete supplier with return history!");
         }
         supplierRepository.delete(existingEntity);
         messagingTemplate.convertAndSend(SUPPLIER_TOPIC, "SUPPLIER_DELETED");
+    }
+
+    private boolean nonzero(java.math.BigDecimal value) {
+        return value != null && value.compareTo(java.math.BigDecimal.ZERO) != 0;
     }
 
     private void validateCreditSettings(SupplierDTO dto) {

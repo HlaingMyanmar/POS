@@ -40,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,7 +63,7 @@ class ServiceJobTeamServiceTest {
     void setUp() {
         service = new ServiceJobTeamService(jobRepository, assignmentRepository, logRepository,
                 handoverRepository, activityRepository, staffRepository, userRepository, dataEventPublisher,
-                companySettingsRepository);
+                companySettingsRepository, mock(org.sspd.servicemgmt.customerportaloptions.service.CustomerFcmService.class));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("manager", "n/a",
                         List.of(new SimpleGrantedAuthority("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN"))));

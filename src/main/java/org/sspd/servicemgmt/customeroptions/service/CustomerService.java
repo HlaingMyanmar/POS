@@ -44,7 +44,7 @@ public class CustomerService {
         return mapper.toDto(savedEntity);
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_READ')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_READ','CAN_ACCESS_SERVICE_JOB_READ','CAN_ACCESS_SALE_READ','CAN_ACCESS_BOOKING_READ')")
     @Transactional(readOnly = true)
     public List<CustomerDTO> findAll() {
         return repository.findAll()
@@ -53,7 +53,7 @@ public class CustomerService {
                 .toList();
     }
 
-    @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_READ')")
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_READ','CAN_ACCESS_SERVICE_JOB_READ','CAN_ACCESS_SALE_READ','CAN_ACCESS_BOOKING_READ')")
     @Transactional(readOnly = true)
     public CustomerDTO findById(Integer id) {
         Customer entity = repository.findById(id)

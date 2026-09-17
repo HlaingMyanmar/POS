@@ -240,6 +240,7 @@ data class SaleItemDTO(
     val discountAllocationMethod: String? = null,
     val foc: Boolean? = null,
     val warrantyMonths: Int? = null,
+    val warrantyStartDate: String? = null,
     val warrantyExpiryDate: String? = null,
     val serialNumbers: List<String>? = null
 )

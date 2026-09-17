@@ -41,6 +41,13 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_SALE_READ"
     );
 
+    private static final List<String> TECHNICIAN_HISTORY_PERMISSIONS = List.of(
+            "CAN_ACCESS_CUSTOMER_READ",
+            "CAN_ACCESS_SALE_READ",
+            "CAN_ACCESS_BOOKING_READ",
+            "CAN_ACCESS_SERVICE_JOB_READ"
+    );
+
     private static final List<String> CASHIER_PERMISSIONS = List.of(
             "CAN_ACCESS_CUSTOMER_CREATE",
             "CAN_ACCESS_CUSTOMER_READ",
@@ -87,6 +94,7 @@ public class RoleSeeder implements CommandLineRunner {
         ensurePermissions("TECHNICIAN", TECHNICIAN_PERMISSIONS, allPermissions);
         ensurePermissions("TECHNICIAN", List.of("CAN_ACCESS_SALE_READ"), allPermissions);
         ensureSaleReadForTechnicianRoles(allPermissions);
+        ensureTechnicianHistoryPermissions(allPermissions);
         ensurePermissions("CASHIER", List.of(
                 "CAN_ACCESS_TECHNICIAN_LOCATION_READ",
                 "CAN_ACCESS_CUSTOMER_APP_ORDER_READ",
@@ -122,6 +130,25 @@ public class RoleSeeder implements CommandLineRunner {
             if (!removed) continue;
             repository.save(role);
             log.info("Removed CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN from technician role {}", role.getName());
+        }
+    }
+
+    private void ensureTechnicianHistoryPermissions(List<Permission> allPermissions) {
+        for (Role role : repository.findAll()) {
+            String name = role.getName() == null ? "" : role.getName().toUpperCase();
+            if (!name.contains("TECH") && !name.equals("TECH")) continue;
+            if (role.getPermissions() == null) role.setPermissions(new HashSet<>());
+            Set<String> have = role.getPermissions().stream().map(Permission::getName).collect(Collectors.toSet());
+            boolean changed = false;
+            for (Permission permission : allPermissions) {
+                if (TECHNICIAN_HISTORY_PERMISSIONS.contains(permission.getName()) && have.add(permission.getName())) {
+                    role.getPermissions().add(permission);
+                    changed = true;
+                }
+            }
+            if (!changed) continue;
+            repository.save(role);
+            log.info("Added customer-history read permissions to technician-like role {}", role.getName());
         }
     }
 

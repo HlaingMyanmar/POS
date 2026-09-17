@@ -3,12 +3,17 @@ package com.sspd.servicemgmt.feature.auth
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -114,8 +119,12 @@ fun LoginScreen(onSuccess: () -> Unit) {
             title = { Text("ဝင်ရောက်မှု မအောင်မြင်ပါ", fontWeight = FontWeight.Bold) },
             text  = { Text(state.error) },
             confirmButton = {
-                TextButton(onClick = { vm.clearError() }) {
-                    Text("အိုကေ", fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = { vm.clearError() },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = LoginAccent, contentColor = Color.White)
+                ) {
+                    Text("အိုကေ", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         )
@@ -153,7 +162,7 @@ fun LoginScreen(onSuccess: () -> Unit) {
     }
 }
 
-private val LoginAccent = Color(0xFF00B9E8)
+private val LoginAccent = Color(0xFF1A237E)
 private val LoginFieldBg = Color(0xFFF0F7F7)
 private val LoginInk = TextMain
 
@@ -206,9 +215,9 @@ private fun TechnicianLoginLayout(
                 Button(
                     onClick = onClearError,
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LoginAccent)
+                    colors = ButtonDefaults.buttonColors(containerColor = LoginAccent, contentColor = Color.White)
                 ) {
-                    Text("အိုကေ", fontWeight = FontWeight.Bold)
+                    Text("အိုကေ", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             },
             shape = RoundedCornerShape(20.dp),
@@ -284,7 +293,7 @@ private fun TechnicianLoginLayout(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "SSPD IT SERVICE",
+                        "S.S.P.D IT Solution Center",
                         color = LoginAccent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -354,22 +363,34 @@ private fun TechnicianLoginLayout(
                         onTogglePwVisible = onTogglePwVisible
                     )
                     Spacer(Modifier.height(20.dp))
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isHovered by interactionSource.collectIsHoveredAsState()
+                    val scale by animateFloatAsState(if (isHovered) 1.02f else 1f, label = "buttonScale")
+                    val buttonElevation by animateDpAsState(if (isHovered) 8.dp else 0.dp, label = "buttonElevation")
+                    val containerCol = if (isHovered) Color(0xFFF8FAFC) else Color.White
+
                     Button(
                         onClick = { submit() },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .scale(scale)
+                            .border(1.dp, LoginAccent, RoundedCornerShape(14.dp)),
                         enabled = !loading,
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF00B9E8),
-                            disabledContainerColor = LoginAccent.copy(alpha = 0.55f),
-                            disabledContentColor = Color.White
+                            containerColor = containerCol,
+                            contentColor = LoginAccent,
+                            disabledContainerColor = Color.White.copy(alpha = 0.6f),
+                            disabledContentColor = LoginAccent.copy(alpha = 0.4f)
                         ),
-                        elevation = ButtonDefaults.buttonElevation(0.dp)
+                        elevation = ButtonDefaults.buttonElevation(buttonElevation),
+                        interactionSource = interactionSource
                     ) {
                         if (loading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
-                                color = Color.White,
+                                color = LoginAccent,
                                 strokeWidth = 2.dp
                             )
                             Spacer(Modifier.width(10.dp))
@@ -743,15 +764,32 @@ private fun LoginCard(
 
             Spacer(Modifier.height(20.dp))
 
+            val interactionSource = remember { MutableInteractionSource() }
+            val isHovered by interactionSource.collectIsHoveredAsState()
+            val scale by animateFloatAsState(if (isHovered) 1.02f else 1f, label = "buttonScale")
+            val buttonElevation by animateDpAsState(if (isHovered) 8.dp else 0.dp, label = "buttonElevation")
+            val containerCol = if (isHovered) Color(0xFFF8FAFC) else Color.White
+
             Button(
                 onClick  = onLogin,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .scale(scale)
+                    .border(1.dp, LoginAccent, RoundedCornerShape(12.dp)),
                 shape    = RoundedCornerShape(12.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = BorderColor, disabledContentColor = TextMuted),
-                enabled  = !loading
+                colors   = ButtonDefaults.buttonColors(
+                    containerColor = containerCol,
+                    contentColor = LoginAccent,
+                    disabledContainerColor = Color.White.copy(alpha = 0.6f),
+                    disabledContentColor = LoginAccent.copy(alpha = 0.4f)
+                ),
+                elevation = ButtonDefaults.buttonElevation(buttonElevation),
+                enabled  = !loading,
+                interactionSource = interactionSource
             ) {
                 if (loading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(color = LoginAccent, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
                     Text("ဝင်ရောက်နေသည်...", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 } else {

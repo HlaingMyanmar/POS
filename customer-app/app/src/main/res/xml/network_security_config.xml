@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!--
+        Android system default TLS validation:
+        valid / not expired / trusted CA / hostname match / certificate chain.
+        Example: https://sspdmyanmar.com requires a cert for sspdmyanmar.com.
+    -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">118.27.151.89</domain>
-        <domain includeSubdomains="false">10.0.2.2</domain>
-        <domain includeSubdomains="false">localhost</domain>
-        <trust-anchors>
-            <certificates src="system" />
-            <certificates src="user" />
-        </trust-anchors>
-    </domain-config>
 </network-security-config>

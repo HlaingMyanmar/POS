@@ -52,7 +52,11 @@ class PaymentTransactionServiceReversedTest {
                 mock(SaleReturnRepository.class),
                 mock(ServiceJobRepository.class),
                 mock(JournalWriter.class),
-                mock(org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentBalanceValidator.class)
+                mock(org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentBalanceValidator.class),
+                mock(org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard.class),
+                mock(org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService.class),
+                mock(org.sspd.servicemgmt.staffoptions.repository.StaffRepository.class),
+                mock(org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository.class)
         );
 
         PaymentTransactionDTO dto = new PaymentTransactionDTO();

@@ -34,16 +34,20 @@ const directionOf = (refType?: string): Direction => {
     case 'sale':            return 'IN';
     case 'purchase_return': return 'IN';
     case 'service':         return 'IN';
-    case 'purchase':        return 'OUT';
-    case 'debt_payment':    return 'OUT';
-    case 'sale_return':     return 'OUT';
+    case 'purchase':         return 'OUT';
+    case 'debt_payment':     return 'OUT';
+    case 'supplier_advance': return 'OUT';
+    case 'sale_return':      return 'OUT';
     default:                return 'NEUTRAL';
   }
 };
 
+const isActivePayment = (t: { reversed?: boolean }) => t.reversed !== true;
+
 const TYPE_LABELS: Record<string, string> = {
   Sale: 'Sale', Purchase: 'Purchase', Sale_Return: 'Sale Return',
   Purchase_Return: 'Purchase Return', Debt_Payment: 'Debt Payment',
+  Supplier_Advance: 'Supplier Advance',
   Opening_Balance: 'Opening Bal.', Transfer: 'Transfer', Service: 'Service', Other: 'Other',
 };
 
@@ -165,8 +169,8 @@ const AccountingDashboard: React.FC = () => {
       return acc?.accountType === type ? sum + (Number(b.currentBalance) || 0) : sum;
     }, 0);
 
-  const totalIn  = useMemo(() => transactions.filter(t => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0), [transactions]);
-  const totalOut = useMemo(() => transactions.filter(t => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0), [transactions]);
+  const totalIn  = useMemo(() => transactions.filter(isActivePayment).filter(t => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0), [transactions]);
+  const totalOut = useMemo(() => transactions.filter(isActivePayment).filter(t => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0), [transactions]);
 
   const recentTxns = useMemo(() =>
     [...transactions]
@@ -182,6 +186,15 @@ const AccountingDashboard: React.FC = () => {
       return Swal.fire('Validation', 'From နှင့် To မတူသင့်ပါ။', 'warning');
     if (!amount || amount <= 0)
       return Swal.fire('Validation', 'Amount ထည့်ပေးပါ။', 'warning');
+    let staffId = 0;
+    try {
+      staffId = Number(JSON.parse(getFromSession('sspd_user') || '{}').staffId) || 0;
+    } catch {
+      staffId = 0;
+    }
+    if (staffId <= 0) {
+      return Swal.fire('Validation', 'Logged-in staff is required for account transfer.', 'warning');
+    }
     const fromMethod = cashAndBankMethods.find(m => m.id === transferForm.fromPaymentMethodId)
       || paymentMethods.find(m => m.id === transferForm.fromPaymentMethodId);
     const fromBalance = cashAndBankMethods.find(m => m.id === transferForm.fromPaymentMethodId)?.currentBalance
@@ -199,6 +212,7 @@ const AccountingDashboard: React.FC = () => {
         fromPaymentMethodId: transferForm.fromPaymentMethodId,
         toPaymentMethodId:   transferForm.toPaymentMethodId,
         amount,
+        staffId,
         transactionNo: transferForm.transactionNo.trim() || undefined,
         description:   transferForm.note.trim() || undefined,
       });
@@ -537,7 +551,7 @@ const AccountingDashboard: React.FC = () => {
               {recentTxns.length > 0 ? recentTxns.map(t => {
                 const dir = directionOf(t.referenceType);
                 return (
-                  <tr key={t.id} className="hover:bg-slate-50 text-xs transition-colors">
+                  <tr key={t.id} className={`hover:bg-slate-50 text-xs transition-colors ${t.reversed ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(t.paymentDate as any)}</td>
                     <td className="px-4 py-3">
                       {dir === 'IN'  && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><ArrowDownLeft size={9}/> IN</span>}
@@ -548,6 +562,9 @@ const AccountingDashboard: React.FC = () => {
                       <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">
                         {TYPE_LABELS[t.referenceType ?? ''] ?? t.referenceType ?? '-'}
                       </span>
+                      {t.reversed && (
+                        <span className="ml-1 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-black uppercase text-rose-700">Voided</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-indigo-600 font-medium">{t.referenceCode ?? `#${t.referenceId}`}</td>
                     <td className="px-4 py-3 text-slate-700 max-w-[120px] truncate">{t.entityName ?? '-'}</td>

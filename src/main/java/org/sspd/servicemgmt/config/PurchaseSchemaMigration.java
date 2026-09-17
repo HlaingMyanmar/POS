@@ -137,6 +137,10 @@ public class PurchaseSchemaMigration implements CommandLineRunner {
         addColumnIfMissing("supplier_payments", "voided_at", "DATETIME(6) NULL");
         addColumnIfMissing("supplier_payments", "voided_by", "VARCHAR(120) NULL");
         addColumnIfMissing("supplier_payments", "void_reason", "VARCHAR(500) NULL");
+        addColumnIfMissing("supplier_credit_applications", "voided", "BIT NOT NULL DEFAULT 0");
+        addColumnIfMissing("supplier_credit_applications", "voided_at", "DATETIME(6) NULL");
+        addColumnIfMissing("supplier_credit_applications", "voided_by", "VARCHAR(120) NULL");
+        addColumnIfMissing("supplier_credit_applications", "void_reason", "VARCHAR(500) NULL");
 
         // Multi-level PO approval threshold on company settings
         addColumnIfMissing("company_settings", "po_final_approval_threshold", "DECIMAL(18,2) NULL");

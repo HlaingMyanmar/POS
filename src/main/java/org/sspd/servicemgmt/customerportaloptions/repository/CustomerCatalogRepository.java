@@ -49,7 +49,7 @@ public class CustomerCatalogRepository {
         }
         Long total = jdbc.queryForObject("select count(*)" + from + where, args, Long.class);
         var products = jdbc.query("""
-                select p.id,p.name,p.product_code,p.product_type,p.selling_price,p.warranty_months,p.remark,
+                select p.id,p.name,p.product_code,p.product_type,p.selling_price,p.warranty_months,p.warranty_terms,p.remark,
                        p.category_id,c.name category_name,c.parent_id,parent.name parent_name,b.name brand_name,
                        p.has_serial,p.stock_qty,p.quarantined_qty,p.customer_reserved_qty,p.image_path,p.thumbnail_path
                 """ + from + where + " order by " + order + " limit :limit offset :offset", args, (rs, row) -> {
@@ -57,6 +57,7 @@ public class CustomerCatalogRepository {
             dto.setId(rs.getInt("id")); dto.setName(rs.getString("name")); dto.setProductCode(rs.getString("product_code"));
             dto.setProductType(Objects.requireNonNullElse(rs.getString("product_type"), "New"));
             dto.setSellingPrice(rs.getBigDecimal("selling_price")); dto.setWarrantyMonths(rs.getInt("warranty_months"));
+            dto.setWarrantyTerms(rs.getString("warranty_terms"));
             dto.setRemark(rs.getString("remark")); dto.setCategoryId((Integer) rs.getObject("category_id"));
             dto.setCategoryName(rs.getString("category_name")); dto.setParentCategoryId((Integer) rs.getObject("parent_id"));
             dto.setParentCategoryName(rs.getString("parent_name")); dto.setBrandName(rs.getString("brand_name"));

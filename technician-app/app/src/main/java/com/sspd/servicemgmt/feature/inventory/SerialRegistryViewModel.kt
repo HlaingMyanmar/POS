@@ -30,11 +30,14 @@ class SerialRegistryViewModel(application: Application) : AndroidViewModel(appli
         onDataEvent("Serial", "Product") { load() }
     }
 
-    fun load() {
+    fun refresh() = load(fromPull = true)
+
+    fun load(fromPull: Boolean = false) {
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
-                    loading = true,
+                    loading = !fromPull && (it.filtered.isEmpty() && it.loading),
+                    refreshing = fromPull,
                     canEdit = prefs.hasPermission("CAN_ACCESS_PRODUCT_SERIAL_UPDATE")
                         || prefs.hasPermission("ROLE_ADMINISTRATOR")
                 )
@@ -45,7 +48,7 @@ class SerialRegistryViewModel(application: Application) : AndroidViewModel(appli
                 allSerials = res.body()?.data ?: emptyList()
                 applyFilter()
             } catch (_: Exception) {}
-            _uiState.update { it.copy(loading = false) }
+            _uiState.update { it.copy(loading = false, refreshing = false) }
         }
     }
 
@@ -66,6 +69,7 @@ class SerialRegistryViewModel(application: Application) : AndroidViewModel(appli
         condition: String,
         warrantyMonths: Int,
         warrantyStartDate: String?,
+        warrantyEndDate: String?,
         onDone: (String?) -> Unit
     ) {
         if (!_uiState.value.canEdit) {
@@ -91,7 +95,8 @@ class SerialRegistryViewModel(application: Application) : AndroidViewModel(appli
                     status = status,
                     condition = condition.ifBlank { null },
                     warrantyMonths = warrantyMonths.coerceAtLeast(0),
-                    warrantyStartDate = warrantyStartDate?.takeIf { it.isNotBlank() }
+                    warrantyStartDate = warrantyStartDate?.takeIf { it.isNotBlank() },
+                    warrantyEndDate = warrantyEndDate?.takeIf { it.isNotBlank() }
                 )
                 val res = ApiClient.service.updateProductSerial(token, id, dto)
                 if (res.isSuccessful) {
@@ -137,6 +142,7 @@ class SerialRegistryViewModel(application: Application) : AndroidViewModel(appli
     data class UiState(
         val filtered:     List<ProductSerialDTO> = emptyList(),
         val loading:      Boolean                = true,
+        val refreshing:   Boolean                = false,
         val saving:       Boolean                = false,
         val search:       String                 = "",
         val statusFilter: String?                = null,

@@ -107,6 +107,7 @@ data class CatalogProduct(
     val productType: String? = "New",
     val sellingPrice: Double? = 0.0,
     val warrantyMonths: Int? = 0,
+    val warrantyTerms: String? = null,
     val remark: String? = null,
     val inStock: Boolean? = true,
     val stockQty: Int? = 0,

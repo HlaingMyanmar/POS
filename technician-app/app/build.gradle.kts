@@ -4,10 +4,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-}
-
-if (file("google-services.json").exists() || file("src/google-services.json").exists() || file("src/debug/google-services.json").exists()) {
-    apply(plugin = "com.google.gms.google-services")
+    id("com.google.gms.google-services")
 }
 
 val localProps = Properties().also { props ->
@@ -41,8 +38,8 @@ android {
         applicationId = "com.sspd.technician"
         minSdk        = 26
         targetSdk     = 35
-        versionCode   = 4
-        versionName   = "1.0.4"
+        versionCode   =5
+        versionName   = "1.0.5"
         vectorDrawables { useSupportLibrary = true }
 
         buildConfigField("String", "DEFAULT_BASE_URL", "\"https://sspdmyanmar.com\"")
@@ -142,8 +139,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
-    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-analytics")
 
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")

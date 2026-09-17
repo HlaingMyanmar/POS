@@ -14,4 +14,6 @@ public interface SupplierPaymentRepository extends JpaRepository<SupplierPayment
     Optional<SupplierPayment> findByIdForUpdate(@Param("id") Integer id);
 
     List<SupplierPayment> findBySupplierIdOrderByIdDesc(Integer supplierId);
+
+    boolean existsBySupplier_Id(Integer supplierId);
 }

@@ -38,14 +38,18 @@ import com.sspd.servicemgmt.core.tracking.VisitTracker
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.UpdateDialog
 import com.sspd.servicemgmt.core.connectivity.ServerStatus
+import com.sspd.servicemgmt.core.network.ServiceJobDTO
+import com.sspd.servicemgmt.core.network.HandoverDTO
 import com.sspd.servicemgmt.feature.settings.VersionCheckViewModel
+import com.sspd.servicemgmt.feature.service.job.TechnicianQueueFocus
+import com.sspd.servicemgmt.feature.service.job.TechnicianHomeBucket
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
 // ── Hero gradient colours ──────────────────────────────────────────────────────
-private val HeroTop    = Color(0xFF0F2A3D)
-private val HeroBottom = Color(0xFF1E5A6F)
+private val HeroTop    = Color(0xFF0290EC)
+private val HeroBottom = Color(0xFF373AC4)
 
 /**
  * Main Home/Dashboard Screen composable for the SSPD Technician mobile application.
@@ -260,6 +264,8 @@ Box(
 
                 TechnicianHomeBody(
                     pendingJobs = state.stats.pendingServiceJobs ?: 0,
+                    jobs = state.jobs,
+                    sentHandovers = state.sentHandovers,
                     visit = activeVisit,
                     visitBusy = visitBusy,
                     pendingResume = pendingResume,
@@ -279,7 +285,8 @@ private data class QuadItem(
     val label: String,
     val icon:  ImageVector,
     val color: Color,
-    val route: String
+    val route: String,
+    val onClick: (() -> Unit)? = null
 )
 
 /**
@@ -288,6 +295,7 @@ private data class QuadItem(
  * Highlights current outdoor visit status, assigned pending jobs count, and quick action grid.
  *
  * @param pendingJobs Number of pending service jobs assigned to the technician.
+ * @param jobs List of technician service jobs for status breakdown.
  * @param visit Active outdoor technician visit details, if currently on a visit.
  * @param visitBusy `true` if a visit state transition operation is currently in progress.
  * @param pendingResume `true` if location tracking needs to be resumed.
@@ -298,6 +306,8 @@ private data class QuadItem(
 @Composable
 private fun TechnicianHomeBody(
     pendingJobs: Long,
+    jobs: List<ServiceJobDTO> = emptyList(),
+    sentHandovers: List<HandoverDTO> = emptyList(),
     visit: com.sspd.servicemgmt.core.network.TechnicianVisitDTO?,
     visitBusy: Boolean,
     pendingResume: Boolean,
@@ -305,60 +315,139 @@ private fun TechnicianHomeBody(
     onResumeTracking: () -> Unit,
     onNavigate: (String) -> Unit
 ) {
+
+    val inProgressCount = jobs.count { 
+        val st = it.status?.uppercase()
+        st in setOf("RECEIVED", "ASSIGNED", "INSPECTING", "IN_PROGRESS", "WAITING_PARTS")
+    }
+    val completedCount = jobs.count { 
+        val st = it.status?.uppercase()
+        st in setOf("COMPLETED", "DELIVERED", "CLOSED", "CANCELLED")
+    }
+    val handoverCount = sentHandovers.size
+
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onNavigate(Screen.ServiceJobs.route) },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
-        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, BorderColor),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Outdoor Visit", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF047857))
-            if (visit != null) {
-                Text(visit.jobNo ?: "Job", fontWeight = FontWeight.ExtraBold, color = TextMain)
-                Text(
-                    listOfNotNull(visit.customerName, visit.status, visit.motionStatus).joinToString(" · "),
-                    fontSize = 12.sp,
-                    color = TextMuted
-                )
-                if (pendingResume) {
-                    Button(onClick = onResumeTracking, enabled = !visitBusy) {
-                        Text("Tracking ပြန်စမည်")
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("အလုပ်အခြေအနေ ခြုံငုံချက်", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 1. Hand Over
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            TechnicianQueueFocus.bucket = TechnicianHomeBucket.HANDOVER
+                            onNavigate(Screen.ServiceJobs.route)
+                        }
+                        .background(Color(0xFFE0F2FE))
+                        .padding(10.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFBAE6FD)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.SwapHoriz, null, tint = Color(0xFF0284C7), modifier = Modifier.size(16.dp))
+                        }
+                        Text("$handoverCount ခု", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF0284C7))
+                        Text("Hand Over", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextMuted, maxLines = 1)
                     }
                 }
-            } else if (canOutdoorVisit) {
-                Text("အပြင်ထွက် Visit", fontWeight = FontWeight.ExtraBold, color = TextMain)
-                Text("Job တစ်ခုဖွင့်ပြီး «ထွက်ခွာပြီ» နှိပ်ပါ", fontSize = 12.sp, color = TextMuted)
-            } else {
-                Text("Visit ခွင့်မရှိသေးပါ", fontWeight = FontWeight.ExtraBold, color = TextMain)
-                Text("Admin မှ CAN_ACCESS_TECHNICIAN_VISIT_START ပေးပြီး logout/login ပြန်လုပ်ပါ", fontSize = 12.sp, color = TextMuted)
+
+                // 2. လုပ်ဆဲ
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            TechnicianQueueFocus.bucket = TechnicianHomeBucket.ACTIVE
+                            onNavigate(Screen.ServiceJobs.route)
+                        }
+                        .background(Color(0xFFFEF3C7).copy(alpha = 0.5f))
+                        .padding(10.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFEF3C7)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.HourglassTop, null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
+                        }
+                        Text("$inProgressCount ခု", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFD97706))
+                        Text("လုပ်ဆဲ", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextMuted, maxLines = 1)
+                    }
+                }
+
+                // 3. ပြီးဆုံး
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            TechnicianQueueFocus.bucket = TechnicianHomeBucket.FINAL
+                            onNavigate(Screen.ServiceJobs.route)
+                        }
+                        .background(Color(0xFFDCFCE7).copy(alpha = 0.5f))
+                        .padding(10.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFDCFCE7)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.CheckCircle, null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                        }
+                        Text("$completedCount ခု", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
+                        Text("ပြီးဆုံး", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextMuted, maxLines = 1)
+                    }
+                }
             }
         }
     }
-    Spacer(Modifier.height(16.dp))
-    StatCard(
-        modifier = Modifier.fillMaxWidth(),
-        label    = "ဆိုင်ခင်းအလုပ်",
-        value    = "$pendingJobs ခု",
-        icon     = Icons.Outlined.Build,
-        color    = Violet,
-        bg       = VioletBg
-    ) { onNavigate(Screen.ServiceJobs.route) }
 
     Spacer(Modifier.height(24.dp))
-    Text(
-        "အမြန် လုပ်ဆောင်ချက်",
-        fontSize     = 13.sp,
-        fontWeight   = FontWeight.ExtraBold,
-        color        = TextMain
-    )
-    Spacer(Modifier.height(12.dp))
-    val actions = listOf(
-        QuadItem("ပစ္စည်း",           Icons.Outlined.Inventory2,            Color(0xFF0891B2), Screen.Products.route),
-        QuadItem("ပြင်ဆင်",           Icons.Outlined.Build,                 Color(0xFF059669), Screen.ServiceJobs.route),
-        QuadItem("ဝန်ဆောင်မှုများ",  Icons.Outlined.MiscellaneousServices, Color(0xFFD97706), Screen.ServiceMgmt.route),
-        QuadItem("ဗီဒီယို",            Icons.Outlined.VideoLibrary,          Color(0xFFDC2626), Screen.Videos.route),
-    )
-    ActionGrid(actions, onNavigate)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, BorderColor),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "အမြန် လုပ်ဆောင်ချက်",
+                fontSize     = 12.sp,
+                fontWeight   = FontWeight.Bold,
+                color        = TextMuted
+            )
+            val actions = listOf(
+                QuadItem("ပစ္စည်း",           Icons.Outlined.Inventory2,            Color(0xFF0891B2), Screen.Products.route),
+                QuadItem("ပြင်ဆင်",           Icons.Outlined.Build,                 Color(0xFF059669), Screen.ServiceJobs.route),
+                QuadItem("ဝန်ဆောင်မှုများ",  Icons.Outlined.MiscellaneousServices, Color(0xFF7C3AED), Screen.ServiceMgmt.route),
+                QuadItem("ဗီဒီယို",            Icons.Outlined.VideoLibrary,          Color(0xFFDC2626), Screen.Videos.route),
+            )
+            ActionGrid(actions, onNavigate)
+        }
+    }
 }
 
 /**
@@ -552,7 +641,10 @@ private fun ActionGrid(actions: List<QuadItem>, onNavigate: (String) -> Unit) {
                     label    = item.label,
                     icon     = item.icon,
                     color    = item.color,
-                    onClick  = { onNavigate(item.route) }
+                    onClick  = {
+                        if (item.onClick != null) item.onClick.invoke()
+                        else onNavigate(item.route)
+                    }
                 )
             }
             if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -1054,6 +1146,9 @@ private fun ServerStatusChip() {
 
 private fun Long.fmt() = String.format("%,d", this)
 
+private val LoginAccent = Color(0xFF373AC4)
+private val LoginFieldBg = Color(0xFF0290EC)
+
 @Preview(name = "Technician Dashboard", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TechnicianDashboardPreview() {
@@ -1084,7 +1179,7 @@ private fun TechnicianDashboardPreview() {
                     Text("မင်္ဂလာပါ", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
                     Text("Field Technician", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Outdoor Service Dashboard", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
+                    Text("Outdoor Job Service Dashboard", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
                 }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {

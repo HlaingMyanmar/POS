@@ -3185,7 +3185,7 @@ const ProductManagement: React.FC = () => {
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Cost price</span><span className="text-xs font-black text-slate-800">{(detailProduct.costPrice || 0).toLocaleString()} Ks</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Tracking</span><span className="text-xs font-black text-slate-800">{detailProduct.hasSerial === false ? 'Quantity' : 'Serial'}</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Shelf location</span><span className="text-right text-xs font-black text-teal-700">{detailProduct.shelfLocation || '-'}</span></div>
-                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Warranty</span><span className="text-right text-xs font-black text-slate-800">{detailProduct.warrantyTerms || `${detailProduct.warrantyMonths || 0} months`}</span></div>
+                <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Warranty</span><span className="text-right text-xs font-black text-slate-800">{formatWarranty(detailProduct)}</span></div>
               </div>
               {canViewProductPriceHistory && <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Price History / Weighted Average Cost</p></div>

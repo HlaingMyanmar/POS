@@ -24,6 +24,8 @@ public interface PurchaseReturnRepository extends JpaRepository<PurchaseReturn, 
     Optional<PurchaseReturn> findTopByOrderByIdDesc();
     List<PurchaseReturn> findByPurchaseId(Integer purchaseId);
 
+    boolean existsByPurchase_Supplier_Id(Integer supplierId);
+
     @Query("SELECT r FROM PurchaseReturn r WHERE (:search IS NULL OR :search = '' OR LOWER(r.returnNo) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(r.reason) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(r.purchase.supplier.name) LIKE LOWER(CONCAT('%',:search,'%')))")
     Page<PurchaseReturn> findBySearch(@Param("search") String search, Pageable pageable);
     @Query("SELECT r FROM PurchaseReturn r WHERE (:search IS NULL OR :search='' OR LOWER(r.returnNo) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(r.reason) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(r.purchase.supplier.name) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(r.trackingNo) LIKE LOWER(CONCAT('%',:search,'%')) OR LOWER(r.rmaNumber) LIKE LOWER(CONCAT('%',:search,'%'))) AND (:from IS NULL OR r.returnDate>=:from) AND (:to IS NULL OR r.returnDate<=:to) AND (:supplierId IS NULL OR r.purchase.supplier.id=:supplierId) AND (:purchaseId IS NULL OR r.purchase.id=:purchaseId) AND (:status IS NULL OR :status='' OR r.status=:status) AND (:settlementType IS NULL OR :settlementType='' OR r.settlementType=:settlementType) AND (:resolutionType IS NULL OR :resolutionType='' OR r.resolutionType=:resolutionType)")

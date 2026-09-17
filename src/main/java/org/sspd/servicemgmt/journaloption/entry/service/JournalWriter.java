@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.model.AccountBalance;
 import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.repository.AccountBalanceRepository;
+import org.sspd.servicemgmt.accountingoptions.coaoptions.enums.AccountType;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.model.ChartOfAccount;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.repository.ChartOfAccountRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -93,6 +94,7 @@ public class JournalWriter {
         }
 
         lockAccounts(dto.getDetails().stream().map(JournalDetailDTO::getAccountId).toList());
+        assertAssetCreditsCovered(dto);
         JournalEntry journal = journalMapper.toEntity(dto);
         if (journal.getStatus() == null || journal.getStatus().isBlank()) journal.setStatus("POSTED");
         if (dto.getStaffId() != null) {
@@ -232,6 +234,33 @@ public class JournalWriter {
         accountIds.stream().distinct().sorted().forEach(id ->
                 coaRepository.findByIdForUpdate(id).orElseThrow(() ->
                         new ResourceNotFoundException("Account not found with ID: " + id)));
+    }
+
+    /**
+     * After COA locks are held, re-check asset accounts being credited so concurrent
+     * outgoing payments cannot both pass on a stale snapshot and drive cash/bank negative.
+     */
+    private void assertAssetCreditsCovered(JournalEntryDTO dto) {
+        java.util.Map<Integer, BigDecimal> netCreditByAccount = new java.util.TreeMap<>();
+        for (JournalDetailDTO detail : dto.getDetails()) {
+            BigDecimal debit = detail.getDebit() != null ? detail.getDebit() : BigDecimal.ZERO;
+            BigDecimal credit = detail.getCredit() != null ? detail.getCredit() : BigDecimal.ZERO;
+            netCreditByAccount.merge(detail.getAccountId(), credit.subtract(debit), BigDecimal::add);
+        }
+        for (var entry : netCreditByAccount.entrySet()) {
+            if (entry.getValue().signum() <= 0) continue;
+            ChartOfAccount account = coaRepository.findByIdForUpdate(entry.getKey())
+                    .orElseThrow(() -> new ResourceNotFoundException("Account not found with ID: " + entry.getKey()));
+            if (account.getAccountType() != AccountType.Asset) continue;
+            BigDecimal available = detailRepository.netDebitByAccountId(entry.getKey());
+            if (available == null) available = BigDecimal.ZERO;
+            if (available.compareTo(entry.getValue()) < 0) {
+                String name = account.getAccountName() != null ? account.getAccountName() : ("Account " + account.getId());
+                throw new RuntimeException(
+                        name + " တွင် လက်ကျန်မလောက်ပါ။ " +
+                        "ကျန်ငွေ: " + available.toPlainString() + " Ks၊ လွှဲမည့်ပမာဏ: " + entry.getValue().toPlainString() + " Ks");
+            }
+        }
     }
 
 }

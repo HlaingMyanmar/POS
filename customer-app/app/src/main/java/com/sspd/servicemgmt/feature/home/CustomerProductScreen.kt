@@ -97,6 +97,7 @@ import com.sspd.servicemgmt.core.ui.theme.SuccessBg
 import com.sspd.servicemgmt.core.ui.theme.SurfaceSoft
 import com.sspd.servicemgmt.core.ui.theme.TextMain
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
+import com.sspd.servicemgmt.core.util.formatWarranty
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -814,8 +815,12 @@ private fun CustomerProductCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
+                    val warranty = formatWarranty(product.warrantyTerms, product.warrantyMonths)
                     Text(
-                        if (outOfStock) "ကုန်နေသည်" else "ကျန် $stock ခု",
+                        buildString {
+                            append(if (outOfStock) "ကုန်နေသည်" else "ကျန် $stock ခု")
+                            if (warranty.isNotBlank()) append(" · $warranty")
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = if (outOfStock) Danger else Success,
                         fontWeight = FontWeight.SemiBold,
@@ -1050,7 +1055,7 @@ private fun ProductDetailContent(
                 ProductDetailValue("Code", product.productCode.orEmpty().ifBlank { "—" }, Modifier.weight(1f))
                 ProductDetailValue(
                     "Warranty",
-                    if ((product.warrantyMonths ?: 0) > 0) "${product.warrantyMonths} လ" else "မရှိပါ",
+                    formatWarranty(product.warrantyTerms, product.warrantyMonths).ifBlank { "မရှိပါ" },
                     Modifier.weight(1f)
                 )
             }

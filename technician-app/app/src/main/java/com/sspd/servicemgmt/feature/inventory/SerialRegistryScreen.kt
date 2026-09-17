@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
 import com.sspd.servicemgmt.core.ui.component.AppLoading
@@ -99,12 +100,16 @@ fun SerialRegistryScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(ScreenBg)
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = vm::refresh,
+            modifier = Modifier.fillMaxSize().padding(padding)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ScreenBg)
+            ) {
             // ── Search bar ─────────────────────────────────────────────────
             AppSearchField(
                 value = searchText,
@@ -189,8 +194,8 @@ fun SerialRegistryScreen(
                     onProductClick(pid, serial.serialNumber)
                 }
             },
-            onSave = { serialNumber, status, condition, warrantyMonths, warrantyStartDate ->
-                vm.updateSerial(serial, serialNumber, status, condition, warrantyMonths, warrantyStartDate) { err ->
+            onSave = { serialNumber, status, condition, warrantyMonths, warrantyStartDate, warrantyEndDate ->
+                vm.updateSerial(serial, serialNumber, status, condition, warrantyMonths, warrantyStartDate, warrantyEndDate) { err ->
                     if (err == null) {
                         editingSerial = null
                     } else {
@@ -204,6 +209,8 @@ fun SerialRegistryScreen(
     }
 }
 
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SerialEditSheet(
@@ -211,17 +218,34 @@ private fun SerialEditSheet(
     saving: Boolean,
     onDismiss: () -> Unit,
     onProductClick: () -> Unit,
-    onSave: (String, String, String, Int, String?) -> Unit
+    onSave: (String, String, String, Int, String?, String?) -> Unit
 ) {
     var serialNumber by rememberSaveable(serial.id) { mutableStateOf(serial.serialNumber) }
     var status by rememberSaveable(serial.id) { mutableStateOf(serial.status ?: "AVAILABLE") }
     var condition by rememberSaveable(serial.id) { mutableStateOf(serial.condition ?: "") }
-    var warrantyValue by rememberSaveable(serial.id) { mutableStateOf("${serial.warrantyMonths ?: 0}") }
-    var warrantyUnit by rememberSaveable(serial.id) { mutableStateOf("လ") }
+    val existingDays = warrantyDays(serial.warrantyStartDate, serial.warrantyEndDate)
+    val existingMonths = serial.warrantyMonths ?: 0
+    var warrantyValue by rememberSaveable(serial.id) {
+        mutableStateOf(when {
+            existingMonths > 0 && existingMonths % 12 == 0 -> "${existingMonths / 12}"
+            existingMonths > 0 -> "$existingMonths"
+            else -> "$existingDays"
+        })
+    }
+    var warrantyUnit by rememberSaveable(serial.id) {
+        mutableStateOf(when {
+            existingMonths > 0 && existingMonths % 12 == 0 -> "နှစ်"
+            existingMonths > 0 -> "လ"
+            existingDays > 0 -> "ရက်"
+            else -> "လ"
+        })
+    }
     var warrantyStart by rememberSaveable(serial.id) { mutableStateOf(serial.warrantyStartDate?.take(10) ?: todayText()) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
-    val months = warrantyToMonths(warrantyValue.toIntOrNull() ?: 0, warrantyUnit)
+    val warrantyNumber = warrantyValue.toIntOrNull() ?: 0
+    val months = warrantyToMonths(warrantyNumber, warrantyUnit)
+    val exactEndDate = if (warrantyUnit == "ရက်" && warrantyNumber > 0) addDays(warrantyStart, warrantyNumber) else null
 
     if (showDatePicker) {
         val pickerState = rememberDatePickerState(initialSelectedDateMillis = dateToMillis(warrantyStart))
@@ -341,7 +365,10 @@ private fun SerialEditSheet(
             }
 
             Button(
-                onClick = { onSave(serialNumber, status, condition, months, warrantyStart.takeIf { months > 0 }) },
+                onClick = {
+                    val hasWarranty = warrantyNumber > 0
+                    onSave(serialNumber, status, condition, months, warrantyStart.takeIf { hasWarranty }, exactEndDate)
+                },
                 enabled = !saving,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
@@ -373,10 +400,21 @@ private fun WarrantyUnitButton(label: String, selected: Boolean, onClick: () -> 
 }
 
 private fun warrantyToMonths(value: Int, unit: String): Int = when (unit) {
-    "ရက်" -> kotlin.math.ceil(value / 30.0).toInt()
+    "ရက်" -> 0
     "နှစ်" -> value * 12
     else -> value
 }.coerceAtLeast(0)
+
+private fun warrantyDays(start: String?, end: String?): Int = runCatching {
+    if (start.isNullOrBlank() || end.isNullOrBlank()) 0
+    else java.time.temporal.ChronoUnit.DAYS.between(
+        LocalDate.parse(start.take(10)), LocalDate.parse(end.take(10))
+    ).toInt().coerceAtLeast(0)
+}.getOrDefault(0)
+
+private fun addDays(start: String, days: Int): String = runCatching {
+    LocalDate.parse(start.take(10)).plusDays(days.toLong()).toString()
+}.getOrDefault(start)
 
 private fun todayText(): String = LocalDate.now().toString()
 
@@ -402,7 +440,7 @@ private fun SerialCard(
     onClick: () -> Unit
 ) {
     val info     = statusInfo(serial.status)
-    val wLabel   = fmtWarranty(serial.warrantyMonths)
+    val wLabel   = fmtWarranty(serial.warrantyMonths, serial.warrantyStartDate, serial.warrantyEndDate)
 
     Card(
         shape    = RoundedCornerShape(12.dp),

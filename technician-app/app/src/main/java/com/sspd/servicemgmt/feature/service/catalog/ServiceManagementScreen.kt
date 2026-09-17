@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -1086,5 +1087,70 @@ private fun SubTypeDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("မလုပ်တော့ပါ") } }
     )
+}
+
+private val samplePreviewItems = listOf(
+    ServiceItemDTO(
+        id = 1,
+        code = "SVC-001",
+        item = "Windows 11 Setup & Drivers",
+        price = 25000.0,
+        costPrice = 10000.0,
+        warrantyMonths = 3,
+        durationMinutes = 45,
+        description = "Full clean installation with driver updates",
+        serviceTypeName = "Software & System",
+        subServiceTypeName = "OS Setup",
+        isActive = true
+    ),
+    ServiceItemDTO(
+        id = 2,
+        code = "SVC-002",
+        item = "Laptop Motherboard Repair & Servicing",
+        price = 65000.0,
+        costPrice = 30000.0,
+        warrantyMonths = 6,
+        durationMinutes = 120,
+        description = "IC level repair and thermal paste replacement",
+        serviceTypeName = "Hardware & Repair",
+        subServiceTypeName = "Mainboard",
+        isActive = true
+    ),
+    ServiceItemDTO(
+        id = 3,
+        code = "SVC-003",
+        item = "Network Router & WiFi Configuration",
+        price = 35000.0,
+        costPrice = 15000.0,
+        warrantyMonths = 1,
+        durationMinutes = 30,
+        description = "MikroTik & Router setup for office",
+        serviceTypeName = "Software & System",
+        subServiceTypeName = "Networking",
+        isActive = true
+    )
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Service Management Preview", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun ServiceManagementScreenPreview() {
+    AppTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = ScreenBg) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopAppBar(
+                    title = { Text("ဝန်ဆောင်မှုများ", fontWeight = FontWeight.ExtraBold, color = Color.White) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary)
+                )
+                ItemsList(
+                    items = samplePreviewItems,
+                    onOpen = {},
+                    onEdit = {},
+                    onDelete = {},
+                    onAdd = {}
+                )
+            }
+        }
+    }
 }
 

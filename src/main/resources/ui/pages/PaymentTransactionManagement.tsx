@@ -7,6 +7,15 @@ import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, Minus, RefreshCw
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { getFromSession } from '../utils/storageHelper';
+
+const currentStaffId = () => {
+  try {
+    return Number(JSON.parse(getFromSession('sspd_user') || '{}').staffId) || 0;
+  } catch {
+    return 0;
+  }
+};
 
 const money = (v: number | undefined) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
@@ -30,9 +39,10 @@ const directionOf = (refType?: string): Direction => {
     case 'sale':            return 'IN';
     case 'purchase_return': return 'IN';
     case 'service':         return 'IN';
-    case 'purchase':        return 'OUT';
-    case 'debt_payment':    return 'OUT';
-    case 'sale_return':     return 'OUT';
+    case 'purchase':         return 'OUT';
+    case 'debt_payment':     return 'OUT';
+    case 'supplier_advance': return 'OUT';
+    case 'sale_return':      return 'OUT';
     default:                return 'NEUTRAL';
   }
 };
@@ -43,6 +53,7 @@ const TYPE_LABELS: Record<string, string> = {
   Sale_Return:     'Sale Return',
   Purchase_Return: 'Purchase Return',
   Debt_Payment:    'Debt Payment',
+  Supplier_Advance:'Supplier Advance',
   Opening_Balance: 'Opening Balance',
   Transfer:        'Transfer',
   Service:         'Service',
@@ -55,7 +66,9 @@ const TYPE_COLORS: Record<Direction, string> = {
   NEUTRAL: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
-const ALL_TYPES = ['Sale', 'Purchase', 'Sale_Return', 'Purchase_Return', 'Debt_Payment', 'Opening_Balance', 'Transfer', 'Service', 'Other'];
+const isActivePayment = (t: { reversed?: boolean }) => t.reversed !== true;
+
+const ALL_TYPES = ['Sale', 'Purchase', 'Sale_Return', 'Purchase_Return', 'Debt_Payment', 'Supplier_Advance', 'Opening_Balance', 'Transfer', 'Service', 'Other'];
 
 const PaymentTransactionManagement: React.FC = () => {
   const [list, setList]       = useState<PaymentTransactionDTO[]>([]);
@@ -109,17 +122,35 @@ const PaymentTransactionManagement: React.FC = () => {
     });
   }, [list, search, dateFrom, dateTo, typeFilter, dirFilter]);
 
-  const totalIn  = useMemo(() => filtered.filter(t => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0), [filtered]);
-  const totalOut = useMemo(() => filtered.filter(t => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0), [filtered]);
+  const activeFiltered = useMemo(() => filtered.filter(isActivePayment), [filtered]);
+  const totalIn  = useMemo(() => activeFiltered.filter(t => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0), [activeFiltered]);
+  const totalOut = useMemo(() => activeFiltered.filter(t => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0), [activeFiltered]);
   const netFlow  = totalIn - totalOut;
   const visiblePaymentRows = useMemo(() => filtered.filter((transaction): transaction is PaymentTransactionDTO & { id: number } => typeof transaction.id === 'number'), [filtered]);
   const bulk = useBulkSelection<PaymentTransactionDTO & { id: number }>(visiblePaymentRows);
 
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
+    const selected = bulk.selectedRows;
+    const activeSelected = selected.filter(isActivePayment);
+    const exportIn = activeSelected.filter((t) => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0);
+    const exportOut = activeSelected.filter((t) => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0);
     const csv = [
-      ['ID', 'Date', 'Type', 'Reference', 'Entity', 'Method', 'Transaction No', 'Amount'],
-      ...bulk.selectedRows.map((transaction) => [transaction.id, transaction.paymentDate || '', transaction.referenceType || '', transaction.referenceCode || '', transaction.entityName || '', transaction.paymentMethodName || '', transaction.transactionNo || '', transaction.amount])
+      ['ID', 'Date', 'Type', 'Reference', 'Entity', 'Method', 'Transaction No', 'Amount', 'Status'],
+      ...selected.map((transaction) => [
+        transaction.id,
+        transaction.paymentDate || '',
+        transaction.referenceType || '',
+        transaction.referenceCode || '',
+        transaction.entityName || '',
+        transaction.paymentMethodName || '',
+        transaction.transactionNo || '',
+        transaction.amount,
+        transaction.reversed ? 'Voided' : 'Active'
+      ]),
+      [],
+      ['', '', '', '', '', '', 'Active Total IN', exportIn, ''],
+      ['', '', '', '', '', '', 'Active Total OUT', exportOut, '']
     ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -137,12 +168,15 @@ const PaymentTransactionManagement: React.FC = () => {
     if (!transferForm.fromPaymentMethodId || !transferForm.toPaymentMethodId) return alert('Select from/to payment methods.');
     if (transferForm.fromPaymentMethodId === transferForm.toPaymentMethodId) return alert('From and To methods must be different.');
     if (!amount || amount <= 0) return alert('Amount must be greater than zero.');
+    const staffId = currentStaffId();
+    if (staffId <= 0) return alert('Logged-in staff is required for account transfer.');
     setTransferSaving(true);
     try {
       await accountingApiService.transferPaymentMethodBalance({
         fromPaymentMethodId: transferForm.fromPaymentMethodId,
         toPaymentMethodId: transferForm.toPaymentMethodId,
         amount,
+        staffId,
         transactionNo: transferForm.transactionNo.trim() || undefined,
         description: transferForm.note.trim() || undefined
       });
@@ -305,7 +339,7 @@ const PaymentTransactionManagement: React.FC = () => {
                   const dir = directionOf(t.referenceType);
                   const typeLabel = TYPE_LABELS[t.referenceType ?? ''] ?? (t.referenceType ?? '-');
                   return (
-                    <tr key={t.id} className="hover:bg-slate-50 text-xs">
+                    <tr key={t.id} className={`hover:bg-slate-50 text-xs ${t.reversed ? 'opacity-60' : ''}`}>
                       <td className="px-3 py-3 text-center">{typeof t.id === 'number' && <input type="checkbox" checked={bulk.selectedIds.has(t.id)} onChange={() => bulk.toggle(t.id as number)} className="h-4 w-4 accent-indigo-600" aria-label={`Select payment ${t.id}`} />}</td>
                       <td className="px-4 py-3 text-slate-700">
                         <div className="font-medium">{fmtDate(t.paymentDate as any)}</div>
@@ -332,6 +366,9 @@ const PaymentTransactionManagement: React.FC = () => {
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${TYPE_COLORS[dir]}`}>
                           {typeLabel}
                         </span>
+                        {t.reversed && (
+                          <span className="ml-1 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-black uppercase text-rose-700" title={t.reversalReason || t.reversedBy || ''}>Voided</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-mono text-indigo-600 font-medium">
                         {t.referenceCode ?? `#${t.referenceId}`}

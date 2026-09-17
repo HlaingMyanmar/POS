@@ -28,9 +28,12 @@ fun TechnicianAppRoot() {
     val activity = context as FragmentActivity
     val settings = remember { TechnicianLocalSettings(context.applicationContext) }
     val themeMode by settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-    // Existing feature screens still contain light-only card tokens. Keep the
-    // app on the verified high-contrast palette until each screen is migrated.
-    val useDarkTheme = false
+    val systemDark = isSystemInDarkTheme()
+    val useDarkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> systemDark
+    }
     var locked by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()

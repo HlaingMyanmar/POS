@@ -53,6 +53,7 @@ const RoleManagement: React.FC = () => {
       'CAN_ACCESS_CUSTOMER_READ', 'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_SERVICE_READ',
       'CAN_ACCESS_SERVICE_JOB_READ', 'CAN_ACCESS_SERVICE_JOB_UPDATE', 'CAN_ACCESS_SERVICE_JOB_REWORK',
       'CAN_ACCESS_BOOKING_READ', 'CAN_ACCESS_BOOKING_UPDATE', 'CAN_ACCESS_STAFF_READ',
+      'CAN_ACCESS_SALE_READ',
     ];
     if (role.includes('INVENTORY') || role.includes('STOCK')) return [
       'CAN_ACCESS_PRODUCT_READ', 'CAN_ACCESS_PRODUCT_CREATE', 'CAN_ACCESS_PRODUCT_UPDATE',
@@ -361,11 +362,20 @@ const RoleManagement: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {allPermissions.filter(p => p.name.toLowerCase().includes(permSearchTerm.toLowerCase())).map(perm => {
+              {(() => {
+                const historyNames = new Set([
+                  'CAN_ACCESS_CUSTOMER_READ',
+                  'CAN_ACCESS_SALE_READ',
+                  'CAN_ACCESS_BOOKING_READ',
+                  'CAN_ACCESS_SERVICE_JOB_READ'
+                ]);
+                const visible = allPermissions.filter(p => p.name.toLowerCase().includes(permSearchTerm.toLowerCase()));
+                const historyKeys = visible.filter(p => historyNames.has(p.name));
+                const otherKeys = visible.filter(p => !historyNames.has(p.name));
+                const renderKey = (perm: PermissionDTO) => {
                   const isSelected = selectedPermissionIds.includes(perm.id);
                   return (
-                    <button 
+                    <button
                       key={perm.id}
                       onClick={() => togglePermission(perm.id)}
                       className={`flex items-center gap-3 p-4 rounded-2xl border transition-all text-left group ${
@@ -381,8 +391,19 @@ const RoleManagement: React.FC = () => {
                       </div>
                     </button>
                   );
-                })}
-              </div>
+                };
+                return (
+                  <>
+                    {historyKeys.length > 0 && (
+                      <div className="mb-4">
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-indigo-700">Customer History keys</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{historyKeys.map(renderKey)}</div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{otherKeys.map(renderKey)}</div>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="p-6 border-t border-slate-100 bg-white flex items-center justify-between shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">

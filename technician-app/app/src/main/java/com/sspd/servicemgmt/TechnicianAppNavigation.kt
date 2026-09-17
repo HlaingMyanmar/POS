@@ -115,6 +115,7 @@ import com.sspd.servicemgmt.feature.service.job.ServiceJobPrintScreen
 import com.sspd.servicemgmt.feature.sale.SalePrintScreen
 import com.sspd.servicemgmt.feature.settings.SoftwareUpdateScreen
 import com.sspd.servicemgmt.feature.settings.AccountSettingsScreen
+import com.sspd.servicemgmt.feature.settings.SecuritySettingsScreen
 import android.widget.Toast
 import com.sspd.servicemgmt.feature.video.VideoListScreen
 import com.sspd.servicemgmt.feature.video.extractYoutubeId
@@ -632,10 +633,16 @@ fun TechnicianAppNavigation() {
 
                     screen(Screen.ServiceMgmt.route) { ServiceManagementScreen { nav.popBackStack() } }
                     screen(Screen.Account.route) {
-                        AccountSettingsScreen(onBack = { nav.popBackStack() })
+                        AccountSettingsScreen(
+                            onBack = { nav.popBackStack() },
+                            onNavigateToSecurity = { nav.navigate(Screen.SecuritySettings.route) }
+                        )
+                    }
+                    screen(Screen.SecuritySettings.route) {
+                        SecuritySettingsScreen(onBack = { nav.popBackStack() })
                     }
                     screen(Screen.SoftwareUpdate.route) {
-                        AccountSettingsScreen(onBack = { nav.popBackStack() })
+                        SoftwareUpdateScreen(onBack = { nav.popBackStack() })
                     }
                     screen(Screen.Videos.route) {
                         VideoListScreen(

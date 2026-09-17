@@ -27,7 +27,7 @@ android {
         versionCode   = 1
         versionName   = "1.0.0"
         vectorDrawables { useSupportLibrary = true }
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"http://118.27.151.89\"")
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://sspdmyanmar.com\"")
         buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Customer\"")
         val googleWebClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")

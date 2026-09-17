@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Shield } from 'lucide-react';
 import { AppRoute } from '../types';
 import { saleApiService } from '../services/saleapiservice';
+import { fmtWarrantyDuration } from '../utils/warrantyFormat';
 
 type WarrantyRow = {
   saleDetailId?: number;
@@ -130,7 +131,7 @@ const WarrantyLookupPage: React.FC = () => {
                   <td className="px-3 py-2">{r.customerName || '—'}</td>
                   <td className="px-3 py-2">
                     {r.productName || '—'}
-                    <div className="text-[11px] text-slate-400">{r.warrantyMonths || 0} လ · qty {r.qty || 1}</div>
+                    <div className="text-[11px] text-slate-400">{fmtWarrantyDuration(r.warrantyMonths, r.warrantyStartDate, r.warrantyEndDate) || '—'} · qty {r.qty || 1}</div>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{r.serialNumber || '—'}</td>
                   <td className="px-3 py-2">{r.warrantyStartDate || '—'}</td>

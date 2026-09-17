@@ -27,30 +27,44 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
 
     fun setSearch(value: String) = _state.update { it.copy(search = value) }
 
-    fun loadCustomers() {
+    fun refresh() {
+        val selected = _state.value.selected
+        if (selected != null) {
+            selectCustomer(selected, fromPull = true)
+        } else {
+            loadCustomers(fromPull = true)
+        }
+    }
+
+    fun loadCustomers(fromPull: Boolean = false) {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            _state.update { it.copy(refreshing = fromPull, loading = !fromPull && it.customers.isEmpty(), error = null) }
             try {
                 val response = ApiClient.service.getCustomers(ApiClient.bearer(prefs.authToken))
                 if (response.isSuccessful) {
-                    _state.update { it.copy(customers = response.body()?.data.orEmpty(), loading = false) }
+                    _state.update { it.copy(customers = response.body()?.data.orEmpty(), loading = false, refreshing = false) }
                 } else {
-                    _state.update { it.copy(loading = false, error = "Customer များရယူ၍မရပါ (${response.code()})") }
+                    val hint = if (response.code() == 403)
+                        "Customer စာရင်း ကြည့်ခွင့်မရှိပါ။ TECHNICIAN role ကို restart ပြီး ပြန်ဝင်ပါ။"
+                    else
+                        "Customer များရယူ၍မရပါ (${response.code()})"
+                    _state.update { it.copy(loading = false, refreshing = false, error = hint) }
                 }
             } catch (error: Exception) {
-                _state.update { it.copy(loading = false, error = error.message ?: "Server ချိတ်ဆက်၍မရပါ") }
+                _state.update { it.copy(loading = false, refreshing = false, error = error.message ?: "Server ချိတ်ဆက်၍မရပါ") }
             }
         }
     }
 
-    fun selectCustomer(customer: CustomerDTO) {
+    fun selectCustomer(customer: CustomerDTO, fromPull: Boolean = false) {
         val customerId = customer.id ?: return
         _state.update {
             it.copy(
                 selected = customer,
-                jobs = emptyList(),
-                sales = emptyList(),
-                historyLoading = true,
+                jobs = if (fromPull) it.jobs else emptyList(),
+                sales = if (fromPull) it.sales else emptyList(),
+                historyLoading = !fromPull && (it.jobs.isEmpty() && it.sales.isEmpty()),
+                refreshing = fromPull,
                 canViewSales = true,
                 error = null,
                 saleError = null,
@@ -106,7 +120,7 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
                     )
                 }
             }
-            _state.update { it.copy(historyLoading = false) }
+            _state.update { it.copy(historyLoading = false, refreshing = false) }
         }
     }
 
@@ -122,6 +136,7 @@ class CustomerHistoryViewModel(application: Application) : AndroidViewModel(appl
         val sales: List<SaleDTO> = emptyList(),
         val canViewSales: Boolean = true,
         val loading: Boolean = true,
+        val refreshing: Boolean = false,
         val historyLoading: Boolean = false,
         val error: String? = null,
         val saleError: String? = null,

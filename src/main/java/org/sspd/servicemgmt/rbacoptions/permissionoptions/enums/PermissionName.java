@@ -151,10 +151,10 @@ public enum PermissionName {
     CAN_ACCESS_PURCHASE_RETURN_DETAIL_DELETE("Purchase Return Detail အချက်အလက်များကို ဖျက်သိမ်းခွင့်ပြုသည်"),
 
 
-    CAN_ACCESS_SALE_CREATE("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
-    CAN_ACCESS_SALE_READ("ဝယ်ယူသူ (Customer) အသစ်များ ဖန်တီးခွင့်ပြုသည်"),
-    CAN_ACCESS_SALE_DELETE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
-    CAN_ACCESS_SALE_UPDATE("ဝယ်ယူမှု (Purchase) အချက်အလက်များကို ပြင်ဆင်ခွင့်ပြုသည်"),
+    CAN_ACCESS_SALE_CREATE("အရောင်း (Sale) ဖန်တီးခွင့်"),
+    CAN_ACCESS_SALE_READ("အရောင်း (Sale) စာရင်းနှင့် Customer History ကြည့်ခွင့်"),
+    CAN_ACCESS_SALE_DELETE("အရောင်း (Sale) ဖျက်သိမ်းခွင့်"),
+    CAN_ACCESS_SALE_UPDATE("အရောင်း (Sale) ပြင်ဆင်ခွင့်"),
     CAN_ACCESS_SALE_BACKDATE("Sale ကို နောက်ကျသောရက်စွဲဖြင့် သိမ်းခွင့်"),
     CAN_ACCESS_SALE_FUTUREDATE("Sale ကို အနာဂတ်ရက်စွဲဖြင့် သိမ်းခွင့်"),
     CAN_ACCESS_SALE_STAFF_OVERRIDE("Sale အတွက် အခြား Staff ရွေးခွင့်"),

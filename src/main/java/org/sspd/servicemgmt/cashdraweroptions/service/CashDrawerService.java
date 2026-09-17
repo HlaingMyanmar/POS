@@ -68,7 +68,8 @@ public class CashDrawerService {
     @Transactional
     public void recordCashSale(BigDecimal amount, String referenceType, Integer referenceId) {
         recordOnOpenSession(SALE_TYPE, amount, referenceType, referenceId,
-                movementReason("Cash sale", referenceType, referenceId), false);
+                movementReason("Cash sale", referenceType, referenceId),
+                referenceType != null && !referenceType.isBlank() && referenceId != null);
     }
 
     @Transactional
@@ -141,7 +142,8 @@ public class CashDrawerService {
     @Transactional
     public void recordPurchaseCashOut(BigDecimal amount, String reason, String referenceType, Integer referenceId) {
         recordOnOpenSession(OUT_TYPE, amount, referenceType, referenceId,
-                reason == null || reason.isBlank() ? "Purchase cash movement" : reason.trim(), false);
+                reason == null || reason.isBlank() ? "Purchase cash movement" : reason.trim(),
+                referenceType != null && !referenceType.isBlank() && referenceId != null);
     }
 
     @Transactional
@@ -187,24 +189,31 @@ public class CashDrawerService {
                     "Cash drawer already has a " + type + " movement for " + referenceType + " #" + referenceId);
         }
         String movementActor = actor();
-        sessionRepository.findFirstByOpenedByAndStatusOrderByOpenedAtDesc(movementActor, "OPEN").ifPresent(session -> {
-            if (SALE_TYPE.equals(type)) session.setCashSales(safe(session.getCashSales()).add(amount));
-            else if (REFUND_TYPE.equals(type)) session.setCashRefunds(safe(session.getCashRefunds()).add(amount));
-            else if (IN_TYPE.equals(type)) session.setCashIn(safe(session.getCashIn()).add(amount));
-            else session.setCashOut(safe(session.getCashOut()).add(amount));
-            movementRepository.save(CashDrawerMovement.builder()
-                    .session(session)
-                    .type(type)
-                    .amount(amount)
-                    .actor(movementActor)
-                    .createdAt(LocalDateTime.now())
-                    .reason(reason)
-                    .referenceType(referenceType)
-                    .referenceId(referenceId)
-                    .reversed(Boolean.FALSE)
-                    .build());
-            sessionRepository.save(session);
-        });
+        CashDrawerSession found = sessionRepository
+                .findFirstByOpenedByAndStatusOrderByOpenedAtDesc(movementActor, "OPEN")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Open a cash drawer before recording cash movements"));
+        CashDrawerSession session = sessionRepository.findByIdForUpdate(found.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cash drawer session not found"));
+        if (!"OPEN".equals(session.getStatus())) {
+            throw new IllegalStateException("Cash drawer session is closed");
+        }
+        if (SALE_TYPE.equals(type)) session.setCashSales(safe(session.getCashSales()).add(amount));
+        else if (REFUND_TYPE.equals(type)) session.setCashRefunds(safe(session.getCashRefunds()).add(amount));
+        else if (IN_TYPE.equals(type)) session.setCashIn(safe(session.getCashIn()).add(amount));
+        else session.setCashOut(safe(session.getCashOut()).add(amount));
+        movementRepository.save(CashDrawerMovement.builder()
+                .session(session)
+                .type(type)
+                .amount(amount)
+                .actor(movementActor)
+                .createdAt(LocalDateTime.now())
+                .reason(reason)
+                .referenceType(referenceType)
+                .referenceId(referenceId)
+                .reversed(Boolean.FALSE)
+                .build());
+        sessionRepository.save(session);
     }
 
     private CashDrawerSession openSession(Integer id) {

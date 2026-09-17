@@ -22,4 +22,10 @@ public class SupplierCreditApplication {
     private LocalDateTime appliedAt;
     private String appliedBy;
     private String reason;
+    @Builder.Default
+    private Boolean voided = false;
+    private LocalDateTime voidedAt;
+    private String voidedBy;
+    @Column(length = 500)
+    private String voidReason;
 }

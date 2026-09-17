@@ -11,6 +11,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.Paym
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
@@ -104,7 +105,7 @@ public class PurchaseReturnService {
             throw new RuntimeException("Purchase reference is required for purchase return");
         }
 
-        Purchase purchase = purchaseRepository.findById(dto.getPurchaseId())
+        Purchase purchase = purchaseRepository.findByIdForUpdate(dto.getPurchaseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
         if (!purchase.isEffectivelyConfirmed()) {
             if (purchase.isCancelled()) {
@@ -125,7 +126,7 @@ public class PurchaseReturnService {
 
         PurchaseReturn entity = mapper.toEntity(dto);
         applyNotNullDefaults(entity);
-        entity.setReturnNo(generateReturnNo());
+        entity.setReturnNo("PENDING");
         entity.setPurchase(purchase);
         entity.setStatus(STATUS_DRAFT);
 
@@ -239,6 +240,8 @@ public class PurchaseReturnService {
         entity.setRefundAmount(BigDecimal.ZERO);
 
         PurchaseReturn savedEntity = purchaseReturnRepository.save(entity);
+        savedEntity.setReturnNo(generateReturnNo(savedEntity.getId()));
+        savedEntity = purchaseReturnRepository.save(savedEntity);
         recordActivity(savedEntity, "CREATED", null, savedEntity.getStatus(), savedEntity.getReason());
 
         messagingTemplate.convertAndSend(PURCHASE_RETURN_TOPIC, "PURCHASE_RETURN_CREATED");
@@ -339,6 +342,11 @@ public class PurchaseReturnService {
         if (request == null || request.getCarrier() == null || request.getCarrier().isBlank()
                 || request.getTrackingNo() == null || request.getTrackingNo().isBlank())
             throw new IllegalArgumentException("Carrier and tracking number are required");
+        LocalDateTime dispatchedAt = request.getDispatchedAt() == null ? LocalDateTime.now() : request.getDispatchedAt();
+        requireNotFuture(dispatchedAt, "Dispatch date");
+        requireNotBefore(dispatchedAt, entity.getReturnDate(), "Dispatch date", "return date");
+        requireNotBefore(dispatchedAt, entity.getApprovedAt(), "Dispatch date", "approved date");
+        periodGuard.assertOpen(dispatchedAt, "dispatch purchase return");
         Purchase purchase = entity.getPurchase();
         for (PurchaseReturnDetail detail : entity.getDetails()) {
             Product product = detail.getProduct();
@@ -369,7 +377,7 @@ public class PurchaseReturnService {
         }
         entity.setCarrier(request.getCarrier().trim());
         entity.setTrackingNo(request.getTrackingNo().trim());
-        entity.setDispatchedAt(request.getDispatchedAt() == null ? LocalDateTime.now() : request.getDispatchedAt());
+        entity.setDispatchedAt(dispatchedAt);
         entity.setDeliveryProof(request.getDeliveryProof());
         postCompanyShipping(entity);
         entity.setStatus(STATUS_DISPATCHED);
@@ -382,8 +390,11 @@ public class PurchaseReturnService {
         PurchaseReturn entity = getReturn(id);
         if (STATUS_RECEIVED.equals(entity.getStatus())) return toDto(entity);
         requireStatus(entity, STATUS_DISPATCHED);
-        entity.setSupplierReceivedAt(request != null && request.getSupplierReceivedAt() != null
-                ? request.getSupplierReceivedAt() : LocalDateTime.now());
+        LocalDateTime receivedAt = request != null && request.getSupplierReceivedAt() != null
+                ? request.getSupplierReceivedAt() : LocalDateTime.now();
+        requireNotFuture(receivedAt, "Supplier received date");
+        requireNotBefore(receivedAt, entity.getDispatchedAt(), "Supplier received date", "dispatch date");
+        entity.setSupplierReceivedAt(receivedAt);
         if (request != null && request.getDeliveryProof() != null) entity.setDeliveryProof(request.getDeliveryProof());
         entity.setStatus(STATUS_RECEIVED);
         return workflowSaved(entity, "PURCHASE_RETURN_SUPPLIER_RECEIVED");
@@ -396,6 +407,8 @@ public class PurchaseReturnService {
         if (STATUS_SETTLED.equals(entity.getStatus())) return toDto(entity);
         requireStatus(entity, STATUS_RECEIVED);
         if (request == null) throw new IllegalArgumentException("Settlement details are required");
+        LocalDateTime settledAt = LocalDateTime.now();
+        periodGuard.assertOpen(settledAt, "settle purchase return");
         String type = normalizeSettlementType(request.getSettlementType());
         BigDecimal expected = settlementValue(entity);
         if (request.getExpectedCreditAmount() != null
@@ -411,8 +424,10 @@ public class PurchaseReturnService {
                 && (request.getSupplierCreditNoteNo() == null || request.getSupplierCreditNoteNo().isBlank()))
             throw new IllegalArgumentException("Supplier credit note number is required");
 
-        Purchase purchase = entity.getPurchase();
-        Supplier supplier = purchase.getSupplier();
+        LockedParents parents = lockParents(entity);
+        Purchase purchase = parents.purchase();
+        if (purchase == null) throw new ResourceNotFoundException("Purchase not found");
+        Supplier supplier = parents.supplier();
         BigDecimal oldDue = safe(purchase.getDueAmount());
         BigDecimal oldCredit = safe(purchase.getSupplierCreditAmount());
         BigDecimal refund = ("REFUND".equals(type) || "SPLIT".equals(type))
@@ -427,7 +442,7 @@ public class PurchaseReturnService {
         entity.setCreditVariance(variance);
         entity.setCreditVarianceReason(request.getCreditVarianceReason());
         entity.setSettlementReference(request.getSettlementReference());
-        entity.setSettledAt(LocalDateTime.now());
+        entity.setSettledAt(settledAt);
         entity.setStatus(STATUS_SETTLED);
         purchaseReturnRepository.save(entity);
 
@@ -487,8 +502,10 @@ public class PurchaseReturnService {
     @Transactional
     public PurchaseReturnDTO voidReturn(Integer id, PurchaseReturnDTO dto) {
         periodGuard.assertOpen(LocalDateTime.now(), "void purchase return");
-        PurchaseReturn existing = purchaseReturnRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found with id: " + id));
+        PurchaseReturn existing = getReturn(id);
+        LockedParents parents = lockParents(existing);
+        Purchase purchase = parents.purchase();
+        Supplier supplier = parents.supplier();
         if (STATUS_VOIDED.equalsIgnoreCase(existing.getStatus())) {
             throw new RuntimeException("Purchase return is already voided.");
         }
@@ -504,8 +521,6 @@ public class PurchaseReturnService {
         }
 
         boolean posted = STATUS_SETTLED.equals(existing.getStatus());
-        Purchase purchase = existing.getPurchase();
-        Supplier supplier = purchase != null ? purchase.getSupplier() : null;
         BigDecimal dueBeforeVoid = purchase != null ? safe(purchase.getDueAmount()) : BigDecimal.ZERO;
         BigDecimal creditBeforeVoid = purchase != null ? safe(purchase.getSupplierCreditAmount()) : BigDecimal.ZERO;
         List<PaymentTransaction> refundTransactions = paymentTransactionRepository
@@ -714,6 +729,7 @@ public class PurchaseReturnService {
         }
         return supplierCreditApplicationRepository.findBySupplierIdOrderByIdDesc(purchase.getSupplier().getId())
                 .stream()
+                .filter(application -> !Boolean.TRUE.equals(application.getVoided()))
                 .filter(application -> application.getTargetPurchase() == null
                         || !application.getTargetPurchase().isCancelled())
                 .map(application -> creditTakenFromSource(application.getReturnCreditSources(), purchase.getId()))
@@ -847,18 +863,15 @@ public class PurchaseReturnService {
                 .toList();
     }
 
-    private String generateReturnNo() {
-        Integer lastId = purchaseReturnRepository.findTopByOrderByIdDesc().map(PurchaseReturn::getId).orElse(0);
+    private String generateReturnNo(Integer id) {
+        if (id == null) {
+            throw new IllegalStateException("Purchase return id is required to generate return number.");
+        }
         var cfg = companySettingsService.getSettings();
         String prefix = cfg.getPurchaseReturnPrefix() != null && !cfg.getPurchaseReturnPrefix().isBlank()
                 ? cfg.getPurchaseReturnPrefix().trim() : "PRN";
         int digits = cfg.getPurchaseReturnDigits() != null ? cfg.getPurchaseReturnDigits() : 5;
-        return String.format("%s-%0" + digits + "d", prefix, lastId + 1);
-    }
-
-    private String generateTransactionNo() {
-        Long count = paymentTransactionRepository.count();
-        return String.format("TXN-%06d", count + 1);
+        return String.format("%s-%0" + digits + "d", prefix, id);
     }
 
     private void recordPaymentTransactions(PurchaseReturn pr, BigDecimal refundAmount, String fallbackTransactionNo,
@@ -869,14 +882,16 @@ public class PurchaseReturnService {
             paymentTx.setReferenceType(ReferenceType.Purchase_Return);
             paymentTx.setPaymentMethod(line.method());
             paymentTx.setAmount(line.amount());
-            paymentTx.setPaymentDate(LocalDateTime.now());
-            paymentTx.setTransactionNo(line.transactionNo() != null && !line.transactionNo().isBlank()
+            paymentTx.setPaymentDate(pr.getSettledAt() != null ? pr.getSettledAt() : LocalDateTime.now());
+            paymentTx.setTransactionNo(PaymentTransactionNumbers.blankToNull(
+                    line.transactionNo() != null && !line.transactionNo().isBlank()
                     ? line.transactionNo()
-                    : (fallbackTransactionNo == null || fallbackTransactionNo.isBlank() ? generateTransactionNo() : fallbackTransactionNo));
-            paymentTransactionRepository.save(paymentTx);
+                    : fallbackTransactionNo));
+            PaymentTransaction savedTx = PaymentTransactionNumbers.save(paymentTransactionRepository, paymentTx);
             if (isCashMethod(line.method())) {
                 cashDrawerService.recordPurchaseCashIn(line.amount(),
-                        "Purchase return refund " + pr.getReturnNo());
+                        "Purchase return refund " + pr.getReturnNo(),
+                        ReferenceType.Purchase_Return.name(), savedTx.getId());
             }
         }
     }
@@ -923,7 +938,7 @@ public class PurchaseReturnService {
                                      List<PaymentTransactionDTO> payments, BigDecimal supplierShippingPortion) {
         JournalEntryDTO journalDTO = new JournalEntryDTO();
         journalDTO.setReferenceNo(pr.getReturnNo());
-        journalDTO.setEntryDate(LocalDateTime.now());
+        journalDTO.setEntryDate(pr.getSettledAt() != null ? pr.getSettledAt() : LocalDateTime.now());
         journalDTO.setDescription("Purchase Return from Supplier: " + supplierName);
         journalDTO.setStaffId(staffId);
 
@@ -1056,7 +1071,8 @@ public class PurchaseReturnService {
             paymentTransactionRepository.save(tx);
             if (isCashMethod(tx.getPaymentMethod())) {
                 cashDrawerService.recordPurchaseCashOut(safe(tx.getAmount()),
-                        "Void purchase return refund " + pr.getReturnNo());
+                        "Void purchase return refund " + pr.getReturnNo(),
+                        ReferenceType.Purchase_Return.name(), tx.getId());
             }
         }
     }
@@ -1070,6 +1086,44 @@ public class PurchaseReturnService {
         return purchaseReturnRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase return not found with id: " + id));
     }
+
+    private void requireNotBefore(LocalDateTime eventAt, LocalDateTime earlierAt, String eventLabel, String earlierLabel) {
+        if (eventAt == null || earlierAt == null) return;
+        if (eventAt.isBefore(earlierAt)) {
+            throw new IllegalArgumentException(eventLabel + " cannot be before " + earlierLabel + ".");
+        }
+    }
+
+    private void requireNotFuture(LocalDateTime eventAt, String eventLabel) {
+        if (eventAt != null && eventAt.isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException(eventLabel + " cannot be in the future.");
+        }
+    }
+
+    /**
+     * After the return row is locked, take parent locks in the same order as
+     * purchase cancel / supplier payment: Supplier then Purchase.
+     */
+    private LockedParents lockParents(PurchaseReturn existing) {
+        Purchase related = existing.getPurchase();
+        Integer purchaseId = related == null ? null : related.getId();
+        Integer supplierId = related == null || related.getSupplier() == null ? null : related.getSupplier().getId();
+        Supplier supplier = null;
+        if (supplierId != null) {
+            supplier = supplierRepository.findByIdForUpdate(supplierId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        }
+        Purchase purchase = null;
+        if (purchaseId != null) {
+            purchase = purchaseRepository.findByIdForUpdate(purchaseId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+            if (supplier != null) purchase.setSupplier(supplier);
+            existing.setPurchase(purchase);
+        }
+        return new LockedParents(purchase, supplier);
+    }
+
+    private record LockedParents(Purchase purchase, Supplier supplier) {}
 
     private void requireStatus(PurchaseReturn entity, String expected) {
         if (!expected.equalsIgnoreCase(entity.getStatus()))
@@ -1220,9 +1274,8 @@ public class PurchaseReturnService {
         tx.setPaymentMethod(method);
         tx.setAmount(amount);
         tx.setPaymentDate(entity.getDispatchedAt());
-        tx.setTransactionNo(entity.getShippingTransactionReference() == null
-                ? generateTransactionNo() : entity.getShippingTransactionReference());
-        paymentTransactionRepository.save(tx);
+        tx.setTransactionNo(PaymentTransactionNumbers.blankToNull(entity.getShippingTransactionReference()));
+        PaymentTransactionNumbers.save(paymentTransactionRepository, tx);
 
         JournalDetailDTO drExpense = new JournalDetailDTO();
         drExpense.setAccountId(accountResolver.transportation().getId());
@@ -1241,7 +1294,8 @@ public class PurchaseReturnService {
         journal.setDetails(List.of(drExpense, crPayment));
         journalWriter.write(journal);
         if (isCashMethod(method))
-            cashDrawerService.recordPurchaseCashOut(amount, "Return shipping " + entity.getReturnNo());
+            cashDrawerService.recordPurchaseCashOut(amount, "Return shipping " + entity.getReturnNo(),
+                    ReferenceType.Purchase_Return_Shipping.name(), entity.getId());
         entity.setShippingPostedAt(LocalDateTime.now());
     }
 

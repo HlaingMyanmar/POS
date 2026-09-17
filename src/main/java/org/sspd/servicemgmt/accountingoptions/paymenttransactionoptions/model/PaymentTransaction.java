@@ -41,6 +41,16 @@ public class PaymentTransaction {
     @Column(columnDefinition = "TEXT")
     private String reversalReason;
 
+    @Column(name = "source_type", length = 40)
+    private String sourceType;
+
+    @Column(name = "source_id")
+    private Integer sourceId;
+
+    public static final String SOURCE_SUPPLIER_PAYMENT = "Supplier_Payment";
+    public static final String SOURCE_CUSTOMER_PAYMENT = "Customer_Payment";
+
+    @PostPersist
     public void assignGeneratedNumberIfBlank() {
         if (id != null && (transactionNo == null || transactionNo.isBlank())) {
             transactionNo = String.format("TXN-%06d", id);

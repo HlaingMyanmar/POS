@@ -13,6 +13,7 @@ const val WORK_TAB_CLOSED   = "closed"
 const val WORK_TAB_ALL      = "all"
 
 private val ACTIVE_STATUSES = setOf("RECEIVED", "ASSIGNED", "INSPECTING", "IN_PROGRESS", "WAITING_PARTS")
+private val CLOSED_STATUSES = setOf("COMPLETED", "DELIVERED", "CLOSED", "CANCELLED")
 
 fun needsPayment(job: ServiceJobDTO): Boolean =
     job.status == "COMPLETED" && (job.paymentStatus.isNullOrBlank() || (job.dueAmount ?: 0.0) > 0)
@@ -28,7 +29,7 @@ fun workQueueCounts(jobs: List<ServiceJobDTO>, sentPending: Int = 0): Map<WorkTa
     WORK_TAB_ACTIVE   to jobs.count { it.status?.uppercase() in ACTIVE_STATUSES },
     WORK_TAB_PAYMENT  to jobs.count { needsPayment(it) },
     WORK_TAB_HANDOVER to jobs.count { readyForHandover(it) },
-    WORK_TAB_CLOSED   to jobs.count { it.status?.uppercase() in setOf("DELIVERED", "CANCELLED") }
+    WORK_TAB_CLOSED   to jobs.count { it.status?.uppercase() in CLOSED_STATUSES }
 )
 
 fun filterByWorkTab(jobs: List<ServiceJobDTO>, tab: WorkTab): List<ServiceJobDTO> = when (tab) {
@@ -36,7 +37,7 @@ fun filterByWorkTab(jobs: List<ServiceJobDTO>, tab: WorkTab): List<ServiceJobDTO
     WORK_TAB_ACTIVE   -> jobs.filter { it.status?.uppercase() in ACTIVE_STATUSES }
     WORK_TAB_PAYMENT  -> jobs.filter { needsPayment(it) }
     WORK_TAB_HANDOVER -> jobs.filter { readyForHandover(it) }
-    WORK_TAB_CLOSED   -> jobs.filter { it.status?.uppercase() in setOf("DELIVERED", "CANCELLED") }
+    WORK_TAB_CLOSED   -> jobs.filter { it.status?.uppercase() in CLOSED_STATUSES }
     else              -> jobs
 }
 

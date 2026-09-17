@@ -6,6 +6,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.PaymentTransactionDTO;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customerportaloptions.dto.OrderPaymentRequest;
 import org.sspd.servicemgmt.customerportaloptions.model.CustomerOrder;
@@ -310,5 +313,73 @@ class CustomerOrderDepositPaymentTest {
         assertEquals(new BigDecimal("70000.00"), lines.get(1).getAmount());
         assertEquals(new BigDecimal("100000.00"), sale.getValue().getPaidAmount());
         assertEquals(new BigDecimal("100000.00"), sale.getValue().getCustomerAdvanceApplied());
+    }
+
+    @Test
+    void fulfillKeepsOrderReceiptsAsMigratedInsteadOfDeleting() {
+        CustomerOrderRepository orders = mock(CustomerOrderRepository.class);
+        CustomerOrderPaymentProofRepository proofs = mock(CustomerOrderPaymentProofRepository.class);
+        CustomerStockReservationService stock = mock(CustomerStockReservationService.class);
+        DataEventPublisher events = mock(DataEventPublisher.class);
+        SaleService sales = mock(SaleService.class);
+        PaymentMethodRepository methods = mock(PaymentMethodRepository.class);
+        PaymentTransactionRepository paymentTransactions = mock(PaymentTransactionRepository.class);
+        CustomerOrder order = pickupWithDeposit();
+        order.setPaymentState("PAID");
+        order.setCollectionPaymentMethodId(8);
+        order.setCollectionAmount(new BigDecimal("70000.00"));
+        PaymentTransaction depositTx = new PaymentTransaction();
+        depositTx.setId(15);
+        depositTx.setReferenceId(42);
+        depositTx.setReferenceType(ReferenceType.Customer_Order);
+        depositTx.setAmount(new BigDecimal("30000.00"));
+        depositTx.setTransactionNo("KBZ-DEP");
+        depositTx.setReversed(false);
+        PaymentTransaction remainderTx = new PaymentTransaction();
+        remainderTx.setId(16);
+        remainderTx.setReferenceId(42);
+        remainderTx.setReferenceType(ReferenceType.Customer_Order);
+        remainderTx.setAmount(new BigDecimal("70000.00"));
+        remainderTx.setTransactionNo("REMAINDER-CA-000042");
+        remainderTx.setReversed(false);
+        PaymentTransaction refundTx = new PaymentTransaction();
+        refundTx.setId(17);
+        refundTx.setAmount(new BigDecimal("-500.00"));
+        refundTx.setTransactionNo("REFUND-KEEP");
+        refundTx.setReversed(false);
+        CustomerOrderPaymentProof proof = new CustomerOrderPaymentProof();
+        proof.setId(9);
+        proof.setTransactionReference("KBZ-DEP");
+        when(orders.findLocked(42)).thenReturn(Optional.of(order));
+        when(orders.saveAndFlush(order)).thenReturn(order);
+        when(proofs.findById(9)).thenReturn(Optional.of(proof));
+        when(methods.findById(3)).thenReturn(Optional.of(activeMethod(3)));
+        when(paymentTransactions.findByReferenceIdAndReferenceType(42, ReferenceType.Customer_Order))
+                .thenReturn(List.of(depositTx, remainderTx, refundTx));
+        SaleDTO saved = new SaleDTO();
+        saved.setId(99);
+        when(sales.save(any(SaleDTO.class))).thenReturn(saved);
+
+        CustomerOrderPaymentService payments = service(orders, proofs, stock, events);
+        ReflectionTestUtils.setField(payments, "sales", sales);
+        ReflectionTestUtils.setField(payments, "methods", methods);
+        ReflectionTestUtils.setField(payments, "paymentTransactions", paymentTransactions);
+        JournalWriter writer = mock(JournalWriter.class);
+        ReflectionTestUtils.setField(payments, "journalWriter", writer);
+        when(writer.hasActiveReferencePrefix(contains("ADV-DEPOSIT"))).thenReturn(true);
+        when(writer.hasActiveReferencePrefix(contains("ADV-REMAINDER"))).thenReturn(true);
+
+        payments.fulfill(42, new OrderPaymentRequest());
+
+        assertTrue(Boolean.TRUE.equals(depositTx.getReversed()));
+        assertTrue(depositTx.getReversalReason().startsWith("Migrated to sale"));
+        assertTrue(depositTx.getReversalReason().contains("#99"));
+        assertEquals("KBZ-DEP-MIGRATED-15", depositTx.getTransactionNo());
+        assertTrue(Boolean.TRUE.equals(remainderTx.getReversed()));
+        assertEquals("REMAINDER-CA-000042-MIGRATED-16", remainderTx.getTransactionNo());
+        assertFalse(Boolean.TRUE.equals(refundTx.getReversed()));
+        assertEquals("REFUND-KEEP", refundTx.getTransactionNo());
+        verify(paymentTransactions, never()).deleteByReferenceIdAndReferenceType(any(), any());
+        verify(paymentTransactions, atLeastOnce()).flush();
     }
 }

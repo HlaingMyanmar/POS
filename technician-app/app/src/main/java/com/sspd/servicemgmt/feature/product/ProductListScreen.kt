@@ -6,8 +6,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sspd.servicemgmt.core.util.fmtWarranty
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.BuildConfig
@@ -412,12 +415,15 @@ fun ProductListContent(
                         )
                     }
                     else -> {
-                        LazyColumn(
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize().padding(bottom = 80.dp)
                         ) {
                             items(filtered, key = { it.id }) { product ->
-                                ProductCard(product, onClick = { onProductClick(product.id) })
+                                ProductGridCard(product, onClick = { onProductClick(product.id) })
                             }
                         }
                     }
@@ -512,7 +518,7 @@ private fun ProductEmptyState(
 }
 
 @Composable
-private fun ProductCard(p: ProductDTO, onClick: () -> Unit = {}) {
+private fun ProductGridCard(p: ProductDTO, onClick: () -> Unit = {}) {
     val photoSource = remember(p.id, p.thumbnailPath, p.imagePath, p.photoBase64) {
         ProductPhotoLoader.thumbSource(p)
     }
@@ -521,11 +527,6 @@ private fun ProductCard(p: ProductDTO, onClick: () -> Unit = {}) {
         qty <= 0 -> Danger
         p.reorderLevel != null && qty <= p.reorderLevel -> Warning
         else -> Success
-    }
-    val stockLabel = when {
-        qty <= 0 -> "ကုန်"
-        p.reorderLevel != null && qty <= p.reorderLevel -> "နည်း"
-        else -> "ရှိ"
     }
     val stockBg = when (stockColor) {
         Danger -> DangerBg
@@ -540,87 +541,140 @@ private fun ProductCard(p: ProductDTO, onClick: () -> Unit = {}) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        modifier = Modifier.clickable(onClick = onClick)
+        border = BorderStroke(1.dp, BorderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max).clickable(onClick = onClick)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxHeight().padding(10.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            ProductPhotoImage(
-                source = photoSource,
-                contentDescription = p.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(68.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(PrimaryLight),
-                placeholder = {
-                    Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(28.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PrimaryLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ProductPhotoImage(
+                        source = photoSource,
+                        contentDescription = p.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = {
+                            Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(32.dp))
+                        }
+                    )
+                    // Stock pill top-right overlay
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp),
+                        color = stockBg,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, stockColor.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            "$qty",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = stockColor
+                        )
+                    }
                 }
-            )
 
-            Spacer(Modifier.width(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        p.name,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMain,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 16.sp
+                    )
+                    if (meta.isNotBlank()) {
+                        Text(
+                            meta,
+                            fontSize = 10.sp,
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
 
-            Column(Modifier.weight(1f)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    p.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextMain,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    "${p.sellingPrice.fmt()} Ks",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Primary
                 )
-                if (meta.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        meta,
-                        fontSize = 12.sp,
-                        color = TextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        "${p.sellingPrice.fmt()} Ks",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Primary
-                    )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.heightIn(min = 22.dp)
+                ) {
+                    fmtWarranty(p.warrantyTerms, p.warrantyMonths).takeIf { it.isNotBlank() }?.let { wLabel ->
+                        Surface(color = Color(0xFFE0F2FE), shape = RoundedCornerShape(4.dp)) {
+                            Text(
+                                "🛡 $wLabel",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0284C7)
+                            )
+                        }
+                    }
                     if (p.hasSerial == true) {
-                        Surface(color = VioletBg, shape = RoundedCornerShape(6.dp)) {
+                        Surface(color = VioletBg, shape = RoundedCornerShape(4.dp)) {
                             Text(
                                 "S/N",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Violet
                             )
                         }
                     }
-                    if (!p.productType.equals("New", true) && p.productType.isNotBlank()) {
-                        Surface(color = WarningBg, shape = RoundedCornerShape(6.dp)) {
+                    val type = p.productType.uppercase()
+                    if (type == "NEW" || type.isBlank()) {
+                        Surface(color = Color(0xFFDCFCE7), shape = RoundedCornerShape(4.dp)) {
                             Text(
-                                "အသုံးပြုပြီး",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 10.sp,
+                                "အသစ်",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF16A34A)
+                            )
+                        }
+                    } else if (type == "SECOND_NEW") {
+                        Surface(color = Color(0xFFEDE9FE), shape = RoundedCornerShape(4.dp)) {
+                            Text(
+                                "Second New",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF7C3AED)
+                            )
+                        }
+                    } else {
+                        Surface(color = WarningBg, shape = RoundedCornerShape(4.dp)) {
+                            Text(
+                                "Second",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Warning
                             )
                         }
                     }
-                }
-            }
-
-            Surface(color = stockBg, shape = RoundedCornerShape(10.dp)) {
-                Column(
-                    Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(qty.toString(), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = stockColor)
-                    Text(stockLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = stockColor)
                 }
             }
         }
@@ -647,14 +701,14 @@ private val previewProducts = listOf(
         stockQty = 15, availableSerialCount = 12, productType = "New",
         sellingPrice = 850000.0, costPrice = 720000.0,
         categoryName = "မိုဘိုင်းဖုန်း", brandName = "Samsung", unitName = "လုံး",
-        reorderLevel = 5, hasSerial = true
+        reorderLevel = 5, hasSerial = true, warrantyMonths = 12
     ),
     ProductDTO(
         id = 2, productCode = "PRD-014", name = "iPhone 14",
         stockQty = 2, availableSerialCount = 2, productType = "New",
         sellingPrice = 1850000.0, costPrice = 1600000.0,
         categoryName = "မိုဘိုင်းဖုန်း", brandName = "Apple", unitName = "လုံး",
-        reorderLevel = 3, hasSerial = true
+        reorderLevel = 3, hasSerial = true, warrantyMonths = 12
     ),
     ProductDTO(
         id = 3, productCode = "ACC-088", name = "Type-C Charger 20W",
@@ -737,7 +791,7 @@ fun ProductListEmptyPreview() {
 fun UIPrevice() {
     AppTheme {
         Box(Modifier.background(ScreenBg).padding(16.dp)) {
-            ProductCard(previewProducts.first())
+            ProductGridCard(previewProducts.first())
         }
     }
 }

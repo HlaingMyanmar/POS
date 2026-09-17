@@ -13,6 +13,11 @@ export interface SupplierPayment {
   voided?: boolean; voidedAt?: string; voidedBy?: string; voidReason?: string;
   allocations: Array<{ purchaseId: number; purchaseCode: string; amount: number; remainingDue: number }>;
 }
+export interface SupplierCreditApplication {
+  id: number; applicationNo: string; supplierId: number; purchaseId?: number; purchaseCode?: string;
+  amount: number; advanceUsed?: number; returnCreditUsed?: number; appliedAt?: string; appliedBy?: string;
+  reason?: string; voided?: boolean; voidedAt?: string; voidedBy?: string; voidReason?: string;
+}
 export interface SupplierPaymentRequest {
   supplierId: number; staffId: number; paymentMethodId: number; amount: number;
   transactionNo?: string; remark?: string;
@@ -41,6 +46,14 @@ export const supplierPaymentApiService = {
   },
   applyCredit: async (payload: { supplierId: number; purchaseId: number; staffId: number; amount: number; reason?: string }) => {
     const res = await api.post<any, ApiResponse<any>>('/v1/supplier-payments/apply-credit', payload);
+    return res.data;
+  },
+  creditApplications: async (supplierId: number): Promise<SupplierCreditApplication[]> => {
+    const res = await api.get<any, ApiResponse<SupplierCreditApplication[]>>(`/v1/supplier-payments/supplier/${supplierId}/credit-applications`);
+    return res.data ?? [];
+  },
+  voidCreditApplication: async (id: number, payload: { reason: string; staffId: number }): Promise<SupplierCreditApplication> => {
+    const res = await api.post<any, ApiResponse<SupplierCreditApplication>>(`/v1/supplier-payments/credit-applications/${id}/void`, payload);
     return res.data;
   },
   voidPayment: async (id: number, payload: { reason: string; staffId: number }): Promise<SupplierPayment> => {

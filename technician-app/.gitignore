@@ -14,3 +14,7 @@ technician/build/
 # Signing keystores — never commit to git
 *.keystore
 *.jks
+
+# Firebase client config — never commit
+google-services.json
+app/google-services.json

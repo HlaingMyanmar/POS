@@ -861,6 +861,7 @@ public class CustomerPortalService {
         dto.setProductType(p.getProductType() != null ? p.getProductType().name() : "New");
         dto.setSellingPrice(p.getSellingPrice());
         dto.setWarrantyMonths(p.getWarrantyMonths());
+        dto.setWarrantyTerms(blank(p.getWarrantyTerms()) ? null : p.getWarrantyTerms().trim());
         dto.setRemark(blank(p.getRemark()) ? null : p.getRemark().trim());
         int stock;
         if (Boolean.TRUE.equals(p.getHasSerial())) {

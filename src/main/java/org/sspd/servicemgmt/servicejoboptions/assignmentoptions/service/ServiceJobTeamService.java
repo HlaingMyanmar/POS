@@ -50,6 +50,7 @@ public class ServiceJobTeamService {
     private final UserRepository userRepository;
     private final DataEventPublisher dataEventPublisher;
     private final CompanySettingsRepository companySettingsRepository;
+    private final org.sspd.servicemgmt.customerportaloptions.service.CustomerFcmService customerFcmService;
 
     @Transactional
     public TeamSnapshotDTO snapshot(Integer jobId) {
@@ -101,6 +102,7 @@ public class ServiceJobTeamService {
         syncLegacyFields(job);
         recordActivity(job, "ASSIGNMENT_CREATED", request.getRole() + " -> " + staff.getName());
         broadcast("JOB_TEAM_CHANGED");
+        customerFcmService.sendTechnicianAlertAsync(staff.getId(), job.getId(), job.getJobNo());
         return toDto(assignment);
     }
 
@@ -311,6 +313,8 @@ public class ServiceJobTeamService {
         recordActivity(source.getServiceJob(), "HANDOVER_REQUESTED",
                 source.getStaff().getName() + " -> " + target.getName());
         broadcastHandover("JOB_HANDOVER_REQUESTED");
+        customerFcmService.sendTechnicianAlertAsync(target.getId(),
+                source.getServiceJob().getId(), source.getServiceJob().getJobNo());
         return toDto(handover);
     }
 

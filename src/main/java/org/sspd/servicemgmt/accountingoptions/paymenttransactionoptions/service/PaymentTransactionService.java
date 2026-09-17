@@ -5,15 +5,19 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountCode;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentBalanceValidator;
+import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.AccountTransferDTO;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.PaymentTransactionDTO;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.mapper.PaymentTransactionMapper;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
+import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
@@ -48,6 +52,10 @@ public class PaymentTransactionService {
     private final ServiceJobRepository serviceJobRepository;
     private final JournalWriter journalWriter;
     private final PaymentBalanceValidator paymentBalanceValidator;
+    private final AccountingPeriodGuard periodGuard;
+    private final CashDrawerService cashDrawerService;
+    private final org.sspd.servicemgmt.staffoptions.repository.StaffRepository staffRepository;
+    private final org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository userRepository;
 
     private static final String TRANSACTION_TOPIC = "/topic/payment-transaction";
 
@@ -94,21 +102,14 @@ public class PaymentTransactionService {
     }
 
     private PaymentTransaction persistTransaction(PaymentTransaction entity) {
-        if (entity.getTransactionNo() != null && entity.getTransactionNo().isBlank()) {
-            entity.setTransactionNo(null);
-        }
-        boolean generate = entity.getTransactionNo() == null;
-        PaymentTransaction saved = repository.save(entity);
-        if (generate) {
-            saved.assignGeneratedNumberIfBlank();
-            saved = repository.save(saved);
-        }
-        return saved;
+        return PaymentTransactionNumbers.save(repository, entity);
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
     @Transactional
     public PaymentTransactionDTO transfer(AccountTransferDTO dto) {
+        LocalDateTime effectiveDate = LocalDateTime.now();
+        periodGuard.assertOpen(effectiveDate, "record account transfer");
         if (dto.getFromPaymentMethodId() == null || dto.getToPaymentMethodId() == null) {
             throw new RuntimeException("From and To payment methods are required.");
         }
@@ -127,6 +128,7 @@ public class PaymentTransactionService {
         if (from.getAccount() == null || to.getAccount() == null) {
             throw new RuntimeException("Payment methods must have linked cash/bank accounts.");
         }
+        Integer staffId = requireStaffId(dto.getStaffId());
 
         // ပေးမည့်အကောင့်တွင် လက်ကျန်မလောက်ရင် transfer မလုပ်ရ — minus မဖြစ်ရ
         paymentBalanceValidator.validateSufficientBalance(from, amount);
@@ -136,7 +138,7 @@ public class PaymentTransactionService {
         out.setReferenceType(ReferenceType.Transfer);
         out.setPaymentMethod(from);
         out.setAmount(amount.negate());
-        out.setPaymentDate(LocalDateTime.now());
+        out.setPaymentDate(effectiveDate);
         out.setTransactionNo(null);
         out = persistTransaction(out);
         String txNo = dto.getTransactionNo() == null || dto.getTransactionNo().isBlank()
@@ -150,7 +152,7 @@ public class PaymentTransactionService {
         in.setReferenceType(ReferenceType.Transfer);
         in.setPaymentMethod(to);
         in.setAmount(amount);
-        in.setPaymentDate(LocalDateTime.now());
+        in.setPaymentDate(effectiveDate);
         in.setTransactionNo(txNo + "-IN");
         PaymentTransaction saved = repository.save(in);
 
@@ -166,13 +168,25 @@ public class PaymentTransactionService {
 
         JournalEntryDTO journal = new JournalEntryDTO();
         journal.setReferenceNo(txNo);
-        journal.setEntryDate(LocalDateTime.now());
+        journal.setEntryDate(effectiveDate);
         journal.setDescription(dto.getDescription() != null && !dto.getDescription().isBlank()
                 ? dto.getDescription()
                 : "Money transfer: " + from.getMethodName() + " to " + to.getMethodName());
-        journal.setStaffId(dto.getStaffId());
+        journal.setStaffId(staffId);
         journal.setDetails(List.of(drTo, crFrom));
         journalWriter.write(journal);
+
+        boolean fromCash = isCashMethod(from);
+        boolean toCash = isCashMethod(to);
+        if (fromCash && !toCash) {
+            cashDrawerService.recordPurchaseCashOut(amount,
+                    "Transfer " + from.getMethodName() + " to " + to.getMethodName(),
+                    ReferenceType.Transfer.name(), out.getId());
+        } else if (toCash && !fromCash) {
+            cashDrawerService.recordPurchaseCashIn(amount,
+                    "Transfer " + from.getMethodName() + " to " + to.getMethodName(),
+                    ReferenceType.Transfer.name(), in.getId());
+        }
 
         messagingTemplate.convertAndSend(TRANSACTION_TOPIC, "TRANSFER_CREATED");
         return mapper.toDto(saved);
@@ -196,7 +210,8 @@ public class PaymentTransactionService {
                 .distinct().toList();
 
         List<Integer> supplierIds = transactions.stream()
-                .filter(tx -> ReferenceType.Debt_Payment.equals(tx.getReferenceType()))
+                .filter(tx -> ReferenceType.Debt_Payment.equals(tx.getReferenceType())
+                        || ReferenceType.Supplier_Advance.equals(tx.getReferenceType()))
                 .map(PaymentTransaction::getReferenceId)
                 .distinct().toList();
 
@@ -243,10 +258,13 @@ public class PaymentTransactionService {
                     dto.setReferenceCode(p.getPurchaseCode());
                     if (p.getSupplier() != null) dto.setEntityName(p.getSupplier().getName());
                 }
-            } else if (ReferenceType.Debt_Payment.equals(tx.getReferenceType())) {
+            } else if (ReferenceType.Debt_Payment.equals(tx.getReferenceType())
+                    || ReferenceType.Supplier_Advance.equals(tx.getReferenceType())) {
                 Supplier s = supplierMap.get(tx.getReferenceId());
                 if (s != null) {
-                    dto.setReferenceCode(s.getCode());
+                    dto.setReferenceCode(ReferenceType.Supplier_Advance.equals(tx.getReferenceType())
+                            ? (s.getCode() == null ? "ADV" : s.getCode() + "-ADV")
+                            : s.getCode());
                     dto.setEntityName(s.getName());
                 }
             } else if (ReferenceType.Sale.equals(tx.getReferenceType())) {
@@ -289,5 +307,29 @@ public class PaymentTransactionService {
         PaymentTransaction entity = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction Not Found with id " + id));
         return mapper.toDto(entity);
+    }
+
+    private Integer requireStaffId(Integer requested) {
+        Integer staffId = currentStaffId();
+        if (staffId == null) staffId = requested;
+        if (staffId == null || !staffRepository.existsById(staffId)) {
+            throw new IllegalArgumentException("Valid staff is required for account transfer journal.");
+        }
+        return staffId;
+    }
+
+    private Integer currentStaffId() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) return null;
+        return userRepository.findByUsernameOrEmail(auth.getName(), auth.getName())
+                .map(user -> user.getStaff() == null ? null : user.getStaff().getId())
+                .orElse(null);
+    }
+
+    private boolean isCashMethod(PaymentMethod method) {
+        if (method == null) return false;
+        String name = method.getMethodName() == null ? "" : method.getMethodName().toLowerCase();
+        if (name.contains("cash") || name.contains("ငွေသား")) return true;
+        return method.getAccount() != null && AccountCode.CASH.equals(method.getAccount().getCode());
     }
 }

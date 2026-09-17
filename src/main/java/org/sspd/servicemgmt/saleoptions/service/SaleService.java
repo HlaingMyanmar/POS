@@ -44,6 +44,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.Paym
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
 import org.sspd.servicemgmt.creditoptions.dto.CustomerPaymentDTO;
 import org.sspd.servicemgmt.creditoptions.model.AlertType;
@@ -500,8 +501,8 @@ public class SaleService {
                     : (product.getWarrantyMonths() != null ? product.getWarrantyMonths() : 0);
             java.time.LocalDate saleLocalDate = parent.getSaleDate() != null
                     ? parent.getSaleDate().toLocalDate() : java.time.LocalDate.now();
-            var warranty = org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyCalculator.snapshot(
-                    requestedWarrantyMonths, saleLocalDate);
+            var productWarranty = org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyCalculator.snapshot(
+                    requestedWarrantyMonths, product.getWarrantyTerms(), saleLocalDate);
             BigDecimal lineDiscount = d.getDiscountAmount() != null ? d.getDiscountAmount() : BigDecimal.ZERO;
             BigDecimal customVoucherPrice = d.getCustomVoucherPrice();
             boolean isFoc = Boolean.TRUE.equals(d.getFoc());
@@ -541,6 +542,11 @@ public class SaleService {
                     }
                     serial.setStatus(isServiceJobSale ? SerialStatus.Used_In_Service : SerialStatus.Sold);
                     serialRepository.save(serial);
+                    var warranty = org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyCalculator.fromExisting(
+                            serial.getWarrantyMonths(), serial.getWarrantyStartDate(), serial.getWarrantyEndDate());
+                    if (!warranty.hasCoverage()) {
+                        warranty = productWarranty;
+                    }
 
                     BigDecimal gross = d.getUnitPrice(); // qty 1 per serial
                     BigDecimal subtotal = isFoc ? BigDecimal.ZERO : gross.subtract(perSerialDiscount);
@@ -585,6 +591,7 @@ public class SaleService {
                 }
                 BigDecimal subtotal = isFoc ? BigDecimal.ZERO : gross.subtract(lineDiscount);
                 if (subtotal.compareTo(BigDecimal.ZERO) < 0) subtotal = BigDecimal.ZERO;
+                var warranty = productWarranty;
 
                 SaleDetail detail = SaleDetail.builder()
                         .sale(parent)
@@ -766,11 +773,6 @@ public class SaleService {
         String prefix = cfg.getSalePrefix() != null && !cfg.getSalePrefix().isBlank() ? cfg.getSalePrefix() : "INV";
         int digits = cfg.getSaleDigits() != null ? cfg.getSaleDigits() : 5;
         return String.format("%s-%0" + digits + "d", prefix, id);
-    }
-
-    private String generateTransactionNo() {
-        Long count = paymentTransactionRepository.count();
-        return String.format("TXN-%06d", count + 1);
     }
 
     private SaleDTO toSaleDtoForPayment(SalePaymentDTO payDto, BigDecimal appliedAmount) {
@@ -1020,11 +1022,9 @@ public class SaleService {
                 paymentTx.setPaymentMethod(line.method());
                 paymentTx.setAmount(line.amount());
                 paymentTx.setPaymentDate(LocalDateTime.now());
-                paymentTx.setTransactionNo(line.transactionNo() == null || line.transactionNo().isBlank()
-                        ? generateTransactionNo()
-                        : line.transactionNo());
-                paymentTransactionRepository.save(paymentTx);
-                drawerRemaining = recordDrawerForNonAdvance(line.method(), line.amount(), drawerRemaining, sale.getId());
+                paymentTx.setTransactionNo(PaymentTransactionNumbers.blankToNull(line.transactionNo()));
+                PaymentTransaction savedTx = PaymentTransactionNumbers.save(paymentTransactionRepository, paymentTx);
+                drawerRemaining = recordDrawerForNonAdvance(line.method(), line.amount(), drawerRemaining, savedTx.getId());
             }
             return;
         }
@@ -1037,28 +1037,25 @@ public class SaleService {
         paymentTx.setPaymentMethod(method);
         paymentTx.setAmount(paid);
         paymentTx.setPaymentDate(LocalDateTime.now());
-        String txnNo = (dto.getTransactionNo() == null || dto.getTransactionNo().isEmpty())
-                ? generateTransactionNo()
-                : dto.getTransactionNo();
-        paymentTx.setTransactionNo(txnNo);
-        paymentTransactionRepository.save(paymentTx);
-        recordDrawerForNonAdvance(method, paid, drawerRemaining, sale.getId());
+        paymentTx.setTransactionNo(PaymentTransactionNumbers.blankToNull(dto.getTransactionNo()));
+        PaymentTransaction savedTx = PaymentTransactionNumbers.save(paymentTransactionRepository, paymentTx);
+        recordDrawerForNonAdvance(method, paid, drawerRemaining, savedTx.getId());
     }
 
     private BigDecimal recordDrawerForNonAdvance(PaymentMethod method, BigDecimal lineAmount, BigDecimal drawerRemaining,
-            Integer saleId) {
+            Integer paymentTxId) {
         if (drawerRemaining == null || drawerRemaining.signum() <= 0 || lineAmount == null || lineAmount.signum() <= 0) {
             return drawerRemaining == null ? BigDecimal.ZERO : drawerRemaining;
         }
         BigDecimal applied = lineAmount.min(drawerRemaining);
-        recordDrawerCashSale(method, applied, saleId);
+        recordDrawerCashSale(method, applied, paymentTxId);
         return drawerRemaining.subtract(applied);
     }
 
-    private void recordDrawerCashSale(PaymentMethod method, BigDecimal amount, Integer saleId) {
+    private void recordDrawerCashSale(PaymentMethod method, BigDecimal amount, Integer paymentTxId) {
         if (method != null && method.getAccount() != null
                 && method.getAccount().getId().equals(accountResolver.cash().getId())) {
-            cashDrawerService.recordCashSale(amount, ReferenceType.Sale.name(), saleId);
+            cashDrawerService.recordCashSale(amount, ReferenceType.Sale.name(), paymentTxId);
         }
     }
 

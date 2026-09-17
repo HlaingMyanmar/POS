@@ -837,6 +837,7 @@ public class ProductService {
                     product.setHasSerial(hasSerial);
                     product.setReorderLevel(sanitizeReorderLevel(reorderLevel));
                     product.setWarrantyMonths(warrantyMonths);
+                    product.setWarrantyTerms(warrantyTerms.isBlank() ? null : warrantyTerms.trim());
                     product.setRemark(remark.isBlank() ? null : remark);
 
                     Product saved = productRepository.save(product);

@@ -31,6 +31,18 @@ public class SupplierPaymentController {
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> applyCredit(@RequestBody SupplierCreditApplyRequest request) {
         return ResponseEntity.status(201).body(new ApiResponse<>(true, "Supplier credit applied", service.applyCredit(request)));
     }
+    @GetMapping("/supplier/{supplierId}/credit-applications")
+    public ResponseEntity<ApiResponse<List<SupplierCreditApplicationDTO>>> creditApplications(@PathVariable Integer supplierId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Supplier credit applications", service.creditApplications(supplierId)));
+    }
+    @PostMapping("/credit-applications/{id}/void")
+    public ResponseEntity<ApiResponse<SupplierCreditApplicationDTO>> voidCreditApplication(
+            @PathVariable Integer id, @RequestBody java.util.Map<String, Object> body) {
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        Integer staffId = body.get("staffId") == null ? null : Integer.valueOf(String.valueOf(body.get("staffId")));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Supplier credit application voided",
+                service.voidCreditApplication(id, reason, staffId)));
+    }
 
     @PostMapping("/{id}/void")
     public ResponseEntity<ApiResponse<SupplierPaymentDTO>> voidPayment(@PathVariable Integer id, @RequestBody java.util.Map<String, Object> body) {

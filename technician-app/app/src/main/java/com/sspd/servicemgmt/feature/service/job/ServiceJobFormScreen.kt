@@ -507,7 +507,7 @@ fun ServiceJobFormScreen(onBack: () -> Unit, onSuccess: (ServiceJobDTO) -> Unit)
                                         Text(serial.serialNumber, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
                                         val sub = listOfNotNull(
                                             serial.condition?.takeIf { it.isNotBlank() },
-                                            fmtWarranty(serial.warrantyMonths).takeIf { it.isNotEmpty() }?.let { "🛡 $it" }
+                                            fmtWarranty(serial.warrantyMonths, serial.warrantyStartDate, serial.warrantyEndDate).takeIf { it.isNotEmpty() }?.let { "🛡 $it" }
                                         ).joinToString(" • ")
                                         if (sub.isNotBlank()) Text(sub, fontSize = 11.sp, color = TextMuted)
                                     }
@@ -1553,3 +1553,4 @@ private fun ServiceItemPickerEmptyPreview() {
         }
     }
 }
+

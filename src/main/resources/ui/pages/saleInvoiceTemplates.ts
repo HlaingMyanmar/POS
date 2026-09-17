@@ -1,6 +1,7 @@
 import { CustomerPaymentDTO, SaleDTO } from '../types';
 import { buildCompanyContact, CompanySettings, getCachedCompanySettings } from '../utils/companySettings';
 import { DEFAULT_SALE_CONFIG, parseVoucherConfig, VoucherSaleConfig } from '../utils/voucherTemplateConfig';
+import { fmtProductWarranty, fmtWarrantyLabel } from '../utils/warrantyFormat';
 
 export type VoucherDesign = 'POS' | 'STANDARD';
 export type VoucherPaper = '58mm' | '80mm' | 'A5' | 'A4';
@@ -36,23 +37,12 @@ type BuildSaleVoucherHtmlInput = {
   preview?: boolean;
 };
 
-const fmtWarrantyDuration = (months: number): string => {
-  if (months <= 0) return '';
-  if (months % 12 === 0) { const y = months / 12; return `${y} Year${y > 1 ? 's' : ''}`; }
-  return `${months} Month${months > 1 ? 's' : ''}`;
-};
-
 const formatWarrantyPreview = (detail: any) => {
-  const warrantyTerms = String(detail?.warrantyTerms || '').trim();
-  const warrantyMonths = Number(detail?.warrantyMonths) || 0;
-  const warrantyExpiry = detail?.warrantyExpiryDate;
-  const parts: string[] = [];
-
-  if (warrantyTerms) parts.push(warrantyTerms);
-  else { const d = fmtWarrantyDuration(warrantyMonths); if (d) parts.push(d); }
-
-  if (warrantyExpiry) parts.push(`Exp: ${fmtDate(warrantyExpiry)}`);
-  return parts.join(' · ');
+  return fmtWarrantyLabel(
+    detail?.warrantyMonths,
+    detail?.warrantyExpiryDate,
+    detail?.warrantyStartDate
+  ) || fmtProductWarranty(detail?.warrantyTerms, detail?.warrantyMonths, detail?.warrantyStartDate, detail?.warrantyExpiryDate);
 };
 
 export const buildSaleVoucherHtml = ({

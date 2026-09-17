@@ -11,8 +11,13 @@ class PreferenceManager(context: Context) {
     private val logoMeta get() = File(app.filesDir, "company_logo.meta")
 
     var serverUrl: String
-        get() = p.getString("server_url", "") ?: ""
-        set(v) { p.edit().putString("server_url", v).apply() }
+        get() {
+            val stored = p.getString("server_url", "") ?: ""
+            val migrated = migrateLegacyServerUrl(stored)
+            if (migrated != stored) p.edit().putString("server_url", migrated).apply()
+            return migrated
+        }
+        set(v) { p.edit().putString("server_url", migrateLegacyServerUrl(v)).apply() }
 
     var authToken: String
         get() = p.getString("auth_token", "") ?: ""
@@ -170,6 +175,17 @@ class PreferenceManager(context: Context) {
     }
 
     fun clear() = clearSession()
+
+    private fun migrateLegacyServerUrl(raw: String): String {
+        val t = raw.trim()
+        if (t.isBlank()) return t
+        val host = t.removePrefix("https://").removePrefix("http://")
+            .substringBefore("/").substringBefore(":")
+        if (host == "118.27.151.89" || host.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$"""))) {
+            return "https://sspdmyanmar.com"
+        }
+        return t
+    }
 
     companion object {
         /** Customer app idle timeout — 10 minutes is a good balance for shopping + account safety. */

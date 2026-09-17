@@ -10,6 +10,13 @@ The app registers the current device after login and token refresh, and unregist
 
 Never commit `google-services.json` or the service-account JSON to source control.
 
+## Technician app (background / closed APK)
+
+1. Firebase project `sspd-technician` Android app package `com.sspd.technician`. Put `google-services.json` in `technician-app/app/`.
+2. Project settings → Service accounts → Generate new private key. Save as `secrets/firebase-technician-adminsdk.json` on the VPS (gitignored). Set `APP_FCM_TECHNICIAN_CREDENTIALS_FILE`. Do not reuse the customer `google-services.json` or Web Push VAPID key.
+3. Rebuild/deploy the WAR, then install a **release** technician APK on a real phone, login, and allow notifications. The app subscribes to topic `technician_staff_{staffId}`.
+4. From web POS, assign a job or send Hand Over to that staff. Tray notification should appear with the app closed. Force-stop may still receive FCM on most devices.
+
 ## Physical device — background / closed app
 
 1. Install a release/debug APK that includes `google-services.json` on a real phone (emulator FCM is unreliable).

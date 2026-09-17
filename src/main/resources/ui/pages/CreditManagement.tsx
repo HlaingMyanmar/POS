@@ -325,7 +325,7 @@ const CreditManagement: React.FC = () => {
     const result = await Swal.fire({
       icon: 'warning',
       title: 'Void customer payment?',
-      html: `<b>${payment.paymentNo || payment.id}</b><br/>Allocated: ${money(Number(payment.allocatedAmount) || Number(payment.amount) || 0)}`,
+      html: `<b>${payment.paymentNo || payment.id}</b><br/>Allocated: ${money(Number(payment.allocatedAmount) || 0)}<br/>Advance: ${money(Number(payment.advanceAmount) || 0)}`,
       input: 'textarea',
       inputLabel: 'Void reason',
       inputPlaceholder: 'Reason is required',
@@ -507,7 +507,7 @@ const CreditManagement: React.FC = () => {
                               <td className="px-2 py-1 text-right font-semibold">{money(Number(p.allocatedAmount ?? p.amount) || 0)}</td>
                               <td className="px-2 py-1 text-right">{money(Number(p.advanceAmount) || 0)}</td>
                               <td className="px-2 py-1 text-right">
-                                {!p.voided && (p.allocations?.length || Number(p.allocatedAmount) > 0) ? (
+                                {!p.voided && (p.allocations?.length || Number(p.allocatedAmount) > 0 || (Number(p.advanceAmount) > 0 && !p.saleId)) ? (
                                   <button onClick={() => voidCustomerPayment(p)} className="px-2 py-1 rounded border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-50">Void</button>
                                 ) : p.voided ? <span className="text-[10px] font-bold text-rose-600">VOIDED</span> : '-'}
                               </td>

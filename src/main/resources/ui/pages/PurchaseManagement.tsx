@@ -20,7 +20,7 @@ import { getFromSession } from '../utils/storageHelper';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import Swal from 'sweetalert2';
-import { supplierPaymentApiService, SupplierPayable, SupplierPayment } from '../services/supplierpaymentapiservice';
+import { supplierPaymentApiService, SupplierPayable, SupplierPayment, SupplierCreditApplication } from '../services/supplierpaymentapiservice';
 import { purchaseBudgetApiService, PurchaseBudgetDTO } from '../services/purchasebudgetapiservice';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -366,6 +366,7 @@ const PurchaseManagement: React.FC = () => {
   const [supplierAllocations, setSupplierAllocations] = useState<Record<number, number>>({});
   const [supplierPaymentSaving, setSupplierPaymentSaving] = useState(false);
   const [supplierPaymentHistory, setSupplierPaymentHistory] = useState<SupplierPayment[]>([]);
+  const [supplierCreditApplications, setSupplierCreditApplications] = useState<SupplierCreditApplication[]>([]);
   const [supplierPaymentHistoryLoading, setSupplierPaymentHistoryLoading] = useState(false);
   const [supplierCreditSummary, setSupplierCreditSummary] = useState({ advanceBalance: 0, returnCreditBalance: 0, availableCredit: 0 });
   const [supplierCreditTargetId, setSupplierCreditTargetId] = useState(0);
@@ -1400,14 +1401,16 @@ const PurchaseManagement: React.FC = () => {
     if (supplierId > 0) {
       setSupplierPaymentHistoryLoading(true);
       try {
-        const [payables, credit, history] = await Promise.all([
+        const [payables, credit, history, creditApps] = await Promise.all([
           supplierPaymentApiService.payables(supplierId),
           supplierPaymentApiService.creditSummary(supplierId),
-          supplierPaymentApiService.history(supplierId)
+          supplierPaymentApiService.history(supplierId),
+          supplierPaymentApiService.creditApplications(supplierId)
         ]);
         setSupplierPayables(payables);
         setSupplierCreditSummary(credit);
         setSupplierPaymentHistory(history);
+        setSupplierCreditApplications(creditApps);
       } finally {
         setSupplierPaymentHistoryLoading(false);
       }
@@ -1415,6 +1418,7 @@ const PurchaseManagement: React.FC = () => {
       setSupplierPayables([]);
       setSupplierCreditSummary({ advanceBalance: 0, returnCreditBalance: 0, availableCredit: 0 });
       setSupplierPaymentHistory([]);
+      setSupplierCreditApplications([]);
     }
   };
 
@@ -1471,6 +1475,38 @@ const PurchaseManagement: React.FC = () => {
     } catch (e: any) {
       Swal.fire({ icon: 'error', title: 'Credit application failed', text: e.message || 'Unable to apply credit' });
     } finally { setSupplierPaymentSaving(false); }
+  };
+
+  const voidSupplierCreditApplication = async (application: SupplierCreditApplication) => {
+    if (!application.id || application.voided) return;
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Void supplier credit application?',
+      html: `<b>${application.applicationNo}</b><br/>${application.purchaseCode || ''}: ${money(application.amount)}`,
+      input: 'textarea',
+      inputLabel: 'Void reason',
+      inputPlaceholder: 'Reason is required',
+      showCancelButton: true,
+      confirmButtonText: 'Void',
+      confirmButtonColor: '#dc2626',
+      inputValidator: (value) => value?.trim() ? undefined : 'Void reason is required'
+    });
+    if (!result.isConfirmed) return;
+    setSupplierPaymentSaving(true);
+    try {
+      await supplierPaymentApiService.voidCreditApplication(application.id, {
+        reason: String(result.value).trim(),
+        staffId: Number(currentUser.staffId) || selectedStaffId
+      });
+      Swal.fire({ icon: 'success', title: 'Credit application voided', timer: 1400, showConfirmButton: false });
+      await loadSupplierPayables(supplierPaymentSupplierId);
+      refreshLists();
+      await fetchMasterData();
+    } catch (e: any) {
+      Swal.fire({ icon: 'error', title: 'Void failed', text: e.message || 'Unable to void credit application' });
+    } finally {
+      setSupplierPaymentSaving(false);
+    }
   };
 
   const voidSupplierPayment = async (payment: SupplierPayment) => {
@@ -4341,6 +4377,78 @@ const PurchaseManagement: React.FC = () => {
                 </div>
               )}
               <textarea value={supplierPaymentRemark} onChange={(e)=>setSupplierPaymentRemark(e.target.value)} rows={2} placeholder="Remark" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/>
+              {supplierPaymentSupplierId > 0 && (
+                <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black text-slate-800">Supplier Credit Applications</p>
+                      <p className="text-[10px] text-slate-400">မှား apply လုပ်မိသော credit ကို void လုပ်၍ due / advance / return credit ပြန်တင်နိုင်သည်</p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {supplierPaymentHistoryLoading ? 'Loading...' : `${supplierCreditApplications.length} application(s)`}
+                    </span>
+                  </div>
+                  {supplierPaymentHistoryLoading ? (
+                    <p className="py-4 text-center text-xs text-slate-400">ဖတ်နေသည်...</p>
+                  ) : supplierCreditApplications.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-slate-400">Credit application မရှိသေးပါ။</p>
+                  ) : (
+                    <div className="overflow-auto rounded-lg border border-indigo-100 bg-white">
+                      <table className="w-full min-w-[720px] text-xs">
+                        <thead className="bg-indigo-50 text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2 text-left">ရက်စွဲ</th>
+                            <th className="px-3 py-2 text-left">Application</th>
+                            <th className="px-3 py-2 text-left">Voucher</th>
+                            <th className="px-3 py-2 text-right">Amount</th>
+                            <th className="px-3 py-2 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {supplierCreditApplications.map((application) => {
+                            const appliedAt = application.appliedAt
+                              ? new Date(application.appliedAt).toLocaleString('en-GB', {
+                                  day: '2-digit', month: 'short', year: 'numeric',
+                                  hour: '2-digit', minute: '2-digit'
+                                })
+                              : '-';
+                            return (
+                              <tr key={application.id} className={application.voided ? 'opacity-60' : ''}>
+                                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{appliedAt}</td>
+                                <td className="px-3 py-2 font-mono font-semibold text-slate-700">
+                                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                                    {application.applicationNo}
+                                    {application.voided && (
+                                      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-black uppercase text-rose-700" title={application.voidReason || ''}>Voided</span>
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 font-bold text-indigo-700">{application.purchaseCode || '-'}</td>
+                                <td className="px-3 py-2 text-right font-bold text-emerald-700">{money(application.amount)}</td>
+                                <td className="px-3 py-2 text-right">
+                                  {!application.voided && (
+                                    <button
+                                      type="button"
+                                      disabled={supplierPaymentSaving}
+                                      onClick={() => void voidSupplierCreditApplication(application)}
+                                      className="rounded border border-rose-200 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                                    >
+                                      Void
+                                    </button>
+                                  )}
+                                  {application.voided && (
+                                    <span className="text-[10px] text-slate-400">{application.voidedBy || 'voided'}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
               {supplierPaymentSupplierId > 0 && (
                 <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="flex items-center justify-between gap-2">

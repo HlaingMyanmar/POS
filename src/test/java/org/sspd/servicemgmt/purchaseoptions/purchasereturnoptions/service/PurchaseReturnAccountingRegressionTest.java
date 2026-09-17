@@ -6,6 +6,7 @@ import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.model.ChartOfAccount;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
@@ -100,7 +101,8 @@ class PurchaseReturnAccountingRegressionTest {
         assertTrue(Boolean.TRUE.equals(cash.getReversed()));
         assertTrue(Boolean.TRUE.equals(bank.getReversed()));
         verify(cashDrawer).recordPurchaseCashOut(new BigDecimal("40"),
-                "Void purchase return refund PRN-8");
+                "Void purchase return refund PRN-8",
+                ReferenceType.Purchase_Return.name(), 1);
     }
 
     @Test

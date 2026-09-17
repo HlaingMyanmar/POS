@@ -66,8 +66,15 @@ public class PurchaseInsightService {
                 a.getSupplierPayment() != null ? a.getSupplierPayment().getPaymentNo() : "",
                 a.getSupplierPayment() != null ? a.getSupplierPayment().getPaymentNo() : null,
                 nvl(a.getAmount()))));
-        creditApplicationRepository.findByTargetPurchaseIdOrderByIdDesc(purchaseId).forEach(c -> events.add(event("CREDIT",
-                c.getAppliedAt(), "Supplier credit applied", c.getReason(), c.getApplicationNo(), nvl(c.getAmount()))));
+        creditApplicationRepository.findByTargetPurchaseIdOrderByIdDesc(purchaseId).forEach(c -> {
+            if (Boolean.TRUE.equals(c.getVoided())) {
+                events.add(event("CREDIT_REVERSED", c.getVoidedAt() != null ? c.getVoidedAt() : c.getAppliedAt(),
+                        "Supplier credit application voided", c.getVoidReason(), c.getApplicationNo(), nvl(c.getAmount())));
+            } else {
+                events.add(event("CREDIT", c.getAppliedAt(), "Supplier credit applied", c.getReason(),
+                        c.getApplicationNo(), nvl(c.getAmount())));
+            }
+        });
         purchaseReturnRepository.findByPurchaseId(purchaseId).forEach(r -> events.add(event("RETURN",
                 r.getReturnDate(), "Purchase return", r.getReason(), r.getReturnNo(), nvl(r.getTotalReturnAmount()))));
         goodsReceiptRepository.findByPurchaseIdOrderByIdDesc(purchaseId).forEach(g -> events.add(event("GRN",

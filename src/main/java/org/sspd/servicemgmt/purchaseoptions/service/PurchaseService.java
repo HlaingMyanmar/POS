@@ -15,6 +15,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.Paym
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.service.PaymentTransactionService;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.entry.dto.JournalEntryDTO;
@@ -99,13 +100,19 @@ public class PurchaseService {
     @Transactional
     public PurchaseDTO save(PurchaseDTO dto) {
 
-        Supplier supplier = supplierRepository.findById(dto.getSupplierId())
-                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        boolean draft = PurchaseStatus.DRAFT.name().equalsIgnoreCase(dto.getStatus());
+        if (dto.getSupplierId() == null) {
+            throw new IllegalArgumentException("Supplier is required.");
+        }
+        Supplier supplier = draft
+                ? supplierRepository.findById(dto.getSupplierId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"))
+                : supplierRepository.findByIdForUpdate(dto.getSupplierId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
         Staff staff = staffRepository.findById(dto.getStaffId())
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
         validateStaffSelection(staff);
 
-        boolean draft = PurchaseStatus.DRAFT.name().equalsIgnoreCase(dto.getStatus());
         if (!draft) periodGuard.assertOpen(dto.getPurchaseDate(), "create purchase");
         validateSupplierInvoiceNumber(dto.getSupplierId(), dto.getSupplierInvoiceNo(), null);
 
@@ -451,8 +458,16 @@ public class PurchaseService {
             }
         }
 
-        Purchase purchase = purchaseRepository.findById(purchaseId)
+        Integer supplierId = purchaseRepository.findSupplierIdById(purchaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+        Supplier supplier = supplierRepository.findByIdForUpdate(supplierId)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        Purchase purchase = purchaseRepository.findByIdForUpdate(purchaseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+        entityManager.refresh(purchase, LockModeType.PESSIMISTIC_WRITE);
+        if (purchase.getSupplier() == null || !supplierId.equals(purchase.getSupplier().getId())) {
+            throw new IllegalStateException("Purchase supplier changed during payment.");
+        }
         periodGuard.assertOpen(LocalDateTime.now(), "record purchase debt payment");
         if (purchase.isCancelled() || purchase.isDraft()) {
             throw new IllegalStateException("Only confirmed purchases can receive debt payments.");
@@ -495,8 +510,6 @@ public class PurchaseService {
             purchase.setPaymentStatus(PaymentStatus.Partial);
         }
         purchaseRepository.save(purchase);
-
-        Supplier supplier = purchase.getSupplier();
         syncSupplierBalance(supplier);
 
         List<PaymentTransactionDTO> results = new ArrayList<>();
@@ -507,14 +520,13 @@ public class PurchaseService {
             paymentTx.setPaymentMethod(line.method());
             paymentTx.setAmount(line.amount());
             paymentTx.setPaymentDate(LocalDateTime.now());
-            String txnNo = (line.transactionNo() == null || line.transactionNo().isBlank())
-                    ? generateTransactionNo()
-                    : line.transactionNo();
+            String txnNo = PaymentTransactionNumbers.blankToNull(line.transactionNo());
             paymentTx.setTransactionNo(txnNo);
-            PaymentTransaction savedEntity = paymentTransactionRepository.save(paymentTx);
+            PaymentTransaction savedEntity = PaymentTransactionNumbers.save(paymentTransactionRepository, paymentTx);
             if (isCashMethod(line.method())) {
                 cashDrawerService.recordPurchaseCashOut(line.amount(),
-                        "Purchase debt payment " + purchase.getPurchaseCode());
+                        "Purchase debt payment " + purchase.getPurchaseCode(),
+                        ReferenceType.Purchase.name(), savedEntity.getId());
             }
             createDebtPaymentJournal(savedEntity, supplier.getName(), purchase.getStaff().getId());
             results.add(mapper.toDto(savedEntity));
@@ -682,11 +694,6 @@ public class PurchaseService {
         return String.format("%s-%0" + digits + "d", prefix, id);
     }
 
-    private String generateTransactionNo() {
-        Long count = paymentTransactionRepository.count();
-        return String.format("TXN-%06d", count + 1);
-    }
-
     private void createPurchasePaymentTransactions(Purchase purchase, PurchaseDTO dto) {
         BigDecimal paid = purchase.getPaidAmount() != null ? purchase.getPaidAmount() : BigDecimal.ZERO;
         if (paid.compareTo(BigDecimal.ZERO) <= 0) return;
@@ -700,12 +707,11 @@ public class PurchaseService {
             paymentTx.setPaymentMethod(line.method());
             paymentTx.setAmount(line.amount());
             paymentTx.setPaymentDate(LocalDateTime.now());
-            paymentTx.setTransactionNo(line.transactionNo() == null || line.transactionNo().isBlank()
-                    ? generateTransactionNo()
-                    : line.transactionNo());
-            paymentTransactionRepository.save(paymentTx);
+            paymentTx.setTransactionNo(PaymentTransactionNumbers.blankToNull(line.transactionNo()));
+            PaymentTransaction savedTx = PaymentTransactionNumbers.save(paymentTransactionRepository, paymentTx);
             if (isCashMethod(line.method()))
-                cashDrawerService.recordPurchaseCashOut(line.amount(), "Purchase payment " + purchase.getPurchaseCode());
+                cashDrawerService.recordPurchaseCashOut(line.amount(), "Purchase payment " + purchase.getPurchaseCode(),
+                        ReferenceType.Purchase.name(), savedTx.getId());
         }
     }
 
@@ -960,21 +966,35 @@ public class PurchaseService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_UPDATE')")
     @Transactional
     public PurchaseDTO update(Integer id, PurchaseDTO dto) {
-        Purchase purchase = purchaseRepository.findById(id)
+        Integer currentSupplierId = purchaseRepository.findSupplierIdById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        Integer nextSupplierId = dto.getSupplierId() != null ? dto.getSupplierId() : currentSupplierId;
+        java.util.TreeSet<Integer> supplierIds = new java.util.TreeSet<>();
+        supplierIds.add(currentSupplierId);
+        supplierIds.add(nextSupplierId);
+        java.util.Map<Integer, Supplier> lockedSuppliers = new java.util.LinkedHashMap<>();
+        for (Integer supplierId : supplierIds) {
+            lockedSuppliers.put(supplierId, supplierRepository.findByIdForUpdate(supplierId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Supplier not found")));
+        }
+        Purchase purchase = purchaseRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        entityManager.refresh(purchase, LockModeType.PESSIMISTIC_WRITE);
         if (!purchase.isDraft()) {
             throw new IllegalStateException(
                     "Only draft purchases can be edited. Cancel and recreate a confirmed voucher.");
         }
         periodGuard.assertOpen(purchase.getPurchaseDate(), "update purchase");
 
-        Supplier oldSupplier = purchase.getSupplier();
+        Supplier oldSupplier = lockedSuppliers.get(currentSupplierId);
         BigDecimal oldDue = purchase.getDueAmount() != null ? purchase.getDueAmount() : BigDecimal.ZERO;
 
         if (dto.getSupplierId() != null &&
                 (oldSupplier == null || !dto.getSupplierId().equals(oldSupplier.getId()))) {
-            Supplier newSupplier = supplierRepository.findById(dto.getSupplierId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+            Supplier newSupplier = lockedSuppliers.get(dto.getSupplierId());
+            if (newSupplier == null) {
+                throw new ResourceNotFoundException("Supplier not found");
+            }
             purchase.setSupplier(newSupplier);
         }
 
@@ -1024,7 +1044,7 @@ public class PurchaseService {
 
         Purchase savedPurchase = purchaseRepository.save(purchase);
 
-        Supplier newSupplier = savedPurchase.getSupplier();
+        Supplier newSupplier = lockedSuppliers.get(savedPurchase.getSupplier().getId());
         if (oldSupplier != null) {
             syncSupplierBalance(oldSupplier);
         }
@@ -1059,15 +1079,21 @@ public class PurchaseService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_UPDATE')")
     @Transactional
     public PurchaseDTO confirmDraft(Integer id, PurchaseDTO overrides) {
-        Purchase purchase = purchaseRepository.findById(id)
+        Integer supplierId = purchaseRepository.findSupplierIdById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        Supplier supplier = supplierRepository.findByIdForUpdate(supplierId)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        Purchase purchase = purchaseRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found: " + id));
+        entityManager.refresh(purchase, LockModeType.PESSIMISTIC_WRITE);
         periodGuard.assertOpen(purchase.getPurchaseDate(), "confirm purchase");
         if (!purchase.isDraft())
             throw new RuntimeException("Only draft purchases can be confirmed.");
         if (purchase.getDetails() == null || purchase.getDetails().isEmpty())
             throw new RuntimeException("Draft purchase has no detail lines.");
-
-        Supplier supplier = purchase.getSupplier();
+        if (purchase.getSupplier() == null || !supplierId.equals(purchase.getSupplier().getId())) {
+            throw new IllegalStateException("Purchase supplier changed during confirm.");
+        }
         Staff staff = purchase.getStaff();
 
         // Duplicate submission guard
@@ -1348,8 +1374,10 @@ public class PurchaseService {
         }
         List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> creditApps =
                 supplierCreditApplicationRepository.findByTargetPurchaseIdOrderByIdDesc(purchase.getId());
+        creditApps = lockActiveCreditApplications(supplier.getId(), purchase.getId(), creditApps);
         BigDecimal creditApplied = BigDecimal.ZERO;
         for (var application : creditApps) {
+            if (Boolean.TRUE.equals(application.getVoided())) continue;
             creditApplied = creditApplied.add(safe(application.getAmount()));
         }
         if (paidTotal.compareTo(BigDecimal.ZERO) <= 0 && purchase.getPaidAmount() != null) {
@@ -1478,6 +1506,7 @@ public class PurchaseService {
             List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> creditApps) {
         if (creditApps == null || creditApps.isEmpty()) return;
         for (var application : creditApps) {
+            if (Boolean.TRUE.equals(application.getVoided())) continue;
             supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).add(safe(application.getAdvanceUsed())));
             BigDecimal remaining = restoreReturnCreditToRecordedSources(
                     supplier.getId(), cancelledPurchaseId, application.getReturnCreditSources(),
@@ -1488,7 +1517,51 @@ public class PurchaseService {
                                 + application.getApplicationNo()
                                 + ". Source history is missing or the source voucher is no longer available.");
             }
+            application.setVoided(true);
+            application.setVoidedAt(LocalDateTime.now());
+            application.setVoidedBy(currentActor());
+            application.setVoidReason("Purchase cancelled");
+            supplierCreditApplicationRepository.save(application);
         }
+    }
+
+    private List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> lockActiveCreditApplications(
+            Integer supplierId, Integer targetPurchaseId,
+            List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> creditApps) {
+        if (creditApps == null || creditApps.isEmpty()) return List.of();
+        java.util.TreeSet<Integer> extraPurchaseIds = new java.util.TreeSet<>();
+        java.util.TreeSet<Integer> applicationIds = new java.util.TreeSet<>();
+        for (var application : creditApps) {
+            if (Boolean.TRUE.equals(application.getVoided()) || application.getId() == null) continue;
+            applicationIds.add(application.getId());
+            extraPurchaseIds.addAll(parseReturnCreditSourceIds(application.getReturnCreditSources()));
+        }
+        extraPurchaseIds.remove(targetPurchaseId);
+        for (Integer purchaseId : extraPurchaseIds) {
+            purchaseRepository.findByIdForUpdate(purchaseId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+        }
+        List<org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication> locked = new ArrayList<>();
+        for (Integer applicationId : applicationIds) {
+            locked.add(supplierCreditApplicationRepository.findByIdForUpdate(applicationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Supplier credit application not found")));
+        }
+        return locked;
+    }
+
+    private List<Integer> parseReturnCreditSourceIds(String encodedSources) {
+        List<Integer> ids = new ArrayList<>();
+        if (encodedSources == null || encodedSources.isBlank()) return ids;
+        for (String token : encodedSources.split(",")) {
+            String[] parts = token.split(":");
+            if (parts.length != 2) continue;
+            try {
+                ids.add(Integer.valueOf(parts[0].trim()));
+            } catch (NumberFormatException ignored) {
+                // skip malformed source history
+            }
+        }
+        return ids;
     }
 
     private BigDecimal restoreReturnCreditToRecordedSources(Integer supplierId, Integer cancelledPurchaseId,

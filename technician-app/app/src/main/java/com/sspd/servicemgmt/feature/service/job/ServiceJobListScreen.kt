@@ -53,8 +53,13 @@ fun ServiceJobListScreen(
     var filtersExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        TechnicianQueueFocus.bucket?.let {
-            vm.setWorkTab(WORK_TAB_ACTIVE)
+        TechnicianQueueFocus.bucket?.let { bucket ->
+            when (bucket) {
+                TechnicianHomeBucket.ACTIVE -> vm.setWorkTab(WORK_TAB_ACTIVE)
+                TechnicianHomeBucket.HANDOVER -> vm.setWorkTab(WORK_TAB_SENT)
+                TechnicianHomeBucket.FINAL, TechnicianHomeBucket.TODAY -> vm.setWorkTab(WORK_TAB_CLOSED)
+                else -> vm.setWorkTab(WORK_TAB_ACTIVE)
+            }
             TechnicianQueueFocus.bucket = null
         }
         while (true) { vm.load(); delay(30_000) }

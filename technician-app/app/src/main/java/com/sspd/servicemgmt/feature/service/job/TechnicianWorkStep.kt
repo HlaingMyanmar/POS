@@ -256,7 +256,7 @@ fun technicianBucket(job: ServiceJobDTO): TechnicianHomeBucket {
     return TechnicianHomeBucket.TODAY
 }
 
-enum class TechnicianHomeBucket { ACCEPT, TODAY, ACTIVE, WAITING, FINAL }
+enum class TechnicianHomeBucket { ACCEPT, TODAY, ACTIVE, WAITING, FINAL, HANDOVER }
 
 fun technicianBucketLabel(bucket: TechnicianHomeBucket): String = when (bucket) {
     TechnicianHomeBucket.ACCEPT -> "လက်ခံရန်"
@@ -264,6 +264,7 @@ fun technicianBucketLabel(bucket: TechnicianHomeBucket): String = when (bucket) 
     TechnicianHomeBucket.ACTIVE -> "လုပ်ဆောင်နေဆဲ"
     TechnicianHomeBucket.WAITING -> "စောင့်ဆိုင်းနေသည်"
     TechnicianHomeBucket.FINAL -> "စစ်ဆေးရန် / ပြီးစီးပြီး"
+    TechnicianHomeBucket.HANDOVER -> "Hand Over"
 }
 
 fun technicianStepLabel(job: ServiceJobDTO): String {

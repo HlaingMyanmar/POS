@@ -1470,7 +1470,8 @@ private fun PartCard(
             if (!part.serialNumbers.isNullOrEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 part.serialNumbers.forEach { sn ->
-                    val wLabel = fmtWarranty(snMap[sn]?.warrantyMonths)
+                    val serialWarranty = snMap[sn]
+                    val wLabel = fmtWarranty(serialWarranty?.warrantyMonths, serialWarranty?.warrantyStartDate, serialWarranty?.warrantyEndDate)
                     Text("S/N: $sn", fontSize = 10.sp, color = Primary)
                     if (wLabel.isNotEmpty()) {
                         Text("🛡 $wLabel", fontSize = 10.sp, color = androidx.compose.ui.graphics.Color(0xFF0891B2))
@@ -2752,3 +2753,4 @@ private fun JobHistoryTabPreview() {
         }
     }
 }
+

@@ -8,6 +8,7 @@ import com.google.gson.reflect.TypeToken
 import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.BookingDTO
 import com.sspd.servicemgmt.core.network.DashboardStats
+import com.sspd.servicemgmt.core.network.HandoverDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.tracking.VisitTracker
 import com.sspd.servicemgmt.core.util.PreferenceManager
@@ -82,25 +83,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             staffId = if (prefs.shouldScopeToOwnStaff()) prefs.staffId else null
                         )
                     }
+                    val sentHandoversD = async {
+                        runCatching {
+                            ApiClient.service.mySentHandovers(ApiClient.bearer(prefs.authToken))
+                        }.getOrNull()?.body()?.data.orEmpty()
+                    }
                     val statsRes = statsD.await()
                     val jobs = jobsD.await().body()?.data?.content.orEmpty()
+                    val sentHandovers = sentHandoversD.await()
                     val currentJobIds = jobs.mapNotNull { it.id }.toSet()
                     if (knownJobIds != null && (currentJobIds - knownJobIds!!).isNotEmpty()) {
                         VibrationUtil.vibrateNewJob(getApplication())
                     }
                     knownJobIds = currentJobIds
 
-                    if (statsRes.isSuccessful) {
-                        _uiState.update {
-                            it.copy(
-                                stats = statsRes.body()?.data ?: DashboardStats(),
-                                jobs = jobs,
-                                loading = false,
-                                refreshing = false
-                            )
-                        }
-                    } else {
-                        _uiState.update { it.copy(jobs = jobs, loading = false, refreshing = false) }
+                    _uiState.update {
+                        it.copy(
+                            stats = if (statsRes.isSuccessful) statsRes.body()?.data ?: DashboardStats() else it.stats,
+                            jobs = jobs,
+                            sentHandovers = sentHandovers,
+                            loading = false,
+                            refreshing = false
+                        )
                     }
                 }
             }.onFailure { _uiState.update { it.copy(loading = false, refreshing = false) } }
@@ -215,5 +219,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val canOutdoorVisit: Boolean       = false,
         val bookingAlerts: List<BookingDTO> = emptyList(),
         val jobs: List<ServiceJobDTO> = emptyList(),
+        val sentHandovers: List<HandoverDTO> = emptyList(),
     )
 }

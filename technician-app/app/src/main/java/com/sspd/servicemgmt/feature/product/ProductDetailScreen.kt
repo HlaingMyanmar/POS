@@ -3,23 +3,21 @@ package com.sspd.servicemgmt.feature.product
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import android.util.Base64
-import androidx.core.content.FileProvider
-import java.io.File
-import java.io.FileOutputStream
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,23 +33,26 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ProductSerialDTO
-import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
 import com.sspd.servicemgmt.core.ui.component.ProductPhotoImage
 import com.sspd.servicemgmt.core.ui.component.ProductPhotoLoader
+import com.sspd.servicemgmt.core.ui.scanner.BarcodeScannerView
+import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.util.ImageCodec
 import com.sspd.servicemgmt.core.util.fmtWarranty
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
-import com.sspd.servicemgmt.core.ui.scanner.BarcodeScannerView
+import java.io.File
+import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -260,186 +261,130 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                             Modifier.fillMaxWidth().padding(18.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // 140dp product photo box
-                            Box(
-                                modifier = Modifier.size(140.dp).clip(RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
-                                if (state.uploadingProductPhoto) {
-                                    Box(Modifier.fillMaxSize().background(ScreenBg), contentAlignment = Alignment.Center) {
-                                        AppLoading()
-                                    }
-                                } else {
-                                    val photoSource = remember(p.id, p.imagePath, p.thumbnailPath, p.photoBase64) {
-                                        ProductPhotoLoader.fullSource(p)
-                                    }
-                                    var bmp by remember(photoSource) { mutableStateOf<Bitmap?>(null) }
-                                    var photoLoading by remember(photoSource) { mutableStateOf(photoSource != null) }
-                                    LaunchedEffect(photoSource) {
-                                        photoLoading = photoSource != null
-                                        bmp = ProductPhotoLoader.loadBitmap(photoSource)
-                                        photoLoading = false
-                                    }
-                                    if (bmp != null) {
-                                        Image(bitmap = bmp!!.asImageBitmap(), contentDescription = p.name,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize())
-                                        // Overlay buttons row — camera | view | share
-                                        Row(Modifier.fillMaxWidth().height(34.dp)) {
-                                            if (state.canUploadProductPhoto) {
-                                                Box(Modifier.weight(1f).fillMaxHeight()
-                                                    .background(Color.Black.copy(0.50f))
-                                                    .clickable { pendingProductPhotoSlot = 1; pendingProductPhoto = true; showSourceSheet = true },
-                                                    contentAlignment = Alignment.Center) {
-                                                    Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            if (state.uploadingProductPhoto) {
+                                Box(Modifier.fillMaxWidth().height(160.dp).background(ScreenBg), contentAlignment = Alignment.Center) {
+                                    AppLoading()
+                                }
+                            } else {
+                                val slots = listOf(1, 2, 3)
+                                val photoSources = slots.mapNotNull { slot ->
+                                    val full = ProductPhotoLoader.fullSourceForSlot(p, slot)
+                                    if (full != null || state.canUploadProductPhoto) slot to full else null
+                                }
+
+                                if (photoSources.isNotEmpty()) {
+                                    LazyRow(
+                                        modifier = Modifier.fillMaxWidth().height(170.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp)
+                                    ) {
+                                        items(photoSources, key = { it.first }) { (slot, full) ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(170.dp)
+                                                    .fillMaxHeight()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(ScreenBg)
+                                                    .clickable { full?.let { viewingPhoto = it } },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (full != null) {
+                                                    var bmp by remember(full) { mutableStateOf<Bitmap?>(null) }
+                                                    LaunchedEffect(full) {
+                                                        bmp = ProductPhotoLoader.loadBitmap(full)
+                                                    }
+                                                    if (bmp != null) {
+                                                        Image(
+                                                            bitmap = bmp!!.asImageBitmap(),
+                                                            contentDescription = "${p.name} $slot",
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    } else {
+                                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                                    }
+                                                } else {
+                                                    Column(
+                                                        modifier = Modifier.fillMaxSize().background(ScreenBg).then(
+                                                            if (state.canUploadProductPhoto)
+                                                                Modifier.clickable {
+                                                                    pendingProductPhotoSlot = slot
+                                                                    pendingProductPhoto = true
+                                                                    showSourceSheet = true
+                                                                }
+                                                            else Modifier
+                                                        ),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(Icons.Outlined.CameraAlt, null, tint = TextMuted, modifier = Modifier.size(24.dp))
+                                                        Spacer(Modifier.height(4.dp))
+                                                        Text("ပုံ $slot ထည့်ရန်", fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+                                                    }
+                                                }
+
+                                                // Camera upload button overlay
+                                                if (state.canUploadProductPhoto && full != null) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.TopEnd)
+                                                            .padding(6.dp)
+                                                            .size(28.dp)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color.Black.copy(alpha = 0.5f))
+                                                            .clickable {
+                                                                pendingProductPhotoSlot = slot
+                                                                pendingProductPhoto = true
+                                                                showSourceSheet = true
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                    }
+                                                }
+
+                                                // Slot badge
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .align(Alignment.TopStart)
+                                                        .padding(6.dp),
+                                                    color = Color.Black.copy(alpha = 0.6f),
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text(
+                                                        "ပုံ $slot",
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White
+                                                    )
                                                 }
                                             }
-                                            Box(Modifier.weight(1f).fillMaxHeight()
-                                                .background(Color(0xCC6366F1))
-                                                .clickable { viewingPhoto = photoSource },
-                                                contentAlignment = Alignment.Center) {
-                                                Icon(Icons.Outlined.Visibility, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                            }
-                                            Box(Modifier.weight(1f).fillMaxHeight()
-                                                .background(Color(0xCC16A34A))
-                                                .clickable {
-                                                    val shareText = "${p.name}\nCode: ${p.productCode}\n${p.sellingPrice.fmt()} Ks"
-                                                    shareContent(context, bmp!!, shareText)
-                                                },
-                                                contentAlignment = Alignment.Center) {
-                                                Icon(Icons.Outlined.Share, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                            }
                                         }
-                                    } else if (photoLoading) {
-                                        Box(Modifier.fillMaxSize().background(ScreenBg), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-                                        }
-                                    } else {
-                                        Box(Modifier.fillMaxSize()
-                                            .background(ScreenBg, RoundedCornerShape(12.dp))
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(140.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(ScreenBg)
                                             .then(
                                                 if (state.canUploadProductPhoto)
-                                                    Modifier.clickable { pendingProductPhotoSlot = 1; pendingProductPhoto = true; showSourceSheet = true }
+                                                    Modifier.clickable {
+                                                        pendingProductPhotoSlot = 1
+                                                        pendingProductPhoto = true
+                                                        showSourceSheet = true
+                                                    }
                                                 else Modifier
                                             ),
-                                            contentAlignment = Alignment.Center) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Icon(Icons.Outlined.CameraAlt, null, tint = TextMuted, modifier = Modifier.size(28.dp))
-                                                Text(
-                                                    if (state.canUploadProductPhoto) "ကုန်ပစ္စည်းပုံ ထည့်ရန်" else "ပုံ မရှိသေးပါ",
-                                                    fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                val thumb1 = ProductPhotoLoader.thumbSourceForSlot(p, 1)
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(ScreenBg)
-                                        .clickable { ProductPhotoLoader.fullSourceForSlot(p, 1)?.let { viewingPhoto = it } },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (thumb1 != null) {
-                                        ProductPhotoImage(
-                                            source = thumb1,
-                                            contentDescription = p.name,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    if (state.canUploadProductPhoto) {
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(24.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.Black.copy(alpha = 0.45f))
-                                                .clickable {
-                                                    pendingProductPhotoSlot = 1
-                                                    pendingProductPhoto = true
-                                                    showSourceSheet = true
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                }
-
-                                val thumb2 = ProductPhotoLoader.thumbSourceForSlot(p, 2)
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(ScreenBg)
-                                        .clickable { ProductPhotoLoader.fullSourceForSlot(p, 2)?.let { viewingPhoto = it } },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (thumb2 != null) {
-                                        ProductPhotoImage(
-                                            source = thumb2,
-                                            contentDescription = p.name,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    if (state.canUploadProductPhoto) {
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(24.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.Black.copy(alpha = 0.45f))
-                                                .clickable {
-                                                    pendingProductPhotoSlot = 2
-                                                    pendingProductPhoto = true
-                                                    showSourceSheet = true
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                }
-
-                                val thumb3 = ProductPhotoLoader.thumbSourceForSlot(p, 3)
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(ScreenBg)
-                                        .clickable { ProductPhotoLoader.fullSourceForSlot(p, 3)?.let { viewingPhoto = it } },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (thumb3 != null) {
-                                        ProductPhotoImage(
-                                            source = thumb3,
-                                            contentDescription = p.name,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    if (state.canUploadProductPhoto) {
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(24.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.Black.copy(alpha = 0.45f))
-                                                .clickable {
-                                                    pendingProductPhotoSlot = 3
-                                                    pendingProductPhoto = true
-                                                    showSourceSheet = true
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(Icons.Outlined.CameraAlt, null, tint = TextMuted, modifier = Modifier.size(28.dp))
+                                            Text(
+                                                if (state.canUploadProductPhoto) "ကုန်ပစ္စည်းပုံ ထည့်ရန်" else "ပုံ မရှိသေးပါ",
+                                                fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                            )
                                         }
                                     }
                                 }
@@ -471,14 +416,15 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
 
                 // ── Remark ───────────────────────────────────────────────
                 if (!p.remark.isNullOrBlank()) item {
-                    Card(shape = RoundedCornerShape(12.dp),
+                    Card(shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = CardBg),
                         border = BorderStroke(1.dp, BorderColor),
                         modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text("REMARK", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-                                color = Warning, letterSpacing = 0.5.sp)
-                            Spacer(Modifier.height(5.dp))
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Description, null, tint = Primary, modifier = Modifier.size(18.dp))
+                                Text("မှတ်ချက် (Remark)", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
+                            }
                             Text(p.remark, fontSize = 13.sp, color = TextMain, lineHeight = 20.sp)
                         }
                     }
@@ -513,7 +459,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                 "ရောင်းဈေး"        to "${p.sellingPrice.fmt()} Ks",
                                 "လက်ကျန်"          to "$avail ခု",
                                 "Reorder Level"    to (p.reorderLevel?.let { "$it ခု" } ?: "—"),
-                                "အာမခံ"            to (p.warrantyMonths?.let { fmtWarranty(it).ifEmpty { "—" } } ?: "—"),
+                                "အာမခံ"            to fmtWarranty(p.warrantyTerms, p.warrantyMonths).ifEmpty { "—" },
                             ).forEachIndexed { i, (label, value) ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween) {
@@ -602,7 +548,7 @@ fun ProductDetailScreen(onBack: () -> Unit, onEdit: () -> Unit = {}) {
                                             appendLine("─────────────────")
                                             appendLine("Serial: ${serial.serialNumber}")
                                             if (!serial.condition.isNullOrBlank()) appendLine("Condition: ${serial.condition}")
-                                            val snWLabel = fmtWarranty(serial.warrantyMonths)
+                                            val snWLabel = fmtWarranty(serial.warrantyMonths, serial.warrantyStartDate, serial.warrantyEndDate)
                                             if (snWLabel.isNotEmpty()) appendLine("အာမခံ: $snWLabel")
                                             append("Status: ${serial.status ?: "—"}")
                                         }
@@ -770,7 +716,7 @@ private fun SerialCard(
                             fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
                     }
                 }
-                val wLabel = fmtWarranty(serial.warrantyMonths)
+                val wLabel = fmtWarranty(serial.warrantyMonths, serial.warrantyStartDate, serial.warrantyEndDate)
                 if (wLabel.isNotEmpty()) {
                     Text("🛡 $wLabel", fontSize = 10.sp, color = Color(0xFF0891B2))
                 }
@@ -801,3 +747,88 @@ private fun SerialCard(
 }
 
 private fun Double.fmt() = if (this % 1.0 == 0.0) String.format("%,.0f", this) else String.format("%,.2f", this)
+
+@Preview(name = "Product Detail Preview", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun ProductDetailScreenPreview() {
+    AppTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = ScreenBg) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Header Card
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, BorderColor),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(120.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(PrimaryLight),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(48.dp))
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Text("Samsung Galaxy A55", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextMain)
+                        Text("PRD-001 · Samsung", fontSize = 12.sp, color = TextMuted)
+                        Spacer(Modifier.height(8.dp))
+                        TypeBadge("NEW")
+                    }
+                }
+
+                // Price & Stock Card
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, BorderColor),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("လက်လီဈေး", color = TextMuted, fontSize = 13.sp)
+                            Text("850,000 Ks", fontWeight = FontWeight.ExtraBold, color = Primary, fontSize = 15.sp)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("လက်ကျန်ပမာဏ", color = TextMuted, fontSize = 13.sp)
+                            Text("15 လုံး", fontWeight = FontWeight.Bold, color = Success, fontSize = 14.sp)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("အာမခံ", color = TextMuted, fontSize = 13.sp)
+                            Text("🛡 1 နှစ် အာမခံ", fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                // Remark Card
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg),
+                    border = BorderStroke(1.dp, BorderColor),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Outlined.Description, null, tint = Primary, modifier = Modifier.size(18.dp))
+                            Text("မှတ်ချက် (Remark)", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
+                        }
+                        Text("အရည်အသွေးကောင်းမွန်ပြီး အာမခံ ၁ နှစ် အပြည့်ပါဝင်ပါသည်။", fontSize = 13.sp, color = TextMain, lineHeight = 20.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+

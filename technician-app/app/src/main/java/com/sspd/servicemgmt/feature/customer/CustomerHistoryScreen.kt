@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +48,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.sspd.servicemgmt.core.ui.component.AppPullRefresh
+import com.sspd.servicemgmt.core.ui.theme.AppTheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
@@ -62,6 +65,7 @@ import com.sspd.servicemgmt.core.ui.theme.PrimaryLight
 import com.sspd.servicemgmt.core.ui.theme.ScreenBg
 import com.sspd.servicemgmt.core.ui.theme.TextMain
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
+import com.sspd.servicemgmt.core.util.fmtWarranty
 import java.text.NumberFormat
 import java.time.LocalDate
 
@@ -89,11 +93,17 @@ fun CustomerHistoryScreen(
         },
         containerColor = ScreenBg
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.selected == null) {
-                CustomerSearchContent(state, vm)
-            } else {
-                CustomerDetailContent(state, vm, onJobClick, onSaleClick)
+        AppPullRefresh(
+            refreshing = state.refreshing,
+            onRefresh = vm::refresh,
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                if (state.selected == null) {
+                    CustomerSearchContent(state, vm)
+                } else {
+                    CustomerDetailContent(state, vm, onJobClick, onSaleClick)
+                }
             }
         }
     }
@@ -291,8 +301,16 @@ private fun SaleItemRow(item: SaleItemDTO) {
         item.serialNumbers.orEmpty().takeIf { it.isNotEmpty() }?.let {
             Text("Serial: ${it.joinToString()}", fontSize = 11.sp, color = SaleColor)
         }
-        item.warrantyExpiryDate?.takeIf { it.isNotBlank() }?.let {
-            Text("Warranty Expiry: ${it.take(10)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = warrantyColor(it))
+        fmtWarranty(item.warrantyMonths, item.warrantyStartDate, item.warrantyExpiryDate).takeIf { it.isNotBlank() }?.let { label ->
+            Text(
+                buildString {
+                    append("အာမခံ $label")
+                    item.warrantyExpiryDate?.takeIf { it.isNotBlank() }?.let { append(" · ${it.take(10)}") }
+                },
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = warrantyColor(item.warrantyExpiryDate)
+            )
         }
     }
 }
@@ -486,40 +504,42 @@ private fun CustomerHistoryPreview() {
         )
     )
 
-    Surface(color = ScreenBg) {
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(Primary).padding(horizontal = 12.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.ArrowBack, null, tint = Color.White)
-                Text(
-                    "Customer History",
-                    modifier = Modifier.padding(start = 16.dp),
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 20.sp
+    AppTheme {
+        Surface(color = ScreenBg) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(Primary).padding(horizontal = 12.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.ArrowBack, null, tint = Color.White)
+                    Text(
+                        "Customer History",
+                        modifier = Modifier.padding(start = 16.dp),
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 20.sp
+                    )
+                }
+                OutlinedTextField(
+                    value = "",
+                    onValueChange = {},
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    label = { Text("Customer အမည်၊ ဖုန်း၊ လိပ်စာဖြင့် ရှာရန်") },
+                    placeholder = { Text("ဥပမာ - မောင်မောင် / 09 / ရန်ကုန်") },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
                 )
-            }
-            OutlinedTextField(
-                value = "",
-                onValueChange = {},
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                label = { Text("Customer အမည်၊ ဖုန်း၊ လိပ်စာဖြင့် ရှာရန်") },
-                placeholder = { Text("ဥပမာ - မောင်မောင် / 09 / ရန်ကုန်") },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp)
-            )
-            LazyColumn(
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                item { CustomerCard(customer, onClick = {}) }
-                item { Text("Service History (${jobs.size})", fontWeight = FontWeight.ExtraBold, color = TextMain) }
-                items(jobs) { job -> JobHistoryCard(job, onClick = {}) }
-                item { Text("Sale History", fontWeight = FontWeight.ExtraBold, color = TextMain) }
-                item { SaleHistoryCard(previewSale, onClick = {}) }
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item { CustomerCard(customer, onClick = {}) }
+                    item { Text("Service History (${jobs.size})", fontWeight = FontWeight.ExtraBold, color = TextMain) }
+                    items(jobs) { job -> JobHistoryCard(job, onClick = {}) }
+                    item { Text("Sale History", fontWeight = FontWeight.ExtraBold, color = TextMain) }
+                    item { SaleHistoryCard(previewSale, onClick = {}) }
+                }
             }
         }
     }
@@ -532,7 +552,8 @@ private val SaleColor = Color(0xFF1D4ED8)
 private val SaleBorder = Color(0xFF93C5FD)
 private val SaleBackground = Color(0xFFEFF6FF)
 
-private fun warrantyColor(expiry: String): Color = runCatching {
+private fun warrantyColor(expiry: String?): Color = runCatching {
+    if (expiry.isNullOrBlank()) return@runCatching TextMuted
     if (LocalDate.parse(expiry.take(10)).isBefore(LocalDate.now())) Color(0xFFB91C1C)
     else Color(0xFF15803D)
 }.getOrDefault(TextMuted)

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,6 +41,22 @@ fun SoftwareUpdateScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) { vm.checkForce() }
 
+    SoftwareUpdateContent(
+        state = state,
+        onBack = onBack,
+        onDownloadAndInstall = { vm.downloadAndInstall() },
+        onTriggerInstall = { vm.triggerInstall(context) }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SoftwareUpdateContent(
+    state: VersionCheckViewModel.State,
+    onBack: () -> Unit,
+    onDownloadAndInstall: () -> Unit,
+    onTriggerInstall: () -> Unit
+) {
     val update = state.update
     val hasUpdate = update != null
     val isDownloading = state.downloadProgress?.let { it < 1f } ?: false
@@ -48,7 +65,7 @@ fun SoftwareUpdateScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Software Update", fontWeight = FontWeight.ExtraBold) },
+                title = { Text("Software Update", fontWeight = FontWeight.ExtraBold, color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = Color.White)
@@ -193,7 +210,7 @@ fun SoftwareUpdateScreen(onBack: () -> Unit) {
                         Button(
                             onClick = {
                                 if (isDownloading) return@Button
-                                if (isDone) vm.triggerInstall(context) else vm.downloadAndInstall()
+                                if (isDone) onTriggerInstall() else onDownloadAndInstall()
                             },
                             enabled = !isDownloading && (isDone || update.downloadUrl.isNotBlank()),
                             modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -254,5 +271,18 @@ private fun InfoBox(label: String, value: String, modifier: Modifier = Modifier)
             Text(label, fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
             Text(value, fontSize = 12.sp, color = TextMain, fontWeight = FontWeight.ExtraBold)
         }
+    }
+}
+
+@Preview(name = "Software Update Preview", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun SoftwareUpdateScreenPreview() {
+    AppTheme {
+        SoftwareUpdateContent(
+            state = VersionCheckViewModel.State(checked = true, update = null),
+            onBack = {},
+            onDownloadAndInstall = {},
+            onTriggerInstall = {}
+        )
     }
 }

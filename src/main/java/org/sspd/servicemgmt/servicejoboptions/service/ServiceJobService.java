@@ -12,6 +12,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.Paym
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.creditoptions.dto.CustomerCreditApplyRequest;
 import org.sspd.servicemgmt.creditoptions.repository.CustomerCreditApplicationRepository;
@@ -177,7 +178,6 @@ public class ServiceJobService {
     public List<ServiceJobDTO> findByCustomerId(Integer customerId) {
         return repo.findByCustomerId(customerId).stream()
                 .sorted(java.util.Comparator.comparing(ServiceJob::getId).reversed())
-                .filter(this::canReadJob)
                 .map(this::toDto)
                 .toList();
     }
@@ -273,6 +273,9 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(job);
         recordActivity(job, "CREATED", null, job.getStatus() != null ? job.getStatus().name() : "RECEIVED", "Job created");
         broadcastJobEvent( "JOB_CREATED");
+        if (job.getAssignedStaff() != null) {
+            customerFcmService.sendTechnicianAlertAsync(job.getAssignedStaff().getId(), job.getId(), job.getJobNo());
+        }
         return result;
     }
 
@@ -362,7 +365,7 @@ public class ServiceJobService {
         recordActivity(job, "UPDATED", null, job.getStatus() != null ? job.getStatus().name() : null, "Job updated");
         broadcastJobEvent( "JOB_UPDATED");
         if (job.getAssignedStaff() != null && !java.util.Objects.equals(previousAssignedStaffId, job.getAssignedStaff().getId())) {
-            customerFcmService.sendTechnicianAlertAsync(job.getAssignedStaff().getId());
+            customerFcmService.sendTechnicianAlertAsync(job.getAssignedStaff().getId(), job.getId(), job.getJobNo());
         }
         return updated;
     }
@@ -1141,8 +1144,8 @@ public class ServiceJobService {
         tx.setPaymentMethod(method);
         tx.setAmount(amount.negate());
         tx.setPaymentDate(LocalDateTime.now());
-        tx.setTransactionNo(transactionNo != null && !transactionNo.isBlank() ? transactionNo.trim() : generateTxnNo());
-        paymentTransactionRepo.save(tx);
+        tx.setTransactionNo(PaymentTransactionNumbers.blankToNull(transactionNo));
+        PaymentTransactionNumbers.save(paymentTransactionRepo, tx);
 
         JournalDetailDTO drReturn = new JournalDetailDTO();
         drReturn.setAccountId(accountResolver.salesRtn().getId());
@@ -1706,11 +1709,11 @@ public class ServiceJobService {
             tx.setPaymentMethod(line.method());
             tx.setAmount(line.amount());
             tx.setPaymentDate(LocalDateTime.now());
-            tx.setTransactionNo(line.transactionNo() != null && !line.transactionNo().isBlank()
-                    ? line.transactionNo()
-                    : (userTransactionNo != null && !userTransactionNo.isBlank() ? userTransactionNo : generateTxnNo()));
-            paymentTransactionRepo.save(tx);
-            recordJobCashDrawer(job, line.method(), line.amount());
+            tx.setTransactionNo(PaymentTransactionNumbers.blankToNull(
+                    line.transactionNo() != null && !line.transactionNo().isBlank()
+                    ? line.transactionNo() : userTransactionNo));
+            PaymentTransaction savedTx = PaymentTransactionNumbers.save(paymentTransactionRepo, tx);
+            recordJobCashDrawer(savedTx, line.method(), line.amount());
         }
     }
 
@@ -1746,11 +1749,11 @@ public class ServiceJobService {
         return lines;
     }
 
-    private void recordJobCashDrawer(ServiceJob job, PaymentMethod method, BigDecimal amount) {
-        if (job == null || job.getId() == null || method == null || method.getAccount() == null
+    private void recordJobCashDrawer(PaymentTransaction tx, PaymentMethod method, BigDecimal amount) {
+        if (tx == null || tx.getId() == null || method == null || method.getAccount() == null
                 || amount == null || amount.signum() <= 0) return;
         if (method.getAccount().getId().equals(accountResolver.cash().getId())) {
-            cashDrawerService.recordCashSale(amount, ReferenceType.Service.name(), job.getId());
+            cashDrawerService.recordCashSale(amount, ReferenceType.Service.name(), tx.getId());
         }
     }
 
@@ -1856,11 +1859,6 @@ public class ServiceJobService {
     /** Stable job number derived from the persisted PK (same pattern as booking numbers). */
     static String generateJobNo(Integer id) {
         return String.format("SJ-%06d", id);
-    }
-
-    private String generateTxnNo() {
-        long count = paymentTransactionRepo.count();
-        return String.format("TXN-%06d", count + 1);
     }
 
     private ServiceJobDTO toDto(ServiceJob j) {

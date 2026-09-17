@@ -100,6 +100,9 @@ public class Product {
     @Column(name = "warranty_months")
     private Integer warrantyMonths = 0;
 
+    @Column(name = "warranty_terms", length = 255)
+    private String warrantyTerms;
+
     @Column(name = "photo_base64", columnDefinition = "LONGTEXT")
     private String photoBase64;
 

@@ -1,5 +1,8 @@
 package com.sspd.servicemgmt.feature.home
 
+import com.sspd.servicemgmt.core.util.formatWarranty
+import com.sspd.servicemgmt.core.util.formatWarrantyState
+
 import android.content.res.Configuration
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
@@ -474,6 +477,21 @@ fun CustomerOrderHistoryCard(
                                 color = Success,
                                 fontSize = 16.sp
                             )
+                            invoice.lines.orEmpty().forEach { line ->
+                                val warranty = formatWarranty(line.warrantyMonths, line.warrantyStartDate, line.warrantyExpiryDate)
+                                val stateLabel = formatWarrantyState(line.warrantyStatus, line.warrantyDaysRemaining)
+                                Text(
+                                    buildString {
+                                        append(line.productName.orEmpty().ifBlank { "Product" })
+                                        append(" · Qty ${line.qty ?: 1}")
+                                        line.serialNumber?.takeIf { it.isNotBlank() }?.let { append(" · S/N $it") }
+                                        if (warranty.isNotBlank()) append(" · အာမခံ $warranty")
+                                        if (stateLabel.isNotBlank()) append(" · $stateLabel")
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (line.warrantyStatus == "EXPIRED") Danger else TextMain
+                                )
+                            }
                             if ((order.depositAmount ?: 0.0) > 0.0) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
@@ -1691,4 +1709,3 @@ private fun OrderRatingBlockPreview() {
         }
     }
 }
-

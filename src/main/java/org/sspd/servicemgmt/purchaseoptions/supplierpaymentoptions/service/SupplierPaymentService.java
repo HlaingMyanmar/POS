@@ -11,6 +11,7 @@ import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.Payme
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.journaloption.detail.dto.JournalDetailDTO;
@@ -69,8 +70,17 @@ public class SupplierPaymentService {
         SupplierPayment payment = SupplierPayment.builder().paymentNo("PENDING").supplier(supplier)
                 .paymentMethod(method).totalAmount(request.getAmount()).allocatedAmount(allocated)
                 .advanceAmount(advance).paymentDate(LocalDateTime.now())
-                .transactionNo(blank(request.getTransactionNo()) ? nextTransactionNo() : request.getTransactionNo().trim())
+                .transactionNo(blank(request.getTransactionNo()) ? null : request.getTransactionNo().trim())
                 .paidBy(currentUsername()).remark(request.getRemark()).build();
+        payment = supplierPaymentRepository.save(payment);
+        payment.setPaymentNo(String.format("SP-%06d", payment.getId()));
+        if (blank(payment.getTransactionNo())) {
+            payment.setTransactionNo(PaymentTransactionNumbers.documentNo("SPTX", payment.getId()));
+        }
+        payment = supplierPaymentRepository.save(payment);
+
+        boolean onlyAllocated = work.size() == 1 && advance.signum() <= 0;
+        boolean onlyAdvance = work.isEmpty() && advance.signum() > 0;
         List<SupplierPaymentAllocation> entities = new ArrayList<>();
         for (AllocationWork item : work) {
             Purchase purchase = item.purchase();
@@ -81,23 +91,22 @@ public class SupplierPaymentService {
             purchaseRepository.save(purchase);
             entities.add(SupplierPaymentAllocation.builder().supplierPayment(payment)
                     .purchase(purchase).amount(item.amount()).build());
-            PaymentTransaction tx = new PaymentTransaction();
-            tx.setReferenceId(purchase.getId()); tx.setReferenceType(ReferenceType.Purchase);
-            tx.setPaymentMethod(method); tx.setAmount(item.amount()); tx.setPaymentDate(LocalDateTime.now());
-            tx.setTransactionNo(payment.getTransactionNo());
-            paymentTransactionRepository.save(tx);
+            recordPaymentTransaction(payment, method, ReferenceType.Purchase, purchase.getId(), item.amount(),
+                    onlyAllocated ? payment.getTransactionNo() : null);
+        }
+        if (advance.signum() > 0) {
+            recordPaymentTransaction(payment, method, ReferenceType.Supplier_Advance, supplier.getId(), advance,
+                    onlyAdvance ? payment.getTransactionNo() : null);
+            supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).add(advance));
         }
         payment.setAllocations(entities);
         payment = supplierPaymentRepository.save(payment);
-        payment.setPaymentNo(String.format("SP-%06d", payment.getId()));
-        payment = supplierPaymentRepository.save(payment);
 
-        if (advance.compareTo(BigDecimal.ZERO) > 0)
-            supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).add(advance));
         syncSupplierBalance(supplier);
         postJournal(payment, request.getStaffId());
         if (isCash(method))
-            cashDrawerService.recordPurchaseCashOut(request.getAmount(), "Supplier payment " + payment.getPaymentNo());
+            cashDrawerService.recordPurchaseCashOut(request.getAmount(), "Supplier payment " + payment.getPaymentNo(),
+                    "Supplier_Payment", payment.getId());
         return toDto(payment);
     }
 
@@ -149,17 +158,8 @@ public class SupplierPaymentService {
                     ? PaymentStatus.Pending
                     : (safe(purchase.getDueAmount()).signum() <= 0 ? PaymentStatus.Paid : PaymentStatus.Partial));
             purchaseRepository.save(purchase);
-            paymentTransactionRepository.findByReferenceIdAndReferenceType(purchase.getId(), ReferenceType.Purchase).stream()
-                    .filter(tx -> payment.getTransactionNo() != null && payment.getTransactionNo().equals(tx.getTransactionNo()))
-                    .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
-                    .forEach(tx -> {
-                        tx.setReversed(true);
-                        tx.setReversedAt(LocalDateTime.now());
-                        tx.setReversedBy(currentUsername());
-                        tx.setReversalReason(reason.trim());
-                        paymentTransactionRepository.save(tx);
-                    });
         }
+        reverseLinkedTransactions(payment, reason.trim());
         if (advanceToReverse.signum() > 0) {
             supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).subtract(advanceToReverse));
             supplierRepository.save(supplier);
@@ -248,7 +248,7 @@ public class SupplierPaymentService {
                 .advanceUsed(advanceUsed).returnCreditUsed(returnUsed)
                 .returnCreditSources(sourceUses.length() > 0 ? sourceUses.toString() : null)
                 .appliedAt(LocalDateTime.now())
-                .appliedBy(currentUsername()).reason(request.getReason()).build();
+                .appliedBy(currentUsername()).reason(request.getReason()).voided(false).build();
         application = creditApplicationRepository.save(application);
         application.setApplicationNo(String.format("SCA-%06d", application.getId()));
         application = creditApplicationRepository.save(application);
@@ -272,9 +272,92 @@ public class SupplierPaymentService {
             journalWriter.write(entry);
         }
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", application.getId());
         result.put("applicationNo", application.getApplicationNo()); result.put("amount", amount);
         result.put("advanceUsed", advanceUsed); result.put("returnCreditUsed", returnUsed);
         result.put("remainingDue", target.getDueAmount()); return result;
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_READ')")
+    @Transactional(readOnly = true)
+    public List<SupplierCreditApplicationDTO> creditApplications(Integer supplierId) {
+        supplierRepository.findById(supplierId)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+        return creditApplicationRepository.findBySupplierIdOrderByIdDesc(supplierId).stream()
+                .map(this::toCreditDto).toList();
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
+    @Transactional
+    public SupplierCreditApplicationDTO voidCreditApplication(Integer id, String reason, Integer staffId) {
+        periodGuard.assertOpen(LocalDateTime.now(), "void supplier credit application");
+        if (reason == null || reason.isBlank())
+            throw new IllegalArgumentException("Void reason is required.");
+        if (staffId == null || !staffRepository.existsById(staffId))
+            throw new IllegalArgumentException("Valid staff is required.");
+
+        var snapshot = creditApplicationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier credit application not found"));
+        if (snapshot.getSupplier() == null || snapshot.getSupplier().getId() == null)
+            throw new ResourceNotFoundException("Supplier not found");
+        Supplier supplier = supplierRepository.findByIdForUpdate(snapshot.getSupplier().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
+
+        java.util.TreeSet<Integer> purchaseIds = new java.util.TreeSet<>();
+        if (snapshot.getTargetPurchase() != null && snapshot.getTargetPurchase().getId() != null)
+            purchaseIds.add(snapshot.getTargetPurchase().getId());
+        purchaseIds.addAll(parseReturnCreditSourceIds(snapshot.getReturnCreditSources()));
+        for (Integer purchaseId : purchaseIds) {
+            purchaseRepository.findByIdForUpdate(purchaseId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+        }
+
+        var application = creditApplicationRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Supplier credit application not found"));
+        if (Boolean.TRUE.equals(application.getVoided()))
+            throw new IllegalStateException("Credit application is already voided.");
+        if (application.getSupplier() == null || !supplier.getId().equals(application.getSupplier().getId()))
+            throw new IllegalStateException("Credit application supplier changed during void.");
+        Purchase target = purchaseRepository.findByIdForUpdate(application.getTargetPurchase().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found"));
+        if (target.isCancelled())
+            throw new IllegalStateException(
+                    "Cannot void credit application: purchase " + target.getPurchaseCode() + " is cancelled.");
+        requireConfirmedPurchase(target);
+        BigDecimal amount = safe(application.getAmount());
+        if (amount.compareTo(safe(target.getPaidAmount())) > 0)
+            throw new IllegalStateException(
+                    "Cannot void credit application: purchase " + target.getPurchaseCode()
+                            + " no longer has enough paid amount to reverse.");
+
+        target.setPaidAmount(safe(target.getPaidAmount()).subtract(amount).max(BigDecimal.ZERO));
+        target.setDueAmount(safe(target.getDueAmount()).add(amount));
+        target.setPaymentStatus(safe(target.getPaidAmount()).signum() <= 0
+                ? PaymentStatus.Pending
+                : (safe(target.getDueAmount()).signum() <= 0 ? PaymentStatus.Paid : PaymentStatus.Partial));
+        purchaseRepository.save(target);
+
+        supplier.setAdvanceBalance(safe(supplier.getAdvanceBalance()).add(safe(application.getAdvanceUsed())));
+        BigDecimal remaining = restoreReturnCreditToRecordedSources(
+                supplier.getId(), target.getId(), application.getReturnCreditSources(),
+                safe(application.getReturnCreditUsed()));
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalStateException(
+                    "Cannot restore supplier return credit to its original voucher for "
+                            + application.getApplicationNo()
+                            + ". Source history is missing or the source voucher is no longer available.");
+        }
+
+        journalWriter.reverseByReferenceNo(application.getApplicationNo());
+        journalWriter.reverseByReferenceNo(application.getApplicationNo() + "-RC");
+
+        application.setVoided(true);
+        application.setVoidedAt(LocalDateTime.now());
+        application.setVoidedBy(currentUsername());
+        application.setVoidReason(reason.trim());
+        application = creditApplicationRepository.save(application);
+        syncSupplierBalance(supplier);
+        return toCreditDto(application);
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_READ')")
@@ -335,6 +418,20 @@ public class SupplierPaymentService {
         entry.setDetails(lines); journalWriter.write(entry);
     }
 
+    private PaymentTransaction recordPaymentTransaction(SupplierPayment payment, PaymentMethod method,
+            ReferenceType type, Integer referenceId, BigDecimal amount, String transactionNo) {
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setReferenceId(referenceId);
+        tx.setReferenceType(type);
+        tx.setSourceType(PaymentTransaction.SOURCE_SUPPLIER_PAYMENT);
+        tx.setSourceId(payment.getId());
+        tx.setPaymentMethod(method);
+        tx.setAmount(amount);
+        tx.setPaymentDate(LocalDateTime.now());
+        tx.setTransactionNo(transactionNo);
+        return PaymentTransactionNumbers.save(paymentTransactionRepository, tx);
+    }
+
     private JournalDetailDTO line(Integer accountId, BigDecimal debit, BigDecimal credit) {
         JournalDetailDTO line = new JournalDetailDTO(); line.setAccountId(accountId);
         line.setDebit(debit); line.setCredit(credit); return line;
@@ -351,6 +448,73 @@ public class SupplierPaymentService {
                 .subtract(safe(credits)).subtract(safe(supplier.getAdvanceBalance())));
         supplierRepository.save(supplier);
     }
+    private SupplierCreditApplicationDTO toCreditDto(org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.SupplierCreditApplication application) {
+        Purchase target = application.getTargetPurchase();
+        return SupplierCreditApplicationDTO.builder()
+                .id(application.getId())
+                .applicationNo(application.getApplicationNo())
+                .supplierId(application.getSupplier() != null ? application.getSupplier().getId() : null)
+                .purchaseId(target != null ? target.getId() : null)
+                .purchaseCode(target != null ? target.getPurchaseCode() : null)
+                .amount(application.getAmount())
+                .advanceUsed(application.getAdvanceUsed())
+                .returnCreditUsed(application.getReturnCreditUsed())
+                .appliedAt(application.getAppliedAt())
+                .appliedBy(application.getAppliedBy())
+                .reason(application.getReason())
+                .voided(Boolean.TRUE.equals(application.getVoided()))
+                .voidedAt(application.getVoidedAt())
+                .voidedBy(application.getVoidedBy())
+                .voidReason(application.getVoidReason())
+                .build();
+    }
+
+    private java.util.List<Integer> parseReturnCreditSourceIds(String encodedSources) {
+        java.util.List<Integer> ids = new java.util.ArrayList<>();
+        if (encodedSources == null || encodedSources.isBlank()) return ids;
+        for (String token : encodedSources.split(",")) {
+            String[] parts = token.split(":");
+            if (parts.length != 2) continue;
+            try {
+                ids.add(Integer.valueOf(parts[0].trim()));
+            } catch (NumberFormatException ignored) {
+                // skip malformed source history
+            }
+        }
+        return ids;
+    }
+
+    private BigDecimal restoreReturnCreditToRecordedSources(Integer supplierId, Integer targetPurchaseId,
+            String encodedSources, BigDecimal remaining) {
+        if (remaining.compareTo(BigDecimal.ZERO) <= 0 || encodedSources == null || encodedSources.isBlank()) {
+            return remaining;
+        }
+        for (String token : encodedSources.split(",")) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+            String[] parts = token.split(":");
+            if (parts.length != 2) continue;
+            Integer sourceId;
+            BigDecimal amount;
+            try {
+                sourceId = Integer.valueOf(parts[0].trim());
+                amount = new BigDecimal(parts[1].trim());
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            if (amount.compareTo(BigDecimal.ZERO) <= 0 || sourceId.equals(targetPurchaseId)) continue;
+            Purchase source = purchaseRepository.findByIdForUpdate(sourceId).orElse(null);
+            if (source == null || source.isCancelled() || source.getSupplier() == null
+                    || !supplierId.equals(source.getSupplier().getId())) {
+                continue;
+            }
+            BigDecimal restore = amount.min(remaining);
+            source.setSupplierCreditAmount(safe(source.getSupplierCreditAmount()).add(restore));
+            purchaseRepository.save(source);
+            remaining = remaining.subtract(restore);
+        }
+        return remaining;
+    }
+
     private SupplierPaymentDTO toDto(SupplierPayment p) {
         return SupplierPaymentDTO.builder().id(p.getId()).paymentNo(p.getPaymentNo())
                 .supplierId(p.getSupplier().getId()).supplierName(p.getSupplier().getName())
@@ -362,6 +526,34 @@ public class SupplierPaymentService {
                         .purchaseId(a.getPurchase().getId()).purchaseCode(a.getPurchase().getPurchaseCode())
                         .amount(a.getAmount()).remainingDue(a.getPurchase().getDueAmount()).build()).toList()).build();
     }
+
+    private void reverseLinkedTransactions(SupplierPayment payment, String reason) {
+        List<PaymentTransaction> linked = new ArrayList<>(paymentTransactionRepository
+                .findBySourceTypeAndSourceId(PaymentTransaction.SOURCE_SUPPLIER_PAYMENT, payment.getId()));
+        linked.removeIf(tx -> Boolean.TRUE.equals(tx.getReversed()));
+        if (linked.isEmpty() && !blank(payment.getTransactionNo())) {
+            Set<Integer> seen = new HashSet<>();
+            for (SupplierPaymentAllocation alloc : payment.getAllocations()) {
+                if (alloc.getPurchase() == null || alloc.getPurchase().getId() == null) continue;
+                paymentTransactionRepository.findByReferenceIdAndReferenceType(alloc.getPurchase().getId(), ReferenceType.Purchase)
+                        .stream()
+                        .filter(tx -> payment.getTransactionNo().equals(tx.getTransactionNo()))
+                        .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
+                        .filter(tx -> seen.add(tx.getId()))
+                        .forEach(linked::add);
+            }
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String actor = currentUsername();
+        for (PaymentTransaction tx : linked) {
+            tx.setReversed(true);
+            tx.setReversedAt(now);
+            tx.setReversedBy(actor);
+            tx.setReversalReason(reason);
+            paymentTransactionRepository.save(tx);
+        }
+    }
+
     private boolean isCash(PaymentMethod method) {
         String name = method.getMethodName() == null ? "" : method.getMethodName().toLowerCase();
         return name.contains("cash") || name.contains("ငွေသား");
@@ -370,7 +562,6 @@ public class SupplierPaymentService {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         return auth != null ? auth.getName() : "SYSTEM";
     }
-    private String nextTransactionNo() { return "SPTX-" + System.currentTimeMillis(); }
     private boolean blank(String value) { return value == null || value.isBlank(); }
     private BigDecimal safe(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
     private record AllocationWork(Purchase purchase, BigDecimal amount) {}

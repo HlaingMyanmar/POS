@@ -11,6 +11,7 @@ import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.Payme
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.creditoptions.dto.CustomerCreditApplyRequest;
@@ -83,7 +84,7 @@ public class CustomerPaymentService {
         customerRepository.save(customer);
         postAdvanceJournal(saved, dto.getStaffId());
         if (isCash(saved.getPaymentMethod()))
-            cashDrawerService.recordCashSale(saved.getAmount());
+            cashDrawerService.recordCashSale(saved.getAmount(), "Customer_Payment", saved.getId());
         return toDto(repository.save(saved));
     }
 
@@ -116,11 +117,18 @@ public class CustomerPaymentService {
                 .allocatedAmount(allocated)
                 .advanceAmount(advance)
                 .paymentDate(LocalDateTime.now())
-                .transactionNo(blank(request.getTransactionNo()) ? nextTransactionNo() : request.getTransactionNo().trim())
+                .transactionNo(blank(request.getTransactionNo()) ? null : request.getTransactionNo().trim())
                 .note(request.getRemark())
                 .staff(staffRepository.findById(request.getStaffId()).orElseThrow())
                 .voided(false)
                 .build();
+        payment = repository.save(payment);
+        payment.setPaymentNo(formatPaymentNo(payment.getId()));
+        if (blank(payment.getTransactionNo())) {
+            payment.setTransactionNo(PaymentTransactionNumbers.documentNo("CPTX", payment.getId()));
+        }
+        payment = repository.save(payment);
+
         List<CustomerPaymentAllocation> entities = new ArrayList<>();
         for (AllocationWork item : work) {
             Sale sale = item.sale();
@@ -130,15 +138,15 @@ public class CustomerPaymentService {
             PaymentTransaction tx = new PaymentTransaction();
             tx.setReferenceId(sale.getId());
             tx.setReferenceType(ReferenceType.Sale);
+            tx.setSourceType(PaymentTransaction.SOURCE_CUSTOMER_PAYMENT);
+            tx.setSourceId(payment.getId());
             tx.setPaymentMethod(method);
             tx.setAmount(item.amount());
             tx.setPaymentDate(LocalDateTime.now());
-            tx.setTransactionNo(payment.getTransactionNo());
-            paymentTransactionRepository.save(tx);
+            tx.setTransactionNo(work.size() == 1 ? payment.getTransactionNo() : null);
+            PaymentTransactionNumbers.save(paymentTransactionRepository, tx);
         }
         payment.setAllocations(entities);
-        payment = repository.save(payment);
-        payment.setPaymentNo(formatPaymentNo(payment.getId()));
         payment = repository.save(payment);
 
         if (advance.compareTo(BigDecimal.ZERO) > 0) {
@@ -147,7 +155,7 @@ public class CustomerPaymentService {
         }
         postAllocateJournal(payment, request.getStaffId());
         if (isCash(method))
-            cashDrawerService.recordCashSale(request.getAmount());
+            cashDrawerService.recordCashSale(request.getAmount(), "Customer_Payment", payment.getId());
         return toDto(payment);
     }
 
@@ -163,8 +171,15 @@ public class CustomerPaymentService {
             throw new IllegalArgumentException("Void reason is required.");
         if (staffId == null || !staffRepository.existsById(staffId))
             throw new IllegalArgumentException("Valid staff is required.");
-        if (payment.getAllocations() == null || payment.getAllocations().isEmpty())
-            throw new IllegalStateException("Only allocated customer payments can be voided here.");
+        boolean hasAllocations = payment.getAllocations() != null && !payment.getAllocations().isEmpty();
+        boolean unusedAdvanceOnly = !hasAllocations
+                && payment.getSale() == null
+                && safe(payment.getAllocatedAmount()).signum() <= 0
+                && safe(payment.getAdvanceAmount()).signum() > 0;
+        if (!hasAllocations && !unusedAdvanceOnly) {
+            throw new IllegalStateException(
+                    "Only allocated customer payments or unused advance payments can be voided here.");
+        }
 
         Customer customer = customerRepository.findByIdForUpdate(payment.getCustomer().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
@@ -188,17 +203,8 @@ public class CustomerPaymentService {
             Sale lockedSale = saleRepository.findLockedWithDetails(alloc.getSale().getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Allocated sale not found"));
             reverseFromSale(lockedSale, safe(alloc.getAmount()));
-            paymentTransactionRepository.findByReferenceIdAndReferenceType(alloc.getSale().getId(), ReferenceType.Sale).stream()
-                    .filter(tx -> payment.getTransactionNo() != null && payment.getTransactionNo().equals(tx.getTransactionNo()))
-                    .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
-                    .forEach(tx -> {
-                        tx.setReversed(true);
-                        tx.setReversedAt(LocalDateTime.now());
-                        tx.setReversedBy(currentUsername());
-                        tx.setReversalReason(reason.trim());
-                        paymentTransactionRepository.save(tx);
-                    });
         }
+        reverseLinkedCustomerTransactions(payment, reason.trim());
         if (advanceToReverse.signum() > 0) {
             customer.setAdvanceBalance(safe(customer.getAdvanceBalance()).subtract(advanceToReverse));
             customerRepository.save(customer);
@@ -625,6 +631,33 @@ public class CustomerPaymentService {
         return dto;
     }
 
+    private void reverseLinkedCustomerTransactions(CustomerPayment payment, String reason) {
+        List<PaymentTransaction> linked = new ArrayList<>(paymentTransactionRepository
+                .findBySourceTypeAndSourceId(PaymentTransaction.SOURCE_CUSTOMER_PAYMENT, payment.getId()));
+        linked.removeIf(tx -> Boolean.TRUE.equals(tx.getReversed()));
+        if (linked.isEmpty() && !blank(payment.getTransactionNo()) && payment.getAllocations() != null) {
+            Set<Integer> seen = new HashSet<>();
+            for (CustomerPaymentAllocation alloc : payment.getAllocations()) {
+                if (alloc.getSale() == null || alloc.getSale().getId() == null) continue;
+                paymentTransactionRepository.findByReferenceIdAndReferenceType(alloc.getSale().getId(), ReferenceType.Sale)
+                        .stream()
+                        .filter(tx -> payment.getTransactionNo().equals(tx.getTransactionNo()))
+                        .filter(tx -> !Boolean.TRUE.equals(tx.getReversed()))
+                        .filter(tx -> seen.add(tx.getId()))
+                        .forEach(linked::add);
+            }
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String actor = currentUsername();
+        for (PaymentTransaction tx : linked) {
+            tx.setReversed(true);
+            tx.setReversedAt(now);
+            tx.setReversedBy(actor);
+            tx.setReversalReason(reason);
+            paymentTransactionRepository.save(tx);
+        }
+    }
+
     private boolean isCash(PaymentMethod method) {
         String name = method.getMethodName() == null ? "" : method.getMethodName().toLowerCase();
         return name.contains("cash") || name.contains("ငွေသား");
@@ -636,7 +669,6 @@ public class CustomerPaymentService {
     }
 
     private String formatPaymentNo(Integer id) { return String.format("CP-%06d", id); }
-    private String nextTransactionNo() { return "CPTX-" + System.currentTimeMillis(); }
     private boolean blank(String value) { return value == null || value.isBlank(); }
     private BigDecimal safe(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
     private record AllocationWork(Sale sale, BigDecimal amount) {}

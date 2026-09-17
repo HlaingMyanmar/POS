@@ -18,9 +18,9 @@ public class PaymentBalanceValidator {
     private final JournalDetailRepository journalDetailRepository;
 
     /**
-     * Checks if the payment method has sufficient balance for the given amount.
-     * Only validates for cash/bank type accounts (assuming account type is Asset).
-     * Throws RuntimeException if insufficient balance.
+     * Snapshot check used by payment flows before they assemble journals.
+     * {@link org.sspd.servicemgmt.journaloption.entry.service.JournalWriter} re-validates
+     * asset credits after account locks so concurrent outgoing payments cannot overdraw.
      */
     public void validateSufficientBalance(PaymentMethod paymentMethod, BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {

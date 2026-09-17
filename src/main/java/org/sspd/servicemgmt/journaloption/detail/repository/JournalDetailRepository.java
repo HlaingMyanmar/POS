@@ -18,6 +18,9 @@ public interface JournalDetailRepository extends JpaRepository<JournalDetail, In
     List<JournalDetail> findByAccountId(Integer accountId);
     boolean existsByAccountId(Integer accountId);
 
+    @Query("SELECT COALESCE(SUM(COALESCE(jd.debit, 0)) - SUM(COALESCE(jd.credit, 0)), 0) FROM JournalDetail jd WHERE jd.account.id = :accountId")
+    BigDecimal netDebitByAccountId(@Param("accountId") Integer accountId);
+
     // တစ်ခုတည်းသော account code အတွက် net credit (Income normal balance)
     @Query("SELECT COALESCE(SUM(jd.credit) - SUM(jd.debit), 0) FROM JournalDetail jd " +
            "WHERE jd.account.code = :code AND jd.journalEntry.entryDate >= :from AND jd.journalEntry.entryDate < :to")

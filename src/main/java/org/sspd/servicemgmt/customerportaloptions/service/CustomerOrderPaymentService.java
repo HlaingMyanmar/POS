@@ -690,10 +690,10 @@ public class CustomerOrderPaymentService {
   sale.setDetails(details);
   // Releasing and recording the sale share one transaction: rollback restores the hold.
   stock.release(o);orders.flush();
+  migrateOrderReceiptsBeforeSale(o);
   var completed=sales.save(sale);o.setCompletedSaleId(completed.getId());o.setPaymentState("FULFILLED");
+  attachMigratedSaleId(o, completed.getId());
   if(customerCredit!=null && o.getCustomer()!=null) customerCredit.reduceAdvanceBalance(o.getCustomer(), advance);
-  // SaleService has now posted the same split payments against the sale.
-  if(paymentTransactions!=null) paymentTransactions.deleteByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order);
   // Legacy unit tests construct this service reflectively; Spring always injects the hook in production.
   if(loyalty!=null) loyalty.award(o,total(o));
   changed(o,"အော်ဒါအတွက် အရောင်းဘောင်ချာ ထုတ်ပြီးပါပြီ။");
@@ -761,7 +761,8 @@ public class CustomerOrderPaymentService {
   tx.setPaymentDate(LocalDateTime.now());
   tx.setTransactionNo(reference);
   paymentTransactions.save(tx);
-  if(cashDrawer!=null && isCash(method)) cashDrawer.recordCashRefund(amount);
+  if(cashDrawer!=null && isCash(method))
+   cashDrawer.recordCashRefund(amount, ReferenceType.Customer_Order.name(), o.getId());
  }
 
  private void recordReceivedTransaction(CustomerOrder o, BigDecimal amount, Integer methodId, String reference, String stage) {
@@ -812,9 +813,87 @@ public class CustomerOrderPaymentService {
   BigDecimal restore=advanceReceivedForSale(o);
   if(customerCredit!=null && o.getCustomer()!=null && restore.signum()>0)
    customerCredit.addAdvanceBalance(o.getCustomer(), restore);
+  restoreMigratedOrderReceipts(o, saleId);
   changed(o,"Sale ကို ပယ်ဖျက်လိုက်ပါသည်။ လက်ခံပြီးငွေကို customer advance အဖြစ် ထားပါသည်။ ပြန်ဘောင်ချာထုတ်နိုင် / ပြန်အမ်းနိုင်ပါသည်။"
     +(reason==null||reason.isBlank()?"":" — "+reason.trim()));
   return true;
+ }
+
+ private static final String MIGRATED_REASON_PREFIX = "Migrated to sale";
+
+ /** Keep order receipts as reversed audit rows and free transaction_no for the new sale payments. */
+ private void migrateOrderReceiptsBeforeSale(CustomerOrder o) {
+  if(paymentTransactions==null) return;
+  LocalDateTime now=LocalDateTime.now();
+  String actor=actor();
+  for(PaymentTransaction tx : paymentTransactions.findByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order)) {
+   if(Boolean.TRUE.equals(tx.getReversed())) continue;
+   if(tx.getAmount()==null || tx.getAmount().signum()<=0) continue;
+   String original=tx.getTransactionNo();
+   tx.setReversed(true);
+   tx.setReversedAt(now);
+   tx.setReversedBy(actor);
+   tx.setReversalReason(migratedReason(null, original));
+   if(tx.getId()!=null) tx.setTransactionNo(releasedTransactionNo(original, "MIGRATED", tx.getId()));
+   paymentTransactions.save(tx);
+  }
+  paymentTransactions.flush();
+ }
+
+ private void attachMigratedSaleId(CustomerOrder o, Integer saleId) {
+  if(paymentTransactions==null || saleId==null) return;
+  for(PaymentTransaction tx : paymentTransactions.findByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order)) {
+   String reason=tx.getReversalReason();
+   if(!isMigratedReason(reason)) continue;
+   tx.setReversalReason(migratedReason(saleId, originalTxnFromReason(reason)));
+   paymentTransactions.save(tx);
+  }
+ }
+
+ private void restoreMigratedOrderReceipts(CustomerOrder o, Integer saleId) {
+  if(paymentTransactions==null || saleId==null) return;
+  for(PaymentTransaction saleTx : paymentTransactions.findByReferenceIdAndReferenceType(saleId, ReferenceType.Sale)) {
+   String no=saleTx.getTransactionNo();
+   if(no==null || saleTx.getId()==null || no.contains("-VOID-"+saleTx.getId())) continue;
+   saleTx.setTransactionNo(releasedTransactionNo(no, "VOID", saleTx.getId()));
+   paymentTransactions.save(saleTx);
+  }
+  for(PaymentTransaction tx : paymentTransactions.findByReferenceIdAndReferenceType(o.getId(), ReferenceType.Customer_Order)) {
+   if(!Boolean.TRUE.equals(tx.getReversed()) || !isMigratedReason(tx.getReversalReason())) continue;
+   String original=originalTxnFromReason(tx.getReversalReason());
+   tx.setTransactionNo(original==null || original.isBlank() ? null : original);
+   tx.setReversed(false);
+   tx.setReversedAt(null);
+   tx.setReversedBy(null);
+   tx.setReversalReason(null);
+   paymentTransactions.save(tx);
+  }
+ }
+
+ private boolean isMigratedReason(String reason) {
+  return reason!=null && reason.startsWith(MIGRATED_REASON_PREFIX);
+ }
+
+ private String migratedReason(Integer saleId, String originalTxnNo) {
+  String original=originalTxnNo==null?"":originalTxnNo;
+  return saleId==null
+    ? MIGRATED_REASON_PREFIX+" | "+original
+    : MIGRATED_REASON_PREFIX+" #"+saleId+" | "+original;
+ }
+
+ private String originalTxnFromReason(String reason) {
+  if(reason==null) return "";
+  int sep=reason.lastIndexOf(" | ");
+  return sep<0 ? "" : reason.substring(sep+3);
+ }
+
+ private String releasedTransactionNo(String original, String tag, Integer id) {
+  String suffix="-"+tag+"-"+id;
+  String base=original==null || original.isBlank() ? "TXN" : original.trim();
+  int max=100-suffix.length();
+  if(max<1) return suffix.substring(Math.max(0, suffix.length()-100));
+  if(base.length()>max) base=base.substring(0, max);
+  return base+suffix;
  }
 
  private String advanceJournalRef(CustomerOrder o, String stage) {
@@ -835,7 +914,8 @@ public class CustomerOrderPaymentService {
     journalLine(accounts.custAdvance().getId(), BigDecimal.ZERO, amount)));
   journalWriter.write(entry);
   if(customerCredit!=null && o.getCustomer()!=null) customerCredit.addAdvanceBalance(o.getCustomer(), amount);
-  if(cashDrawer!=null && isCash(method)) cashDrawer.recordCashSale(amount);
+  if(cashDrawer!=null && isCash(method))
+   cashDrawer.recordCashSale(amount, ReferenceType.Customer_Order.name() + "_" + stage, o.getId());
  }
 
  private BigDecimal advanceReceivedForSale(CustomerOrder o) {

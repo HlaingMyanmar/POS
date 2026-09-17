@@ -13,6 +13,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.Paym
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.PaymentTransaction;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.ReferenceType;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
+import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.cashdraweroptions.service.CashDrawerService;
 import org.sspd.servicemgmt.creditoptions.service.CreditAlertService;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -223,10 +224,9 @@ public class SaleReturnService {
                 paymentBalanceValidator.validateSufficientBalance(line.method(), line.amount());
             }
             entity.setPaymentMethod(method);
-            String txnNo = (dto.getTransactionNo() == null || dto.getTransactionNo().isBlank())
-                    ? generateTransactionNo()
-                    : dto.getTransactionNo();
-            entity.setTransactionNo(txnNo);
+            if (dto.getTransactionNo() != null && !dto.getTransactionNo().isBlank()) {
+                entity.setTransactionNo(dto.getTransactionNo().trim());
+            }
         }
 
         SaleReturn saved = saleReturnRepository.save(entity);
@@ -492,13 +492,12 @@ public class SaleReturnService {
             paymentTx.setPaymentMethod(line.method());
             paymentTx.setAmount(line.amount());
             paymentTx.setPaymentDate(LocalDateTime.now());
-            paymentTx.setTransactionNo(line.transactionNo() != null && !line.transactionNo().isBlank()
-                    ? line.transactionNo()
-                    : saleReturn.getTransactionNo());
-            paymentTransactionRepository.save(paymentTx);
+            paymentTx.setTransactionNo(PaymentTransactionNumbers.blankToNull(line.transactionNo() != null
+                    && !line.transactionNo().isBlank() ? line.transactionNo() : saleReturn.getTransactionNo()));
+            PaymentTransaction savedTx = PaymentTransactionNumbers.save(paymentTransactionRepository, paymentTx);
             if (line.method().getAccount() != null
                     && line.method().getAccount().getId().equals(accountResolver.cash().getId())) {
-                cashDrawerService.recordCashRefund(line.amount(), ReferenceType.Sale_Return.name(), saleReturn.getId());
+                cashDrawerService.recordCashRefund(line.amount(), ReferenceType.Sale_Return.name(), savedTx.getId());
             }
         }
     }
@@ -797,13 +796,6 @@ public class SaleReturnService {
     }
 
     private record PaymentLine(PaymentMethod method, BigDecimal amount, String transactionNo) {}
-
-    private String generateTransactionNo() {
-        Integer lastId = paymentTransactionRepository.findTopByOrderByIdDesc()
-                .map(PaymentTransaction::getId)
-                .orElse(0);
-        return String.format("TXN-%06d", lastId + 1);
-    }
 
     private PaymentStatus calculateStatus(BigDecimal net, BigDecimal paid) {
         if (paid == null || paid.compareTo(BigDecimal.ZERO) == 0) {

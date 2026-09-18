@@ -47,6 +47,11 @@ public class AppVersionSettingsController {
         return storeApk(file, "technician.apk");
     }
 
+    @PostMapping("/upload-customer-apk")
+    public ResponseEntity<ApiResponse<String>> uploadCustomerApk(@RequestParam("file") MultipartFile file) {
+        return storeApk(file, "customer.apk");
+    }
+
     @GetMapping("/apk-exists")
     public ResponseEntity<ApiResponse<Boolean>> apkExists() {
         return ResponseEntity.ok(new ApiResponse<>(true, "OK", apkFile("servicemgmt.apk").exists()));
@@ -55,6 +60,11 @@ public class AppVersionSettingsController {
     @GetMapping("/technician-apk-exists")
     public ResponseEntity<ApiResponse<Boolean>> technicianApkExists() {
         return ResponseEntity.ok(new ApiResponse<>(true, "OK", apkFile("technician.apk").exists()));
+    }
+
+    @GetMapping("/customer-apk-exists")
+    public ResponseEntity<ApiResponse<Boolean>> customerApkExists() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "OK", apkFile("customer.apk").exists()));
     }
 
     private ResponseEntity<ApiResponse<String>> storeApk(MultipartFile file, String fileName) {

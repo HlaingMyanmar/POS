@@ -150,6 +150,7 @@ public class CustomerPortalOrderDTO {
         private String productCode;
         private Integer qty;
         private BigDecimal unitPrice;
+        private BigDecimal discountAmount;
         private BigDecimal subtotal;
         /** true = serial-tracked product (qty usually = serial count at sale time). */
         private Boolean hasSerial;

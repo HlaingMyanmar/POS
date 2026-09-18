@@ -297,6 +297,7 @@ export interface CustomerDTO {
   id: number;
   name: string;
   phone: string;
+  email?: string;
   address: string;
   creditHold?: boolean;
   creditHoldReason?: string;
@@ -1152,6 +1153,36 @@ export interface ShelfLocationDTO {
   active: boolean;
 }
 
+export interface CashDrawerSessionDTO {
+  id: number;
+  openedBy: string;
+  openedAt: string;
+  openingCash: number;
+  cashSales: number;
+  cashRefunds: number;
+  cashIn: number;
+  cashOut: number;
+  expectedCash?: number | null;
+  countedCash?: number | null;
+  differenceAmount?: number | null;
+  closedBy?: string | null;
+  closedAt?: string | null;
+  status: string;
+  note?: string | null;
+}
+
+export interface CashDrawerMovementDTO {
+  id: number;
+  type: string;
+  amount: number;
+  actor: string;
+  createdAt: string;
+  reason: string;
+  referenceType?: string | null;
+  referenceId?: number | null;
+  reversed?: boolean;
+}
+
 export enum AppRoute {
   LOGIN = '/login',
   CUSTOMER_SHOP = '/shop',
@@ -1175,6 +1206,7 @@ export enum AppRoute {
   STAFF = '/hr/staff',
   COA = '/accounting/coa',
   PAYMENT_METHODS = '/accounting/payment-methods',
+  CASH_DRAWER = '/accounting/cash-drawer',
   ACCOUNTING_DASHBOARD = '/accounting/dashboard',
   JOURNAL_ENTRIES = '/accounting/journal-entries',
   EXPENSE_INCOME = '/accounting/expense-income',

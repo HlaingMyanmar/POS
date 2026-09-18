@@ -51,6 +51,10 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     List<ServiceJob> findByStatusAndPaymentStatusIsNullOrderByReceivedDateDesc(ServiceJobStatus status);
     List<ServiceJob> findByCustomerId(Integer customerId);
     List<ServiceJob> findByCustomer_IdOrderByReceivedDateDescIdDesc(Integer customerId);
+    Optional<ServiceJob> findFirstBySaleId(Integer saleId);
+
+    @Query("select j.saleId from ServiceJob j where j.customer.id = :customerId and j.saleId is not null")
+    List<Integer> findLinkedSaleIdsByCustomerId(@Param("customerId") Integer customerId);
     List<ServiceJob> findByAssignedStaffId(Integer staffId);
     long countByStatus(ServiceJobStatus status);
 

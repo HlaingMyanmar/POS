@@ -216,6 +216,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'ဂျာနယ်မှတ်တမ်း', icon: <BookMarked size={18} />, path: AppRoute.JOURNAL_ENTRIES, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_JOURNAL_READ' },
       { name: 'ဝင်ငွေ/ထွက်ငွေ', icon: <Wallet size={18} />, path: AppRoute.EXPENSE_INCOME, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_EXPENSE_READ' },
       { name: 'ငွေပေးချေနည်း', icon: <CreditCard size={18} />, path: AppRoute.PAYMENT_METHODS, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_PAYMENT_METHOD_READ' },
+      { name: 'Cash Drawer', icon: <Wallet size={18} />, path: AppRoute.CASH_DRAWER, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_CASH_DRAWER_READ' },
       { name: 'ငွေပေးချေမှတ်တမ်း', icon: <Wallet size={18} />, path: AppRoute.PAYMENT_TRANSACTIONS, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_COA_READ' },
       { name: 'Opening Balance', icon: <Building2 size={18} />, path: AppRoute.OPENING_BALANCE, group: 'စာရင်းကိုင်', permission: 'CAN_ACCESS_COA_READ' },
       { name: 'တစ်နေ့တာ Snapshot', icon: <ClipboardList size={18} />, path: AppRoute.DAILY_SNAPSHOT, group: 'အစီရင်ခံစာ', permission: 'CAN_ACCESS_REPORT_READ' },

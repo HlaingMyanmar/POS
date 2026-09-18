@@ -17,6 +17,7 @@ import CustomerManagement from './pages/CustomerManagement';
 import StaffManagement from './pages/StaffManagement';
 import ChartOfAccountManagement from './pages/ChartOfAccountManagement';
 import PaymentMethodManagement from './pages/PaymentMethodManagement';
+import CashDrawerManagement from './pages/CashDrawerManagement';
 import AccountingDashboard from './pages/AccountingDashboard';
 import PaymentTransactionManagement from './pages/PaymentTransactionManagement';
 import JournalEntryManagement from './pages/JournalEntryManagement';
@@ -319,6 +320,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.STAFF}               element={guard(<StaffManagement />,            'CAN_ACCESS_STAFF_READ')} />
           <Route path={AppRoute.COA}                 element={guard(<ChartOfAccountManagement />,   'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.PAYMENT_METHODS}     element={guard(<PaymentMethodManagement />,    'CAN_ACCESS_PAYMENT_METHOD_READ')} />
+          <Route path={AppRoute.CASH_DRAWER}         element={guard(<CashDrawerManagement />,       'CAN_ACCESS_CASH_DRAWER_READ')} />
           <Route path={AppRoute.ACCOUNTING_DASHBOARD} element={guard(<AccountingDashboard />,       'CAN_ACCESS_COA_READ')} />
           <Route path={AppRoute.JOURNAL_ENTRIES}     element={guard(<JournalEntryManagement />,     'CAN_ACCESS_JOURNAL_READ')} />
           <Route path={AppRoute.EXPENSE_INCOME}      element={guard(<ExpenseIncomeManagement

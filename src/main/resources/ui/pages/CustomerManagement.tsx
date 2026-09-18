@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   ShieldAlert,
+  Smartphone,
   Trash2,
   User,
   X
@@ -214,6 +215,46 @@ const CustomerManagement: React.FC = () => {
     return pages;
   }, [customerTotalPages, safeCustomerPage]);
   const bulk = useBulkSelection<CustomerDTO>(pagedCustomers);
+
+  const handleCreateAppAccount = async (customer: CustomerDTO) => {
+    if (appCustomerIds.has(customer.id)) {
+      await Swal.fire('ရှိပြီး', 'ဤဖောက်သည်တွင် App အကောင့် ရှိပြီးသား ဖြစ်သည်', 'info');
+      return;
+    }
+    const result = await Swal.fire({
+      title: 'App အကောင့် ချိတ်မည်',
+      html: `<p class="text-left text-sm text-slate-600 mb-2">${customer.name} · ${customer.phone || ''}</p>
+             <p class="text-left text-xs text-slate-500">စကားဝှက် ဗလာထားရင် အလိုအလျောက် ထုတ်ပေးမည်။</p>`,
+      input: 'text',
+      inputPlaceholder: 'စကားဝှက် (optional)',
+      showCancelButton: true,
+      confirmButtonText: 'ချိတ်မည်',
+      cancelButtonText: 'မလုပ်တော့ပါ',
+    });
+    if (!result.isConfirmed) return;
+    try {
+      const res = await api.post<any>('/v1/customer-app-accounts', {
+        customerId: customer.id,
+        email: customer.email || undefined,
+        phone: customer.phone || undefined,
+        password: String(result.value || '').trim() || undefined,
+        generatePassword: !String(result.value || '').trim(),
+      });
+      const password = res.data?.temporaryPassword;
+      await loadData();
+      if (password) {
+        await Swal.fire({
+          icon: 'success',
+          title: 'ချိတ်ပြီး',
+          html: `<p class="text-sm text-slate-600 mb-2">ဖောက်သည်ကို ဤစကားဝှက် ပေးပါ။</p><p class="font-mono text-lg font-black">${password}</p>`,
+        });
+      } else {
+        await Swal.fire({ icon: 'success', title: 'ချိတ်ပြီး', timer: 1400, showConfirmButton: false });
+      }
+    } catch (e: any) {
+      await Swal.fire('မအောင်မြင်ပါ', e?.message || 'App အကောင့် ဖန်တီးမရပါ', 'error');
+    }
+  };
 
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
@@ -668,6 +709,14 @@ const CustomerManagement: React.FC = () => {
                     <td className="px-4 py-3 text-center text-slate-700 font-semibold">{saleCount}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => void handleCreateAppAccount(customer)}
+                          disabled={appCustomerIds.has(customer.id)}
+                          title={appCustomerIds.has(customer.id) ? 'App အကောင့် ရှိပြီး' : 'Customer App အကောင့် ချိတ်မည်'}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Smartphone size={13} /> App
+                        </button>
                         <button
                           onClick={() => openEditModal(customer)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50"

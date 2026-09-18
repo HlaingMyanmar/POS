@@ -15,7 +15,7 @@ import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import TechnicianAssignmentPanel from '../components/TechnicianAssignmentPanel';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
-import { PaymentTransactionDTO } from '../types';
+import { AppRoute, PaymentTransactionDTO } from '../types';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { getFromSession } from '../utils/storageHelper';
@@ -2088,6 +2088,7 @@ export default function ServiceJobManagement() {
   const sBalance   = Math.max(0, sNetAmt - sPaid);
   const selectedPM = payMethods.find(m => String(m.id) === settleForm.paymentMethodId);
   const requiresTxn = selectedPM && /bank|kpay|wave|aya|kbz|mpu/i.test(selectedPM.methodName);
+  const isCashSettleMethod = selectedPM && /cash|ငွေသား|လက်ငင်း/i.test(selectedPM.methodName || '');
 
   const settleCustomer = settleJob ? customers.find(c => c.id === settleJob.customerId) : null;
   const settleTerm = settleJob ? creditTerms.find(t => t.customerId === settleJob.customerId) : null;
@@ -3102,6 +3103,12 @@ export default function ServiceJobManagement() {
                         {payMethods.map(m => <option key={m.id} value={m.id}>{m.methodName}</option>)}
                       </select>
                       {sPaid <= 0 && <p className="text-[10px] text-amber-600 mt-0.5">အကြွေးရောင်း — ငွေပေးချေမှုမရှိပါ</p>}
+                      {sPaid > 0 && isCashSettleMethod && (
+                        <p className="text-[10px] text-amber-700 mt-1">
+                          ငွေသားနဲ့ ရှင်းမယ်ဆို{' '}
+                          <a href={`#${AppRoute.CASH_DRAWER}`} className="font-bold underline">Cash Drawer ကို အရင်ဖွင့်ပါ</a>
+                        </p>
+                      )}
                     </div>
 
                     <SplitPaymentEditor

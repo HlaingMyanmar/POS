@@ -11,6 +11,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
+import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.bookingoptions.service.BookingService;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
@@ -59,6 +60,11 @@ import org.sspd.servicemgmt.saleoptions.saledetails.model.SaleDetail;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobLine;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobPart;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentRole;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.AssignmentStatus;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.model.ServiceJobAssignment;
+import org.sspd.servicemgmt.servicejoboptions.assignmentoptions.repository.ServiceJobAssignmentRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobNotificationRepository;
 import org.sspd.servicemgmt.serviceoptions.repository.ServiceItemRepository;
@@ -73,8 +79,12 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -97,6 +107,7 @@ public class CustomerPortalService {
     private final SaleRepository saleRepository;
     private final org.sspd.servicemgmt.saleoptions.warranty.SaleWarrantyQueryService saleWarrantyQuery;
     private final ServiceJobRepository serviceJobRepository;
+    private final ServiceJobAssignmentRepository serviceJobAssignmentRepository;
     private final ServiceJobNotificationRepository serviceJobNotificationRepository;
     private final CustomerAppAccountRepository accountRepository;
     private final CustomerAppActivityService activityService;
@@ -699,8 +710,11 @@ public class CustomerPortalService {
     @Transactional(readOnly = true)
     public List<CustomerPortalPurchaseDTO> myPurchases() {
         var me = CustomerPortalAuth.require();
+        java.util.Set<Integer> jobSaleIds = new java.util.HashSet<>(
+                serviceJobRepository.findLinkedSaleIdsByCustomerId(me.getCustomerId()));
         return saleRepository.findByCustomerIdOrderBySaleDateDescIdDesc(me.getCustomerId()).stream()
                 .filter(s -> !Boolean.TRUE.equals(s.getVoided()))
+                .filter(s -> s.getId() == null || !jobSaleIds.contains(s.getId()))
                 .map(this::toPurchaseDto)
                 .toList();
     }
@@ -714,10 +728,40 @@ public class CustomerPortalService {
     @Transactional(readOnly = true)
     public List<CustomerPortalJobDTO> myJobs() {
         var me = CustomerPortalAuth.require();
-        return serviceJobRepository.findByCustomer_IdOrderByReceivedDateDescIdDesc(me.getCustomerId()).stream()
+        List<ServiceJob> jobs = serviceJobRepository.findByCustomer_IdOrderByReceivedDateDescIdDesc(me.getCustomerId())
+                .stream()
                 .filter(j -> !Boolean.TRUE.equals(j.getVoided()))
-                .map(this::toJobDto)
                 .toList();
+        Map<Integer, Booking> bookings = loadJobBookings(jobs);
+        Map<Integer, List<ServiceJobAssignment>> assignments = loadJobAssignments(jobs);
+        return jobs.stream()
+                .map(job -> toJobDto(job, bookings.get(job.getBookingId()), assignments.getOrDefault(job.getId(), List.of())))
+                .toList();
+    }
+
+    private Map<Integer, Booking> loadJobBookings(List<ServiceJob> jobs) {
+        Set<Integer> bookingIds = new HashSet<>();
+        for (ServiceJob job : jobs) {
+            if (job.getBookingId() != null) bookingIds.add(job.getBookingId());
+        }
+        Map<Integer, Booking> bookings = new HashMap<>();
+        if (bookingIds.isEmpty()) return bookings;
+        for (Booking booking : bookingRepository.findAllById(bookingIds)) {
+            bookings.put(booking.getId(), booking);
+        }
+        return bookings;
+    }
+
+    private Map<Integer, List<ServiceJobAssignment>> loadJobAssignments(List<ServiceJob> jobs) {
+        List<Integer> jobIds = jobs.stream().map(ServiceJob::getId).filter(Objects::nonNull).toList();
+        Map<Integer, List<ServiceJobAssignment>> byJob = new HashMap<>();
+        if (jobIds.isEmpty()) return byJob;
+        for (ServiceJobAssignment assignment : serviceJobAssignmentRepository.findAllByServiceJobIdInOrderByAssignedAtAsc(jobIds)) {
+            Integer jobId = assignment.getServiceJob() != null ? assignment.getServiceJob().getId() : null;
+            if (jobId == null) continue;
+            byJob.computeIfAbsent(jobId, ignored -> new ArrayList<>()).add(assignment);
+        }
+        return byJob;
     }
 
     @Transactional(readOnly = true)
@@ -1035,6 +1079,7 @@ public class CustomerPortalService {
                 ld.setProductCode(line.getProduct() != null ? line.getProduct().getProductCode() : null);
                 ld.setQty(line.getQty());
                 ld.setUnitPrice(line.getUnitPrice());
+                ld.setDiscountAmount(BigDecimal.ZERO);
                 ld.setSubtotal(line.getSubtotal());
                 ld.setHasSerial(line.getProduct() != null && !Boolean.FALSE.equals(line.getProduct().getHasSerial()));
                 lines.add(ld);
@@ -1088,6 +1133,8 @@ public class CustomerPortalService {
         dto.setSaleCode(sale.getSaleCode());
         dto.setSaleDate(sale.getSaleDate());
         dto.setNetAmount(sale.getNetAmount());
+        dto.setTotalAmount(sale.getTotalAmount());
+        dto.setDiscountAmount(sale.getDiscountAmount());
         dto.setPaymentStatus(sale.getPaymentStatus() != null ? sale.getPaymentStatus().name() : null);
         List<CustomerPortalPurchaseDTO.Line> lines = new ArrayList<>();
         if (sale.getDetails() != null) {
@@ -1097,6 +1144,7 @@ public class CustomerPortalService {
                 line.setProductName(d.getProduct() != null ? d.getProduct().getName() : null);
                 line.setQty(d.getQty());
                 line.setUnitPrice(d.getUnitPrice());
+                line.setDiscountAmount(d.getDiscountAmount());
                 line.setSubtotal(d.getSubtotal());
                 line.setWarrantyMonths(d.getWarrantyMonths());
                 line.setWarrantyStartDate(d.getWarrantyStartDate());
@@ -1113,7 +1161,7 @@ public class CustomerPortalService {
         return dto;
     }
 
-    private CustomerPortalJobDTO toJobDto(ServiceJob job) {
+    private CustomerPortalJobDTO toJobDto(ServiceJob job, Booking booking, List<ServiceJobAssignment> assignments) {
         CustomerPortalJobDTO dto = new CustomerPortalJobDTO();
         dto.setId(job.getId());
         dto.setJobNo(job.getJobNo());
@@ -1121,17 +1169,49 @@ public class CustomerPortalService {
         dto.setItemName(job.getItemName());
         dto.setDeviceType(job.getDeviceType());
         dto.setProblemDesc(job.getProblemDesc());
+        dto.setServiceMode((job.getServiceMode() == null ? ServiceMode.INDOOR : job.getServiceMode()).name());
+        dto.setBookingId(job.getBookingId());
+        if (booking != null) {
+            dto.setBookingNo(booking.getBookingNo());
+            dto.setAppointmentDate(booking.getAppointmentDate());
+        }
         dto.setReceivedDate(job.getReceivedDate());
+        dto.setWorkStartedAt(resolveWorkStartedAt(job, assignments));
         dto.setCompletedDate(job.getCompletedDate());
         dto.setDeliveredDate(job.getDeliveredDate());
+        fillJobCrew(job, assignments, dto);
+        dto.setTotalAmount(job.getFinalCost());
+        dto.setDiscountAmount(job.getDiscountAmount());
         dto.setNetAmount(job.getNetAmount());
+        dto.setPaidAmount(job.getPaidAmount());
+        dto.setDueAmount(job.getDueAmount());
         dto.setPaymentStatus(job.getPaymentStatus() != null ? job.getPaymentStatus().name() : null);
+        dto.setLaborNetAmount(job.getLaborNetAmount());
+        dto.setPartsNetAmount(job.getPartsNetAmount());
         List<CustomerPortalJobDTO.ServiceLine> services = new ArrayList<>();
         if (job.getLines() != null) {
             for (ServiceJobLine line : job.getLines()) {
                 CustomerPortalJobDTO.ServiceLine sl = new CustomerPortalJobDTO.ServiceLine();
                 sl.setName(line.getServiceItem() != null ? line.getServiceItem().getItem() : null);
-                sl.setQty(line.getQty());
+                int qty = line.getQty() != null ? line.getQty() : 1;
+                sl.setQty(qty);
+                boolean free = Boolean.TRUE.equals(line.getWarrantyCovered());
+                BigDecimal lineDiscount = nzMoney(line.getDiscountAmount());
+                BigDecimal unit = free ? BigDecimal.ZERO : firstPositive(
+                        line.getBilledPrice(),
+                        line.getPrice(),
+                        line.getApprovedPrice(),
+                        line.getEstimatedPrice(),
+                        line.getCatalogPrice(),
+                        line.estimateUnitPrice(),
+                        line.getServiceItem() != null ? line.getServiceItem().getPrice() : null);
+                BigDecimal subtotal = free ? BigDecimal.ZERO : firstPositive(
+                        line.getSubtotal(),
+                        unit.multiply(BigDecimal.valueOf(qty)).subtract(lineDiscount).max(BigDecimal.ZERO));
+                sl.setUnitPrice(unit);
+                sl.setPrice(unit);
+                sl.setDiscountAmount(free ? BigDecimal.ZERO : lineDiscount);
+                sl.setSubtotal(subtotal);
                 sl.setWarrantyMonths(line.getWarrantyMonths());
                 sl.setWarrantyCovered(line.getWarrantyCovered());
                 services.add(sl);
@@ -1143,13 +1223,94 @@ public class CustomerPortalService {
             for (ServiceJobPart part : job.getProductParts()) {
                 CustomerPortalJobDTO.PartLine pl = new CustomerPortalJobDTO.PartLine();
                 pl.setProductName(part.getProduct() != null ? part.getProduct().getName() : null);
-                pl.setQty(part.getQty());
+                int qty = part.getQty() != null ? part.getQty() : 1;
+                pl.setQty(qty);
+                boolean free = Boolean.TRUE.equals(part.getWarrantyCovered());
+                BigDecimal lineDiscount = nzMoney(part.getDiscountAmount());
+                BigDecimal unit = free ? BigDecimal.ZERO : firstPositive(
+                        part.getUnitPrice(),
+                        part.getProduct() != null ? part.getProduct().getSellingPrice() : null);
+                BigDecimal subtotal = free ? BigDecimal.ZERO : firstPositive(
+                        part.getSubtotal(),
+                        unit.multiply(BigDecimal.valueOf(qty)).subtract(lineDiscount).max(BigDecimal.ZERO));
+                pl.setUnitPrice(unit);
+                pl.setPrice(unit);
+                pl.setDiscountAmount(free ? BigDecimal.ZERO : lineDiscount);
+                pl.setSubtotal(subtotal);
                 pl.setWarrantyCovered(part.getWarrantyCovered());
+                pl.setWarrantyMonths(part.getProduct() != null ? part.getProduct().getWarrantyMonths() : null);
+                pl.setSerialNumber(part.getSerialNumbers());
                 parts.add(pl);
             }
         }
         dto.setParts(parts);
         return dto;
+    }
+
+    private static LocalDateTime resolveWorkStartedAt(ServiceJob job, List<ServiceJobAssignment> assignments) {
+        if (job.getWorkStartedAt() != null) return job.getWorkStartedAt();
+        if (assignments == null) return null;
+        return assignments.stream()
+                .map(ServiceJobAssignment::getWorkStartedAt)
+                .filter(Objects::nonNull)
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+    }
+
+    private static void fillJobCrew(ServiceJob job, List<ServiceJobAssignment> assignments, CustomerPortalJobDTO dto) {
+        List<CustomerPortalJobDTO.CrewMember> crew = new ArrayList<>();
+        LinkedHashSet<Integer> seen = new LinkedHashSet<>();
+        if (assignments != null) {
+            for (ServiceJobAssignment assignment : assignments) {
+                if (assignment.getStatus() == AssignmentStatus.REJECTED || assignment.getStatus() == AssignmentStatus.CANCELED) {
+                    continue;
+                }
+                if (assignment.getStaff() == null || assignment.getStaff().getId() == null) continue;
+                if (!seen.add(assignment.getStaff().getId())) continue;
+                crew.add(crewMember(assignment.getStaff().getName(), assignment.getRole()));
+            }
+        }
+        if (crew.isEmpty()) {
+            if (job.getAssignedStaff() != null && seen.add(job.getAssignedStaff().getId())) {
+                crew.add(crewMember(job.getAssignedStaff().getName(), AssignmentRole.LEAD));
+            }
+            if (job.getHelperStaff() != null && seen.add(job.getHelperStaff().getId())) {
+                crew.add(crewMember(job.getHelperStaff().getName(), AssignmentRole.HELPER));
+            }
+        } else if (job.getHelperStaff() != null && seen.add(job.getHelperStaff().getId())) {
+            crew.add(crewMember(job.getHelperStaff().getName(), AssignmentRole.HELPER));
+        }
+        dto.setTechnicians(crew);
+        dto.setAssignedStaffName(job.getAssignedStaff() != null ? job.getAssignedStaff().getName() : null);
+        dto.setHelperStaffName(job.getHelperStaff() != null ? job.getHelperStaff().getName() : null);
+        dto.setHasHelper(job.getHelperStaff() != null || crew.stream().anyMatch(member -> "HELPER".equals(member.getRole())));
+    }
+
+    private static CustomerPortalJobDTO.CrewMember crewMember(String name, AssignmentRole role) {
+        CustomerPortalJobDTO.CrewMember member = new CustomerPortalJobDTO.CrewMember();
+        member.setName(name);
+        boolean helper = role == AssignmentRole.HELPER;
+        member.setRole(helper ? "HELPER" : "TECHNICIAN");
+        if (role == AssignmentRole.LEAD) {
+            member.setRoleLabel("Technician (ဦးဆောင်)");
+        } else if (helper) {
+            member.setRoleLabel("Helper");
+        } else {
+            member.setRoleLabel("Technician");
+        }
+        return member;
+    }
+
+    private static BigDecimal firstPositive(BigDecimal... values) {
+        if (values == null) return BigDecimal.ZERO;
+        for (BigDecimal v : values) {
+            if (v != null && v.signum() > 0) return v;
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private static BigDecimal nzMoney(BigDecimal value) {
+        return value == null || value.signum() <= 0 ? BigDecimal.ZERO : value;
     }
 
     private void applyOrderFulfillment(CustomerOrder order, Customer customer, CustomerPortalOrderRequest req) {

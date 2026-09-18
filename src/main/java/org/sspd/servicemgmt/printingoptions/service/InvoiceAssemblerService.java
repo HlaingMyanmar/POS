@@ -303,18 +303,14 @@ public class InvoiceAssemblerService {
 
         List<PrintLineItem> items = new ArrayList<>();
         int i = 1;
-        String serviceDevice = safe(job.getItemName());
         String serviceSerial = safe(job.getSerialNo());
-        String serviceDeviceInfo = serviceDevice
-                + (serviceSerial.isBlank() ? "" : " / S/N: " + serviceSerial);
-        if (serviceDeviceInfo.isBlank()) serviceDeviceInfo = "Device not specified";
         if (job.getLines() != null) {
             for (ServiceJobLine l : job.getLines()) {
                 boolean covered = Boolean.TRUE.equals(l.getWarrantyCovered());
                 items.add(PrintLineItem.builder()
                         .rowNo(i++)
                         .productName(l.getServiceItem() != null ? l.getServiceItem().getItem() : "")
-                        .serialInfo(serviceDeviceInfo)
+                        .serialInfo(serviceSerial)
                         .qty(l.getQty() != null ? l.getQty() : 0)
                         .unitPrice(fmt(l.getPrice()))
                         .subtotal(fmt(l.getSubtotal()))

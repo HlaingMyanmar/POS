@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, FileUp, Info, RefreshCw, Save, ShieldAlert
 import Swal from 'sweetalert2';
 import { appVersionSettingsService } from '../services/api';
 
-type AppKind = 'pos' | 'technician';
+type AppKind = 'pos' | 'technician' | 'customer';
 
 interface VersionSettings {
   versionCode: number;
@@ -14,6 +14,10 @@ interface VersionSettings {
   technicianVersionName: string;
   technicianForceUpdate: boolean;
   technicianChangelog: string;
+  customerVersionCode: number;
+  customerVersionName: string;
+  customerForceUpdate: boolean;
+  customerChangelog: string;
 }
 
 const defaultSettings: VersionSettings = {
@@ -25,7 +29,17 @@ const defaultSettings: VersionSettings = {
   technicianVersionName: '1.0.0',
   technicianForceUpdate: false,
   technicianChangelog: '',
+  customerVersionCode: 1,
+  customerVersionName: '1.0.0',
+  customerForceUpdate: false,
+  customerChangelog: '',
 };
+
+const APP_TABS: { id: AppKind; label: string; fileName: string; downloadPath: string }[] = [
+  { id: 'pos', label: 'POS Manager', fileName: 'servicemgmt.apk', downloadPath: '/app/servicemgmt.apk' },
+  { id: 'technician', label: 'Technician', fileName: 'technician.apk', downloadPath: '/app/technician.apk' },
+  { id: 'customer', label: 'Customer', fileName: 'customer.apk', downloadPath: '/app/customer.apk' },
+];
 
 const MAX_APK_SIZE_BYTES = 200 * 1024 * 1024;
 
@@ -83,16 +97,32 @@ const AppVersionSettingsPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [apkExists, setApkExists] = useState(false);
   const [technicianApkExists, setTechnicianApkExists] = useState(false);
+  const [customerApkExists, setCustomerApkExists] = useState(false);
   const [apkFile, setApkFile] = useState<File | null>(null);
 
-  const isTechnician = activeApp === 'technician';
-  const versionName = (isTechnician ? settings.technicianVersionName : settings.versionName) || '';
-  const versionCode = isTechnician ? settings.technicianVersionCode : settings.versionCode;
-  const changelog = (isTechnician ? settings.technicianChangelog : settings.changelog) || '';
-  const forceUpdate = isTechnician ? settings.technicianForceUpdate : settings.forceUpdate;
-  const currentApkExists = isTechnician ? technicianApkExists : apkExists;
-  const apkStorageName = isTechnician ? 'technician.apk' : 'servicemgmt.apk';
-  const apkDownloadPath = isTechnician ? '/app/technician.apk' : '/app/servicemgmt.apk';
+  const activeTab = APP_TABS.find((tab) => tab.id === activeApp) ?? APP_TABS[0];
+  const versionName = (
+    activeApp === 'technician' ? settings.technicianVersionName
+      : activeApp === 'customer' ? settings.customerVersionName
+        : settings.versionName
+  ) || '';
+  const versionCode =
+    activeApp === 'technician' ? settings.technicianVersionCode
+      : activeApp === 'customer' ? settings.customerVersionCode
+        : settings.versionCode;
+  const changelog = (
+    activeApp === 'technician' ? settings.technicianChangelog
+      : activeApp === 'customer' ? settings.customerChangelog
+        : settings.changelog
+  ) || '';
+  const forceUpdate =
+    activeApp === 'technician' ? settings.technicianForceUpdate
+      : activeApp === 'customer' ? settings.customerForceUpdate
+        : settings.forceUpdate;
+  const currentApkExists =
+    activeApp === 'technician' ? technicianApkExists
+      : activeApp === 'customer' ? customerApkExists
+        : apkExists;
 
   const releaseReady = useMemo(() => (
     versionCode > 0 &&
@@ -104,14 +134,16 @@ const AppVersionSettingsPage: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const [res, apkRes, technicianApkRes] = await Promise.all([
+      const [res, apkRes, technicianApkRes, customerApkRes] = await Promise.all([
         appVersionSettingsService.getSettings(),
         appVersionSettingsService.apkExists(),
-        appVersionSettingsService.technicianApkExists()
+        appVersionSettingsService.technicianApkExists(),
+        appVersionSettingsService.customerApkExists()
       ]);
       if (res.success && res.data) setSettings({ ...defaultSettings, ...res.data });
       setApkExists(Boolean(apkRes.data));
       setTechnicianApkExists(Boolean(technicianApkRes.data));
+      setCustomerApkExists(Boolean(customerApkRes.data));
     } finally {
       setLoading(false);
     }
@@ -120,21 +152,33 @@ const AppVersionSettingsPage: React.FC = () => {
   useEffect(() => { void load(); }, []);
 
   const patchActive = (patch: Partial<{ versionName: string; versionCode: number; changelog: string; forceUpdate: boolean }>) => {
-    setSettings((s) => isTechnician
-      ? {
+    setSettings((s) => {
+      if (activeApp === 'technician') {
+        return {
           ...s,
           technicianVersionName: patch.versionName ?? s.technicianVersionName,
           technicianVersionCode: patch.versionCode ?? s.technicianVersionCode,
           technicianChangelog: patch.changelog ?? s.technicianChangelog,
           technicianForceUpdate: patch.forceUpdate ?? s.technicianForceUpdate,
-        }
-      : {
+        };
+      }
+      if (activeApp === 'customer') {
+        return {
           ...s,
-          versionName: patch.versionName ?? s.versionName,
-          versionCode: patch.versionCode ?? s.versionCode,
-          changelog: patch.changelog ?? s.changelog,
-          forceUpdate: patch.forceUpdate ?? s.forceUpdate,
-        });
+          customerVersionName: patch.versionName ?? s.customerVersionName,
+          customerVersionCode: patch.versionCode ?? s.customerVersionCode,
+          customerChangelog: patch.changelog ?? s.customerChangelog,
+          customerForceUpdate: patch.forceUpdate ?? s.customerForceUpdate,
+        };
+      }
+      return {
+        ...s,
+        versionName: patch.versionName ?? s.versionName,
+        versionCode: patch.versionCode ?? s.versionCode,
+        changelog: patch.changelog ?? s.changelog,
+        forceUpdate: patch.forceUpdate ?? s.forceUpdate,
+      };
+    });
   };
 
   const handleUploadApk = async () => {
@@ -153,11 +197,14 @@ const AppVersionSettingsPage: React.FC = () => {
 
     setUploading(true);
     try {
-      const res = isTechnician
+      const res = activeApp === 'technician'
         ? await appVersionSettingsService.uploadTechnicianApk(apkFile)
-        : await appVersionSettingsService.uploadApk(apkFile);
+        : activeApp === 'customer'
+          ? await appVersionSettingsService.uploadCustomerApk(apkFile)
+          : await appVersionSettingsService.uploadApk(apkFile);
       if (res.success) {
-        if (isTechnician) setTechnicianApkExists(true);
+        if (activeApp === 'technician') setTechnicianApkExists(true);
+        else if (activeApp === 'customer') setCustomerApkExists(true);
         else setApkExists(true);
         setApkFile(null);
         Swal.fire({ icon: 'success', title: 'APK upload ပြီးပါပြီ', timer: 1400, showConfirmButton: false });
@@ -172,11 +219,11 @@ const AppVersionSettingsPage: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!settings.versionName.trim() || !settings.technicianVersionName.trim()) {
+    if (!settings.versionName.trim() || !settings.technicianVersionName.trim() || !settings.customerVersionName.trim()) {
       Swal.fire({ icon: 'warning', title: 'Version Name ထည့်ပါ', timer: 1600, showConfirmButton: false });
       return;
     }
-    if (settings.versionCode < 1 || settings.technicianVersionCode < 1) {
+    if (settings.versionCode < 1 || settings.technicianVersionCode < 1 || settings.customerVersionCode < 1) {
       Swal.fire({ icon: 'warning', title: 'Version Code သည် 1 အထက် ဖြစ်ရမည်', timer: 1600, showConfirmButton: false });
       return;
     }
@@ -211,7 +258,7 @@ const AppVersionSettingsPage: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-800">Android App Version</h1>
-            <p className="text-sm text-slate-500">POS Manager နှင့် Technician APK များကို သီးခြား version / upload လုပ်ရန်</p>
+            <p className="text-sm text-slate-500">POS Manager, Technician နှင့် Customer APK များကို သီးခြား version / upload လုပ်ရန်</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -225,19 +272,16 @@ const AppVersionSettingsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-2">
-        {([
-          ['pos', 'POS Manager', 'servicemgmt.apk'],
-          ['technician', 'Technician', 'technician.apk'],
-        ] as const).map(([id, label, fileName]) => (
+      <div className="flex flex-wrap gap-2">
+        {APP_TABS.map((tab) => (
           <button
-            key={id}
+            key={tab.id}
             type="button"
-            onClick={() => { setActiveApp(id); setApkFile(null); }}
-            className={`px-4 py-2 rounded-lg text-xs font-bold border ${activeApp === id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+            onClick={() => { setActiveApp(tab.id); setApkFile(null); }}
+            className={`px-4 py-2 rounded-lg text-xs font-bold border ${activeApp === tab.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
           >
-            {label}
-            <span className="ml-2 font-mono font-medium opacity-80">{fileName}</span>
+            {tab.label}
+            <span className="ml-2 font-mono font-medium opacity-80">{tab.fileName}</span>
           </button>
         ))}
       </div>
@@ -346,7 +390,7 @@ const AppVersionSettingsPage: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              APK file name ဘာဖြစ်ဖြစ် server က <span className="font-mono font-semibold">{apkStorageName}</span> အဖြစ်သိမ်းမည်။ Upload ပြီးပါက app က <span className="font-mono">{apkDownloadPath}</span> မှ download လုပ်ပါမည်။
+              APK file name ဘာဖြစ်ဖြစ် server က <span className="font-mono font-semibold">{activeTab.fileName}</span> အဖြစ်သိမ်းမည်။ Upload ပြီးပါက app က <span className="font-mono">{activeTab.downloadPath}</span> မှ download လုပ်ပါမည်။
             </p>
           </div>
         </div>
@@ -364,7 +408,7 @@ const AppVersionSettingsPage: React.FC = () => {
                     </p>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    {isTechnician ? 'Technician' : 'POS Manager'} · Version {versionName} (code {versionCode})
+                    {activeTab.label} · Version {versionName} (code {versionCode})
                   </p>
                 </div>
                 <div className="p-4 space-y-3">

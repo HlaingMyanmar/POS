@@ -35,6 +35,10 @@ class AppVersionSettingsServiceTest {
         dto.setTechnicianVersionName("1.0.1");
         dto.setTechnicianForceUpdate(true);
         dto.setTechnicianChangelog("GPS recovery");
+        dto.setCustomerVersionCode(3);
+        dto.setCustomerVersionName("1.0.2");
+        dto.setCustomerForceUpdate(true);
+        dto.setCustomerChangelog("Invoice + jobs");
 
         AppVersionSettingsDTO saved = new AppVersionSettingsService(repository).saveSettings(dto);
 
@@ -44,5 +48,9 @@ class AppVersionSettingsServiceTest {
         assertEquals("1.0.1", saved.getTechnicianVersionName());
         assertTrue(saved.isTechnicianForceUpdate());
         assertEquals("GPS recovery", saved.getTechnicianChangelog());
+        assertEquals(3, saved.getCustomerVersionCode());
+        assertEquals("1.0.2", saved.getCustomerVersionName());
+        assertTrue(saved.isCustomerForceUpdate());
+        assertEquals("Invoice + jobs", saved.getCustomerChangelog());
     }
 }

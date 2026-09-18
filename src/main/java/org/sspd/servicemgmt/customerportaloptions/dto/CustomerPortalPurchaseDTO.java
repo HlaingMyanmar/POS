@@ -14,6 +14,8 @@ public class CustomerPortalPurchaseDTO {
     private String saleCode;
     private LocalDateTime saleDate;
     private BigDecimal netAmount;
+    private BigDecimal totalAmount;
+    private BigDecimal discountAmount;
     private String paymentStatus;
     private List<Line> lines = new ArrayList<>();
 
@@ -23,6 +25,7 @@ public class CustomerPortalPurchaseDTO {
         private String productName;
         private Integer qty;
         private BigDecimal unitPrice;
+        private BigDecimal discountAmount;
         private BigDecimal subtotal;
         private Integer warrantyMonths;
         private LocalDate warrantyStartDate;

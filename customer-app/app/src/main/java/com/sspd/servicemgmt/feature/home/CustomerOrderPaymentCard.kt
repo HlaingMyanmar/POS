@@ -399,6 +399,14 @@ fun CustomerOrderPaymentCard(
                                 Text("ဆိုင်ပို့ခ · ${moneyKs(current.deliveryCharge)}", fontWeight = FontWeight.SemiBold)
                                 Text("ငွေပေးချေမှု အကျဉ်းချုပ်", fontWeight = FontWeight.Bold, color = TextMain)
                     Text("ပစ္စည်းဖိုး · ${moneyKs(current.itemsTotal)}", style = MaterialTheme.typography.bodySmall)
+                    if ((current.discountAmount ?: 0.0) > 0.0) {
+                        Text(
+                            "Overall လျှော့ · -${moneyKs(current.discountAmount)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Danger
+                        )
+                    }
                                 Text("ဆိုင်သို့ပေးရန် · ${moneyKs(current.total)}", fontWeight = FontWeight.Bold, color = Primary)
                             }
                             current.shippingReason?.takeIf { it.isNotBlank() }?.let {
@@ -898,6 +906,14 @@ fun CustomerOrderPaymentCard(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("ငွေပေးချေမှု အကျဉ်းချုပ်", fontWeight = FontWeight.Bold, color = TextMain)
                     Text("ပစ္စည်းဖိုး · ${moneyKs(current.itemsTotal)}", style = MaterialTheme.typography.bodySmall)
+                    if ((current.discountAmount ?: 0.0) > 0.0) {
+                        Text(
+                            "Overall လျှော့ · -${moneyKs(current.discountAmount)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Danger
+                        )
+                    }
                     if (current.deliveryHandler == "HANDOFF") {
                         Text("ဆိုင်ပို့ခ · ပို့ခ သီးခြားပေးရန်", style = MaterialTheme.typography.bodySmall, color = Warning)
                     } else if ((current.deliveryCharge ?: 0.0) > 0 || current.orderType == "DELIVERY") {

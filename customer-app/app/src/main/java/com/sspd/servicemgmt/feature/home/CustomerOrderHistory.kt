@@ -87,7 +87,7 @@ import com.sspd.servicemgmt.core.ui.theme.TextMain
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
 import com.sspd.servicemgmt.core.ui.theme.Warning
 import com.sspd.servicemgmt.core.ui.theme.WarningBg
-import com.sspd.servicemgmt.core.ui.component.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               00SaleInvoiceViewerDialog
+import com.sspd.servicemgmt.core.ui.component.SaleInvoiceViewerDialog
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.util.SaleInvoiceOpener
 import kotlinx.coroutines.launch
@@ -756,6 +756,14 @@ fun CustomerOrderHistoryCard(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Column(horizontalAlignment = Alignment.End) {
+                    if ((order.discountAmount ?: 0.0) > 0.0) {
+                        Text(
+                            "Overall လျှော့ -${money(order.discountAmount)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Danger
+                        )
+                    }
                     Text("စုစုပေါင်း", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                     Text(
                         money(order.total),
@@ -1181,6 +1189,14 @@ private fun OrderLineRow(line: OrderLine) {
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
+            if (line.lineDiscount() > 0.0) {
+                Text(
+                    "လိုင်းလျှော့ · -${money(line.lineDiscount())}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Danger
+                )
+            }
         }
         Text(
             money(line.subtotal ?: ((line.unitPrice ?: 0.0) * (line.qty ?: 0))),

@@ -69,7 +69,9 @@ public class RoleSeeder implements CommandLineRunner {
             "CAN_ACCESS_CUSTOMER_APP_ORDER_READ",
             "CAN_ACCESS_CUSTOMER_APP_ORDER_UPDATE",
             "CAN_ACCESS_PAYMENT_TRANSACTION_CREATE",
-            "CAN_ACCESS_TECHNICIAN_LOCATION_READ"
+            "CAN_ACCESS_TECHNICIAN_LOCATION_READ",
+            "CAN_ACCESS_CASH_DRAWER_READ",
+            "CAN_ACCESS_CASH_DRAWER_MANAGE"
     );
 
     private final RoleRepository repository;
@@ -98,7 +100,9 @@ public class RoleSeeder implements CommandLineRunner {
         ensurePermissions("CASHIER", List.of(
                 "CAN_ACCESS_TECHNICIAN_LOCATION_READ",
                 "CAN_ACCESS_CUSTOMER_APP_ORDER_READ",
-                "CAN_ACCESS_CUSTOMER_APP_ORDER_UPDATE"
+                "CAN_ACCESS_CUSTOMER_APP_ORDER_UPDATE",
+                "CAN_ACCESS_CASH_DRAWER_READ",
+                "CAN_ACCESS_CASH_DRAWER_MANAGE"
         ), allPermissions);
         ensurePermissions("TECHNICIAN", List.of("CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN"), allPermissions);
         ensurePermissions("ADMIN", List.of(

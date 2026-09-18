@@ -21,11 +21,15 @@ object SaleInvoiceOpener {
     suspend fun fetchOrderPdfFile(
         context: Context,
         orderId: Int,
-        saleCode: String? = null
-    ): Result<File> = downloadPdfFile(context, saleCode ?: "order-$orderId") {
+        saleCode: String? = null,
+        paperSize: String = "A4"
+    ): Result<File> = downloadPdfFile(context, "${saleCode ?: "order-$orderId"}_$paperSize") {
         ApiClient.service.orderInvoicePdf(
             ApiClient.bearer(PreferenceManager(context).authToken),
-            orderId
+            orderId,
+            paperSize = paperSize,
+            size = paperSize,
+            format = paperSize
         )
     }
 
@@ -35,11 +39,36 @@ object SaleInvoiceOpener {
     suspend fun fetchPurchasePdfFile(
         context: Context,
         saleId: Int,
-        saleCode: String? = null
-    ): Result<File> = downloadPdfFile(context, saleCode ?: "sale-$saleId") {
+        saleCode: String? = null,
+        paperSize: String = "A4"
+    ): Result<File> = downloadPdfFile(context, "${saleCode ?: "sale-$saleId"}_$paperSize") {
         ApiClient.service.purchaseInvoicePdf(
             ApiClient.bearer(PreferenceManager(context).authToken),
-            saleId
+            saleId,
+            paperSize = paperSize,
+            size = paperSize,
+            format = paperSize
+        )
+    }
+
+    /** Official POS SERVICE_JOB voucher (labor + parts) for a finished job. */
+    suspend fun fetchServiceJobPdfFile(
+        context: Context,
+        jobId: Int,
+        jobNo: String? = null,
+        paperSize: String = "A4"
+    ): Result<File> = downloadPdfFile(
+        context,
+        "${jobNo ?: "job-$jobId"}_$paperSize",
+        emptyMessage = "Service job invoice ဗလာဖြစ်နေသည်",
+        fallbackMessage = "Service job invoice မရနိုင်သေးပါ"
+    ) {
+        ApiClient.service.serviceJobInvoicePdf(
+            ApiClient.bearer(PreferenceManager(context).authToken),
+            jobId,
+            paperSize = paperSize,
+            size = paperSize,
+            format = paperSize
         )
     }
 
@@ -47,16 +76,20 @@ object SaleInvoiceOpener {
     suspend fun fetchPaymentReceiptPdfFile(
         context: Context,
         orderId: Int,
-        orderNo: String? = null
+        orderNo: String? = null,
+        paperSize: String = "A4"
     ): Result<File> = downloadPdfFile(
         context,
-        "receipt-${orderNo ?: orderId}",
+        "receipt-${orderNo ?: orderId}_$paperSize",
         emptyMessage = "ငွေလက်ခံပြေစာ ဗလာဖြစ်နေသည်",
         fallbackMessage = "ငွေလက်ခံပြေစာ မရနိုင်သေးပါ"
     ) {
         ApiClient.service.paymentReceiptPdf(
             ApiClient.bearer(PreferenceManager(context).authToken),
-            orderId
+            orderId,
+            paperSize = paperSize,
+            size = paperSize,
+            format = paperSize
         )
     }
 
@@ -161,8 +194,8 @@ object SaleInvoiceOpener {
      * Downloads the official POS sale voucher PDF from the server and opens it via external app.
      * @return error message, or null on success
      */
-    suspend fun openForOrder(context: Context, orderId: Int, saleCode: String? = null): String? {
-        val result = fetchOrderPdfFile(context, orderId, saleCode)
+    suspend fun openForOrder(context: Context, orderId: Int, saleCode: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchOrderPdfFile(context, orderId, saleCode, paperSize)
         return result.fold(
             onSuccess = { file ->
                 withContext(Dispatchers.Main) {
@@ -174,12 +207,12 @@ object SaleInvoiceOpener {
         )
     }
 
-    suspend fun shareForOrder(context: Context, orderId: Int, saleCode: String? = null): String? {
-        val result = fetchOrderPdfFile(context, orderId, saleCode)
+    suspend fun shareForOrder(context: Context, orderId: Int, saleCode: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchOrderPdfFile(context, orderId, saleCode, paperSize)
         return result.fold(
             onSuccess = { file ->
                 withContext(Dispatchers.Main) {
-                    openFileInExternalApp(context, file, share = true)
+                    openFileInExternalApp(context, file, share = true, title = "Sale Invoice ($paperSize) ပို့မည်")
                 }
                 null
             },
@@ -187,8 +220,8 @@ object SaleInvoiceOpener {
         )
     }
 
-    suspend fun openForPurchase(context: Context, saleId: Int, saleCode: String? = null): String? {
-        val result = fetchPurchasePdfFile(context, saleId, saleCode)
+    suspend fun openForPurchase(context: Context, saleId: Int, saleCode: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchPurchasePdfFile(context, saleId, saleCode, paperSize)
         return result.fold(
             onSuccess = { file ->
                 withContext(Dispatchers.Main) {
@@ -200,12 +233,12 @@ object SaleInvoiceOpener {
         )
     }
 
-    suspend fun shareForPurchase(context: Context, saleId: Int, saleCode: String? = null): String? {
-        val result = fetchPurchasePdfFile(context, saleId, saleCode)
+    suspend fun shareForPurchase(context: Context, saleId: Int, saleCode: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchPurchasePdfFile(context, saleId, saleCode, paperSize)
         return result.fold(
             onSuccess = { file ->
                 withContext(Dispatchers.Main) {
-                    openFileInExternalApp(context, file, share = true)
+                    openFileInExternalApp(context, file, share = true, title = "Purchase Invoice ($paperSize) ပို့မည်")
                 }
                 null
             },
@@ -213,8 +246,21 @@ object SaleInvoiceOpener {
         )
     }
 
-    suspend fun openPaymentReceipt(context: Context, orderId: Int, orderNo: String? = null): String? {
-        val result = fetchPaymentReceiptPdfFile(context, orderId, orderNo)
+    suspend fun shareForServiceJob(context: Context, jobId: Int, jobNo: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchServiceJobPdfFile(context, jobId, jobNo, paperSize)
+        return result.fold(
+            onSuccess = { file ->
+                withContext(Dispatchers.Main) {
+                    openFileInExternalApp(context, file, share = true, title = "Service Job Invoice ($paperSize) ပို့မည်")
+                }
+                null
+            },
+            onFailure = { it.message ?: "ချိတ်ဆက်မှု ပြန်စစ်ပါ" }
+        )
+    }
+
+    suspend fun openPaymentReceipt(context: Context, orderId: Int, orderNo: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchPaymentReceiptPdfFile(context, orderId, orderNo, paperSize)
         return result.fold(
             onSuccess = { file ->
                 withContext(Dispatchers.Main) {
@@ -226,12 +272,12 @@ object SaleInvoiceOpener {
         )
     }
 
-    suspend fun sharePaymentReceipt(context: Context, orderId: Int, orderNo: String? = null): String? {
-        val result = fetchPaymentReceiptPdfFile(context, orderId, orderNo)
+    suspend fun sharePaymentReceipt(context: Context, orderId: Int, orderNo: String? = null, paperSize: String = "A4"): String? {
+        val result = fetchPaymentReceiptPdfFile(context, orderId, orderNo, paperSize)
         return result.fold(
             onSuccess = { file ->
                 withContext(Dispatchers.Main) {
-                    openFileInExternalApp(context, file, share = true, title = "ငွေလက်ခံပြေစာ ပို့မည်")
+                    openFileInExternalApp(context, file, share = true, title = "ငွေလက်ခံပြေစာ ($paperSize) ပို့မည်")
                 }
                 null
             },

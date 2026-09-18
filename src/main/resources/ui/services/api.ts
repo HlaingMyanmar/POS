@@ -203,6 +203,7 @@ export const appVersionSettingsService = {
   saveSettings: (dto: any) => api.post<any, ApiResponse<any>>('/v1/app-version-settings', dto),
   apkExists: () => api.get<any, ApiResponse<boolean>>('/v1/app-version-settings/apk-exists'),
   technicianApkExists: () => api.get<any, ApiResponse<boolean>>('/v1/app-version-settings/technician-apk-exists'),
+  customerApkExists: () => api.get<any, ApiResponse<boolean>>('/v1/app-version-settings/customer-apk-exists'),
   uploadApk: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -214,6 +215,11 @@ export const appVersionSettingsService = {
     const formData = new FormData();
     formData.append('file', file);
     return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-technician-apk', formData);
+  },
+  uploadCustomerApk: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<FormData, ApiResponse<string>>('/v1/app-version-settings/upload-customer-apk', formData);
   },
 };
 

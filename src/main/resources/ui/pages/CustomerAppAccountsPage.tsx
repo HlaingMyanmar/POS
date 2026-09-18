@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { History, Mail, Pencil, RefreshCw, Smartphone, X } from 'lucide-react';
+import { History, Link2, Mail, Pencil, Plus, RefreshCw, Smartphone, X } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { api } from '../services/api';
-import { AppRoute } from '../types';
+import { customerService } from '../services/customerapiservice';
+import { AppRoute, CustomerDTO } from '../types';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
+import PortaledCombobox from '../components/PortaledCombobox';
 
 type Account = {
   id: number;
@@ -38,9 +40,22 @@ const ACTION_LABEL: Record<string, string> = {
   EMAIL_UPDATED: 'Email ပြင်',
   ORDER_PLACED: 'ပစ္စည်းမှာ',
   SERVICE_REQUESTED: 'Service တောင်း',
+  ADMIN_CREATED: 'Admin ဖန်တီး',
+  ADMIN_LINKED: 'Admin ချိတ်',
 };
 
 const fmt = (v?: string) => (v ? String(v).replace('T', ' ').slice(0, 16) : '—');
+
+const showCreatedPassword = async (password?: string) => {
+  if (!password) return;
+  await Swal.fire({
+    icon: 'success',
+    title: 'App အကောင့် ချိတ်ပြီး',
+    html: `<p class="text-sm text-slate-600 mb-2">ဖောက်သည်ကို ဤစကားဝှက် ပေးပါ။ နောက်မှ ပြန်မမြင်ရပါ။</p>
+           <p class="font-mono text-lg font-black tracking-wide">${password}</p>`,
+    confirmButtonText: 'ရပါပြီ',
+  });
+};
 
 const CustomerAppAccountsPage: React.FC = () => {
   const [rows, setRows] = useState<Account[]>([]);
@@ -103,6 +118,37 @@ const CustomerAppAccountsPage: React.FC = () => {
     }
   };
 
+  const [customers, setCustomers] = useState<CustomerDTO[]>([]);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkAccount, setLinkAccount] = useState<Account | null>(null);
+  const [linkCustomerId, setLinkCustomerId] = useState(0);
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkPhone, setLinkPhone] = useState('');
+  const [linkPassword, setLinkPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const linkedIds = useMemo(() => new Set(rows.map(r => r.customerId).filter(Boolean) as number[]), [rows]);
+  const createItems = useMemo(
+    () => customers
+      .filter(c => !linkedIds.has(c.id))
+      .map(c => ({ id: c.id, label: `${c.name} · ${c.phone || ''}`, sub: `#${c.id}`, searchText: `${c.name} ${c.phone} ${c.id}` })),
+    [customers, linkedIds]
+  );
+  const relinkItems = useMemo(
+    () => customers
+      .filter(c => !linkedIds.has(c.id) || c.id === linkAccount?.customerId)
+      .map(c => ({ id: c.id, label: `${c.name} · ${c.phone || ''}`, sub: `#${c.id}`, searchText: `${c.name} ${c.phone} ${c.id}` })),
+    [customers, linkedIds, linkAccount]
+  );
+
+  const loadCustomers = useCallback(async () => {
+    try {
+      setCustomers(await customerService.getAll());
+    } catch {
+      setCustomers([]);
+    }
+  }, []);
+
   const openActivity = async (account: Account) => {
     setSelected(account);
     setActLoading(true);
@@ -117,6 +163,56 @@ const CustomerAppAccountsPage: React.FC = () => {
     }
   };
 
+  const openCreate = async () => {
+    await loadCustomers();
+    setLinkAccount(null);
+    setLinkCustomerId(0);
+    setLinkEmail('');
+    setLinkPhone('');
+    setLinkPassword('');
+    setLinkOpen(true);
+  };
+
+  const openRelink = async (account: Account) => {
+    await loadCustomers();
+    setLinkAccount(account);
+    setLinkCustomerId(0);
+    setLinkEmail(account.email || '');
+    setLinkPhone(account.customerPhone || account.phone || '');
+    setLinkPassword('');
+    setLinkOpen(true);
+  };
+
+  const submitLink = async () => {
+    if (!linkCustomerId) {
+      await Swal.fire('အမှား', 'POS ဖောက်သည် ရွေးပါ', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const body = {
+        customerId: linkCustomerId,
+        email: linkEmail.trim() || undefined,
+        phone: linkPhone.trim() || undefined,
+        password: linkPassword.trim() || undefined,
+        generatePassword: !linkAccount && !linkPassword.trim(),
+      };
+      const res = linkAccount
+        ? await api.post<any>(`/v1/customer-app-accounts/${linkAccount.id}/link`, body)
+        : await api.post<any>('/v1/customer-app-accounts', body);
+      setLinkOpen(false);
+      await load();
+      await showCreatedPassword(res.data?.temporaryPassword);
+      if (!res.data?.temporaryPassword) {
+        await Swal.fire({ icon: 'success', title: linkAccount ? 'ချိတ်ပြီး' : 'ဖန်တီးပြီး', timer: 1400, showConfirmButton: false });
+      }
+    } catch (e: any) {
+      await Swal.fire('မအောင်မြင်ပါ', e?.message || 'ချိတ်မရပါ', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -128,13 +224,19 @@ const CustomerAppAccountsPage: React.FC = () => {
             <h2 className="text-xl font-bold text-slate-800">Customer App အကောင့်</h2>
             <p className="text-xs text-slate-500">
               App သို့မဟုတ် <Link to={AppRoute.CUSTOMER_SHOP} className="font-bold text-indigo-600">ဝဘ်ဆိုင်</Link> မှ ဖွင့်ထားသော အကောင့်များ —
-              Email ပြင်ခြင်း / ဝင်သုံးမှု / လုပ်ဆောင်ချက် ကြည့်နိုင်သည်
+              Admin က POS ဖောက်သည်နှင့် ချိတ်ပေးနိုင်သည်
             </p>
           </div>
         </div>
-        <button onClick={() => load()} className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border rounded-lg text-xs font-medium text-slate-600">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => void openCreate()}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white">
+            <Plus size={14} /> POS ဖောက်သည် ချိတ်မည်
+          </button>
+          <button onClick={() => load()} className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border rounded-lg text-xs font-medium text-slate-600">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
       <div className="bg-white border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
@@ -197,6 +299,12 @@ const CustomerAppAccountsPage: React.FC = () => {
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-500">{fmt(a.createdAt)}</td>
                 <td className="px-4 py-3 text-right whitespace-nowrap space-x-1">
+                  <button
+                    onClick={() => void openRelink(a)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800"
+                  >
+                    <Link2 size={12} /> ပြောင်းချိတ်
+                  </button>
                   <button
                     onClick={() => void editEmail(a)}
                     className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-1 text-[11px] font-bold text-sky-700"
@@ -271,6 +379,73 @@ const CustomerAppAccountsPage: React.FC = () => {
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setLinkOpen(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-slate-800">
+                  {linkAccount ? 'POS ဖောက်သည် ပြောင်းချိတ်မည်' : 'POS ဖောက်သည်အတွက် App အကောင့်'}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {linkAccount
+                    ? 'App login ကို ရွေးထားသော POS ဖောက်သည်သို့ ရွှေ့မည်။ App အော်ဒါများလည်း လိုက်ပါမည်။'
+                    : 'ရှိပြီးသား POS ဖောက်သည်အတွက် App/ဝဘ်ဆိုင် ဝင်ရန် အကောင့် ဖန်တီးမည်။'}
+                </p>
+              </div>
+              <button type="button" onClick={() => setLinkOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <label className="block text-xs font-bold text-slate-500">
+                POS ဖောက်သည်
+                <div className="mt-1">
+                  <PortaledCombobox
+                    items={linkAccount ? relinkItems : createItems}
+                    value={linkCustomerId}
+                    placeholder="အမည် သို့မဟုတ် ဖုန်း ရှာပါ"
+                    onChange={(id) => {
+                      setLinkCustomerId(id);
+                      const c = customers.find(row => row.id === id);
+                      if (c) {
+                        setLinkEmail(c.email || '');
+                        setLinkPhone(c.phone || '');
+                      }
+                    }}
+                  />
+                </div>
+              </label>
+              <label className="block text-xs font-bold text-slate-500">
+                ဖုန်း
+                <input value={linkPhone} onChange={e => setLinkPhone(e.target.value)}
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold text-slate-800" />
+              </label>
+              <label className="block text-xs font-bold text-slate-500">
+                Email (optional)
+                <input value={linkEmail} onChange={e => setLinkEmail(e.target.value)}
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" />
+              </label>
+              <label className="block text-xs font-bold text-slate-500">
+                စကားဝှက် {linkAccount ? '(ပြောင်းချင်မှ)' : '(ဗလာထားရင် အလိုအလျောက် ထုတ်မည်)'}
+                <input type="text" value={linkPassword} onChange={e => setLinkPassword(e.target.value)}
+                  placeholder="အနည်းဆုံး ၈ လုံး — အက္ခရာ၊ ဂဏန်း၊ အထူးအက္ခရာ"
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-mono" />
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setLinkOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-bold text-slate-600">
+                မလုပ်တော့ပါ
+              </button>
+              <button type="button" disabled={saving} onClick={() => void submitLink()}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                {saving ? 'သိမ်းနေသည်...' : (linkAccount ? 'ချိတ်မည်' : 'ဖန်တီးမည်')}
+              </button>
             </div>
           </div>
         </div>

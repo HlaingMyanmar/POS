@@ -31,6 +31,18 @@ object ApiClient {
 
     fun originUrl(): String = _baseUrl.removeSuffix("api/v1/").trimEnd('/')
 
+    fun resolveApkDownloadUrl(serverUrl: String, apkFileName: String): String {
+        val compact = serverUrl.trim().replace(" ", "")
+        if (compact.isEmpty()) return ""
+        val base = originUrl()
+        val path = if (compact.contains("/app/")) {
+            compact.substring(compact.indexOf("/app/"))
+        } else {
+            "/app/$apkFileName"
+        }
+        return base + path
+    }
+
 
     private fun client(): OkHttpClient {
         val trustAll = arrayOf<TrustManager>(object : X509TrustManager {

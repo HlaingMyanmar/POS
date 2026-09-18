@@ -116,28 +116,34 @@ fun CustomerSidebarContent(
                     onClick = { onSelectTab(4) }
                 )
                 SidebarMenuItem(
-                    icon = Icons.AutoMirrored.Outlined.ReceiptLong,
-                    label = "Customer History",
+                    icon = Icons.Outlined.ShoppingBag,
+                    label = "App အော်ဒါများ",
                     selected = selectedTab == 3,
                     onClick = { onSelectTab(3) }
+                )
+                SidebarMenuItem(
+                    icon = Icons.Outlined.Handyman,
+                    label = "Service Job များ",
+                    selected = selectedTab == 8,
+                    onClick = { onSelectTab(8) }
+                )
+                SidebarMenuItem(
+                    icon = Icons.Outlined.Payments,
+                    label = "Sale History (ဝယ်ယူမှု မှတ်တမ်း)",
+                    selected = selectedTab == 7,
+                    onClick = { onSelectTab(7) }
+                )
+                SidebarMenuItem(
+                    icon = Icons.Outlined.Build,
+                    label = "Service History (Service မှတ်တမ်း)",
+                    selected = selectedTab == 9,
+                    onClick = { onSelectTab(9) }
                 )
                 SidebarMenuItem(
                     icon = Icons.Outlined.Chat,
                     label = "Customer Support Chat",
                     selected = selectedTab == 6,
                     onClick = { onSelectTab(6) }
-                )
-                SidebarMenuItem(
-                    icon = Icons.Outlined.Storefront,
-                    label = "ဝယ်ယူရန် ပစ္စည်းများ",
-                    selected = selectedTab == 10,
-                    onClick = { onSelectTab(10) }
-                )
-                SidebarMenuItem(
-                    icon = Icons.Outlined.Handyman,
-                    label = "Service ခေါ်ရန်",
-                    selected = selectedTab == 1,
-                    onClick = { onSelectTab(1) }
                 )
                 SidebarMenuItem(
                     icon = Icons.Outlined.ShoppingCart,

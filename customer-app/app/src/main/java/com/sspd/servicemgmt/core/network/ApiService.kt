@@ -7,6 +7,8 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.Streaming
 
 interface ApiService {
@@ -177,21 +179,41 @@ interface ApiService {
     @GET("customer-portal/orders/{id}/invoice.pdf")
     suspend fun orderInvoicePdf(
         @Header("Authorization") auth: String,
-        @retrofit2.http.Path("id") id: Int
+        @Path("id") id: Int,
+        @Query("paperSize") paperSize: String? = null,
+        @Query("size") size: String? = null,
+        @Query("format") format: String? = null
     ): Response<okhttp3.ResponseBody>
 
     @Streaming
     @GET("customer-portal/orders/{id}/payment-receipt.pdf")
     suspend fun paymentReceiptPdf(
         @Header("Authorization") auth: String,
-        @retrofit2.http.Path("id") id: Int
+        @Path("id") id: Int,
+        @Query("paperSize") paperSize: String? = null,
+        @Query("size") size: String? = null,
+        @Query("format") format: String? = null
     ): Response<okhttp3.ResponseBody>
 
     @Streaming
     @GET("customer-portal/history/purchases/{saleId}/invoice.pdf")
     suspend fun purchaseInvoicePdf(
         @Header("Authorization") auth: String,
-        @retrofit2.http.Path("saleId") saleId: Int
+        @Path("saleId") saleId: Int,
+        @Query("paperSize") paperSize: String? = null,
+        @Query("size") size: String? = null,
+        @Query("format") format: String? = null
+    ): Response<okhttp3.ResponseBody>
+
+    /** Official POS service-job voucher (labor + parts, same template as shop). */
+    @Streaming
+    @GET("customer-portal/history/jobs/{id}/invoice.pdf")
+    suspend fun serviceJobInvoicePdf(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Query("paperSize") paperSize: String? = null,
+        @Query("size") size: String? = null,
+        @Query("format") format: String? = null
     ): Response<okhttp3.ResponseBody>
 
     @GET("customer-portal/history/purchases")
@@ -259,4 +281,7 @@ interface ApiService {
     suspend fun myLoyaltyPoints(
         @Header("Authorization") auth: String
     ): Response<ApiResponse<LoyaltyPoints>>
+
+    @GET("app/customer/version")
+    suspend fun getCustomerAppVersion(): Response<ApiResponse<AppVersionDTO>>
 }

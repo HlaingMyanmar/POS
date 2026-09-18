@@ -264,6 +264,15 @@ public class CustomerPortalController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Service jobs", service.myJobs()));
     }
 
+    /** Official POS service-job voucher PDF (labor + parts, same template as shop). */
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @GetMapping(value = "/history/jobs/{id}/invoice.pdf", produces = "application/pdf")
+    public ResponseEntity<byte[]> serviceJobInvoicePdf(
+            @PathVariable Integer id,
+            @RequestParam(required = false) String paper) {
+        return invoiceService.serviceJobInvoicePdf(id, paper);
+    }
+
     @PreAuthorize("hasRole('CUSTOMER')")
     @GetMapping("/notifications")
     public ResponseEntity<ApiResponse<List<CustomerPortalNotificationDTO>>> myNotifications() {

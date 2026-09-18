@@ -19,6 +19,9 @@ import org.sspd.servicemgmt.printingoptions.service.InvoiceAssemblerService;
 import org.sspd.servicemgmt.printingoptions.service.VoucherSettingService;
 import org.sspd.servicemgmt.saleoptions.model.Sale;
 import org.sspd.servicemgmt.saleoptions.repository.SaleRepository;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJob;
+import org.sspd.servicemgmt.servicejoboptions.model.ServiceJobStatus;
+import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.xhtmlrenderer.pdf.ITextRenderer;
 
 import java.io.ByteArrayOutputStream;
@@ -32,6 +35,7 @@ public class CustomerPortalInvoiceService {
 
     private final CustomerOrderRepository orderRepository;
     private final SaleRepository saleRepository;
+    private final ServiceJobRepository serviceJobRepository;
     private final InvoiceAssemblerService assembler;
     private final HtmlPdfService pdfService;
     private final VoucherSettingService voucherSettings;
@@ -53,7 +57,43 @@ public class CustomerPortalInvoiceService {
     @Transactional(readOnly = true)
     public ResponseEntity<byte[]> purchaseInvoicePdf(Integer saleId, String paper) {
         var me = CustomerPortalAuth.require();
+        ServiceJob linkedJob = serviceJobRepository.findFirstBySaleId(saleId).orElse(null);
+        if (linkedJob != null
+                && linkedJob.getCustomer() != null
+                && linkedJob.getCustomer().getId().equals(me.getCustomerId())) {
+            return serviceJobInvoicePdf(linkedJob.getId(), paper);
+        }
         return saleInvoicePdf(saleId, paper, me.getCustomerId());
+    }
+
+    /** Official POS SERVICE_JOB voucher (labor + parts), same template as shop print. */
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> serviceJobInvoicePdf(Integer jobId, String paper) {
+        var me = CustomerPortalAuth.require();
+        ServiceJob job = serviceJobRepository.findById(jobId)
+                .orElseThrow(() -> new ResourceNotFoundException("Service job not found"));
+        if (job.getCustomer() == null || !job.getCustomer().getId().equals(me.getCustomerId())) {
+            throw new AccessDeniedException("Not your job");
+        }
+        if (Boolean.TRUE.equals(job.getVoided())) {
+            throw new IllegalStateException("Service job is voided");
+        }
+        ServiceJobStatus status = job.getStatus();
+        boolean ready = job.getPaymentStatus() != null
+                || status == ServiceJobStatus.COMPLETED
+                || status == ServiceJobStatus.DELIVERED;
+        if (!ready) {
+            throw new IllegalStateException("Service job invoice is not ready yet");
+        }
+        VoucherSetting settings = voucherSettings.findEntity(PrintRequest.DocumentType.SERVICE_JOB).orElse(null);
+        PrintRequest req = buildVoucherRequest(PrintRequest.DocumentType.SERVICE_JOB, jobId, paper, settings);
+        PrintInvoiceData data = assembler.assemble(req, settings);
+        byte[] pdf = pdfService.generatePdf(data, req);
+        String filename = "invoice-" + (data.getInvoiceNo() == null ? job.getJobNo() : data.getInvoiceNo()) + ".pdf";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                .body(pdf);
     }
 
     /** Lightweight money-received confirmation (after APPROVE, before or after fulfill). */
@@ -147,7 +187,7 @@ public class CustomerPortalInvoiceService {
             throw new IllegalStateException("Sale is voided");
         }
         VoucherSetting settings = voucherSettings.findEntity(PrintRequest.DocumentType.SALE).orElse(null);
-        PrintRequest req = buildSaleRequest(saleId, paper, settings);
+        PrintRequest req = buildVoucherRequest(PrintRequest.DocumentType.SALE, saleId, paper, settings);
         PrintInvoiceData data = assembler.assemble(req, settings);
         byte[] pdf = pdfService.generatePdf(data, req);
         String filename = "invoice-" + (data.getInvoiceNo() == null ? saleId : data.getInvoiceNo()) + ".pdf";
@@ -157,10 +197,11 @@ public class CustomerPortalInvoiceService {
                 .body(pdf);
     }
 
-    private PrintRequest buildSaleRequest(Integer saleId, String paperOverride, VoucherSetting s) {
+    private PrintRequest buildVoucherRequest(
+            PrintRequest.DocumentType type, Integer documentId, String paperOverride, VoucherSetting s) {
         PrintRequest r = new PrintRequest();
-        r.setDocumentType(PrintRequest.DocumentType.SALE);
-        r.setDocumentId(saleId);
+        r.setDocumentType(type);
+        r.setDocumentId(documentId);
         r.setCopyType("CUSTOMER");
         r.setPaperSize(paperOverride != null ? paperOverride
                 : (s != null ? s.getPaperSize() : "A4"));

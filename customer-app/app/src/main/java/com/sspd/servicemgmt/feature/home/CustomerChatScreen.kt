@@ -1,5 +1,6 @@
 package com.sspd.servicemgmt.feature.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,9 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sspd.servicemgmt.core.network.ChatMessage
+import com.sspd.servicemgmt.core.ui.theme.BorderColor
+import com.sspd.servicemgmt.core.ui.theme.CardBg
+import com.sspd.servicemgmt.core.ui.theme.TextMain
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,17 +33,26 @@ fun CustomerChatScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Customer Support", fontSize = 18.sp) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            Surface(
+                color = CardBg,
+                border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.5f)),
+                shadowElevation = 1.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .height(38.dp)
+                        .padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", modifier = Modifier.size(18.dp), tint = TextMain)
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Customer Support", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                }
+            }
         },
         bottomBar = {
             Surface(tonalElevation = 2.dp) {

@@ -45,12 +45,21 @@ import com.sspd.servicemgmt.core.tracking.LocationPermission
 import com.sspd.servicemgmt.core.ui.component.ErrorRetryBanner
 import com.sspd.servicemgmt.core.ui.component.OrderSkeletonList
 import com.sspd.servicemgmt.core.ui.component.SaleInvoiceViewerDialog
+import com.sspd.servicemgmt.core.ui.component.UpdateDialog
+import com.sspd.servicemgmt.feature.settings.VersionCheckViewModel
+import com.sspd.servicemgmt.core.ui.theme.CardBg
 import com.sspd.servicemgmt.core.ui.theme.Danger
+import com.sspd.servicemgmt.core.ui.theme.OnPrimary
 import com.sspd.servicemgmt.core.ui.theme.Primary
 import com.sspd.servicemgmt.core.ui.theme.PrimaryDark
 import com.sspd.servicemgmt.core.ui.theme.PrimaryLight
 import com.sspd.servicemgmt.core.ui.theme.ScreenBg
+import com.sspd.servicemgmt.core.ui.theme.Success
+import com.sspd.servicemgmt.core.ui.theme.SuccessBg
+import com.sspd.servicemgmt.core.ui.theme.SurfaceSoft
+import com.sspd.servicemgmt.core.ui.theme.TextMain
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
+import kotlin.math.abs
 import com.sspd.servicemgmt.core.ui.theme.BorderColor
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.util.PreferenceManager.Companion.IDLE_TIMEOUT_MINUTES
@@ -942,6 +951,8 @@ fun HomeScaffold(
     onIdleLogout: () -> Unit = onLogout
 ) {
     val vm: HomeViewModel = viewModel()
+    val versionVm: VersionCheckViewModel = viewModel()
+    val versionState by versionVm.state.collectAsState()
     val context = LocalContext.current
     val prefs = remember { PreferenceManager(context.applicationContext) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1091,7 +1102,21 @@ fun HomeScaffold(
         }
     }
 
-    LaunchedEffect(Unit) { vm.loadCatalog(); vm.loadMine(); vm.loadProfile(); vm.refreshCartQuietly() }
+    LaunchedEffect(Unit) {
+        versionVm.check()
+        vm.loadCatalog(); vm.loadMine(); vm.loadProfile(); vm.refreshCartQuietly()
+    }
+    versionState.update?.let { update ->
+        UpdateDialog(
+            update = update,
+            downloadProgress = versionState.downloadProgress,
+            apkFile = versionState.apkFile,
+            downloadError = versionState.downloadError,
+            onDownload = versionVm::downloadAndInstall,
+            onInstall = { versionVm.triggerInstall(context) },
+            onDismiss = versionVm::dismiss
+        )
+    }
     val cartItems by CartStore.items.collectAsState()
     val cartCount = cartItems.sumOf { it.qty }
     vm.message?.let { msg ->
@@ -1125,68 +1150,55 @@ fun HomeScaffold(
         )
     }
 
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val drawerScope = rememberCoroutineScope()
-
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            CustomerSidebarContent(
-                profile = vm.profile,
-                loyaltyPoints = vm.loyaltyPoints,
-                selectedTab = if (showProducts) 10 else tab,
-                onSelectTab = { selected ->
-                    drawerScope.launch { drawerState.close() }
-                    when (selected) {
-                        0 -> goHome()
-                        1 -> { tab = 1; showProducts = false; returnToProductsAfterCart = false }
-                        2 -> openCart(fromProducts = false)
-                        3 -> { tab = 3; showProducts = false; returnToProductsAfterCart = false }
-                        4 -> { tab = 4; showProducts = false; returnToProductsAfterCart = false }
-                        5 -> { if (CustomerAppFeatures.WISHLIST) { tab = 5; showProducts = false; returnToProductsAfterCart = false } }
-                        6 -> { tab = 6; showProducts = false; returnToProductsAfterCart = false }
-                        10 -> { tab = 0; showProducts = true; returnToProductsAfterCart = false }
-                    }
-                },
-                onLogout = {
-                    drawerScope.launch { drawerState.close() }
-                    performLogout(idle = false)
-                }
-            )
-        }
-    ) {
         Scaffold(
             topBar = {
                 if (tab != 0 || showProducts) {
-                    TopAppBar(
-                        title = {
-                            Text(
-                                when {
-                                    showProducts -> "ပစ္စည်းများ"
-                                    tab == 1 -> "Service ခေါ်ရန်"
-                                    tab == 2 -> "ခြင်းတောင်း"
-                                    tab == 3 -> "Order History"
-                                    tab == 4 -> "ကျွန်ုပ်၏ Profile"
-                                    tab == 5 -> "အကြိုက်စာရင်း"
-                                    tab == 6 -> "Customer Support Chat"
-                                    else -> "SSPD Customer"
-                                },
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        },
-                        navigationIcon = {
+                    Surface(
+                        color = CardBg,
+                        border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.5f)),
+                        shadowElevation = 1.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .height(38.dp)
+                                .padding(horizontal = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             val showBack = showProducts || tab != 0
                             if (showBack) {
-                                IconButton(onClick = { handleSystemBack() }) {
-                                    Icon(Icons.Outlined.ArrowBack, contentDescription = "နောက်သို့")
+                                IconButton(
+                                    onClick = { handleSystemBack() },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.ArrowBack,
+                                        contentDescription = "နောက်သို့",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = TextMain
+                                    )
                                 }
-                            } else {
-                                IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
-                                    Icon(Icons.Outlined.Menu, contentDescription = "Side Bar")
-                                }
+                                Spacer(Modifier.width(4.dp))
                             }
+                            Text(
+                                text = when {
+                                    showProducts -> "ပစ္စည်းများ"
+                                    tab == 1 -> "Service"
+                                    tab == 2 -> "ခြင်းတောင်း"
+                                    tab == 3 -> "မှတ်တမ်း"
+                                    tab == 4 -> "အကောင့်"
+                                    tab == 5 -> "အကြိုက်စာရင်း"
+                                    tab == 6 -> "ဆိုင်နှင့် စကားပြော"
+                                    else -> "SSPD Customer"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = TextMain,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-                    )
+                    }
                 }
             },
             bottomBar = {
@@ -1211,7 +1223,7 @@ fun HomeScaffold(
                     },
                     onCart = { openCart(fromProducts = showProducts) },
                     onProfile = {
-                        drawerScope.launch { drawerState.open() }
+                        tab = 4; showProducts = false; returnToProductsAfterCart = false
                     }
                 )
             }
@@ -1280,17 +1292,27 @@ fun HomeScaffold(
                     onRefresh = { vm.pullToRefresh(mine = true) },
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    ActivityTab(vm, onReorder = { order ->
-                        vm.reorderCancelled(order)
-                        openCart(fromProducts = false)
-                    })
+                    ActivityTab(
+                        vm = vm,
+                        onReorder = { order ->
+                            vm.reorderCancelled(order)
+                            openCart(fromProducts = false)
+                        },
+                        onRequestNewService = { tab = 1 }
+                    )
                 }
                 4 -> PullToRefreshBox(
                     isRefreshing = vm.refreshing,
                     onRefresh = { vm.pullToRefresh(mine = true, profile = true) },
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    AccountTab(vm, onLogout = { performLogout(idle = false) })
+                    AccountTab(
+                        vm = vm,
+                        onLogout = { performLogout(idle = false) },
+                        onNavigateToOrders = { tab = 3; showProducts = false; returnToProductsAfterCart = false },
+                        onNavigateToWishlist = { if (CustomerAppFeatures.WISHLIST) { tab = 5; showProducts = false; returnToProductsAfterCart = false } },
+                        onNavigateToChat = { tab = 6; showProducts = false; returnToProductsAfterCart = false }
+                    )
                 }
                 5 -> if (CustomerAppFeatures.WISHLIST) {
                     PullToRefreshBox(
@@ -1320,10 +1342,32 @@ fun HomeScaffold(
                         onBack = { tab = 0 }
                     )
                 }
+                7 -> PullToRefreshBox(
+                    isRefreshing = vm.refreshing,
+                    onRefresh = { vm.pullToRefresh(mine = true) },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    SaleHistoryTab(vm)
+                }
+                8, 9 -> PullToRefreshBox(
+                    isRefreshing = vm.refreshing,
+                    onRefresh = { vm.pullToRefresh(mine = true) },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    CustomerServiceJobsScreen(
+                        jobs = vm.jobs,
+                        error = vm.jobsError,
+                        onRetry = { vm.loadMine() },
+                        onRequestNewService = { tab = 1 }
+                    )
+                }
+                10 -> {
+                    showProducts = true
+                    tab = 0
+                }
             }
         }
     }
-}
 
     if (showNotifications) {
         CustomerNotificationsDialog(
@@ -1549,8 +1593,211 @@ private fun CartTab(vm: HomeViewModel, onBrowseProducts: () -> Unit) {
     )
 }
 
+private fun money(amount: Double): String {
+    val safe = if (amount.isFinite()) amount else 0.0
+    val absValue = abs(safe).toLong()
+    val formatted = absValue.toString().reversed().chunked(3).joinToString(",").reversed()
+    return if (safe < 0) "-$formatted Ks" else "$formatted Ks"
+}
+
 @Composable
-private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
+private fun SaleHistoryTab(vm: HomeViewModel) {
+    var searchQuery by remember { mutableStateOf("") }
+    var showInvoiceDialog by remember { mutableStateOf<CustomerPurchase?>(null) }
+
+    val purchases = vm.purchases.filter { p ->
+        val q = searchQuery.trim().lowercase()
+        q.isBlank() || listOf(
+            p.saleCode,
+            p.paymentStatus,
+            p.lines?.joinToString { line -> line.productName.orEmpty() }
+        ).any { it.orEmpty().lowercase().contains(q) }
+    }.sortedByDescending { it.id }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "Sale History (ဝယ်ယူမှု မှတ်တမ်းများ)",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                color = PrimaryDark
+            )
+            Text(
+                "ဆိုင်မှ ဝယ်ယူခဲ့သော ဘောင်ချာများနှင့် ပစ္စည်းစာရင်းများ (${vm.purchases.size} ခု)",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
+        }
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Sale Code / ပစ္စည်းအမည် ရှာရန်...") },
+            leadingIcon = { Icon(Icons.Outlined.Search, null, tint = TextMuted) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Outlined.Close, contentDescription = "ရှင်းမည်", tint = TextMuted)
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        if (vm.ordersLoading && vm.purchases.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else if (purchases.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = CardBg,
+                border = BorderStroke(1.dp, BorderColor),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Outlined.Payments, null, tint = TextMuted, modifier = Modifier.size(36.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text("ဝယ်ယူမှု မှတ်တမ်း မရှိသေးပါ", fontWeight = FontWeight.Bold, color = TextMain)
+                    Text("ဆိုင်မှ ဝယ်ယူထားသော ဘောင်ချာများကို ဤနေရာတွင် ကြည့်နိုင်ပါသည်", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                itemsIndexed(purchases, key = { index, p -> "p-${p.id}-$index" }) { _, purchase ->
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = CardBg,
+                        border = BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(PrimaryLight),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Outlined.Payments, null, tint = Primary, modifier = Modifier.size(20.dp))
+                                    }
+                                    Column {
+                                        Text(
+                                            purchase.saleCode.orEmpty().ifBlank { "Sale #${purchase.id}" },
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = PrimaryDark
+                                        )
+                                        purchase.saleDate?.takeIf { it.isNotBlank() }?.let {
+                                            Text(it.replace('T', ' ').take(16), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = SuccessBg,
+                                    border = BorderStroke(1.dp, Success.copy(alpha = 0.2f))
+                                ) {
+                                    Text(
+                                        purchase.paymentStatus ?: "PAID",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        color = Success,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(color = BorderColor.copy(alpha = 0.5f))
+
+                            val lines = purchase.lines.orEmpty()
+                            lines.forEach { line ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(line.productName.orEmpty().ifBlank { "Product" }, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall, color = TextMain)
+                                        line.serialNumber?.takeIf { it.isNotBlank() }?.let { sn ->
+                                            Text("S/N · $sn", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                        }
+                                    }
+                                    Text("× ${line.qty ?: 1}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(money(line.subtotal ?: 0.0), fontWeight = FontWeight.Bold, color = PrimaryDark, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+
+                            HorizontalDivider(color = BorderColor.copy(alpha = 0.5f))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(
+                                    onClick = { showInvoiceDialog = purchase },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("PDF ဘောင်ချာ ဖွင့်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("စုစုပေါင်း", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                    Text(money(purchase.netAmount ?: 0.0), fontWeight = FontWeight.ExtraBold, color = Primary, style = MaterialTheme.typography.titleMedium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    showInvoiceDialog?.let { p ->
+        SaleInvoiceViewerDialog(
+            purchaseSaleId = p.id,
+            saleCode = p.saleCode,
+            onDismiss = { showInvoiceDialog = null }
+        )
+    }
+}
+
+@Composable
+private fun ActivityTab(
+    vm: HomeViewModel,
+    onReorder: (CustomerOrder) -> Unit,
+    onRequestNewService: () -> Unit = {}
+) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager(context.applicationContext) }
     var proofPickerKey by remember { mutableStateOf<String?>(null) }
@@ -1560,6 +1807,7 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
     }
     var focusOrderId by remember { mutableStateOf(prefs.focusOrderId) }
     var selectedOrderId by remember { mutableStateOf<Int?>(null) }
+    var historySubTab by remember { mutableIntStateOf(0) }
 
     BackHandler(enabled = selectedOrderId != null) {
         selectedOrderId = null
@@ -1572,7 +1820,6 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
         if (prefs.focusOrderId > 0) focusOrderId = prefs.focusOrderId
     }
     val focusIndex = vm.orders.indexOfFirst { it.id == focusOrderId }.takeIf { it >= 0 }
-    val firstAttentionIndex = focusIndex ?: vm.orders.indexOfFirst { orderNeedsAttention(it) }
     val focusOrder = focusIndex?.let { vm.orders.getOrNull(it) }
     val waitingShopOrProof = vm.orders.any { order ->
         val ship = order.shippingState?.trim()?.uppercase()
@@ -1608,149 +1855,209 @@ private fun ActivityTab(vm: HomeViewModel, onReorder: (CustomerOrder) -> Unit) {
         vm.orders
     }
 
-    LazyColumn(
-        Modifier
+    Column(
+        modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            Text(
-                "Order History",
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium,
-                color = PrimaryDark
-            )
-            Text(
-                "နှိပ်ပြီး အသေးစိတ် ကြည့်ပါ · တစ်ကဒ် ရွေးကြည့်လျှင် အခြားကဒ်များ ခေတ္တဖျောက်ထားပါမည်",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted
-            )
+        // Sub-Tab Switcher
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(SurfaceSoft)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Surface(
+                onClick = { historySubTab = 0 },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp),
+                color = if (historySubTab == 0) Primary else Color.Transparent
+            ) {
+                Text(
+                    "App အော်ဒါများ (${vm.orders.size})",
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                    color = if (historySubTab == 0) OnPrimary else TextMain,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+            Surface(
+                onClick = { historySubTab = 1 },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp),
+                color = if (historySubTab == 1) Primary else Color.Transparent
+            ) {
+                Text(
+                    "Service Job များ (${vm.jobs.size})",
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                    color = if (historySubTab == 1) OnPrimary else TextMain,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
         }
-        if (selectedOrderId != null && selectedOrder != null) {
-            item {
-                Surface(
-                    onClick = { selectedOrderId = null },
-                    shape = RoundedCornerShape(12.dp),
-                    color = PrimaryLight,
-                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Primary
-                        )
-                        Text(
-                            "အော်ဒါအားလုံး ပြန်ကြည့်မည်",
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryDark,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.weight(1f))
+
+        if (historySubTab == 1) {
+            CustomerServiceJobsScreen(
+                jobs = vm.jobs,
+                error = vm.jobsError,
+                onRetry = { vm.loadMine() },
+                onRequestNewService = onRequestNewService
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    Text(
+                        "Order History",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = PrimaryDark
+                    )
+                    Text(
+                        "နှိပ်ပြီး အသေးစိတ် ကြည့်ပါ · တစ်ကဒ် ရွေးကြည့်လျှင် အခြားကဒ်များ ခေတ္တဖျောက်ထားပါမည်",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+                if (selectedOrderId != null && selectedOrder != null) {
+                    item {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Primary.copy(alpha = 0.15f)
+                            onClick = { selectedOrderId = null },
+                            shape = RoundedCornerShape(12.dp),
+                            color = PrimaryLight,
+                            border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                "၁ ခု ရွေးထားသည်",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = PrimaryDark
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Primary
+                                )
+                                Text(
+                                    "အော်ဒါအားလုံး ပြန်ကြည့်မည်",
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryDark,
+                                    fontSize = 14.sp
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Primary.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        "၁ ခု ရွေးထားသည်",
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = PrimaryDark
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (focusOrder != null &&
+                    focusOrder.status.equals("PENDING", ignoreCase = true) &&
+                    (focusOrder.paymentState.isNullOrBlank() || focusOrder.paymentState.equals("NONE", true)) &&
+                    (focusOrder.shippingState == null || focusOrder.shippingState in setOf("AWAITING_SHOP", "NEEDS_QUOTE", "LEGACY"))
+                ) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = PrimaryLight,
+                            border = BorderStroke(1.dp, Primary.copy(alpha = 0.25f))
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("ဆိုင်အတည်ပြုချက် စောင့်နေသည်", fontWeight = FontWeight.Bold, color = PrimaryDark)
+                                Text(focusOrder.orderNo ?: "Order", fontWeight = FontWeight.SemiBold)
+                                focusOrder.requestedDeliveryAt?.takeIf { it.isNotBlank() }?.let {
+                                    Text("တောင်းဆိုချိန် · ${it.replace('T', ' ').take(16)}", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text(
+                                    "ဆိုင်မှ စစ်ဆေးနေသည်။ အတည်ပြုပြီးလျှင် အသိပေးပါမည် — app ပိတ်ထားနိုင်ပါသည်။",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted
+                                )
+                                TextButton(onClick = {
+                                    prefs.clearFocusOrderId()
+                                    focusOrderId = 0
+                                }) { Text("ဤအသိပေးချက် ပိတ်မည်") }
+                            }
+                        }
+                    }
+                }
+                vm.ordersError?.let { err ->
+                    item { ErrorRetryBanner(err, onRetry = vm::retryOrders) }
+                }
+                when {
+                    vm.ordersLoading && vm.orders.isEmpty() -> {
+                        item { OrderSkeletonList() }
+                    }
+                    vm.orders.isEmpty() && vm.ordersError == null -> {
+                        item { CustomerOrderHistoryEmpty() }
+                    }
+                    else -> {
+                        itemsIndexed(displayOrders, key = { index, order -> "o-${order.id}-$index" }) { index, order ->
+                            val itemKey = "o-${order.id}-$index"
+                            val isSelected = selectedOrderId == order.id
+                            CustomerOrderHistoryCard(
+                                order,
+                                onOrderUpdated = { updated ->
+                                    vm.upsertOrder(updated)
+                                    if (updated.id == focusOrderId &&
+                                        (updated.shippingState == "QUOTED" ||
+                                            updated.paymentState in setOf("AWAITING_PAYMENT", "PROOF_SUBMITTED", "PAID", "FULFILLED") ||
+                                            updated.status.equals("CANCELLED", true))
+                                    ) {
+                                        prefs.clearFocusOrderId()
+                                        focusOrderId = 0
+                                    }
+                                },
+                                onReorder = onReorder,
+                                expanded = isSelected,
+                                pickedImageUri = pickedProofUri.takeIf { proofPickerKey == itemKey },
+                                onPickImage = {
+                                    proofPickerKey = itemKey
+                                    pickedProofUri = null
+                                    proofPicker.launch("image/*")
+                                },
+                                onCardClick = {
+                                    if (selectedOrderId == order.id) {
+                                        selectedOrderId = null
+                                    } else {
+                                        selectedOrderId = order.id
+                                    }
+                                }
                             )
                         }
                     }
                 }
             }
         }
-        if (focusOrder != null &&
-            focusOrder.status.equals("PENDING", ignoreCase = true) &&
-            (focusOrder.paymentState.isNullOrBlank() || focusOrder.paymentState.equals("NONE", true)) &&
-            (focusOrder.shippingState == null || focusOrder.shippingState in setOf("AWAITING_SHOP", "NEEDS_QUOTE", "LEGACY"))
-        ) {
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = PrimaryLight,
-                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.25f))
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("ဆိုင်အတည်ပြုချက် စောင့်နေသည်", fontWeight = FontWeight.Bold, color = PrimaryDark)
-                        Text(focusOrder.orderNo ?: "Order", fontWeight = FontWeight.SemiBold)
-                        focusOrder.requestedDeliveryAt?.takeIf { it.isNotBlank() }?.let {
-                            Text("တောင်းဆိုချိန် · ${it.replace('T', ' ').take(16)}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(
-                            "ဆိုင်မှ စစ်ဆေးနေသည်။ အတည်ပြုပြီးလျှင် အသိပေးပါမည် — app ပိတ်ထားနိုင်ပါသည်။",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                        TextButton(onClick = {
-                            prefs.clearFocusOrderId()
-                            focusOrderId = 0
-                        }) { Text("ဤအသိပေးချက် ပိတ်မည်") }
-                    }
-                }
-            }
-        }
-        vm.ordersError?.let { err ->
-            item { ErrorRetryBanner(err, onRetry = vm::retryOrders) }
-        }
-        when {
-            vm.ordersLoading && vm.orders.isEmpty() -> {
-                item { OrderSkeletonList() }
-            }
-            vm.orders.isEmpty() && vm.ordersError == null -> {
-                item { CustomerOrderHistoryEmpty() }
-            }
-            else -> {
-            itemsIndexed(displayOrders, key = { index, order -> "o-${order.id}-$index" }) { index, order ->
-                val itemKey = "o-${order.id}-$index"
-                val isSelected = selectedOrderId == order.id
-                CustomerOrderHistoryCard(
-                    order,
-                    onOrderUpdated = { updated ->
-                        vm.upsertOrder(updated)
-                        if (updated.id == focusOrderId &&
-                            (updated.shippingState == "QUOTED" ||
-                                updated.paymentState in setOf("AWAITING_PAYMENT", "PROOF_SUBMITTED", "PAID", "FULFILLED") ||
-                                updated.status.equals("CANCELLED", true))
-                        ) {
-                            prefs.clearFocusOrderId()
-                            focusOrderId = 0
-                        }
-                    },
-                    onReorder = onReorder,
-                    expanded = isSelected,
-                    pickedImageUri = pickedProofUri.takeIf { proofPickerKey == itemKey },
-                    onPickImage = {
-                        proofPickerKey = itemKey
-                        pickedProofUri = null
-                        proofPicker.launch("image/*")
-                    },
-                    onCardClick = {
-                        if (selectedOrderId == order.id) {
-                            selectedOrderId = null
-                        } else {
-                            selectedOrderId = order.id
-                        }
-                    }
-                )
-            }
-            }
-        }
-
     }
 }
 
 @Composable
-private fun AccountTab(vm: HomeViewModel, onLogout: () -> Unit) {
+private fun AccountTab(
+    vm: HomeViewModel,
+    onLogout: () -> Unit,
+    onNavigateToOrders: () -> Unit,
+    onNavigateToWishlist: () -> Unit,
+    onNavigateToChat: () -> Unit
+) {
     var confirmLogout by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.loadProfile() }
     CustomerProfileScreen(
@@ -1767,6 +2074,9 @@ private fun AccountTab(vm: HomeViewModel, onLogout: () -> Unit) {
         passwordSaving = vm.passwordSaving,
         biometricEnabled = vm.biometricEnabled,
         onBiometricEnabledChange = vm::setBiometricEnabled,
+        onNavigateToOrders = onNavigateToOrders,
+        onNavigateToWishlist = onNavigateToWishlist,
+        onNavigateToChat = onNavigateToChat,
         onSave = vm::saveProfile,
         onChangePassword = vm::changePassword,
         onLogout = { confirmLogout = true }

@@ -6,6 +6,14 @@ data class ApiResponse<T>(
     val data: T? = null
 )
 
+data class AppVersionDTO(
+    val versionCode: Int = 0,
+    val versionName: String = "",
+    val forceUpdate: Boolean = false,
+    val changelog: String = "",
+    val downloadUrl: String = ""
+)
+
 data class OrderPaymentProof(
     val id: Int? = null,
     val reference: String? = null,
@@ -353,8 +361,11 @@ data class OrderLine(
     val productName: String? = null,
     val qty: Int? = 0,
     val unitPrice: Double? = 0.0,
-    val subtotal: Double? = 0.0
-)
+    val subtotal: Double? = 0.0,
+    val discountAmount: Double? = 0.0
+) {
+    fun lineDiscount(): Double = discountAmount?.takeIf { it > 0.0 } ?: 0.0
+}
 
 data class CustomerOrder(
     val id: Int = 0,
@@ -431,6 +442,7 @@ data class PurchaseLine(
     val productName: String? = null,
     val qty: Int? = 0,
     val unitPrice: Double? = 0.0,
+    val discountAmount: Double? = 0.0,
     val subtotal: Double? = 0.0,
     val warrantyMonths: Int? = 0,
     val warrantyStartDate: String? = null,
@@ -438,29 +450,80 @@ data class PurchaseLine(
     val warrantyStatus: String? = null,
     val warrantyDaysRemaining: Long? = null,
     val serialNumber: String? = null
-)
+) {
+    fun lineDiscount(): Double = discountAmount?.takeIf { it > 0.0 } ?: 0.0
+}
 
 data class CustomerPurchase(
     val id: Int = 0,
     val saleCode: String? = null,
     val saleDate: String? = null,
     val netAmount: Double? = 0.0,
+    val totalAmount: Double? = 0.0,
+    val discountAmount: Double? = 0.0,
     val paymentStatus: String? = null,
     val lines: List<PurchaseLine>? = emptyList()
-)
+) {
+    fun overallDiscount(): Double = discountAmount?.takeIf { it > 0.0 } ?: 0.0
+    fun lineDiscountTotal(): Double = lines.orEmpty().sumOf { it.lineDiscount() }
+}
 
 data class JobServiceLine(
     val name: String? = null,
     val qty: Int? = 0,
+    val unitPrice: Double? = null,
+    val price: Double? = null,
+    val discountAmount: Double? = null,
+    val subtotal: Double? = null,
     val warrantyMonths: Int? = 0,
-    val warrantyCovered: Boolean? = false
-)
+    val warrantyCovered: Boolean? = false,
+    val warrantyStartDate: String? = null,
+    val warrantyExpiryDate: String? = null,
+    val warrantyStatus: String? = null
+) {
+    fun chargedAmount(): Double {
+        if (warrantyCovered == true) return 0.0
+        subtotal?.takeIf { it > 0.0 }?.let { return it }
+        return (chargedUnit() * (qty ?: 1).coerceAtLeast(1) - lineDiscount()).coerceAtLeast(0.0)
+    }
+
+    fun chargedUnit(): Double {
+        unitPrice?.takeIf { it > 0.0 }?.let { return it }
+        price?.takeIf { it > 0.0 }?.let { return it }
+        return 0.0
+    }
+
+    fun lineDiscount(): Double = discountAmount?.takeIf { it > 0.0 } ?: 0.0
+}
 
 data class JobPartLine(
     val productName: String? = null,
     val qty: Int? = 0,
-    val warrantyCovered: Boolean? = false
-)
+    val unitPrice: Double? = null,
+    val price: Double? = null,
+    val discountAmount: Double? = null,
+    val subtotal: Double? = null,
+    val warrantyMonths: Int? = 0,
+    val warrantyCovered: Boolean? = false,
+    val warrantyStartDate: String? = null,
+    val warrantyExpiryDate: String? = null,
+    val warrantyStatus: String? = null,
+    val serialNumber: String? = null
+) {
+    fun chargedAmount(): Double {
+        if (warrantyCovered == true) return 0.0
+        subtotal?.takeIf { it > 0.0 }?.let { return it }
+        return (chargedUnit() * (qty ?: 1).coerceAtLeast(1) - lineDiscount()).coerceAtLeast(0.0)
+    }
+
+    fun chargedUnit(): Double {
+        unitPrice?.takeIf { it > 0.0 }?.let { return it }
+        price?.takeIf { it > 0.0 }?.let { return it }
+        return 0.0
+    }
+
+    fun lineDiscount(): Double = discountAmount?.takeIf { it > 0.0 } ?: 0.0
+}
 
 data class CustomerJob(
     val id: Int = 0,
@@ -469,14 +532,69 @@ data class CustomerJob(
     val itemName: String? = null,
     val deviceType: String? = null,
     val problemDesc: String? = null,
+    val serviceMode: String? = null,
+    val bookingId: Int? = null,
+    val bookingNo: String? = null,
     val receivedDate: String? = null,
+    val appointmentDate: String? = null,
+    val workStartedAt: String? = null,
     val completedDate: String? = null,
     val deliveredDate: String? = null,
+    val assignedStaffName: String? = null,
+    val helperStaffName: String? = null,
+    val hasHelper: Boolean? = false,
+    val technicians: List<JobCrewMember>? = emptyList(),
+    val totalAmount: Double? = 0.0,
+    val discountAmount: Double? = 0.0,
     val netAmount: Double? = 0.0,
     val paymentStatus: String? = null,
+    val completedSaleId: Int? = null,
+    val saleCode: String? = null,
+    val completedSale: CustomerPurchase? = null,
+    val paidAmount: Double? = 0.0,
+    val dueAmount: Double? = 0.0,
+    val laborNetAmount: Double? = 0.0,
+    val partsNetAmount: Double? = 0.0,
     val services: List<JobServiceLine>? = emptyList(),
     val parts: List<JobPartLine>? = emptyList()
-)
+) {
+    fun canOpenServiceInvoice(): Boolean {
+        val s = status?.uppercase().orEmpty()
+        return s in setOf("COMPLETED", "DELIVERED", "READY_FOR_DELIVERY")
+                || !paymentStatus.isNullOrBlank()
+                || (netAmount ?: 0.0) > 0.0
+    }
+
+    fun overallDiscount(): Double = discountAmount?.takeIf { it > 0.0 } ?: 0.0
+
+    fun lineDiscountTotal(): Double =
+        services.orEmpty().sumOf { it.lineDiscount() } + parts.orEmpty().sumOf { it.lineDiscount() }
+
+    fun isOutdoor(): Boolean = serviceMode?.equals("OUTDOOR", ignoreCase = true) == true
+
+    fun serviceModeLabel(): String = if (isOutdoor()) "Outdoor Job" else "Indoor Job"
+
+    fun crewMembers(): List<JobCrewMember> {
+        val fromApi = technicians.orEmpty().filter { !it.name.isNullOrBlank() }
+        if (fromApi.isNotEmpty()) return fromApi
+        val fallback = mutableListOf<JobCrewMember>()
+        assignedStaffName?.takeIf { it.isNotBlank() }?.let {
+            fallback += JobCrewMember(name = it, role = "TECHNICIAN", roleLabel = "Technician")
+        }
+        helperStaffName?.takeIf { it.isNotBlank() }?.let {
+            fallback += JobCrewMember(name = it, role = "HELPER", roleLabel = "Helper")
+        }
+        return fallback
+    }
+}
+
+data class JobCrewMember(
+    val name: String? = null,
+    val role: String? = null,
+    val roleLabel: String? = null
+) {
+    fun isHelper(): Boolean = role?.equals("HELPER", ignoreCase = true) == true
+}
 
 data class CustomerNotification(
     val id: Int = 0,

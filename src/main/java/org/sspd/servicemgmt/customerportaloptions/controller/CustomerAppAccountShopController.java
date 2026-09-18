@@ -5,9 +5,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
+import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppAccountAdminResult;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppAccountDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppAccountEmailRequest;
+import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppAccountLinkRequest;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppActivityDTO;
+import org.sspd.servicemgmt.customerportaloptions.service.CustomerAppAccountAdminService;
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerPortalService;
 
 import java.util.List;
@@ -18,6 +21,7 @@ import java.util.List;
 public class CustomerAppAccountShopController {
 
     private final CustomerPortalService service;
+    private final CustomerAppAccountAdminService adminService;
 
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_READ','CAN_ACCESS_SALE_READ')")
     @GetMapping
@@ -44,5 +48,21 @@ public class CustomerAppAccountShopController {
             @PathVariable Integer id, @RequestBody CustomerAppAccountEmailRequest body) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Email updated",
                 service.updateAccountEmail(id, body == null ? null : body.getEmail())));
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_UPDATE','CAN_ACCESS_SALE_UPDATE')")
+    @PostMapping
+    public ResponseEntity<ApiResponse<CustomerAppAccountAdminResult>> create(
+            @RequestBody CustomerAppAccountLinkRequest body) {
+        return ResponseEntity.status(201).body(new ApiResponse<>(true, "App အကောင့် ဖန်တီးပြီး",
+                adminService.createForCustomer(body)));
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_UPDATE','CAN_ACCESS_SALE_UPDATE')")
+    @PostMapping("/{id}/link")
+    public ResponseEntity<ApiResponse<CustomerAppAccountAdminResult>> link(
+            @PathVariable Integer id, @RequestBody CustomerAppAccountLinkRequest body) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "POS ဖောက်သည်နှင့် ချိတ်ပြီး",
+                adminService.linkToCustomer(id, body)));
     }
 }

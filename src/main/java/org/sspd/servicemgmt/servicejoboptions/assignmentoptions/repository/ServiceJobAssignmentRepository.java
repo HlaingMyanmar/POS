@@ -15,6 +15,14 @@ import java.util.Optional;
 
 public interface ServiceJobAssignmentRepository extends JpaRepository<ServiceJobAssignment, Integer> {
     List<ServiceJobAssignment> findAllByServiceJobIdOrderByAssignedAtAscIdAsc(Integer serviceJobId);
+
+    @Query("""
+        select a from ServiceJobAssignment a
+        join fetch a.staff
+        where a.serviceJob.id in :jobIds
+        order by a.assignedAt asc, a.id asc
+        """)
+    List<ServiceJobAssignment> findAllByServiceJobIdInOrderByAssignedAtAsc(@Param("jobIds") Collection<Integer> jobIds);
     List<ServiceJobAssignment> findAllByServiceJobIdAndStatusInOrderByAssignedAtAsc(
             Integer serviceJobId, Collection<AssignmentStatus> statuses);
     List<ServiceJobAssignment> findAllByStaffIdAndStatusInOrderByAssignedAtDesc(

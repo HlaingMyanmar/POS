@@ -1,6 +1,5 @@
 package org.sspd.servicemgmt.support;
 
-import org.junit.jupiter.api.Assumptions;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.MySQLContainer;
 
@@ -9,7 +8,7 @@ import org.testcontainers.containers.MySQLContainer;
  * <ul>
  *   <li>Testcontainers when Docker is available</li>
  *   <li>Local MySQL ({@code ser_db_it}) when {@code IT_USE_LOCAL_MYSQL=true}</li>
- *   <li>Otherwise tests are skipped</li>
+ *   <li>Otherwise the integration-test build fails</li>
  * </ul>
  */
 public final class MysqlIntegrationSupport {
@@ -39,9 +38,14 @@ public final class MysqlIntegrationSupport {
         return USE_LOCAL || DOCKER_AVAILABLE;
     }
 
-    public static void assumeMysqlAvailable() {
-        Assumptions.assumeTrue(mysqlIntegrationEnabled(),
-                "Skip IT: set IT_USE_LOCAL_MYSQL=true (local MySQL ser_db_it) or install Docker for Testcontainers");
+    public static void requireMysqlAvailable() {
+        if (!mysqlIntegrationEnabled()) {
+            throw new IllegalStateException(
+                    "Integration tests require MySQL. Start Docker for Testcontainers, "
+                            + "or set IT_USE_LOCAL_MYSQL=true (or -Dit.useLocalMysql=true) "
+                            + "and provide a reachable ser_db_it database. Refusing to report a false-success build."
+            );
+        }
     }
 
     public static MySQLContainer<?> newMysqlContainer() {

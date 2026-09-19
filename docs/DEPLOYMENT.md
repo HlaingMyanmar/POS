@@ -55,8 +55,17 @@ Use profile `prod` and environment variables from `.env.example`. Copy that file
 | `BACKUP_ROOT_DIRECTORY` | Default `/opt/sspd/Backup` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins |
 | `SERVER_ADDRESS=127.0.0.1` / `SERVER_PORT=8080` | Bind localhost only behind Nginx |
+| `SETUP_INITIAL_ADMIN_TOKEN` | Random 32+ character secret required by the one-time web admin setup |
+| `SCANNER_PAIRING_TOKEN` | Optional random 32+ character token for standalone `/scan` devices |
+| `BOOTSTRAP_ADMIN_*` | Preferred first-admin creation at process startup; disable and remove password afterward |
 
 Flyway stays enabled; `spring.jpa.hibernate.ddl-auto=validate`; `spring.flyway.clean-disabled=true`. This does **not** drop or recreate the database.
+
+For a fresh deployment, prefer setting `BOOTSTRAP_ADMIN_ENABLED=true` with a
+one-time bootstrap password before the first start. After the administrator is
+created, set it back to `false` and remove the password. If the web setup screen
+is used instead, generate `SETUP_INITIAL_ADMIN_TOKEN` with
+`openssl rand -base64 32`; the same value must be entered in the setup screen.
 
 ---
 

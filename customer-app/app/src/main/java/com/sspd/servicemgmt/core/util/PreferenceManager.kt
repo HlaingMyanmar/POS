@@ -2,6 +2,7 @@ package com.sspd.servicemgmt.core.util
 
 import android.content.Context
 import android.util.Base64
+import com.sspd.servicemgmt.feature.auth.CustomerAuthPolicy
 import java.io.File
 
 class PreferenceManager(context: Context) {
@@ -151,10 +152,12 @@ class PreferenceManager(context: Context) {
     }
 
     fun isSessionIdle(timeoutMs: Long = IDLE_TIMEOUT_MS): Boolean {
-        if (authToken.isBlank()) return false
-        val last = lastActiveAt
-        if (last <= 0L) return false
-        return System.currentTimeMillis() - last >= timeoutMs
+        return CustomerAuthPolicy.isIdle(
+            hasToken = authToken.isNotBlank(),
+            lastActiveAtMillis = lastActiveAt,
+            nowMillis = System.currentTimeMillis(),
+            timeoutMillis = timeoutMs
+        )
     }
 
     /** Clears login session but keeps server URL and company branding. */

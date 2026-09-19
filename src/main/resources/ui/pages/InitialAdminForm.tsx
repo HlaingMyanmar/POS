@@ -14,6 +14,7 @@ const InitialAdminForm: React.FC<Props> = ({ company, onCreated }) => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +25,14 @@ const InitialAdminForm: React.FC<Props> = ({ company, onCreated }) => {
     const cleanUsername = username.trim();
     if (cleanUsername.length < 3) return setError('Username must contain at least 3 characters.');
     if (password.length < 8) return setError('Password must contain at least 8 characters.');
+    if (setupToken.trim().length < 32) return setError('A valid deployment setup token is required.');
 
     setLoading(true);
     try {
-      const response = await setupService.createInitialAdmin({ username: cleanUsername, email: email.trim(), password });
+      const response = await setupService.createInitialAdmin(
+        { username: cleanUsername, email: email.trim(), password },
+        setupToken,
+      );
       if (!response.success) throw new Error(response.message || 'Administrator account could not be created.');
       await Swal.fire({ icon: 'success', title: 'Administrator Created', text: 'Please sign in with your new account.', confirmButtonColor: '#4f46e5' });
       onCreated(cleanUsername);
@@ -58,6 +63,9 @@ const InitialAdminForm: React.FC<Props> = ({ company, onCreated }) => {
         <div className="px-8 py-7">
           {error && <div className="mb-4 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-rose-700"><AlertCircle size={15} /><p className="text-xs font-semibold">{error}</p></div>}
           <form onSubmit={submit} className="space-y-4">
+            <label className="block text-[11px] font-bold uppercase text-slate-500">Deployment Setup Token
+              <input type="password" required minLength={32} autoComplete="off" value={setupToken} onChange={e => setSetupToken(e.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold normal-case focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="SETUP_INITIAL_ADMIN_TOKEN" />
+            </label>
             <label className="block text-[11px] font-bold uppercase text-slate-500">Username
               <input type="text" required minLength={3} autoFocus value={username} onChange={e => setUsername(e.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold normal-case focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/10" />
             </label>

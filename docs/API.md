@@ -79,7 +79,7 @@ Login success wraps `AuthResponse` in `ApiResponse`.
 | POST | `/api/v1/company-settings` | JWT only, **no permission** | Save settings |
 | GET | `/api/v1/app/version` | Public GET | POS Manager version + `/app/servicemgmt.apk` URL if file exists |
 | GET | `/api/v1/app/technician/version` | Public GET | Technician version + `/app/technician.apk` URL if file exists |
-| POST | `/api/v1/scan` | Public POST | Broadcast barcode to `/topic/barcode-scan` `{ "barcode": "..." }` |
+| POST | `/api/v1/scan` | Staff sale-create permission or `X-Scanner-Token` | Broadcast barcode to `/topic/barcode-scan` `{ "barcode": "..." }` |
 
 ---
 
@@ -353,7 +353,8 @@ Query params for summaries: `from`, `to`, `year` as in controllers.
 
 Subscribe to `/topic/...`. Send chat to `/app/chat.send`.
 
-`POST /api/v1/scan` is public and publishes `/topic/barcode-scan`.
+`POST /api/v1/scan` publishes `/topic/barcode-scan` only for staff with
+`CAN_ACCESS_SALE_CREATE` or a paired scanner presenting `X-Scanner-Token`.
 
 ---
 

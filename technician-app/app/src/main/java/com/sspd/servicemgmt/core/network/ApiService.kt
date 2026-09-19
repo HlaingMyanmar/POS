@@ -1,6 +1,7 @@
 package com.sspd.servicemgmt.core.network
 
 import okhttp3.ResponseBody
+import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -70,6 +71,9 @@ interface ApiService {
 
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthResponse>>
+
+    @POST("auth/refresh")
+    fun refreshSession(@Body body: RefreshTokenRequest): Call<ApiResponse<AuthResponse>>
 
     @GET("dashboard/stats")
     suspend fun getStats(@Header("Authorization") auth: String): Response<ApiResponse<DashboardStats>>

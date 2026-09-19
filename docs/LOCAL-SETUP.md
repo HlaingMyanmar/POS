@@ -53,6 +53,8 @@ Local defaults (no `prod` profile): HTTP on port 8080, Flyway validate, no packa
 | `APP_APK_STORAGE_DIR` | APK upload folder |
 | `BACKUP_ROOT_DIRECTORY` | Backup root (default `./Backup`) |
 | `BOOTSTRAP_ADMIN_*` | Create the first admin on an empty database only |
+| `SETUP_INITIAL_ADMIN_TOKEN` | 32+ character secret required by the manual first-admin screen |
+| `SCANNER_PAIRING_TOKEN` | Optional 32+ character secret for standalone scanner devices |
 
 Do not commit production passwords or JWT secrets.
 

@@ -54,7 +54,7 @@ Permit all:
 - GET `/api/v1/company-settings`
 - GET `/api/v1/app/version`
 - GET `/api/v1/app/technician/version`
-- POST `/api/v1/scan`
+- POST `/api/v1/scan` (controller requires sale-create permission or scanner pairing token)
 - OPTIONS `/**`
 
 Then `/api/**` **authenticated**.  
@@ -82,11 +82,30 @@ Local optional JVM SSL: `SSL_ENABLED=true` and `SSL_KEYSTORE=file:keystore.p12` 
 
 JWT without a permission is still “logged in”. Examples with **no** `@PreAuthorize` on the controller: dashboard stats, chat, company POST, print, voucher settings, manufacturing, barcode, excel export, app-version-settings, scan (public).
 
-`POST /api/v1/scan` is **unauthenticated** and broadcasts to `/topic/barcode-scan`.
+`POST /api/v1/scan` broadcasts to `/topic/barcode-scan` only for an authenticated
+staff user with `CAN_ACCESS_SALE_CREATE`, or a scanner device presenting the
+configured `X-Scanner-Token`.
 
 ## Logging
 
 No `logback.xml` in repo. Default Spring Boot logging. `GlobalExceptionHandler` logs unexpected 500s at error and business `RuntimeException` at warn. Backup/print/seeders use SLF4J.
+
+## Public endpoint rate limits
+
+The backend applies bounded in-memory token buckets before JWT parsing and
+controller execution. Limits are per resolved client IP and endpoint:
+
+- staff/customer password login: 10/minute
+- refresh: 30/minute; Google login: 20/minute
+- customer register: 5/10 minutes
+- forgot password: 3/15 minutes; reset password: 5/15 minutes
+- initial-admin bootstrap: 5/10 minutes
+- paired barcode scanner: 120/minute
+
+Rejected requests return HTTP `429` with `Retry-After`. The cache is capped at
+50,000 client/endpoint buckets and expires idle entries. For a multi-instance
+deployment, add a shared Redis or edge-proxy limiter because this application
+limiter is intentionally process-local.
 
 ## Security findings (do not “fix” in this docs pass)
 

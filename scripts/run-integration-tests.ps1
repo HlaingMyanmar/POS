@@ -1,15 +1,16 @@
 # Run MySQL/Flyway integration tests (*IT).
-# Prefers local MySQL (ser_db_it) when Docker is not installed.
+# Uses local MySQL only when IT_USE_LOCAL_MYSQL=true; otherwise Testcontainers.
 
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
-if (-not $env:IT_USE_LOCAL_MYSQL) {
-    $env:IT_USE_LOCAL_MYSQL = "true"
-}
-
-Write-Host "IT_USE_LOCAL_MYSQL=$($env:IT_USE_LOCAL_MYSQL)"
+$useLocal = $env:IT_USE_LOCAL_MYSQL -eq "true"
+Write-Host "Integration backend: $(if ($useLocal) { 'local MySQL ser_db_it' } else { 'Testcontainers (Docker required)' })"
 Write-Host "Running failsafe integration tests (profile integration-test)..."
 
-& .\mvnw.cmd -Pintegration-test verify "-Dsurefire.skip=true" "-DskipITs=false" "-Dit.useLocalMysql=true"
+$mavenArgs = @("-Pintegration-test", "verify", "-Dsurefire.skip=true", "-DskipITs=false")
+if ($useLocal) {
+    $mavenArgs += "-Dit.useLocalMysql=true"
+}
+& .\mvnw.cmd @mavenArgs
 exit $LASTEXITCODE

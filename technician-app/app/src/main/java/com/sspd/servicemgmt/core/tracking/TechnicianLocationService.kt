@@ -61,7 +61,7 @@ class TechnicianLocationService : Service() {
 
     private fun startUpdates(visitId: Long, onSite: Boolean) {
         callback?.let { locationClient.stopUpdates(it) }
-        val interval = if (onSite) 180_000L else 45_000L
+        val interval = TrackingPolicy.updateIntervalMillis(onSite)
         callback = locationClient.startUpdates(interval, 30f) { fix ->
             scope.launch { handleFix(visitId, fix) }
         }
@@ -71,7 +71,7 @@ class TechnicianLocationService : Service() {
         val ping = fix.toPing()
         store.enqueue(visitId, ping)
         val now = System.currentTimeMillis()
-        if (now - lastHeartbeatAt < 20_000L) return
+        if (!TrackingPolicy.shouldFlush(lastHeartbeatAt, now)) return
         lastHeartbeatAt = now
         flush(visitId)
     }

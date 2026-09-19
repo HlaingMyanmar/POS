@@ -1,5 +1,6 @@
 package com.sspd.servicemgmt.feature.home
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -16,12 +17,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -32,11 +38,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Remove
@@ -44,20 +51,23 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,9 +84,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import android.content.res.Configuration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.CatalogOption
@@ -90,6 +100,7 @@ import com.sspd.servicemgmt.core.ui.theme.Danger
 import com.sspd.servicemgmt.core.ui.theme.DangerBg
 import com.sspd.servicemgmt.core.ui.theme.OnPrimary
 import com.sspd.servicemgmt.core.ui.theme.Primary
+import com.sspd.servicemgmt.core.ui.theme.PrimaryDark
 import com.sspd.servicemgmt.core.ui.theme.PrimaryLight
 import com.sspd.servicemgmt.core.ui.theme.ScreenBg
 import com.sspd.servicemgmt.core.ui.theme.Success
@@ -97,6 +108,8 @@ import com.sspd.servicemgmt.core.ui.theme.SuccessBg
 import com.sspd.servicemgmt.core.ui.theme.SurfaceSoft
 import com.sspd.servicemgmt.core.ui.theme.TextMain
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
+import com.sspd.servicemgmt.core.ui.theme.Warning
+import com.sspd.servicemgmt.core.ui.theme.WarningBg
 import com.sspd.servicemgmt.core.util.formatWarranty
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -124,13 +137,15 @@ fun CustomerProductScreen(
     onToggleFavorite: ((CatalogProduct) -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(ALL) }
-    var subCategory by remember { mutableStateOf(ALL) }
-    var brand by remember { mutableStateOf(ALL) }
-    var productType by remember { mutableStateOf(ALL) }
+    var appliedCategory by remember { mutableStateOf(ALL) }
+    var appliedSubCategory by remember { mutableStateOf(ALL) }
+    var appliedBrand by remember { mutableStateOf(ALL) }
+    var appliedProductType by remember { mutableStateOf(ALL) }
     var sort by remember { mutableStateOf("name") }
     var showFilterSheet by remember { mutableStateOf(false) }
     var selectedProduct by remember { mutableStateOf<CatalogProduct?>(null) }
+
+    val gridState = rememberLazyGridState()
 
     BackHandler(enabled = selectedProduct != null || showFilterSheet) {
         when {
@@ -139,63 +154,53 @@ fun CustomerProductScreen(
         }
     }
 
-    val rootCategories = remember(categoryOptions, products) {
-        val explicitRoots = categoryOptions
-            .filter { it.parentId == null && !it.name.isNullOrBlank() }
-            .map { it.name!!.trim() }
-        val parentNames = categoryOptions.mapNotNull { it.parentName?.trim()?.takeIf(String::isNotBlank) } +
-            products.mapNotNull { it.parentCategoryName?.trim()?.takeIf(String::isNotBlank) }
-        val names = (explicitRoots + parentNames).distinct()
-        val fallbackAll = (
-            categoryOptions.mapNotNull { it.name?.trim()?.takeIf(String::isNotBlank) } +
-                products.mapNotNull { it.categoryName?.trim()?.takeIf(String::isNotBlank) }
-            ).distinct()
-        listOf(ALL) + (names.ifEmpty { fallbackAll })
-    }
-    val subCategories = remember(categoryOptions, products, category) {
-        if (category == ALL) return@remember emptyList()
-        val fromMaster = categoryOptions.filter { opt ->
-            !opt.name.isNullOrBlank() &&
-                (
-                    opt.parentName?.trim().equals(category, ignoreCase = true) == true ||
-                        categoryOptions.any { root ->
-                            root.name?.trim().equals(category, ignoreCase = true) == true &&
-                                opt.parentId != null &&
-                                opt.parentId == root.id
-                        }
-                    )
-        }.map { it.name!!.trim() }
-        val fromProducts = products
-            .filter { it.parentCategoryName?.trim().equals(category, ignoreCase = true) == true }
-            .mapNotNull { it.categoryName?.trim()?.takeIf(String::isNotBlank) }
-        val names = (fromMaster + fromProducts).distinct()
-        if (names.isEmpty()) emptyList() else listOf(ALL) + names
-    }
-    // Master options remain complete even when only one product page is loaded.
-    val brands = remember(brandOptions) { listOf(ALL) + brandOptions.distinct().sorted() }
     val selectedCategoryId = categoryOptions.firstOrNull {
-        it.name == (if (subCategory != ALL) subCategory else category)
+        it.name == (if (appliedSubCategory != ALL) appliedSubCategory else appliedCategory)
     }?.id
-    LaunchedEffect(query, selectedCategoryId, brand, productType, sort) {
-        onCatalogQuery?.invoke(query, selectedCategoryId, brand.takeUnless { it == ALL },
-            productType.takeUnless { it == ALL }, sort)
-    }
-    val filtered = products
-    val filterCount = listOf(category != ALL, subCategory != ALL, brand != ALL).count { it }
-    val hasActiveFilter = filterCount > 0 || productType != ALL || query.isNotBlank()
 
-    val clearCategoryBrand = {
-        category = ALL
-        subCategory = ALL
-        brand = ALL
+    LaunchedEffect(query, selectedCategoryId, appliedBrand, appliedProductType, sort) {
+        gridState.scrollToItem(0)
+        onCatalogQuery?.invoke(
+            query,
+            selectedCategoryId,
+            appliedBrand.takeUnless { it == ALL },
+            appliedProductType.takeUnless { it == ALL },
+            sort
+        )
+    }
+
+    // Prefetch next page 4-6 items before reaching bottom
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val totalItems = gridState.layoutInfo.totalItemsCount
+            val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisibleIndex >= totalItems - 6
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore, hasNext, loading, error) {
+        if (shouldLoadMore && hasNext && !loading && error == null) {
+            onPage(page + 1)
+        }
+    }
+
+    val filtered = products
+    val filterCount = listOf(appliedCategory != ALL, appliedSubCategory != ALL, appliedBrand != ALL, appliedProductType != ALL).count { it }
+    val hasActiveFilter = filterCount > 0 || query.isNotBlank()
+
+    val clearAppliedFilters = {
+        appliedCategory = ALL
+        appliedSubCategory = ALL
+        appliedBrand = ALL
+        appliedProductType = ALL
     }
 
     val clearAll = {
         query = ""
-        category = ALL
-        subCategory = ALL
-        brand = ALL
-        productType = ALL
+        appliedCategory = ALL
+        appliedSubCategory = ALL
+        appliedBrand = ALL
+        appliedProductType = ALL
     }
 
     Box(modifier = Modifier.fillMaxSize().background(ScreenBg)) {
@@ -207,8 +212,8 @@ fun CustomerProductScreen(
                 border = BorderStroke(1.dp, BorderColor)
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -239,37 +244,49 @@ fun CustomerProductScreen(
                         }
                     }
 
-                    TypeSegmentRow(
-                        selected = productType,
-                        onSelect = { productType = it }
-                    )
-
                     if (filterCount > 0) {
                         Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (category != ALL) ActiveFilterChip(category) {
-                                category = ALL
-                                subCategory = ALL
-                                brand = ALL
+                            if (appliedProductType != ALL) ActiveFilterChip("$appliedProductType ×") {
+                                appliedProductType = ALL
                             }
-                            if (subCategory != ALL) ActiveFilterChip(subCategory) {
-                                subCategory = ALL
-                                brand = ALL
+                            if (appliedCategory != ALL) ActiveFilterChip("$appliedCategory ×") {
+                                appliedCategory = ALL
+                                appliedSubCategory = ALL
+                                // Validate if brand is still valid at root level
+                                if (appliedBrand != ALL) {
+                                    val isValidRoot = products.any { p ->
+                                        p.brandName?.trim().equals(appliedBrand, ignoreCase = true) == true
+                                    } || brandOptions.any { it.equals(appliedBrand, ignoreCase = true) }
+                                    if (!isValidRoot) appliedBrand = ALL
+                                }
                             }
-                            if (brand != ALL) ActiveFilterChip(brand) { brand = ALL }
-                            Text(
-                                "ရှင်းမည်",
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(onClick = clearCategoryBrand)
-                                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                                color = Primary,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            if (appliedSubCategory != ALL) ActiveFilterChip("$appliedSubCategory ×") {
+                                appliedSubCategory = ALL
+                                // Validate if brand is still valid for category
+                                if (appliedBrand != ALL && appliedCategory != ALL) {
+                                    val isValidCat = products.any { p ->
+                                        val matchesCat = p.parentCategoryName?.trim().equals(appliedCategory, ignoreCase = true) == true ||
+                                            p.categoryName?.trim().equals(appliedCategory, ignoreCase = true) == true
+                                        matchesCat && p.brandName?.trim().equals(appliedBrand, ignoreCase = true) == true
+                                    } || brandOptions.any { it.equals(appliedBrand, ignoreCase = true) }
+                                    if (!isValidCat) appliedBrand = ALL
+                                }
+                            }
+                            if (appliedBrand != ALL) ActiveFilterChip("$appliedBrand ×") {
+                                appliedBrand = ALL
+                            }
+                            TextButton(
+                                onClick = clearAppliedFilters,
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Clear all", color = Primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
 
@@ -278,40 +295,39 @@ fun CustomerProductScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            when {
-                                query.isNotBlank() -> "ရှာဖွေမှုရလဒ်"
-                                productType != ALL -> productType
-                                else -> "ပစ္စည်းအားလုံး"
-                            },
+                            if (query.isNotBlank()) "ရှာဖွေမှုရလဒ်" else "ပစ္စည်းများ",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = TextMain
                         )
-                        Text("$total မျိုး", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text("$total မျိုး", color = TextMuted, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                     }
                 }
             }
 
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("name" to "အမည်", "price_asc" to "ဈေးနည်းမှများ",
-                    "price_desc" to "ဈေးများမှနည်း", "newest" to "အသစ်တင်ထားသော").forEach { (value, label) ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    "name" to "အမည်",
+                    "price_asc" to "ဈေးနည်းမှများ",
+                    "price_desc" to "ဈေးများမှနည်း",
+                    "newest" to "အသစ်တင်ထားသော"
+                ).forEach { (value, label) ->
                     FilterChip(selected = sort == value, onClick = { sort = value }, label = { Text(label) })
                 }
             }
-            if (error != null) {
+            if (error != null && products.isEmpty()) {
                 ErrorRetryBanner(
                     message = error,
-                    onRetry = { onPage(page) },
+                    onRetry = { onPage(0) },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
-            }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { onPage(page - 1) }, enabled = !loading && page > 0) { Text("ရှေ့စာမျက်နှာ") }
-                Text("${page + 1}", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { onPage(page + 1) }, enabled = !loading && hasNext) { Text("နောက်စာမျက်နှာ") }
             }
             when {
                 loading && products.isEmpty() -> {
@@ -344,8 +360,11 @@ fun CustomerProductScreen(
                             )
                             if (hasActiveFilter) {
                                 Spacer(Modifier.height(14.dp))
-                                TextButton(onClick = clearAll) {
-                                    Text("အားလုံး ရှင်းမည်", fontWeight = FontWeight.SemiBold)
+                                OutlinedButton(
+                                    onClick = clearAll,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Clear Filters", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -353,13 +372,14 @@ fun CustomerProductScreen(
                 }
                 else -> {
                     LazyVerticalGrid(
+                        state = gridState,
                         columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 18.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 96.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        itemsIndexed(filtered, key = { index, product -> "${product.id}-$index" }) { _, product ->
+                        itemsIndexed(filtered, key = { index, product -> "prod-${product.id}-$index" }) { _, product ->
                             CustomerProductCard(
                                 product = product,
                                 qty = cartQtyByProductId[product.id] ?: 0,
@@ -369,6 +389,61 @@ fun CustomerProductScreen(
                                 onToggleFavorite = onToggleFavorite?.let { cb -> { cb(product) } }
                             )
                         }
+
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            when {
+                                loading && products.isNotEmpty() -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            color = Primary,
+                                            strokeWidth = 2.5.dp
+                                        )
+                                    }
+                                }
+                                error != null && products.isNotEmpty() -> {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            "Couldn't load more products",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextMuted
+                                        )
+                                        OutlinedButton(
+                                            onClick = { onPage(page + 1) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Retry", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                }
+                                !hasNext && products.size >= 12 -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 14.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "All products loaded",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = TextMuted
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -377,23 +452,20 @@ fun CustomerProductScreen(
 
     if (showFilterSheet) {
         ProductFilterSheet(
-            categories = rootCategories,
-            subCategories = subCategories,
-            brands = brands,
-            category = category,
-            subCategory = subCategory,
-            brand = brand,
-            onCategory = {
-                category = it
-                subCategory = ALL
-                brand = ALL
+            categoryOptions = categoryOptions,
+            brandOptions = brandOptions,
+            products = products,
+            appliedCategory = appliedCategory,
+            appliedSubCategory = appliedSubCategory,
+            appliedBrand = appliedBrand,
+            appliedProductType = appliedProductType,
+            appliedTotalCount = total,
+            onApplyFilters = { newCat, newSubCat, newBrand, newType ->
+                appliedCategory = newCat
+                appliedSubCategory = newSubCat
+                appliedBrand = newBrand
+                appliedProductType = newType
             },
-            onSubCategory = {
-                subCategory = it
-                brand = ALL
-            },
-            onBrand = { brand = it },
-            onReset = clearCategoryBrand,
             onDismiss = { showFilterSheet = false }
         )
     }
@@ -412,10 +484,533 @@ fun CustomerProductScreen(
 }
 
 @Composable
+private fun FilterSelectionRow(
+    label: String,
+    selectedValue: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        color = SurfaceSoft,
+        border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (enabled) TextMain else TextMuted
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = if (selectedValue == ALL) "အားလုံး" else selectedValue,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selectedValue != ALL && enabled) Primary else TextMuted
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = if (enabled) TextMuted else TextMuted.copy(alpha = 0.4f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchableSelectionSheet(
+    title: String,
+    searchPlaceholder: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredOptions = remember(options, searchQuery) {
+        val q = searchQuery.trim().lowercase()
+        if (q.isBlank()) options
+        else options.filter { it == ALL || it.lowercase().contains(q) }
+    }
+
+    BackHandler(enabled = true) {
+        onDismiss()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        containerColor = CardBg
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextMain
+                )
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(SurfaceSoft)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "ပိတ်မည်",
+                        tint = TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            CompactSearchField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it.take(80) },
+                modifier = Modifier.fillMaxWidth(),
+                placeholderText = searchPlaceholder
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            if (filteredOptions.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "ရလဒ် မတွေ့ပါ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    itemsIndexed(filteredOptions, key = { index, item -> "$item-$index" }) { _, option ->
+                        val isSelected = selected == option
+                        val displayLabel = if (option == ALL) "အားလုံး (All)" else option
+                        Surface(
+                            onClick = {
+                                onSelect(option)
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) PrimaryLight else Color.Transparent,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = displayLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Primary else TextMain,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        onSelect(option)
+                                        onDismiss()
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = Primary)
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum class SelectionType { CATEGORY, SUB_CATEGORY, BRAND }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProductFilterSheet(
+    categoryOptions: List<CatalogOption>,
+    brandOptions: List<String>,
+    products: List<CatalogProduct>,
+    appliedCategory: String,
+    appliedSubCategory: String,
+    appliedBrand: String,
+    appliedProductType: String,
+    appliedTotalCount: Long,
+    onApplyFilters: (category: String, subCategory: String, brand: String, productType: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    // Draft Filter States
+    var draftCategory by remember { mutableStateOf(appliedCategory) }
+    var draftSubCategory by remember { mutableStateOf(appliedSubCategory) }
+    var draftBrand by remember { mutableStateOf(appliedBrand) }
+    var draftProductType by remember { mutableStateOf(appliedProductType) }
+    var activeSelectionSheet by remember { mutableStateOf<SelectionType?>(null) }
+
+    // Root Categories
+    val rootCategories = remember(categoryOptions, products) {
+        val explicitRoots = categoryOptions
+            .filter { it.parentId == null && !it.name.isNullOrBlank() }
+            .map { it.name!!.trim() }
+        val parentNames = categoryOptions.mapNotNull { it.parentName?.trim()?.takeIf(String::isNotBlank) } +
+            products.mapNotNull { it.parentCategoryName?.trim()?.takeIf(String::isNotBlank) }
+        val names = (explicitRoots + parentNames).distinct()
+        val fallbackAll = (
+            categoryOptions.mapNotNull { it.name?.trim()?.takeIf(String::isNotBlank) } +
+                products.mapNotNull { it.categoryName?.trim()?.takeIf(String::isNotBlank) }
+            ).distinct()
+        listOf(ALL) + (names.ifEmpty { fallbackAll })
+    }
+
+    // Dependent SubCategories for draftCategory
+    val availableSubCategories = remember(categoryOptions, products, draftCategory) {
+        if (draftCategory == ALL) emptyList()
+        else {
+            val fromMaster = categoryOptions.filter { opt ->
+                !opt.name.isNullOrBlank() &&
+                    (
+                        opt.parentName?.trim().equals(draftCategory, ignoreCase = true) == true ||
+                            categoryOptions.any { root ->
+                                root.name?.trim().equals(draftCategory, ignoreCase = true) == true &&
+                                    opt.parentId != null &&
+                                    opt.parentId == root.id
+                            }
+                        )
+            }.map { it.name!!.trim() }
+            val fromProducts = products
+                .filter { it.parentCategoryName?.trim().equals(draftCategory, ignoreCase = true) == true }
+                .mapNotNull { it.categoryName?.trim()?.takeIf(String::isNotBlank) }
+            val names = (fromMaster + fromProducts).distinct()
+            if (names.isEmpty()) emptyList() else listOf(ALL) + names
+        }
+    }
+
+    // Dependent Brands for draftCategory & draftSubCategory
+    val availableBrands = remember(brandOptions, products, draftCategory, draftSubCategory) {
+        val availableFromProducts = products.filter { p ->
+            val matchesCat = draftCategory == ALL ||
+                p.parentCategoryName?.trim().equals(draftCategory, ignoreCase = true) == true ||
+                p.categoryName?.trim().equals(draftCategory, ignoreCase = true) == true
+            val matchesSubCat = draftSubCategory == ALL ||
+                p.categoryName?.trim().equals(draftSubCategory, ignoreCase = true) == true
+            matchesCat && matchesSubCat
+        }.mapNotNull { it.brandName?.trim()?.takeIf(String::isNotBlank) }
+
+        val allMasterBrands = brandOptions.distinct()
+        val filteredBrands = if (draftCategory == ALL && draftSubCategory == ALL) {
+            allMasterBrands
+        } else {
+            if (availableFromProducts.isNotEmpty()) {
+                (availableFromProducts + allMasterBrands.filter { b -> availableFromProducts.any { it.equals(b, ignoreCase = true) } }).distinct()
+            } else {
+                allMasterBrands
+            }
+        }
+        listOf(ALL) + filteredBrands.sorted()
+    }
+
+    val isDraftUnchanged = draftCategory == appliedCategory &&
+        draftSubCategory == appliedSubCategory &&
+        draftBrand == appliedBrand &&
+        draftProductType == appliedProductType
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        containerColor = CardBg
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 20.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Filter (စစ်ထုတ်ရန်)",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextMain
+                )
+                TextButton(onClick = {
+                    draftCategory = ALL
+                    draftSubCategory = ALL
+                    draftBrand = ALL
+                    draftProductType = ALL
+                }) {
+                    Text("Reset", color = Primary, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // 1. Condition Section
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Condition (ပစ္စည်း အခြေအနေ)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(ALL to "အားလုံး (All)", "New" to "New", "Second" to "Second").forEach { (value, displayLabel) ->
+                            val isSelected = draftProductType == value
+                            Surface(
+                                onClick = { draftProductType = value },
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) PrimaryLight else SurfaceSoft,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) Primary else BorderColor
+                                )
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = displayLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Primary else TextMain
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = BorderColor.copy(alpha = 0.5f))
+
+                // 2. Category Row
+                FilterSelectionRow(
+                    label = "Category",
+                    selectedValue = draftCategory,
+                    onClick = { activeSelectionSheet = SelectionType.CATEGORY }
+                )
+
+                // 3. Sub Category Row
+                FilterSelectionRow(
+                    label = "Sub Category",
+                    selectedValue = draftSubCategory,
+                    enabled = draftCategory != ALL && availableSubCategories.isNotEmpty(),
+                    onClick = { activeSelectionSheet = SelectionType.SUB_CATEGORY }
+                )
+
+                // 4. Brand Row
+                FilterSelectionRow(
+                    label = "Brand",
+                    selectedValue = draftBrand,
+                    enabled = availableBrands.isNotEmpty(),
+                    onClick = { activeSelectionSheet = SelectionType.BRAND }
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Sticky Bottom Action Area
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        draftCategory = ALL
+                        draftSubCategory = ALL
+                        draftBrand = ALL
+                        draftProductType = ALL
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Clear all", fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = {
+                        onApplyFilters(draftCategory, draftSubCategory, draftBrand, draftProductType)
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                ) {
+                    Text(
+                        text = if (isDraftUnchanged && appliedTotalCount > 0) "Show $appliedTotalCount Products" else "Show Products",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+            }
+        }
+    }
+
+    // Dependent Searchable Selection Bottom Sheets
+    when (activeSelectionSheet) {
+        SelectionType.CATEGORY -> SearchableSelectionSheet(
+            title = "Select Category",
+            searchPlaceholder = "Search category...",
+            options = rootCategories,
+            selected = draftCategory,
+            onSelect = { selectedCat ->
+                draftCategory = selectedCat
+                // Dependent Validation on Category Change
+                val newSubCats = if (selectedCat == ALL) emptyList() else {
+                    val fromMaster = categoryOptions.filter { opt ->
+                        !opt.name.isNullOrBlank() &&
+                            (
+                                opt.parentName?.trim().equals(selectedCat, ignoreCase = true) == true ||
+                                    categoryOptions.any { root ->
+                                        root.name?.trim().equals(selectedCat, ignoreCase = true) == true &&
+                                            opt.parentId != null &&
+                                            opt.parentId == root.id
+                                    }
+                                )
+                    }.map { it.name!!.trim() }
+                    val fromProducts = products
+                        .filter { it.parentCategoryName?.trim().equals(selectedCat, ignoreCase = true) == true }
+                        .mapNotNull { it.categoryName?.trim()?.takeIf(String::isNotBlank) }
+                    val names = (fromMaster + fromProducts).distinct()
+                    if (names.isEmpty()) emptyList() else listOf(ALL) + names
+                }
+
+                if (draftSubCategory !in newSubCats) {
+                    draftSubCategory = ALL
+                }
+
+                val availCat = products.filter { p ->
+                    val matchesCat = selectedCat == ALL ||
+                        p.parentCategoryName?.trim().equals(selectedCat, ignoreCase = true) == true ||
+                        p.categoryName?.trim().equals(selectedCat, ignoreCase = true) == true
+                    val matchesSubCat = draftSubCategory == ALL ||
+                        p.categoryName?.trim().equals(draftSubCategory, ignoreCase = true) == true
+                    matchesCat && matchesSubCat
+                }.mapNotNull { it.brandName?.trim()?.takeIf(String::isNotBlank) }
+                val masterCat = brandOptions.distinct()
+                val newBrandsCat = if (selectedCat == ALL && draftSubCategory == ALL) masterCat
+                else if (availCat.isNotEmpty()) (availCat + masterCat.filter { b -> availCat.any { it.equals(b, ignoreCase = true) } }).distinct()
+                else masterCat
+
+                if (draftBrand != ALL && draftBrand !in newBrandsCat) {
+                    draftBrand = ALL
+                }
+            },
+            onDismiss = { activeSelectionSheet = null }
+        )
+        SelectionType.SUB_CATEGORY -> SearchableSelectionSheet(
+            title = "Select Sub Category",
+            searchPlaceholder = "Search subcategory...",
+            options = availableSubCategories,
+            selected = draftSubCategory,
+            onSelect = { selectedSubCat ->
+                draftSubCategory = selectedSubCat
+                // Dependent Validation on Sub Category Change
+                val availSub = products.filter { p ->
+                    val matchesCat = draftCategory == ALL ||
+                        p.parentCategoryName?.trim().equals(draftCategory, ignoreCase = true) == true ||
+                        p.categoryName?.trim().equals(draftCategory, ignoreCase = true) == true
+                    val matchesSubCat = selectedSubCat == ALL ||
+                        p.categoryName?.trim().equals(selectedSubCat, ignoreCase = true) == true
+                    matchesCat && matchesSubCat
+                }.mapNotNull { it.brandName?.trim()?.takeIf(String::isNotBlank) }
+                val masterSub = brandOptions.distinct()
+                val newBrandsSub = if (draftCategory == ALL && selectedSubCat == ALL) masterSub
+                else if (availSub.isNotEmpty()) (availSub + masterSub.filter { b -> availSub.any { it.equals(b, ignoreCase = true) } }).distinct()
+                else masterSub
+
+                if (draftBrand != ALL && draftBrand !in newBrandsSub) {
+                    draftBrand = ALL
+                }
+            },
+            onDismiss = { activeSelectionSheet = null }
+        )
+        SelectionType.BRAND -> SearchableSelectionSheet(
+            title = "Select Brand",
+            searchPlaceholder = "Search brand...",
+            options = availableBrands,
+            selected = draftBrand,
+            onSelect = { selectedBrand ->
+                draftBrand = selectedBrand
+            },
+            onDismiss = { activeSelectionSheet = null }
+        )
+        null -> {}
+    }
+}
+
+@Composable
 private fun CompactSearchField(
     value: String,
     onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    placeholderText: String = "ပစ္စည်း ရှာမည်"
 ) {
     Row(
         modifier = modifier
@@ -430,7 +1025,7 @@ private fun CompactSearchField(
         Spacer(Modifier.width(8.dp))
         Box(modifier = Modifier.weight(1f)) {
             if (value.isBlank()) {
-                Text("ပစ္စည်း ရှာမည်", color = TextMuted, style = MaterialTheme.typography.bodyMedium)
+                Text(placeholderText, color = TextMuted, style = MaterialTheme.typography.bodyMedium)
             }
             BasicTextField(
                 value = value,
@@ -495,42 +1090,6 @@ private fun HeaderIconButton(
 }
 
 @Composable
-private fun TypeSegmentRow(
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceSoft)
-            .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        listOf(ALL to "အားလုံး", "New" to "New", "Second" to "Second").forEach { (value, label) ->
-            val isSelected = selected == value
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (isSelected) Primary else Color.Transparent)
-                    .clickable { onSelect(value) }
-                    .padding(vertical = 9.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    label,
-                    color = if (isSelected) OnPrimary else TextMuted,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun ActiveFilterChip(label: String, onClear: () -> Unit) {
     Row(
         modifier = Modifier
@@ -544,136 +1103,6 @@ private fun ActiveFilterChip(label: String, onClear: () -> Unit) {
     ) {
         Text(label, color = Primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Icon(Icons.Outlined.Close, contentDescription = "ဖယ်မည်", tint = Primary, modifier = Modifier.size(14.dp))
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ProductFilterSheet(
-    categories: List<String>,
-    subCategories: List<String>,
-    brands: List<String>,
-    category: String,
-    subCategory: String,
-    brand: String,
-    onCategory: (String) -> Unit,
-    onSubCategory: (String) -> Unit,
-    onBrand: (String) -> Unit,
-    onReset: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-        containerColor = CardBg
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp)
-                .padding(bottom = 28.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Filter",
-                    modifier = Modifier.weight(1f),
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextMain
-                )
-                TextButton(onClick = onReset) {
-                    Text("ရှင်းမည်", color = Primary, fontWeight = FontWeight.SemiBold)
-                }
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    "1) Category → 2) Sub category → 3) Brand",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
-                FilterChipSection("1. Category", categories, category, { it }, onCategory)
-                if (category == ALL) {
-                    Text(
-                        "Category ရွေးပါ — သက်ဆိုင်ရာ Sub category ပေါ်လာပါမည်",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted
-                    )
-                } else {
-                    if (subCategories.isNotEmpty()) {
-                        FilterChipSection("2. Sub category", subCategories, subCategory, { it }, onSubCategory)
-                    } else {
-                        Text(
-                            "ဤ Category တွင် Sub category မရှိပါ — Brand ဆက်ရွေးပါ",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    }
-                    if (brands.isNotEmpty()) {
-                        FilterChipSection("3. Brand", brands, brand, { it }, onBrand)
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-            ) {
-                Text("ရလဒ် ကြည့်မည်", fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.height(6.dp))
-            OutlinedButton(
-                onClick = {
-                    onReset()
-                    onDismiss()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Filter မပါဘဲ ကြည့်မည်")
-            }
-        }
-    }
-}
-
-@Composable
-private fun FilterChipSection(
-    title: String,
-    options: List<String>,
-    selected: String,
-    labelOf: (String) -> String,
-    onSelect: (String) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.labelMedium, color = TextMuted, fontWeight = FontWeight.Bold)
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            options.forEach { item ->
-                FilterChip(
-                    selected = selected == item,
-                    onClick = { onSelect(item) },
-                    label = { Text(labelOf(item)) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PrimaryLight,
-                        selectedLabelColor = Primary
-                    )
-                )
-            }
-        }
     }
 }
 
@@ -691,10 +1120,10 @@ private fun CustomerProductCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(206.dp)
-            .alpha(if (outOfStock) 0.72f else 1f)
+            .height(224.dp)
+            .alpha(if (outOfStock) 0.78f else 1f)
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = CardBg,
         border = BorderStroke(1.dp, BorderColor),
         shadowElevation = 0.dp
@@ -703,92 +1132,77 @@ private fun CustomerProductCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(96.dp)
+                    .height(120.dp)
                     .background(SurfaceSoft),
                 contentAlignment = Alignment.Center
             ) {
-                val imageUrl = (product.thumbnailUrl ?: product.photoUrls.orEmpty().firstOrNull())?.assetUrl()
-                if (imageUrl != null) {
+                val imageUrl = remember(product.photoUrls, product.thumbnailUrl) {
+                    extractPhotoUrls(product.photoUrls, product.thumbnailUrl).firstOrNull()
+                }
+                if (!imageUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = imageUrl,
                         contentDescription = product.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(6.dp),
+                        contentScale = ContentScale.Fit
                     )
                 } else {
-                    Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(28.dp))
+                    Icon(
+                        imageVector = Icons.Outlined.Inventory2,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
-                if (outOfStock) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(DangerBg)
-                            .border(1.dp, Danger.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                    ) {
-                        Text("ကုန်နေ", color = Danger, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                    }
-                }
+
+                // Condition Badge (NEW / SECOND)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(6.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(product.productTypeChipBg())
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        product.productTypeLabel(),
+                        text = product.productTypeLabel(),
                         color = product.productTypeChipFg(),
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.5.sp
                     )
                 }
+
+                // Favorite Toggle Button
                 if (onToggleFavorite != null) {
                     IconButton(
                         onClick = onToggleFavorite,
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
+                            .align(Alignment.TopStart)
                             .padding(2.dp)
-                            .size(34.dp)
+                            .size(36.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.Black.copy(alpha = 0.45f)),
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(CardBg.copy(alpha = 0.85f))
+                                .border(1.dp, BorderColor.copy(alpha = 0.4f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = if (wishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                                 contentDescription = if (wishlisted) "အကြိုက်စာရင်းမှ ဖယ်မည်" else "အကြိုက်စာရင်းထည့်မည်",
-                                tint = if (wishlisted) Danger else OnPrimary,
-                                modifier = Modifier.size(16.dp)
+                                tint = if (wishlisted) Danger else TextMuted,
+                                modifier = Modifier.size(15.dp)
                             )
                         }
                     }
                 }
-                val photoCount = product.photoUrls.orEmpty().size
-                if (photoCount > 1) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            "1/$photoCount",
-                            color = OnPrimary,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
             }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -798,57 +1212,69 @@ private fun CustomerProductCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        product.name.orEmpty().ifBlank { "ပစ္စည်း" },
+                        text = product.name.orEmpty().ifBlank { "ပစ္စည်း" },
                         maxLines = 2,
                         minLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextMain
+                        fontWeight = FontWeight.Bold,
+                        color = TextMain,
+                        fontSize = 12.5.sp
                     )
                     Text(
-                        listOfNotNull(product.brandName, product.categoryName)
+                        text = listOfNotNull(product.brandName, product.categoryName)
                             .joinToString(" • ")
-                            .ifBlank { product.productCode.orEmpty().ifBlank { " " } },
+                            .ifBlank { " " },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
-                    )
-                    val warranty = formatWarranty(product.warrantyTerms, product.warrantyMonths)
-                    Text(
-                        buildString {
-                            append(if (outOfStock) "ကုန်နေသည်" else "ကျန် $stock ခု")
-                            if (warranty.isNotBlank()) append(" · $warranty")
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (outOfStock) Danger else Success,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
+                        color = TextMuted,
+                        fontSize = 10.sp
                     )
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(28.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        product.sellingPrice.money(),
-                        modifier = Modifier.weight(1f),
+                        text = product.sellingPrice.money(),
                         color = Primary,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.5.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    QtyStepper(
-                        qty = qty,
-                        maxQty = stock,
-                        enabled = !outOfStock,
-                        compact = true,
-                        onChangeQty = onChangeQty
-                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(28.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val stockText = when {
+                            outOfStock -> "Out of Stock"
+                            (product.warrantyMonths ?: 0) > 0 -> "In Stock • ${product.warrantyMonths}M Warranty"
+                            else -> "In Stock"
+                        }
+                        Text(
+                            text = stockText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (outOfStock) Danger else Success,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 9.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        QtyStepper(
+                            qty = qty,
+                            maxQty = stock,
+                            enabled = !outOfStock,
+                            compact = true,
+                            onChangeQty = onChangeQty
+                        )
+                    }
                 }
             }
         }
@@ -959,6 +1385,33 @@ private fun ProductDetailSheet(
         )
     }
 }
+@Composable
+private fun ProductInfoRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMain,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End
+        )
+    }
+}
 
 @Composable
 private fun ProductDetailContent(
@@ -972,162 +1425,320 @@ private fun ProductDetailContent(
 ) {
     val stock = product.availableStock()
     val outOfStock = stock <= 0
+    val warrantyMonths = product.warrantyMonths ?: 0
+    val warrantyTerms = product.warrantyTerms?.trim().orEmpty()
+    val remark = product.remark?.trim().orEmpty()
+
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp)
-            .padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp)
+        modifier = modifier.fillMaxWidth()
     ) {
+        // Scrollable Body
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp)
+                .padding(top = 12.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // 1. Photo Gallery
             ProductPhotoGallery(
                 photoUrls = product.photoUrls.orEmpty(),
+                thumbnailUrl = product.thumbnailUrl,
                 productName = product.name,
-                onClose = onDismiss
+                onClose = onDismiss,
+                wishlisted = wishlisted,
+                onToggleFavorite = onToggleFavorite
             )
 
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.weight(1f)) {
+            // 2. Header Info: Name & Brand/Category
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = product.name.orEmpty().ifBlank { "ပစ္စည်း" },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+                Text(
+                    text = listOfNotNull(product.brandName, product.categoryName)
+                        .joinToString(" • ")
+                        .ifBlank { " " },
+                    color = TextMuted,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            // 3. Status Chips Row (Condition & Stock)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Condition Badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = product.productTypeChipBg(),
+                    border = BorderStroke(1.dp, product.productTypeChipFg().copy(alpha = 0.15f))
+                ) {
                     Text(
-                        product.name.orEmpty().ifBlank { "ပစ္စည်း" },
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = TextMain
-                    )
-                    Text(
-                        listOfNotNull(product.brandName, product.categoryName).joinToString(" • "),
-                        color = TextMuted,
-                        style = MaterialTheme.typography.bodySmall
+                        text = product.productTypeLabel(),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        color = product.productTypeChipFg(),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (onToggleFavorite != null) {
-                        IconButton(onClick = onToggleFavorite) {
-                            Icon(
-                                imageVector = if (wishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = if (wishlisted) "အကြိုက်စာရင်းမှ ဖယ်မည်" else "အကြိုက်စာရင်းထည့်မည်",
-                                tint = if (wishlisted) Danger else TextMuted
+
+                // Stock Status Chip
+                val (stockText, stockFg, stockBg) = when {
+                    outOfStock -> Triple("Out of Stock", Danger, DangerBg)
+                    stock == 1 -> Triple("Only 1 left", Warning, WarningBg)
+                    else -> Triple("In Stock · $stock available", Success, SuccessBg)
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = stockBg,
+                    border = BorderStroke(1.dp, stockFg.copy(alpha = 0.15f))
+                ) {
+                    Text(
+                        text = stockText,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        color = stockFg,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // 4. Prominent Price
+            Text(
+                text = product.sellingPrice.money(),
+                color = Primary,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            HorizontalDivider(color = BorderColor.copy(alpha = 0.6f))
+
+            // 5. Product Information Table
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Product Information",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryDark
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = SurfaceSoft,
+                    border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        product.productCode?.takeIf { it.isNotBlank() }?.let {
+                            ProductInfoRow("Product Code", it)
+                            HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
+                        }
+                        ProductInfoRow("Condition", product.productTypeLabel())
+                        product.brandName?.takeIf { it.isNotBlank() }?.let {
+                            HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
+                            ProductInfoRow("Brand", it)
+                        }
+                        product.categoryName?.takeIf { it.isNotBlank() }?.let {
+                            HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
+                            ProductInfoRow("Category", it)
+                        }
+                        HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
+                        ProductInfoRow("Available Stock", if (outOfStock) "0 (Out of Stock)" else "$stock")
+                        HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
+                        ProductInfoRow(
+                            "Warranty",
+                            if (warrantyMonths > 0) "$warrantyMonths Months" else "No Warranty"
+                        )
+                    }
+                }
+            }
+
+            // 6. Warranty Details (if warrantyMonths > 0 or terms present)
+            if (warrantyMonths > 0 || warrantyTerms.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Warranty",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryDark
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = SuccessBg.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, Success.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (warrantyMonths > 0) "$warrantyMonths Months Warranty" else "No Warranty",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Success
                             )
+                            if (warrantyTerms.isNotBlank()) {
+                                Text(
+                                    text = warrantyTerms,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMain,
+                                    lineHeight = 18.sp
+                                )
+                            }
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(product.productTypeChipBg())
-                            .border(1.dp, product.productTypeChipFg().copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            product.productTypeLabel(),
-                            color = product.productTypeChipFg(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (outOfStock) DangerBg else SuccessBg)
-                            .border(
-                                1.dp,
-                                if (outOfStock) Danger.copy(alpha = 0.15f) else Success.copy(alpha = 0.15f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            if (outOfStock) "ကုန်နေသည်" else "ကျန် $stock ခု",
-                            color = if (outOfStock) Danger else Success,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
                 }
             }
 
-            Text(
-                product.sellingPrice.money(),
-                color = Primary,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            HorizontalDivider(color = BorderColor.copy(alpha = 0.8f))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProductDetailValue("Code", product.productCode.orEmpty().ifBlank { "—" }, Modifier.weight(1f))
-                ProductDetailValue(
-                    "Warranty",
-                    formatWarranty(product.warrantyTerms, product.warrantyMonths).ifBlank { "မရှိပါ" },
-                    Modifier.weight(1f)
-                )
-            }
-            val remark = product.remark?.trim().orEmpty()
-            if (!outOfStock && remark.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceSoft)
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text("Remark", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                    Text(remark, style = MaterialTheme.typography.bodyMedium, color = TextMain)
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("အရေအတွက်", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, color = TextMain)
-                QtyStepper(
-                    qty = qty,
-                    maxQty = stock,
-                    enabled = !outOfStock,
-                    compact = false,
-                    onChangeQty = onChangeQty
-                )
-            }
-            if (qty > 0) {
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-                ) {
-                    Icon(Icons.Outlined.ShoppingBag, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("ခြင်းတောင်းထဲ $qty ခု ရှိသည်", fontWeight = FontWeight.SemiBold)
+            // 7. Remark / Condition Note (if remark present)
+            if (remark.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Remark / Condition Note",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryDark
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = SurfaceSoft,
+                        border = BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = remark,
+                            modifier = Modifier.padding(14.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMain,
+                            lineHeight = 20.sp
+                        )
+                    }
                 }
             }
         }
+
+        // Sticky Bottom Purchase Bar
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = CardBg,
+            shadowElevation = 8.dp,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (outOfStock) {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            disabledContainerColor = SurfaceSoft,
+                            disabledContentColor = TextMuted
+                        )
+                    ) {
+                        Text("Out of Stock", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+                } else if (qty <= 0) {
+                    Button(
+                        onClick = { onChangeQty(1) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                    ) {
+                        Icon(Icons.Outlined.ShoppingBag, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Add to Cart — ${product.sellingPrice.money()}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+                } else {
+                    QtyStepper(
+                        qty = qty,
+                        maxQty = stock,
+                        enabled = true,
+                        compact = false,
+                        onChangeQty = onChangeQty
+                    )
+
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                    ) {
+                        Icon(Icons.Outlined.ShoppingBag, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "In Cart ($qty)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun ProductPhotoGallery(
     photoUrls: List<String>,
+    thumbnailUrl: String?,
     productName: String?,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    wishlisted: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null
 ) {
-    val urls = photoUrls.map { it.assetUrl() }.filter { it.isNotBlank() }
+    val urls = remember(photoUrls, thumbnailUrl) {
+        extractPhotoUrls(photoUrls, thumbnailUrl)
+    }
     val pagerState = rememberPagerState(pageCount = { urls.size.coerceAtLeast(1) })
     val scope = rememberCoroutineScope()
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(260.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(SurfaceSoft)
-                .border(1.dp, BorderColor, RoundedCornerShape(16.dp)),
+                .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (urls.isEmpty()) {
-                Icon(Icons.Outlined.Inventory2, null, tint = Primary, modifier = Modifier.size(62.dp))
+                Icon(
+                    imageVector = Icons.Outlined.Inventory2,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(64.dp)
+                )
             } else {
                 HorizontalPager(
                     state = pagerState,
@@ -1144,54 +1755,67 @@ private fun ProductPhotoGallery(
                 }
             }
 
-            IconButton(
-                onClick = onClose,
+            // Close Button
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(8.dp)
+                    .padding(6.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(CardBg.copy(alpha = 0.9f))
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Outlined.Close, contentDescription = "ပိတ်မည်")
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = "ပိတ်မည်",
+                    tint = TextMain,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
-            if (urls.size > 1) {
+            // Favorite Button
+            if (onToggleFavorite != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(CardBg.copy(alpha = 0.9f))
+                        .clickable(onClick = onToggleFavorite),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (wishlisted) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (wishlisted) "အကြိုက်စာရင်းမှ ဖယ်မည်" else "အကြိုက်စာရင်းထည့်မည်",
+                        tint = if (wishlisted) Danger else TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Page Indicator Badge
+            if (urls.size > 1) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
                         .padding(10.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
+                        .background(Color.Black.copy(alpha = 0.65f))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        "${pagerState.currentPage + 1}/${urls.size}",
+                        "${pagerState.currentPage + 1} / ${urls.size}",
                         color = OnPrimary,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    repeat(urls.size) { index ->
-                        Box(
-                            modifier = Modifier
-                                .size(if (pagerState.currentPage == index) 8.dp else 6.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (pagerState.currentPage == index) Primary
-                                    else OnPrimary.copy(alpha = 0.75f)
-                                )
-                        )
-                    }
-                }
             }
         }
 
+        // Thumbnail Row if Multiple Images
         if (urls.size > 1) {
             Row(
                 modifier = Modifier
@@ -1205,7 +1829,7 @@ private fun ProductPhotoGallery(
                         model = url,
                         contentDescription = "Preview ${index + 1}",
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(60.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .border(
                                 width = if (selected) 2.dp else 1.dp,
@@ -1257,6 +1881,33 @@ private fun CatalogProduct.productTypeChipBg(): Color = when (normalizedType()) 
 private fun CatalogProduct.productTypeChipFg(): Color = when (normalizedType()) {
     "Second" -> Color(0xFFC2410C)
     else -> Primary
+}
+
+private fun normalizeImageKey(url: String): String {
+    val clean = url.trim().substringBefore('?').lowercase()
+    val filename = clean.substringAfterLast('/')
+    return if (filename.isNotBlank()) filename else clean
+}
+
+private fun extractPhotoUrls(photoUrls: List<String>?, thumbnailUrl: String?): List<String> {
+    val rawList = mutableListOf<String>()
+
+    photoUrls?.forEach { raw ->
+        if (raw.isNotBlank()) {
+            rawList.addAll(raw.split(',', ';', '\n', '|').map { it.trim() })
+        }
+    }
+
+    if (rawList.isEmpty()) {
+        thumbnailUrl?.takeIf { it.isNotBlank() }?.let { raw ->
+            rawList.addAll(raw.split(',', ';', '\n', '|').map { it.trim() })
+        }
+    }
+
+    return rawList
+        .filter { it.isNotBlank() }
+        .map { it.assetUrl() }
+        .distinctBy { normalizeImageKey(it) }
 }
 
 private fun String.assetUrl(): String =

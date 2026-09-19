@@ -12,9 +12,14 @@ val localProps = Properties().also { props ->
     if (f.exists()) f.inputStream().use(props::load)
 }
 
+fun signingProp(name: String, default: String = ""): String {
+    val env = System.getenv(name)?.trim().orEmpty()
+    if (env.isNotEmpty()) return env
+    return localProps.getProperty(name, default)?.trim().orEmpty()
+}
+
 fun releaseKeystoreFile(): File {
-    val raw = localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore")
-        .trim()
+    val raw = signingProp("KEYSTORE_PATH", "../sspd-release.keystore")
         .replace('\\', '/')
     val candidate = File(raw)
     val resolved = if (candidate.isAbsolute) candidate else rootProject.file(raw)
@@ -50,9 +55,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile     = releaseKeystoreFile()
-            storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "21101998")
-            keyAlias      = localProps.getProperty("KEY_ALIAS", "sspd")
-            keyPassword   = localProps.getProperty("KEY_PASSWORD", "21101998")
+            storePassword = signingProp("KEYSTORE_PASSWORD")
+            keyAlias      = signingProp("KEY_ALIAS", "sspd")
+            keyPassword   = signingProp("KEY_PASSWORD")
         }
     }
 
@@ -95,14 +100,14 @@ android {
 
 fun requireReleaseSigning() {
     val keystore = releaseKeystoreFile()
-    val storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
-    val keyPassword = localProps.getProperty("KEY_PASSWORD", "")
-    val alias = localProps.getProperty("KEY_ALIAS", "sspd")
+    val storePassword = signingProp("KEYSTORE_PASSWORD")
+    val keyPassword = signingProp("KEY_PASSWORD")
+    val alias = signingProp("KEY_ALIAS", "sspd")
     require(keystore.isFile) {
-        "Release keystore not found: ${keystore.absolutePath}. Set KEYSTORE_PATH in technician-app/local.properties."
+        "Release keystore not found: ${keystore.absolutePath}. Set KEYSTORE_PATH in technician-app/local.properties or as a CI env var."
     }
     require(storePassword.isNotBlank() && keyPassword.isNotBlank() && alias.isNotBlank()) {
-        "KEYSTORE_PASSWORD, KEY_PASSWORD, and KEY_ALIAS must be set in technician-app/local.properties."
+        "KEYSTORE_PASSWORD, KEY_PASSWORD, and KEY_ALIAS must be set in technician-app/local.properties or as CI env vars."
     }
 }
 
@@ -147,6 +152,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

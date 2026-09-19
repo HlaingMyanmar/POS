@@ -72,20 +72,15 @@ class TechnicianLocalSettings(private val context: Context) {
         var action = InactivityAction.NONE
         context.securityDataStore.edit { prefs ->
             val backgroundAt = prefs[Keys.backgroundAt] ?: 0L
-            val elapsed = if (backgroundAt > 0L) nowMillis - backgroundAt else 0L
             val lockEnabled = prefs[Keys.lockEnabled] ?: true
-            action = when {
-                elapsed >= LOGOUT_TIMEOUT_MILLIS -> InactivityAction.LOGOUT
-                lockEnabled && elapsed >= LOCK_TIMEOUT_MILLIS -> InactivityAction.LOCK
-                else -> InactivityAction.NONE
-            }
+            action = InactivityPolicy.action(backgroundAt, nowMillis, lockEnabled)
             if (action != InactivityAction.LOCK) prefs.remove(Keys.backgroundAt)
         }
         return action
     }
 
     companion object {
-        const val LOCK_TIMEOUT_MILLIS = 5 * 60 * 1000L
-        const val LOGOUT_TIMEOUT_MILLIS = 20 * 60 * 1000L
+        const val LOCK_TIMEOUT_MILLIS = InactivityPolicy.LOCK_TIMEOUT_MILLIS
+        const val LOGOUT_TIMEOUT_MILLIS = InactivityPolicy.LOGOUT_TIMEOUT_MILLIS
     }
 }

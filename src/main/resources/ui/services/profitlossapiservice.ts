@@ -10,6 +10,7 @@ export const profitLossService = {
       to:               d.to               || to,
       grossSales:       Number(d.grossSales)       || 0,
       serviceRevenue:   Number(d.serviceRevenue)   || 0,
+      deliveryRevenue:  Number(d.deliveryRevenue)  || 0,
       salesReturns:     Number(d.salesReturns)     || 0,
       netRevenue:       Number(d.netRevenue)       || 0,
       purchases:        Number(d.purchases)        || 0,

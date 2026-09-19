@@ -22,7 +22,9 @@ Or:
 .\scripts\run-integration-tests.ps1
 ```
 
-Without Docker and without `IT_USE_LOCAL_MYSQL=true`, IT classes skip via JUnit assumptions.
+Without Docker and without a reachable local MySQL configuration, the
+integration-test build **fails**. It must never report success with all IT
+classes skipped.
 
 ## Coverage
 
@@ -33,6 +35,8 @@ Without Docker and without `IT_USE_LOCAL_MYSQL=true`, IT classes skip via JUnit 
 | `BookingConvertHttpIT` | HTTP `POST /bookings` + `/convert-outdoor` against real schema |
 | `ProductPhotoSchemaIT` | Flyway ≥115; `product_photos` + `uk_product_photo_slot` exist |
 | `ProductPhotosHttpIT` | Create serial product → `PUT /products/{id}/photos` (3 slots) → GET product + serials by product |
+| `DeliveryPricingIT` | Delivery pricing rules against the migrated schema |
+| `CustomerCatalogIT` | Customer catalog API against real MySQL data |
 
 ## Live browser / device E2E
 
@@ -43,3 +47,23 @@ These ITs do **not** replace a full UI E2E. For browser/device:
 3. Device apps need a reachable `APP_BASE_URL` / API host.
 
 Server must be listening (default `:8080`) before browser automation.
+
+## Android JVM unit tests
+
+Run both app suites without an emulator:
+
+```powershell
+Push-Location technician-app
+.\gradlew.bat testDebugUnitTest
+Pop-Location
+
+Push-Location customer-app
+.\gradlew.bat testDebugUnitTest
+Pop-Location
+```
+
+The technician suite covers authorization normalization, refresh retry/loop
+prevention, inactivity lock/logout thresholds, and location heartbeat policy.
+The customer suite covers startup authentication/biometric decisions, idle
+logout, unauthorized-response handling, cart serialization recovery, and
+deposit/remainder payment calculations.

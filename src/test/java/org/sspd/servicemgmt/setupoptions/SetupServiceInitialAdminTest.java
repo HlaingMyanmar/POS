@@ -1,7 +1,9 @@
 package org.sspd.servicemgmt.setupoptions;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.repository.ChartOfAccountRepository;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
@@ -21,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SetupServiceInitialAdminTest {
+    private static final String SETUP_TOKEN = "test-setup-token-at-least-32-characters";
 
     @Test
     void rejectsInitialAdminWhenUsersAlreadyExist() {
@@ -35,6 +38,7 @@ class SetupServiceInitialAdminTest {
                 mock(RoleRepository.class),
                 mock(PasswordEncoder.class)
         );
+        ReflectionTestUtils.setField(service, "initialAdminToken", SETUP_TOKEN);
 
         InitialAdminDTO dto = new InitialAdminDTO();
         dto.setUsername("admin");
@@ -42,7 +46,7 @@ class SetupServiceInitialAdminTest {
         dto.setPassword("password1");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> service.createInitialAdministrator(dto));
+                () -> service.createInitialAdministrator(dto, SETUP_TOKEN));
         assertTrue(ex.getMessage().contains("no users exist"));
         verify(users, never()).save(any(User.class));
     }
@@ -67,13 +71,36 @@ class SetupServiceInitialAdminTest {
                 roles,
                 encoder
         );
+        ReflectionTestUtils.setField(service, "initialAdminToken", SETUP_TOKEN);
 
         InitialAdminDTO dto = new InitialAdminDTO();
         dto.setUsername("HlaingHtun");
         dto.setEmail("admin@example.com");
         dto.setPassword("password1");
-        service.createInitialAdministrator(dto);
+        service.createInitialAdministrator(dto, SETUP_TOKEN);
 
         verify(users).save(any(User.class));
+    }
+
+    @Test
+    void rejectsMissingOrIncorrectSetupTokenBeforeCheckingDatabase() {
+        UserRepository users = mock(UserRepository.class);
+        SetupService service = new SetupService(
+                mock(PaymentMethodRepository.class),
+                mock(ChartOfAccountRepository.class),
+                mock(CompanySettingsRepository.class),
+                users,
+                mock(RoleRepository.class),
+                mock(PasswordEncoder.class)
+        );
+        ReflectionTestUtils.setField(service, "initialAdminToken", SETUP_TOKEN);
+        InitialAdminDTO dto = new InitialAdminDTO();
+
+        assertThrows(AccessDeniedException.class,
+                () -> service.createInitialAdministrator(dto, null));
+        assertThrows(AccessDeniedException.class,
+                () -> service.createInitialAdministrator(dto, "wrong-token"));
+        verify(users, never()).count();
+        verify(users, never()).save(any(User.class));
     }
 }

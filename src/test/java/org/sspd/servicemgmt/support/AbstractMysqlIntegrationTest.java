@@ -31,7 +31,7 @@ public abstract class AbstractMysqlIntegrationTest {
 
     @BeforeAll
     static void requireMysqlBackend() {
-        MysqlIntegrationSupport.assumeMysqlAvailable();
+        MysqlIntegrationSupport.requireMysqlAvailable();
     }
 
     @DynamicPropertySource

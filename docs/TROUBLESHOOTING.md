@@ -122,7 +122,8 @@ to the normal HTTP proxy and Spring logs `invalid Upgrade header: null`.
 
 STOMP endpoints are `permitAll`. Topics include `/topic/data-events`, `/topic/sales`, `/topic/barcode-scan`, etc.
 
-`POST /api/v1/scan` is public and broadcasts `/topic/barcode-scan`.
+`POST /api/v1/scan` requires staff sale-create permission or the configured
+`X-Scanner-Token`, then broadcasts `/topic/barcode-scan`.
 
 ---
 

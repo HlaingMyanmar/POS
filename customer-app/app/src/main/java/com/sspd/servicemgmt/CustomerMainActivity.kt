@@ -14,6 +14,8 @@ import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.feature.auth.AuthScreen
 import com.sspd.servicemgmt.feature.auth.CompleteProfileScreen
 import com.sspd.servicemgmt.feature.auth.BiometricAuthHelper
+import com.sspd.servicemgmt.feature.auth.CustomerAuthPolicy
+import com.sspd.servicemgmt.feature.auth.SessionStartAction
 import com.sspd.servicemgmt.feature.cart.CartStore
 import com.sspd.servicemgmt.feature.home.HomeScaffold
 
@@ -31,8 +33,16 @@ class CustomerMainActivity : androidx.fragment.app.FragmentActivity() {
         setContent {
             AppTheme {
                 val biometric = remember { BiometricAuthHelper(this@CustomerMainActivity) }
-                val hasSession = prefs.authToken.isNotBlank() && !prefs.isSessionIdle()
-                var loggedIn by remember { mutableStateOf(hasSession && !prefs.biometricEnabled) }
+                val initialAction = remember {
+                    CustomerAuthPolicy.startupAction(
+                        hasToken = prefs.authToken.isNotBlank(),
+                        idle = prefs.isSessionIdle(),
+                        biometricEnabled = prefs.biometricEnabled
+                    )
+                }
+                var loggedIn by remember {
+                    mutableStateOf(initialAction == SessionStartAction.OPEN_SESSION)
+                }
                 var needsProfile by remember { mutableStateOf(prefs.needsProfile) }
                 val expired by AuthEventBus.tokenExpired.collectAsState()
 
@@ -47,18 +57,36 @@ class CustomerMainActivity : androidx.fragment.app.FragmentActivity() {
 
                 // Cold start after idle → clear session once
                 LaunchedEffect(Unit) {
-                    if (prefs.authToken.isNotBlank() && prefs.isSessionIdle()) {
-                        forceLogout()
-                    } else if (prefs.authToken.isNotBlank()) {
-                        if (prefs.biometricEnabled && biometric.canAuthenticate()) {
-                            biometric.authenticate(
-                                onSuccess = { prefs.touchSession(); loggedIn = true },
-                                onError = { /* Password login remains available. */ }
-                            )
-                        } else {
+                    when (CustomerAuthPolicy.startupAction(
+                        hasToken = prefs.authToken.isNotBlank(),
+                        idle = prefs.isSessionIdle(),
+                        biometricEnabled = prefs.biometricEnabled
+                    )) {
+                        SessionStartAction.LOGOUT_IDLE_SESSION -> forceLogout()
+                        SessionStartAction.REQUIRE_BIOMETRIC -> {
+                            if (biometric.canAuthenticate()) {
+                                biometric.authenticate(
+                                    onSuccess = {
+                                        prefs.touchSession()
+                                        loggedIn = true
+                                    },
+                                    onError = {
+                                        // Never fall through to a saved-token session when
+                                        // biometric verification is cancelled or unavailable.
+                                        forceLogout()
+                                    }
+                                )
+                            } else {
+                                // Enrollment removed, hardware unavailable, or lockout:
+                                // invalidate the saved session and require password login.
+                                forceLogout()
+                            }
+                        }
+                        SessionStartAction.OPEN_SESSION -> {
                             prefs.touchSession()
                             loggedIn = true
                         }
+                        SessionStartAction.SHOW_LOGIN -> Unit
                     }
                 }
 

@@ -95,8 +95,22 @@ public class PurchaseReturnController {
     public ResponseEntity<ApiResponse<PurchaseReturnDTO>> reject(@PathVariable Integer id, @RequestBody PurchaseReturnDTO dto) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Purchase Return Sent Back", service.reject(id, dto)));
     }
-    @PostMapping("/{id}/attachments") public ResponseEntity<ApiResponse<PurchaseReturnDTO>> addAttachment(@PathVariable Integer id,@RequestBody PurchaseReturnAttachmentDTO dto){ return ResponseEntity.ok(new ApiResponse<>(true,"Attachment added",service.addAttachment(id,dto))); }
-    @DeleteMapping("/{id}/attachments/{attachmentId}") public ResponseEntity<ApiResponse<PurchaseReturnDTO>> deleteAttachment(@PathVariable Integer id,@PathVariable Integer attachmentId){ return ResponseEntity.ok(new ApiResponse<>(true,"Attachment deleted",service.deleteAttachment(id,attachmentId))); }
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
+    @PostMapping("/{id}/attachments")
+    public ResponseEntity<ApiResponse<PurchaseReturnDTO>> addAttachment(
+            @PathVariable Integer id,
+            @RequestBody PurchaseReturnAttachmentDTO dto) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Attachment added", service.addAttachment(id, dto)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
+    @DeleteMapping("/{id}/attachments/{attachmentId}")
+    public ResponseEntity<ApiResponse<PurchaseReturnDTO>> deleteAttachment(
+            @PathVariable Integer id,
+            @PathVariable Integer attachmentId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Attachment deleted",
+                service.deleteAttachment(id, attachmentId)));
+    }
 
     @PostMapping("/{id}/dispatch")
     public ResponseEntity<ApiResponse<PurchaseReturnDTO>> dispatch(

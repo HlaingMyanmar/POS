@@ -84,6 +84,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.rememberCoroutineScope
@@ -92,6 +93,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.sspd.servicemgmt.core.network.ApiClient
+import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.network.OrderLineRequest
 import com.sspd.servicemgmt.core.network.PromoCodeRequest
 import coil.compose.AsyncImage
@@ -241,7 +243,8 @@ fun CustomerCartScreen(
     deliveryHours: DeliveryHoursConfig = DeliveryHoursConfig(),
     requestedDeliveryAt: String? = null,
     onRequestedDeliveryAtChange: (String) -> Unit = {},
-    onAppliedPromoChange: (String?) -> Unit = {}
+    onAppliedPromoChange: (String?) -> Unit = {},
+    bottomBarPadding: Dp = 80.dp
 ) {
     var step by rememberSaveable { mutableStateOf(cartStepFromPhase(startPhase)) }
     if (checkoutPlacing) {
@@ -287,7 +290,8 @@ fun CustomerCartScreen(
 
     val itemCount = items.sumOf { it.qty }
     val itemsTotal = items.sumOf { (it.product.sellingPrice ?: 0.0) * it.qty }
-    val vm: HomeViewModel = viewModel()
+    val context = LocalContext.current
+    val prefs = remember { PreferenceManager(context.applicationContext) }
     val promoScope = rememberCoroutineScope()
     var promoCode by remember { mutableStateOf("") }
     var promoDiscount by remember { mutableDoubleStateOf(0.0) }
@@ -366,6 +370,7 @@ fun CustomerCartScreen(
             .background(ScreenBg)
             .imePadding()
             .navigationBarsPadding()
+            .padding(bottom = bottomBarPadding)
     ) {
         AnimatedContent(
             targetState = if (items.isEmpty()) null else step,
@@ -416,7 +421,7 @@ fun CustomerCartScreen(
                                             try {
                                                 val lines = items.map { OrderLineRequest(it.product.id, it.qty) }
                                                 val res = ApiClient.service.validatePromoCode(
-                                                    vm.auth(),
+                                                    ApiClient.bearer(prefs.authToken),
                                                     PromoCodeRequest(code, lines)
                                                 )
                                                 val quote = res.body()?.data
@@ -464,7 +469,7 @@ fun CustomerCartScreen(
                             onRemove = { onRemove(item.product) }
                         )
                     }
-                    item { Spacer(Modifier.height(4.dp)) }
+                    item { Spacer(Modifier.height(16.dp)) }
                 }
                 CartContinueBar(
                     itemCount = itemCount,
@@ -911,42 +916,53 @@ private fun CheckoutNextBar(
         color = CardBg,
         shadowElevation = 8.dp,
         tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+        border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(detail, color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        caption,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = Primary
-                    )
-                }
+                Text(
+                    "စုစုပေါင်း",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+                Text(
+                    caption,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    color = Primary
+                )
             }
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                modifier = Modifier.padding(top = (-4).dp)
+            )
+
             Button(
                 onClick = onClick,
                 enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Primary,
                     disabledContainerColor = Primary.copy(alpha = 0.35f)
                 ),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
             ) {
-                Text(buttonLabel, fontWeight = FontWeight.SemiBold)
+                Text(buttonLabel, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
     }
@@ -1086,42 +1102,49 @@ private fun CartContinueBar(
         color = CardBg,
         shadowElevation = 8.dp,
         tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+        border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("ပစ္စည်းစုစုပေါင်း", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        money(itemsTotal),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = Primary
-                    )
-                    Text("$itemCount ခု", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                }
-                TextButton(onClick = onContinueShopping) {
-                    Text("ဆက်လက် ဝယ်မည်", fontWeight = FontWeight.SemiBold, color = Primary)
-                }
+                Text(
+                    "စုစုပေါင်း",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+                Text(
+                    money(itemsTotal),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    color = Primary
+                )
             }
+            Text(
+                "$itemCount ခု",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                modifier = Modifier.padding(top = (-4).dp)
+            )
+
             Button(
                 onClick = onContinueCheckout,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
             ) {
-                Text("အော်ဒါတင်ရန် ဆက်သွားမည်", fontWeight = FontWeight.SemiBold)
+                Text("အော်ဒါတင်ရန် ဆက်သွားမည်", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
     }

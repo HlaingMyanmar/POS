@@ -1,5 +1,11 @@
 package com.sspd.servicemgmt.feature.home
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,10 +34,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +59,7 @@ import com.sspd.servicemgmt.core.ui.theme.TextMuted
 
 @Composable
 fun CustomerBottomNav(
+    modifier: Modifier = Modifier,
     homeSelected: Boolean,
     serviceSelected: Boolean,
     productsSelected: Boolean,
@@ -67,7 +76,7 @@ fun CustomerBottomNav(
     wishlistEnabled: Boolean = CustomerAppFeatures.WISHLIST
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -139,8 +148,64 @@ private fun PillNavItem(
     badge: Int? = null,
     onClick: () -> Unit
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.20f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "macDockScale"
+    )
+
+    val offsetY by animateDpAsState(
+        targetValue = if (selected) (-2).dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "dockOffset"
+    )
+
+    val iconSize by animateDpAsState(
+        targetValue = if (selected) 21.dp else 19.dp,
+        animationSpec = tween(durationMillis = 200),
+        label = "iconSize"
+    )
+
+    val containerWidth by animateDpAsState(
+        targetValue = if (selected) 50.dp else 38.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "containerWidth"
+    )
+
+    val pillColor by animateColorAsState(
+        targetValue = if (selected) PrimaryLight else Color.Transparent,
+        animationSpec = tween(durationMillis = 220),
+        label = "pillColor"
+    )
+
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) Primary else TextMuted,
+        animationSpec = tween(durationMillis = 220),
+        label = "iconTint"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (selected) PrimaryDark else TextMuted,
+        animationSpec = tween(durationMillis = 220),
+        label = "textColor"
+    )
+
     Column(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationY = offsetY.toPx()
+            }
             .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp),
@@ -150,16 +215,16 @@ private fun PillNavItem(
         Box(contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .size(width = 44.dp, height = 28.dp)
+                    .size(width = containerWidth, height = 28.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(if (selected) PrimaryLight else Color.Transparent),
+                    .background(pillColor),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
-                    tint = if (selected) Primary else TextMuted,
-                    modifier = Modifier.size(20.dp)
+                    tint = iconTint,
+                    modifier = Modifier.size(iconSize)
                 )
             }
             if (badge != null) {
@@ -185,9 +250,9 @@ private fun PillNavItem(
         Spacer(Modifier.height(2.dp))
         Text(
             text = label,
-            color = if (selected) PrimaryDark else TextMuted,
-            fontSize = 10.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = textColor,
+            fontSize = if (selected) 10.5.sp else 10.sp,
+            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
             textAlign = TextAlign.Center,
             maxLines = 1
         )

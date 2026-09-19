@@ -6,6 +6,8 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -207,7 +209,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 } else {
                     if (generation != catalogGeneration) return@launch
-                    products = data.content
+                    products = if (page == 0) data.content else (products + data.content).distinctBy { it.id }
                     catalogPage = data.page
                     catalogTotal = data.totalElements
                     catalogHasNext = data.hasNext
@@ -1200,172 +1202,180 @@ fun HomeScaffold(
                         }
                     }
                 }
-            },
-            bottomBar = {
-                CustomerBottomNav(
-                    homeSelected = tab == 0 && !showProducts,
-                    wishlistSelected = CustomerAppFeatures.WISHLIST && tab == 5,
-                    serviceSelected = tab == 1,
-                    productsSelected = showProducts,
-                    cartSelected = tab == 2,
-                    profileSelected = tab == 4,
-                    cartCount = cartCount,
-                    onHome = { goHome() },
-                    onService = {
-                        tab = 1; showProducts = false; returnToProductsAfterCart = false
-                    },
-                    onProducts = {
-                        tab = 0; showProducts = true; returnToProductsAfterCart = false
-                    },
-                    onWishlist = {
-                        if (!CustomerAppFeatures.WISHLIST) return@CustomerBottomNav
-                        tab = 5; showProducts = false; returnToProductsAfterCart = false
-                    },
-                    onCart = { openCart(fromProducts = showProducts) },
-                    onProfile = {
-                        tab = 4; showProducts = false; returnToProductsAfterCart = false
-                    }
-                )
             }
         ) { pad ->
 
-        Box(Modifier.fillMaxSize().padding(pad)) {
-            when (tab) {
-                0 -> if (showProducts) {
-                    PullToRefreshBox(
-                        isRefreshing = vm.refreshing,
-                        onRefresh = { vm.pullToRefresh(catalog = true) },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        ProductTab(vm, onOpenCart = { openCart(fromProducts = true) })
-                    }
-                } else {
-                    PullToRefreshBox(
-                        isRefreshing = vm.refreshing,
-                        onRefresh = {
-                            vm.pullToRefresh(catalog = true, mine = true, profile = true)
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        CustomerDashboardScreen(
-                            profile = vm.profile,
-                            products = vm.products,
-                            jobs = vm.jobs,
-                            notifications = vm.notifications,
-                            unreadNotificationCount = vm.unreadNotificationCount,
-                            orderCount = vm.orders.count { it.status !in listOf("COMPLETED", "CANCELLED") },
-                            serviceCount = vm.jobs.count { it.status !in listOf("DELIVERED", "CANCELLED") } + vm.bookings.size,
-                            completedCount = vm.purchases.size + vm.jobs.count { it.status in listOf("COMPLETED", "DELIVERED") },
-                            onProducts = { showProducts = true },
-                            onServices = { tab = 1; returnToProductsAfterCart = false },
-                            onCart = { openCart(fromProducts = false) },
-                            onHistory = { tab = 3; returnToProductsAfterCart = false },
-                            onProfile = { tab = 4; returnToProductsAfterCart = false },
-                            onNotifications = {
-                                vm.markNotificationsRead()
-                                showNotifications = true
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = pad.calculateTopPadding())
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                Crossfade(
+                    targetState = if (showProducts) 100 else tab,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "tabCrossfade"
+                ) { currentTab ->
+                    when (currentTab) {
+                        0 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = {
+                                vm.pullToRefresh(catalog = true, mine = true, profile = true)
                             },
-                            onAddToCart = {
-                                CartStore.add(it)
-                                vm.message = "${it.name.orEmpty()} ခြင်းတောင်းထဲ ထည့်ပြီးပါပြီ"
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            CustomerDashboardScreen(
+                                profile = vm.profile,
+                                products = vm.products,
+                                jobs = vm.jobs,
+                                notifications = vm.notifications,
+                                unreadNotificationCount = vm.unreadNotificationCount,
+                                orderCount = vm.orders.count { it.status !in listOf("COMPLETED", "CANCELLED") },
+                                serviceCount = vm.jobs.count { it.status !in listOf("DELIVERED", "CANCELLED") } + vm.bookings.size,
+                                completedCount = vm.purchases.size + vm.jobs.count { it.status in listOf("COMPLETED", "DELIVERED") },
+                                onProducts = { showProducts = true },
+                                onServices = { tab = 1; returnToProductsAfterCart = false },
+                                onCart = { openCart(fromProducts = false) },
+                                onHistory = { tab = 3; returnToProductsAfterCart = false },
+                                onProfile = { tab = 4; returnToProductsAfterCart = false },
+                                onNotifications = {
+                                    vm.markNotificationsRead()
+                                    showNotifications = true
+                                },
+                                onAddToCart = {
+                                    CartStore.add(it)
+                                    vm.message = "${it.name.orEmpty()} ခြင်းတောင်းထဲ ထည့်ပြီးပါပြီ"
+                                }
+                            )
+                        }
+                        1 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = { vm.pullToRefresh(catalog = true) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            ServiceTab(vm)
+                        }
+                        2 -> CartTab(
+                            vm = vm,
+                            onBrowseProducts = {
+                                tab = 0
+                                showProducts = true
+                                returnToProductsAfterCart = false
                             }
                         )
-                    }
-                }
-                1 -> PullToRefreshBox(
-                    isRefreshing = vm.refreshing,
-                    onRefresh = { vm.pullToRefresh(catalog = true) },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    ServiceTab(vm)
-                }
-                2 -> CartTab(
-                    vm = vm,
-                    onBrowseProducts = {
-                        tab = 0
-                        showProducts = true
-                        returnToProductsAfterCart = false
-                    }
-                )
-                3 -> PullToRefreshBox(
-                    isRefreshing = vm.refreshing,
-                    onRefresh = { vm.pullToRefresh(mine = true) },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    ActivityTab(
-                        vm = vm,
-                        onReorder = { order ->
-                            vm.reorderCancelled(order)
-                            openCart(fromProducts = false)
-                        },
-                        onRequestNewService = { tab = 1 }
-                    )
-                }
-                4 -> PullToRefreshBox(
-                    isRefreshing = vm.refreshing,
-                    onRefresh = { vm.pullToRefresh(mine = true, profile = true) },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    AccountTab(
-                        vm = vm,
-                        onLogout = { performLogout(idle = false) },
-                        onNavigateToOrders = { tab = 3; showProducts = false; returnToProductsAfterCart = false },
-                        onNavigateToWishlist = { if (CustomerAppFeatures.WISHLIST) { tab = 5; showProducts = false; returnToProductsAfterCart = false } },
-                        onNavigateToChat = { tab = 6; showProducts = false; returnToProductsAfterCart = false }
-                    )
-                }
-                5 -> if (CustomerAppFeatures.WISHLIST) {
-                    PullToRefreshBox(
-                        isRefreshing = vm.refreshing,
-                        onRefresh = { vm.pullToRefresh(wishlist = true) },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        CustomerWishlistScreen(
-                            wishlistItems = vm.wishlist,
-                            isLoading = vm.wishlistLoading,
-                            onToggleFavorite = { vm.toggleWishlist(it) },
-                            onAddToCart = { product ->
-                                CartStore.add(product)
-                                vm.message = "${product.name.orEmpty()} ခြင်းတောင်းထဲ ထည့်ပြီးပါပြီ"
+                        3 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = { vm.pullToRefresh(mine = true) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            ActivityTab(
+                                vm = vm,
+                                onReorder = { order ->
+                                    vm.reorderCancelled(order)
+                                    openCart(fromProducts = false)
+                                },
+                                onRequestNewService = { tab = 1 }
+                            )
+                        }
+                        4 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = { vm.pullToRefresh(mine = true, profile = true) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            AccountTab(
+                                vm = vm,
+                                onLogout = { performLogout(idle = false) },
+                                onNavigateToOrders = { tab = 3; showProducts = false; returnToProductsAfterCart = false },
+                                onNavigateToWishlist = { if (CustomerAppFeatures.WISHLIST) { tab = 5; showProducts = false; returnToProductsAfterCart = false } },
+                                onNavigateToChat = { tab = 6; showProducts = false; returnToProductsAfterCart = false }
+                            )
+                        }
+                        5 -> if (CustomerAppFeatures.WISHLIST) {
+                            PullToRefreshBox(
+                                isRefreshing = vm.refreshing,
+                                onRefresh = { vm.pullToRefresh(wishlist = true) },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                CustomerWishlistScreen(
+                                    wishlistItems = vm.wishlist,
+                                    isLoading = vm.wishlistLoading,
+                                    onToggleFavorite = { vm.toggleWishlist(it) },
+                                    onAddToCart = { product ->
+                                        CartStore.add(product)
+                                        vm.message = "${product.name.orEmpty()} ခြင်းတောင်းထဲ ထည့်ပြီးပါပြီ"
+                                    }
+                                )
                             }
-                        )
+                        }
+                        6 -> {
+                            LaunchedEffect(Unit) { vm.startChat() }
+                            DisposableEffect(Unit) {
+                                onDispose { vm.stopChat() }
+                            }
+                            CustomerChatScreen(
+                                messages = vm.chatMessages,
+                                onSendMessage = { text -> vm.sendMessage(text) },
+                                onBack = { tab = 0 }
+                            )
+                        }
+                        7 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = { vm.pullToRefresh(mine = true) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            SaleHistoryTab(vm)
+                        }
+                        8, 9 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = { vm.pullToRefresh(mine = true) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            CustomerServiceJobsScreen(
+                                jobs = vm.jobs,
+                                error = vm.jobsError,
+                                onRetry = { vm.loadMine() },
+                                onRequestNewService = { tab = 1 }
+                            )
+                        }
+                        100 -> PullToRefreshBox(
+                            isRefreshing = vm.refreshing,
+                            onRefresh = { vm.pullToRefresh(catalog = true) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            ProductTab(vm, onOpenCart = { openCart(fromProducts = true) })
+                        }
+                        else -> {
+                            showProducts = true
+                            tab = 0
+                        }
                     }
                 }
-                6 -> {
-                    LaunchedEffect(Unit) { vm.startChat() }
-                    DisposableEffect(Unit) {
-                        onDispose { vm.stopChat() }
-                    }
-                    CustomerChatScreen(
-                        messages = vm.chatMessages,
-                        onSendMessage = { text -> vm.sendMessage(text) },
-                        onBack = { tab = 0 }
-                    )
+
+            CustomerBottomNav(
+                modifier = Modifier.align(Alignment.BottomCenter),
+                homeSelected = tab == 0 && !showProducts,
+                wishlistSelected = CustomerAppFeatures.WISHLIST && tab == 5,
+                serviceSelected = tab == 1,
+                productsSelected = showProducts,
+                cartSelected = tab == 2,
+                profileSelected = tab == 4,
+                cartCount = cartCount,
+                onHome = { goHome() },
+                onService = {
+                    tab = 1; showProducts = false; returnToProductsAfterCart = false
+                },
+                onProducts = {
+                    tab = 0; showProducts = true; returnToProductsAfterCart = false
+                },
+                onWishlist = {
+                    if (!CustomerAppFeatures.WISHLIST) return@CustomerBottomNav
+                    tab = 5; showProducts = false; returnToProductsAfterCart = false
+                },
+                onCart = { openCart(fromProducts = showProducts) },
+                onProfile = {
+                    tab = 4; showProducts = false; returnToProductsAfterCart = false
                 }
-                7 -> PullToRefreshBox(
-                    isRefreshing = vm.refreshing,
-                    onRefresh = { vm.pullToRefresh(mine = true) },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    SaleHistoryTab(vm)
-                }
-                8, 9 -> PullToRefreshBox(
-                    isRefreshing = vm.refreshing,
-                    onRefresh = { vm.pullToRefresh(mine = true) },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    CustomerServiceJobsScreen(
-                        jobs = vm.jobs,
-                        error = vm.jobsError,
-                        onRetry = { vm.loadMine() },
-                        onRequestNewService = { tab = 1 }
-                    )
-                }
-                10 -> {
-                    showProducts = true
-                    tab = 0
-                }
-            }
+            )
         }
     }
 
@@ -1384,6 +1394,7 @@ fun HomeScaffold(
             }
         )
     }
+}
 }
 
 @Composable
@@ -2100,3 +2111,4 @@ private fun AccountTab(
         )
     }
 }
+

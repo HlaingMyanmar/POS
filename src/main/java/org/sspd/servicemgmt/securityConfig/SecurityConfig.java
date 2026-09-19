@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -28,6 +29,7 @@ public class SecurityConfig {
 
     private final AuthenticationProvider authenticationProvider;
     private final JwtAuthenticationFilter jwtAuthFilter;
+    private final PublicEndpointRateLimitFilter publicEndpointRateLimitFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:3000,http://127.0.0.1:3000}")
     private String allowedOriginsRaw;
@@ -51,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/delivery-townships").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/delivery-locations").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/branding", "/api/v1/customer-portal/branding/**").permitAll()
+                        // Controller enforces staff CAN_ACCESS_SALE_CREATE or X-Scanner-Token.
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/scan").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
@@ -58,7 +61,8 @@ public class SecurityConfig {
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
-                .addFilterBefore(jwtAuthFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(publicEndpointRateLimitFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }
@@ -74,12 +78,23 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(origins);
 
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin",
+                "X-Setup-Token", "X-Scanner-Token"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
 
         return source;
+    }
+
+    @Bean
+    public FilterRegistrationBean<PublicEndpointRateLimitFilter> publicEndpointRateLimitRegistration(
+            PublicEndpointRateLimitFilter filter) {
+        FilterRegistrationBean<PublicEndpointRateLimitFilter> registration =
+                new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 }

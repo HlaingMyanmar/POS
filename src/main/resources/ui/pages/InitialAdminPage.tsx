@@ -11,6 +11,7 @@ const InitialAdminPage: React.FC<Props> = ({ onComplete }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +21,7 @@ const InitialAdminPage: React.FC<Props> = ({ onComplete }) => {
     && email.includes('@')
     && password.length >= 8
     && password === confirm
+    && setupToken.trim().length >= 32
     && !saving;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,7 +37,7 @@ const InitialAdminPage: React.FC<Props> = ({ onComplete }) => {
         username: username.trim(),
         email: email.trim(),
         password,
-      });
+      }, setupToken);
       onComplete();
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Could not create administrator.');
@@ -58,6 +60,20 @@ const InitialAdminPage: React.FC<Props> = ({ onComplete }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-2xl p-6 space-y-4">
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+              <Lock size={12} /> Deployment setup token <span className="text-rose-500">*</span>
+            </span>
+            <input
+              type="password"
+              value={setupToken}
+              onChange={e => setSetupToken(e.target.value)}
+              placeholder="SETUP_INITIAL_ADMIN_TOKEN"
+              autoComplete="off"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"
+            />
+          </label>
+
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
               <User size={12} /> Username <span className="text-rose-500">*</span>

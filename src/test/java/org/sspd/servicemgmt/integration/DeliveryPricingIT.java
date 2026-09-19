@@ -18,14 +18,14 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("it") @Transactional @Rollback
 class DeliveryPricingIT extends AbstractMysqlIntegrationTest {
  @Autowired DeliveryPricingService pricing; @Autowired JdbcTemplate jdbc;
- private int wardId, productId;
+ private int townshipId, wardId, productId;
  @BeforeEach void fixture() {
   String suffix=UUID.randomUUID().toString().substring(0,8);
   String regionName="shipping-region-"+suffix;
   jdbc.update("insert into customer_delivery_regions(name,kind,active,sort_order,created_at,updated_at) values (?,'STATE',true,0,now(6),now(6))",regionName);
   int regionId=jdbc.queryForObject("select id from customer_delivery_regions where name=?",Integer.class,regionName);
   jdbc.update("insert into customer_delivery_townships(region_id,name,delivery_charge,active,sort_order,created_at,updated_at) values (?, ?, 3000, true,0,now(6),now(6))",regionId,"shipping-township-"+suffix);
-  int townshipId=jdbc.queryForObject("select id from customer_delivery_townships where region_id=? and name=?",Integer.class,regionId,"shipping-township-"+suffix);
+  townshipId=jdbc.queryForObject("select id from customer_delivery_townships where region_id=? and name=?",Integer.class,regionId,"shipping-township-"+suffix);
   jdbc.update("insert into customer_delivery_wards(township_id,name,delivery_charge,active,sort_order,created_at,updated_at) values (?, ?, 3000, true,0,now(6),now(6))",townshipId,"shipping-ward-"+suffix);
   wardId=jdbc.queryForObject("select id from customer_delivery_wards where township_id=? and name=?",Integer.class,townshipId,"shipping-ward-"+suffix);
   jdbc.update("insert into products(name,product_code,product_type,archived,has_serial,stock_qty,quarantined_qty,customer_reserved_qty,reorder_level,warranty_months,version,selling_price) values (?,?,'New',false,false,20,0,0,0,0,0,1000)","shipping-test-"+suffix,"SHIP-"+suffix);
@@ -62,6 +62,6 @@ class DeliveryPricingIT extends AbstractMysqlIntegrationTest {
  }
  private CustomerPortalOrderRequest request(int qty) {
   var line=new CustomerPortalOrderRequest.Line();line.setProductId(productId);line.setQty(qty);
-  var r=new CustomerPortalOrderRequest();r.setOrderType("DELIVERY");r.setWardId(wardId);r.setLines(List.of(line));return r;
+  var r=new CustomerPortalOrderRequest();r.setOrderType("DELIVERY");r.setTownshipId(townshipId);r.setWardId(wardId);r.setLines(List.of(line));return r;
  }
 }

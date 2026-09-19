@@ -6,10 +6,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
+import org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth;
 import org.sspd.servicemgmt.chatoptions.dto.ChatMessageDTO;
 import org.sspd.servicemgmt.chatoptions.model.ChatMessage;
 import org.sspd.servicemgmt.chatoptions.repository.ChatMessageRepository;
@@ -49,15 +51,24 @@ public class ChatController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Sent", saved));
     }
 
-    // WebSocket: send a message (web uses this)
-    @MessageMapping("/chat.send")
+    // WebSocket: send a message (web uses this; customer app uses /app/chat/send)
+    @MessageMapping({"/chat.send", "/chat/send"})
     public void sendWs(@Payload ChatMessageDTO req, Principal principal) {
-        saveAndBroadcast(principal.getName(), req.getContent(), req.getCustomerId());
+        Integer customerId = req.getCustomerId();
+        if (CustomerPortalAuth.isCustomerUsername(principal.getName())) {
+            customerId = CustomerPortalAuth.parseCustomerId(principal.getName());
+        }
+        saveAndBroadcast(principal.getName(), req.getContent(), customerId);
     }
 
     private ChatMessageDTO saveAndBroadcast(String username, String content, Integer customerId) {
         if (content == null || content.trim().isEmpty()) throw new IllegalArgumentException("Message is required");
         if (content.trim().length() > 2000) throw new IllegalArgumentException("Message is too long");
+        if (CustomerPortalAuth.isCustomerUsername(username)) {
+            Integer fromPrincipal = CustomerPortalAuth.parseCustomerId(username);
+            if (fromPrincipal == null) throw new AccessDeniedException("Customer login required");
+            customerId = fromPrincipal;
+        }
         String displayName = username;
         String role = "";
         try {

@@ -1137,6 +1137,7 @@ public class PurchaseReturnService {
         return toDto(saved);
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
     @Transactional
     public PurchaseReturnDTO addAttachment(Integer id, PurchaseReturnAttachmentDTO dto) {
         PurchaseReturn entity=getReturn(id);
@@ -1146,8 +1147,20 @@ public class PurchaseReturnService {
         recordActivity(entity,"ATTACHMENT_ADDED",entity.getStatus(),entity.getStatus(),dto.getFileName()); return toDto(entity);
     }
 
+    @PreAuthorize("hasAuthority('CAN_ACCESS_PURCHASE_RETURN_UPDATE')")
     @Transactional
-    public PurchaseReturnDTO deleteAttachment(Integer id,Integer attachmentId) { PurchaseReturn entity=getReturn(id); PurchaseReturnAttachment a=attachmentRepository.findById(attachmentId).orElseThrow(()->new ResourceNotFoundException("Attachment not found")); if(!a.getPurchaseReturn().getId().equals(id)) throw new IllegalArgumentException("Attachment does not belong to return"); attachmentRepository.delete(a); recordActivity(entity,"ATTACHMENT_DELETED",entity.getStatus(),entity.getStatus(),a.getFileName()); return toDto(entity); }
+    public PurchaseReturnDTO deleteAttachment(Integer id, Integer attachmentId) {
+        PurchaseReturn entity = getReturn(id);
+        PurchaseReturnAttachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Attachment not found"));
+        if (!attachment.getPurchaseReturn().getId().equals(id)) {
+            throw new IllegalArgumentException("Attachment does not belong to return");
+        }
+        attachmentRepository.delete(attachment);
+        recordActivity(entity, "ATTACHMENT_DELETED", entity.getStatus(), entity.getStatus(),
+                attachment.getFileName());
+        return toDto(entity);
+    }
 
     private void recordActivity(PurchaseReturn entity,String event,String from,String to,String note){ activityRepository.save(PurchaseReturnActivity.builder().purchaseReturn(entity).eventType(event).fromStatus(from).toStatus(to).note(note).actor(currentActor()).occurredAt(LocalDateTime.now()).build()); }
 

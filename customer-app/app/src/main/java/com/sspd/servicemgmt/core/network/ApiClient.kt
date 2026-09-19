@@ -6,12 +6,7 @@ import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 object ApiClient {
     private var _baseUrl = BuildConfig.DEFAULT_BASE_URL.trimEnd('/') + "/api/v1/"
@@ -45,19 +40,15 @@ object ApiClient {
 
 
     private fun client(): OkHttpClient {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val ssl = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         return OkHttpClient.Builder()
-            .sslSocketFactory(ssl.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
             .addInterceptor { chain ->
                 val request = chain.request()
                 val response = chain.proceed(request)
-                if (response.code == 401 && shouldEndSessionOn401(request)) {
+                if (response.code == 401 && CustomerRetryPolicy.shouldEndSessionOnUnauthorized(
+                        request.header("Authorization"),
+                        request.url.encodedPath
+                    )
+                ) {
                     AuthEventBus.notifyTokenExpired()
                 }
                 response
@@ -88,12 +79,4 @@ object ApiClient {
 
     fun bearer(token: String) = "Bearer $token"
 
-    private fun shouldEndSessionOn401(request: okhttp3.Request): Boolean {
-        val auth = request.header("Authorization").orEmpty()
-        if (!auth.startsWith("Bearer ") || auth.length < 16) return false
-        val path = request.url.encodedPath.lowercase()
-        if (path.contains("/auth/")) return false
-        if (path.contains("ws-native") || path.contains("ws-clinic")) return false
-        return true
-    }
 }

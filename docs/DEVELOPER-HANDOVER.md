@@ -123,7 +123,9 @@ Collected from source vs docs/comments. These are **not** fixed in this document
 1. Frontend `POST /v1/auth/refresh` has no backend mapping.
 2. Refresh token returned in JSON, HttpOnly cookie, and `sessionStorage` (`sspd_refresh`).
 3. Secrets belong in `.env` / environment variables, not git. Rotate any previously hardcoded DB/JWT/keystore/admin credentials.
-4. `POST /api/v1/scan` is `permitAll` and publishes `/topic/barcode-scan`.
+4. `POST /api/v1/scan` reaches its controller without JWT so paired devices can
+   connect, but the controller requires `CAN_ACCESS_SALE_CREATE` or a valid
+   `X-Scanner-Token` before publishing `/topic/barcode-scan`.
 5. GET company-settings is public; POST is JWT without a permission.
 6. STOMP `/ws-clinic` and `/ws-native` are `permitAll`.
 7. `anyRequest().permitAll()` after `/api/**` authenticated — static UI, `/app/**` APK, and possibly `/actuator/health`.

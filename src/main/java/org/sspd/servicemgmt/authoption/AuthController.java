@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.auditoptions.service.AuditLogService;
 
+import java.util.Optional;
+
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -36,33 +38,54 @@ public class AuthController {
             auditLogService.log(result.username(), role, "LOGIN", "Auth", null, "User logged in", ip, device);
         } catch (Exception ignored) {}
 
-        // ၂. Refresh Token ကို HttpOnly Cookie အဖြစ် သတ်မှတ်ပါ
-        ResponseCookie cookie = ResponseCookie.from("refreshToken", result.refreshToken())
+        setRefreshCookie(response, result.refreshToken());
+        return authResponse(result, "Login Successful");
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<AuthResponse>> refresh(
+            @RequestBody(required = false) RefreshTokenRequest request,
+            @CookieValue(name = "refreshToken", required = false) String refreshCookie,
+            HttpServletResponse response) {
+        String refreshToken = Optional.ofNullable(request)
+                .map(RefreshTokenRequest::refreshToken)
+                .filter(token -> !token.isBlank())
+                .orElse(refreshCookie);
+        AuthService.LoginResult result = authService.refresh(refreshToken);
+        setRefreshCookie(response, result.refreshToken());
+        return authResponse(result, "Token refreshed");
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
+        ResponseCookie expired = ResponseCookie.from("refreshToken", "")
                 .httpOnly(true)
-                .secure(true)    // Production မှာဆိုရင် true (HTTPS) ပေးရပါမယ်
-                .path("/")
-                .maxAge(7 * 24 * 60 * 60) // 7 days
+                .secure(true)
+                .path("/api/v1/auth")
+                .maxAge(0)
                 .sameSite("Lax")
                 .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, expired.toString());
+        return ResponseEntity.ok(new ApiResponse<>(true, "Logged out", null));
+    }
 
-        // Header မှာ Cookie ထည့်လိုက်ခြင်း
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-
-        // ၃. Frontend JSON body အတွက် AuthResponse ကို ပြန်ပေးခြင်း
+    private ResponseEntity<ApiResponse<AuthResponse>> authResponse(
+            AuthService.LoginResult result, String message) {
         AuthResponse authResponse = new AuthResponse(
-                result.accessToken(),
-                result.refreshToken(),
-                result.username(),
-                result.name(),
-                result.phone(),
-                result.staffId(),
-                result.roles(),
-                result.permissions()
-        );
+                result.accessToken(), result.refreshToken(), result.username(), result.name(), result.phone(),
+                result.staffId(), result.roles(), result.permissions());
+        return ResponseEntity.ok(new ApiResponse<>(true, message, authResponse));
+    }
 
-        return ResponseEntity.ok(
-                new ApiResponse<>(true, "Login Successful", authResponse)
-        );
+    private void setRefreshCookie(HttpServletResponse response, String refreshToken) {
+        ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken)
+                .httpOnly(true)
+                .secure(true)
+                .path("/api/v1/auth")
+                .maxAge(7 * 24 * 60 * 60)
+                .sameSite("Lax")
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
     private String getClientIp(HttpServletRequest req) {

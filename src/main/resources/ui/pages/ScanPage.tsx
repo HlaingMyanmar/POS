@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Barcode, CheckCircle2, Send, Trash2, Wifi } from 'lucide-react';
+import { Barcode, CheckCircle2, KeyRound, Send, Trash2, Wifi } from 'lucide-react';
+import { getAccessToken } from '../services/api';
 
 interface ScanRecord { code: string; time: string; ok: boolean }
 
@@ -8,6 +9,9 @@ const API = `${window.location.origin}/api/v1/scan`;
 const ScanPage: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState('');
+  const [pairingToken, setPairingToken] = useState(
+    () => sessionStorage.getItem('sspd_scanner_pairing') || '',
+  );
   const [history, setHistory] = useState<ScanRecord[]>([]);
   const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle');
 
@@ -20,9 +24,13 @@ const ScanPage: React.FC = () => {
     if (!trimmed) return;
     setStatus('sending');
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const accessToken = getAccessToken();
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+      if (pairingToken.trim()) headers['X-Scanner-Token'] = pairingToken.trim();
       const res = await fetch(API, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ barcode: trimmed }),
       });
       const ok = res.ok;
@@ -69,6 +77,22 @@ const ScanPage: React.FC = () => {
 
       {/* Input area */}
       <div className="w-full max-w-sm space-y-3">
+        <div className="relative">
+          <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+          <input
+            type="password"
+            autoComplete="off"
+            value={pairingToken}
+            onChange={e => {
+              const value = e.target.value;
+              setPairingToken(value);
+              if (value) sessionStorage.setItem('sspd_scanner_pairing', value);
+              else sessionStorage.removeItem('sspd_scanner_pairing');
+            }}
+            placeholder="Scanner pairing token (staff login မရှိလျှင်)"
+            className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs font-semibold outline-none focus:border-violet-500 placeholder:text-slate-600"
+          />
+        </div>
         <div className="relative">
           <Barcode className="absolute left-4 top-1/2 -translate-y-1/2 text-violet-400" size={20} />
           <input

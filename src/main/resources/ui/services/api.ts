@@ -51,8 +51,11 @@ export const getAccessToken = () => _accessToken;
  */
 export const api = axios.create({
   baseURL: BASE_URL,
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 });
+
+let refreshInFlight: Promise<ApiResponse<AuthResponse>> | null = null;
 
 const isServiceJobRequest = (url?: string) => /\/v1\/service-jobs(?:\/|$)/i.test(String(url || ''));
 
@@ -99,9 +102,10 @@ api.interceptors.response.use(
 
     const requestUrl = String(originalRequest?.url || '');
     const isPublicSetup = requestUrl.includes('/v1/setup/');
+    const isAuthRequest = requestUrl.includes('/v1/auth/login') || requestUrl.includes('/v1/auth/refresh');
 
     // If token expired (401) and we haven't retried yet
-    if (!isPublicSetup && error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    if (!isPublicSetup && !isAuthRequest && error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
         // Attempt silent refresh using the refreshToken from sessionStorage (tab-isolated)
@@ -176,12 +180,33 @@ export const authService = {
   refresh: async (): Promise<ApiResponse<AuthResponse>> => {
     const refreshToken = getFromSession('sspd_refresh');
     if (!refreshToken) throw new Error('No refresh token available');
-    
-    // Usually backend expects refresh token in a cookie or body
-    return api.post('/v1/auth/refresh', { refreshToken });
+
+    if (!refreshInFlight) {
+      refreshInFlight = axios
+        .post<ApiResponse<AuthResponse>>(
+          joinUrl(BASE_URL, '/v1/auth/refresh'),
+          { refreshToken },
+          { withCredentials: true, headers: { 'Content-Type': 'application/json' } },
+        )
+        .then(response => {
+          const result = response.data;
+          if (result.success && result.data?.accessToken) {
+            setAccessToken(result.data.accessToken);
+            if (result.data.refreshToken) {
+              saveToSession('sspd_refresh', result.data.refreshToken);
+            }
+          }
+          return result;
+        })
+        .finally(() => {
+          refreshInFlight = null;
+        });
+    }
+    return refreshInFlight;
   },
 
   logout: () => {
+    void axios.post(joinUrl(BASE_URL, '/v1/auth/logout'), null, { withCredentials: true }).catch(() => undefined);
     setAccessToken(null);
     removeFromSession('sspd_refresh');
     removeFromSession('sspd_user');
@@ -423,8 +448,10 @@ export const setupService = {
   },
   initialize: (dto: SetupInitDTO): Promise<ApiResponse<void>> =>
     api.post('/v1/setup/initialize', dto),
-  createInitialAdmin: (dto: InitialAdminDTO): Promise<ApiResponse<void>> =>
-    api.post('/v1/setup/initial-admin', dto),
+  createInitialAdmin: (dto: InitialAdminDTO, setupToken: string): Promise<ApiResponse<void>> =>
+    api.post('/v1/setup/initial-admin', dto, {
+      headers: { 'X-Setup-Token': setupToken.trim() },
+    }),
 };
 
 async function openPdfBlob(path: string): Promise<void> {

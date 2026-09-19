@@ -2,8 +2,11 @@ package org.sspd.servicemgmt.setupoptions;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountCode;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.repository.ChartOfAccountRepository;
@@ -21,6 +24,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +38,9 @@ public class SetupService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+
+    @Value("${app.setup.initial-admin-token:}")
+    private String initialAdminToken;
 
     @Transactional(readOnly = true)
     public SetupStatusDTO getStatus() {
@@ -57,8 +65,9 @@ public class SetupService {
         return new SetupStatusDTO(complete, hasPaymentMethods, companyConfigured, hasAdministrator, needsInitialAdmin);
     }
 
-    @Transactional
-    public void createInitialAdministrator(InitialAdminDTO dto) {
+    @Transactional(isolation = Isolation.SERIALIZABLE)
+    public void createInitialAdministrator(InitialAdminDTO dto, String suppliedSetupToken) {
+        requireValidSetupToken(suppliedSetupToken);
         if (userRepository.count() > 0) {
             throw new IllegalStateException("Initial administrator can only be created when no users exist.");
         }
@@ -92,6 +101,17 @@ public class SetupService {
         user.setRoles(roles);
         userRepository.save(user);
         log.info("Initial ADMINISTRATOR created for {}", email);
+    }
+
+    private void requireValidSetupToken(String suppliedSetupToken) {
+        String expected = initialAdminToken == null ? "" : initialAdminToken.trim();
+        String supplied = suppliedSetupToken == null ? "" : suppliedSetupToken.trim();
+        if (expected.length() < 32 || supplied.isEmpty()
+                || !MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.UTF_8),
+                        supplied.getBytes(StandardCharsets.UTF_8))) {
+            throw new AccessDeniedException("Initial administrator setup is not authorized.");
+        }
     }
 
     @Transactional

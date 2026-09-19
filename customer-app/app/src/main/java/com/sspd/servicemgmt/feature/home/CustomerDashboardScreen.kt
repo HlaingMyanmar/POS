@@ -136,54 +136,54 @@ fun CustomerDashboardScreen(
                 .widthIn(max = 720.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-        Spacer(Modifier.height(10.dp))
-        DashboardHeader(
-            profile = profile,
-            notificationCount = unreadNotificationCount,
-            onProfile = onProfile,
-            onNotifications = onNotifications
-        )
-        SummaryRow(orderCount, serviceCount, completedCount)
+            Spacer(Modifier.height(6.dp))
+            DashboardHeader(
+                profile = profile,
+                notificationCount = unreadNotificationCount,
+                onProfile = onProfile,
+                onNotifications = onNotifications
+            )
+            SummaryRow(orderCount, serviceCount, completedCount)
 
-        DashboardSectionTitle("ဘာလုပ်ချင်ပါသလဲ?")
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuickAction("ပစ္စည်း", Icons.Outlined.ShoppingCart, Modifier.weight(1f), onProducts)
-            QuickAction("Service", Icons.Outlined.Handyman, Modifier.weight(1f), onServices)
-            QuickAction("ခြင်း", Icons.AutoMirrored.Outlined.ReceiptLong, Modifier.weight(1f), onCart)
-            QuickAction("မှတ်တမ်း", Icons.Outlined.History, Modifier.weight(1f), onHistory)
-        }
-
-        var selectedJob by remember { mutableStateOf<CustomerJob?>(null) }
-
-        jobs.firstOrNull { it.status !in listOf("DELIVERED", "CANCELLED") }?.let { job ->
-            DashboardSectionTitle("လတ်တလော Service", action = "အားလုံးကြည့်မည်", onAction = onServices)
-            ActiveJobCard(job, onClick = { selectedJob = job })
-        }
-
-        selectedJob?.let { job ->
-            JobDetailDashboardDialog(job = job, onDismiss = { selectedJob = null })
-        }
-
-        if (products.isNotEmpty()) {
-            DashboardSectionTitle("အကြံပြုပစ္စည်းများ", action = "အားလုံးကြည့်မည်", onAction = onProducts)
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                products
-                    .sortedWith(
-                        compareBy<CatalogProduct> { if ((it.stockQty ?: 0) > 0) 0 else 1 }
-                            .thenByDescending { it.stockQty ?: 0 }
-                    )
-                    .take(6)
-                    .forEach { product ->
-                        RecommendedProductCard(product, onAddToCart)
-                    }
+            DashboardSectionTitle("ဘာလုပ်ချင်ပါသလဲ?")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                QuickAction("ပစ္စည်း", Icons.Outlined.ShoppingCart, Modifier.weight(1f), onProducts)
+                QuickAction("Service", Icons.Outlined.Handyman, Modifier.weight(1f), onServices)
+                QuickAction("ခြင်း", Icons.AutoMirrored.Outlined.ReceiptLong, Modifier.weight(1f), onCart)
+                QuickAction("မှတ်တမ်း", Icons.Outlined.History, Modifier.weight(1f), onHistory)
             }
-        }
-        Spacer(Modifier.height(84.dp))
+
+            var selectedJob by remember { mutableStateOf<CustomerJob?>(null) }
+
+            jobs.firstOrNull { it.status !in listOf("DELIVERED", "CANCELLED") }?.let { job ->
+                DashboardSectionTitle("လတ်တလော Service", action = "အားလုံးကြည့်မည်", onAction = onServices)
+                ActiveJobCard(job, onClick = { selectedJob = job })
+            }
+
+            selectedJob?.let { job ->
+                JobDetailDashboardDialog(job = job, onDismiss = { selectedJob = null })
+            }
+
+            if (products.isNotEmpty()) {
+                DashboardSectionTitle("အကြံပြုပစ္စည်းများ", action = "အားလုံးကြည့်မည်", onAction = onProducts)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    products
+                        .sortedWith(
+                            compareBy<CatalogProduct> { if ((it.stockQty ?: 0) > 0) 0 else 1 }
+                                .thenByDescending { it.stockQty ?: 0 }
+                        )
+                        .take(6)
+                        .forEach { product ->
+                            RecommendedProductCard(product, onAddToCart)
+                        }
+                }
+            }
+            Spacer(Modifier.height(96.dp))
         }
     }
 }
@@ -1230,7 +1230,7 @@ private fun JobProgress(status: String?) {
 private fun RecommendedProductCard(product: CatalogProduct, onAddToCart: (CatalogProduct) -> Unit) {
     val inStock = (product.stockQty ?: 0) > 0 && product.inStock != false
     Surface(
-        modifier = Modifier.width(188.dp),
+        modifier = Modifier.width(176.dp),
         shape = PanelShape,
         color = CardBg,
         border = BorderStroke(1.dp, BorderColor),
@@ -1244,30 +1244,38 @@ private fun RecommendedProductCard(product: CatalogProduct, onAddToCart: (Catalo
                     .background(SurfaceSoft),
                 contentAlignment = Alignment.Center
             ) {
-                val url = product.photoUrls.orEmpty().firstOrNull()?.toAssetUrl()
-                if (url != null) {
+                val url = (product.thumbnailUrl ?: product.photoUrls.orEmpty().firstOrNull())?.toAssetUrl()
+                if (!url.isNullOrBlank()) {
                     AsyncImage(
                         model = url,
                         contentDescription = product.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(6.dp),
+                        contentScale = ContentScale.Fit
                     )
                 } else {
                     Icon(
                         Icons.Outlined.Inventory2,
                         null,
                         tint = Primary,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
             }
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(
+                modifier = Modifier.padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
                 Text(
                     product.name.orEmpty().ifBlank { "ပစ္စည်း" },
-                    maxLines = 1,
+                    maxLines = 2,
+                    minLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextMain
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain,
+                    fontSize = 12.sp
                 )
                 Text(
                     listOfNotNull(product.brandName, product.categoryName)
@@ -1276,36 +1284,36 @@ private fun RecommendedProductCard(product: CatalogProduct, onAddToCart: (Catalo
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
+                    color = TextMuted,
+                    fontSize = 10.sp
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (!inStock) "ကုန်နေသည်" else "ကျန် ${product.stockQty} ခု",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (!inStock) Danger else Success,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.height(2.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         money(product.sellingPrice ?: 0.0),
                         modifier = Modifier.weight(1f),
                         color = Primary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     IconButton(
                         onClick = { onAddToCart(product) },
                         enabled = inStock,
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(if (inStock) Primary else SurfaceSoft)
                     ) {
                         Icon(
                             Icons.Outlined.Add,
                             contentDescription = "ခြင်းထည့်ရန်",
                             tint = if (inStock) OnPrimary else TextMuted,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }

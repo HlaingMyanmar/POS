@@ -19,6 +19,10 @@ import io.jsonwebtoken.security.Keys;
 @Service
 public class JwtService {
 
+    private static final String TOKEN_TYPE_CLAIM = "typ";
+    private static final String ACCESS_TOKEN_TYPE = "access";
+    private static final String REFRESH_TOKEN_TYPE = "refresh";
+
     private final String secretKey;
     private final long jwtExpiration;
 
@@ -30,18 +34,41 @@ public class JwtService {
     }
 
     public String generateToken(UserDetails userDetails) {
-        return buildToken(new HashMap<>(), userDetails, jwtExpiration);
+        Map<String, Object> extraClaims = new HashMap<>();
+        extraClaims.put(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE);
+        return buildToken(extraClaims, userDetails, jwtExpiration);
     }
 
     public String generateToken(UserDetails userDetails, int tokenVersion) {
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("tv", tokenVersion);
+        extraClaims.put(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE);
         return buildToken(extraClaims, userDetails, jwtExpiration);
     }
 
     public Integer extractTokenVersion(String token) {
         return extractClaim(token, claims -> claims.get("tv", Integer.class));
     }
+
+    public ParsedToken parseToken(String token) {
+        Claims claims = extractAllClaims(token);
+        return new ParsedToken(
+                claims.getSubject(),
+                claims.get("tv", Integer.class),
+                claims.get(TOKEN_TYPE_CLAIM, String.class)
+        );
+    }
+
+    public record ParsedToken(String username, Integer tokenVersion, String tokenType) {
+        public boolean isAccessToken() {
+            return ACCESS_TOKEN_TYPE.equals(tokenType);
+        }
+
+        public boolean isRefreshToken() {
+            return REFRESH_TOKEN_TYPE.equals(tokenType);
+        }
+    }
+
     private String buildToken(Map<String, Object> extraClaims, UserDetails userDetails, long expiration) {
         return Jwts.builder()
                 .setClaims(extraClaims)
@@ -51,10 +78,20 @@ public class JwtService {
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
-    public String generateRefreshToken(UserDetails userDetails) {
-
+    public String generateRefreshToken(UserDetails userDetails, int tokenVersion) {
         long refreshExpiration = 7 * 24 * 60 * 60 * 1000;
-        return buildToken(new HashMap<>(), userDetails, refreshExpiration);
+        Map<String, Object> extraClaims = new HashMap<>();
+        extraClaims.put("tv", tokenVersion);
+        extraClaims.put(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE);
+        return buildToken(extraClaims, userDetails, refreshExpiration);
+    }
+
+    public boolean isAccessToken(String token) {
+        return ACCESS_TOKEN_TYPE.equals(extractClaim(token, claims -> claims.get(TOKEN_TYPE_CLAIM, String.class)));
+    }
+
+    public boolean isRefreshToken(String token) {
+        return REFRESH_TOKEN_TYPE.equals(extractClaim(token, claims -> claims.get(TOKEN_TYPE_CLAIM, String.class)));
     }
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);

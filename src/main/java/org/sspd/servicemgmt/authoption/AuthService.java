@@ -49,7 +49,7 @@ public class AuthService {
 
         // ၄. Access Token နှင့် Refresh Token ထုတ်ခြင်း (version ပါ ထည့်)
         String accessToken = jwtService.generateToken(userDetails, newVersion);
-        String refreshToken = jwtService.generateRefreshToken(userDetails);
+        String refreshToken = jwtService.generateRefreshToken(userDetails, newVersion);
 
         // ၅. Roles နဲ့ Permissions ခွဲထုတ်ခြင်း
         Set<String> roles = userDetails.getAuthorities().stream()
@@ -65,6 +65,45 @@ public class AuthService {
         // ၆. ရလာသမျှ အချက်အလက်အားလုံးကို စုစည်းပြီး ပြန်ပေးခြင်း
         return new LoginResult(accessToken, refreshToken, userDetails.getUsername(), user.getName(), user.getPhone(),
                 user.getStaff() != null ? user.getStaff().getId() : null, roles, permissions);
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResult refresh(String refreshToken) {
+        try {
+            if (refreshToken == null || refreshToken.isBlank() || !jwtService.isRefreshToken(refreshToken)) {
+                throw new BadCredentialsException("Invalid refresh token");
+            }
+
+            String username = jwtService.extractUsername(refreshToken);
+            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+            if (!userDetails.isEnabled() || !jwtService.isTokenValid(refreshToken, userDetails)
+                    || !(userDetails instanceof org.sspd.servicemgmt.jwt.TokenAwareUserDetails tokenAware)
+                    || !java.util.Objects.equals(jwtService.extractTokenVersion(refreshToken), tokenAware.getTokenVersion())) {
+                throw new BadCredentialsException("Refresh session expired");
+            }
+
+            User user = userRepository.findByUsernameOrEmail(username, username)
+                    .orElseThrow(() -> new BadCredentialsException("Refresh session expired"));
+            int tokenVersion = tokenAware.getTokenVersion();
+            String accessToken = jwtService.generateToken(userDetails, tokenVersion);
+            String rotatedRefreshToken = jwtService.generateRefreshToken(userDetails, tokenVersion);
+
+            Set<String> roles = userDetails.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .filter(auth -> auth.startsWith("ROLE_"))
+                    .collect(Collectors.toSet());
+            Set<String> permissions = userDetails.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .filter(auth -> !auth.startsWith("ROLE_"))
+                    .collect(Collectors.toSet());
+
+            return new LoginResult(accessToken, rotatedRefreshToken, userDetails.getUsername(), user.getName(),
+                    user.getPhone(), user.getStaff() != null ? user.getStaff().getId() : null, roles, permissions);
+        } catch (BadCredentialsException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new BadCredentialsException("Invalid or expired refresh token");
+        }
     }
 
     // Login ရလဒ်များကို သယ်ဆောင်ရန် အတွင်းသုံး record (သို့မဟုတ် DTO)

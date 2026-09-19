@@ -49,6 +49,13 @@ interface ProductGroup {
   groupStockValue: number;
 }
 
+const escapeReportHtml = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const productTypeBadgeClass = (type: string) => {
   if (type === ProductType.NEW)        return 'bg-indigo-50 text-indigo-600 border-indigo-100';
   if (type === ProductType.SECOND_NEW) return 'bg-violet-50 text-violet-600 border-violet-100';
@@ -1030,13 +1037,27 @@ const ProductManagement: React.FC = () => {
 
   const printReorderSuggestions = () => {
     if (reorderSuggestions.length === 0) return;
-    const printWindow = window.open('', '_blank', 'width=1000,height=700');
-    if (!printWindow) return;
-    const rows = reorderSuggestions.map((row) => `<tr><td>${row.supplierName || 'No supplier history'}</td><td>${row.productName}<br><small>${row.productCode}</small></td><td>${row.currentStock}</td><td>${row.reorderLevel}</td><td>+${row.suggestedQuantity}</td><td>${(row.currentCost || 0).toLocaleString()} Ks</td></tr>`).join('');
-    printWindow.document.write(`<html><head><title>Reorder Suggestions</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#1e293b}h1{font-size:20px;margin:0 0 6px}p{color:#64748b;font-size:12px;margin:0 0 18px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f1f5f9}td:nth-child(n+3){text-align:right}small{color:#64748b}</style></head><body><h1>Reorder Suggestions</h1><p>Generated ${new Date().toLocaleString()}</p><table><thead><tr><th>Supplier</th><th>Product</th><th>Current Stock</th><th>Reorder Level</th><th>Suggested Order</th><th>Current Cost</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    const rows = reorderSuggestions.map((row) => `<tr>
+      <td>${escapeReportHtml(row.supplierName || 'No supplier history')}</td>
+      <td>${escapeReportHtml(row.productName)}<br><small>${escapeReportHtml(row.productCode)}</small></td>
+      <td>${escapeReportHtml(row.currentStock)}</td>
+      <td>${escapeReportHtml(row.reorderLevel)}</td>
+      <td>+${escapeReportHtml(row.suggestedQuantity)}</td>
+      <td>${escapeReportHtml((row.currentCost || 0).toLocaleString())} Ks</td>
+    </tr>`).join('');
+    const nonce = crypto.randomUUID().replace(/-/g, '');
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'">
+      <title>Reorder Suggestions</title>
+      <style>body{font-family:Arial,sans-serif;padding:24px;color:#1e293b}h1{font-size:20px;margin:0 0 6px}p{color:#64748b;font-size:12px;margin:0 0 18px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f1f5f9}td:nth-child(n+3){text-align:right}small{color:#64748b}</style>
+      </head><body><h1>Reorder Suggestions</h1>
+      <p>Generated ${escapeReportHtml(new Date().toLocaleString())}</p>
+      <table><thead><tr><th>Supplier</th><th>Product</th><th>Current Stock</th><th>Reorder Level</th><th>Suggested Order</th><th>Current Cost</th></tr></thead><tbody>${rows}</tbody></table>
+      <script nonce="${nonce}">addEventListener('load',()=>{focus();print()})</script>
+      </body></html>`;
+    const reportUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    window.open(reportUrl, '_blank', 'noopener,noreferrer,width=1000,height=700');
+    window.setTimeout(() => URL.revokeObjectURL(reportUrl), 60_000);
   };
 
   const fetchStockHistory = async (product: ProductDTO | null, page = stockHistoryPage) => {

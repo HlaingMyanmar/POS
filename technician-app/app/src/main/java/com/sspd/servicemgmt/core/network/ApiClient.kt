@@ -1,6 +1,8 @@
 package com.sspd.servicemgmt.core.network
 
+import android.content.Context
 import com.sspd.servicemgmt.BuildConfig
+import com.sspd.servicemgmt.core.util.PreferenceManager
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -12,6 +14,14 @@ import java.util.concurrent.TimeUnit
 object ApiClient {
     private var _baseUrl = BuildConfig.DEFAULT_BASE_URL.trimEnd('/') + "/api/v1/"
     private var retrofit: Retrofit? = null
+    private var prefs: PreferenceManager? = null
+    private val refreshLock = Any()
+
+    fun initialize(context: Context) {
+        prefs = PreferenceManager(context.applicationContext)
+        val configuredUrl = prefs?.serverUrl.orEmpty()
+        if (configuredUrl.isNotBlank()) setBaseUrl(configuredUrl)
+    }
 
     fun setBaseUrl(url: String) {
         val cleaned = url.trimEnd('/') + "/api/v1/"
@@ -24,6 +34,9 @@ object ApiClient {
     /** OkHttp uses Android system TLS & Connection Pooling for fast HTTP keep-alive socket reuse. */
     private fun buildApiClient(): OkHttpClient {
         return OkHttpClient.Builder()
+            .authenticator { _, response ->
+                refreshAndRetry(response)
+            }
             .addInterceptor { chain ->
                 val response = try {
                     chain.proceed(chain.request())
@@ -46,6 +59,73 @@ object ApiClient {
             .retryOnConnectionFailure(true)
             .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
             .build()
+    }
+
+    private fun refreshAndRetry(response: okhttp3.Response): okhttp3.Request? {
+        val preferences = prefs ?: return null
+        val requestToken = response.request.header("Authorization")
+            ?.removePrefix("Bearer ")
+            .orEmpty()
+
+        synchronized(refreshLock) {
+            val latestToken = preferences.authToken
+            when (TokenRetryPolicy.decide(
+                responseCount = responseCount(response),
+                requestPath = response.request.url.encodedPath,
+                responseBody = response.peekBody(2_048).string(),
+                requestAccessToken = requestToken,
+                latestAccessToken = latestToken,
+                refreshToken = preferences.refreshToken
+            )) {
+                TokenRetryAction.STOP -> return null
+                TokenRetryAction.USE_LATEST_ACCESS_TOKEN -> {
+                    return response.request.newBuilder()
+                        .header("Authorization", bearer(latestToken))
+                        .build()
+                }
+                TokenRetryAction.REFRESH -> Unit
+            }
+
+            val refreshToken = preferences.refreshToken
+            val refreshClient = OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .build()
+            val refreshService = Retrofit.Builder()
+                .baseUrl(_baseUrl)
+                .client(refreshClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(ApiService::class.java)
+            val refreshed = runCatching {
+                refreshService.refreshSession(RefreshTokenRequest(refreshToken)).execute()
+            }.getOrNull()
+            val auth = refreshed?.takeIf { it.isSuccessful && it.body()?.success == true }?.body()?.data
+                ?: return null
+            if (auth.accessToken.isBlank()) return null
+
+            preferences.authToken = auth.accessToken
+            preferences.refreshToken = auth.refreshToken ?: refreshToken
+            preferences.username = auth.username
+            preferences.displayName = auth.name ?: auth.username
+            preferences.phone = auth.phone ?: ""
+            preferences.staffId = auth.staffId ?: 0
+            preferences.rolesStr = auth.roles.joinToString(",")
+            preferences.permissionsStr = auth.permissions.joinToString(",")
+            return response.request.newBuilder()
+                .header("Authorization", bearer(auth.accessToken))
+                .build()
+        }
+    }
+
+    private fun responseCount(response: okhttp3.Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) {
+            count++
+            prior = prior.priorResponse
+        }
+        return count
     }
 
     private fun build(): Retrofit =

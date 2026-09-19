@@ -17,6 +17,7 @@ export type AppTheme = 'light' | 'dark';
 
 export interface AuthResponse {
   accessToken: string;
+  refreshToken?: string;
   username: string;
   name?: string;
   phone?: string;

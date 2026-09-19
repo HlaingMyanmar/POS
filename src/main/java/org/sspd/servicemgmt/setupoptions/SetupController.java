@@ -7,7 +7,6 @@ import org.sspd.servicemgmt.api.ApiResponse;
 
 @RestController
 @RequestMapping("/api/v1/setup")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class SetupController {
 
@@ -19,8 +18,10 @@ public class SetupController {
     }
 
     @PostMapping("/initial-admin")
-    public ResponseEntity<ApiResponse<Void>> createInitialAdmin(@RequestBody InitialAdminDTO dto) {
-        setupService.createInitialAdministrator(dto);
+    public ResponseEntity<ApiResponse<Void>> createInitialAdmin(
+            @RequestHeader(name = "X-Setup-Token", required = false) String setupToken,
+            @RequestBody InitialAdminDTO dto) {
+        setupService.createInitialAdministrator(dto, setupToken);
         return ResponseEntity.ok(new ApiResponse<>(true, "Administrator created. Please log in.", null));
     }
 

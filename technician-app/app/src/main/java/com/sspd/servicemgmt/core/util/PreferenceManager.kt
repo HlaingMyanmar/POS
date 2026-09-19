@@ -1,6 +1,7 @@
 package com.sspd.servicemgmt.core.util
 
 import android.content.Context
+import com.sspd.servicemgmt.core.security.TechnicianAuthorization
 
 class PreferenceManager(context: Context) {
     private val p = context.getSharedPreferences("sspd_prefs", Context.MODE_PRIVATE)
@@ -78,31 +79,14 @@ class PreferenceManager(context: Context) {
         .remove("active_visit_status")
         .apply()
 
-    fun hasPermission(perm: String) = permissionsStr
-        .split(',', ';')
-        .map { it.trim().removePrefix("ROLE_").uppercase() }
-        .any { it == perm.trim().removePrefix("ROLE_").uppercase() }
+    fun hasPermission(perm: String) =
+        TechnicianAuthorization.contains(permissionsStr, perm)
 
-    fun hasRole(role: String): Boolean {
-        val wanted = role.removePrefix("ROLE_").uppercase()
-        return rolesStr.split(',')
-            .map { it.trim().removePrefix("ROLE_").uppercase() }
-            .any { it == wanted }
-    }
+    fun hasRole(role: String): Boolean =
+        TechnicianAuthorization.contains(rolesStr, role)
 
-    fun isTechnician(): Boolean {
-        val roles = rolesStr.split(',', ';')
-            .map { it.trim().removePrefix("ROLE_").uppercase() }
-            .filter { it.isNotBlank() }
-
-        return roles.any { role ->
-            role == "TECH" || role == "TECHNICIAN" || role.contains("TECHNICIAN")
-        } || (staffId > 0 && (
-            hasPermission("CAN_ACCESS_SERVICE_JOB_READ") ||
-                hasPermission("CAN_ACCESS_TECHNICIAN_VISIT_START") ||
-                hasPermission("CAN_ACCESS_VIDEO_CATALOG_TECHNICIAN")
-            ))
-    }
+    fun isTechnician(): Boolean =
+        TechnicianAuthorization.isTechnician(rolesStr, staffId, permissionsStr)
 
     fun shouldScopeToOwnStaff(): Boolean =
         staffId > 0 && !hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")

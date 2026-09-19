@@ -31,7 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
-        final String userEmail;
+        final JwtService.ParsedToken parsed;
 
         // 1. Authorization Header ပါမပါ နဲ့ "Bearer " နဲ့ စမစ စစ်ဆေးခြင်း
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -42,51 +42,71 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 2. Header ထဲကနေ Token ကို ခွဲထုတ်ယူခြင်း (Bearer ဆိုတဲ့စာသားနောက်က အပိုင်း)
         jwt = authHeader.substring(7);
 
-        // 3. Token ထဲကနေ Username (Email) ကို Extract လုပ်ခြင်း
-        userEmail = jwtService.extractUsername(jwt);
+        // Parse and validate signature/expiration exactly once. Any malformed,
+        // expired, unsupported, or incorrectly signed token becomes a stable 401.
+        try {
+            parsed = jwtService.parseToken(jwt);
+        } catch (io.jsonwebtoken.JwtException | IllegalArgumentException ex) {
+            writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
+                    "Access token expired or invalid.");
+            return;
+        }
+        if (!parsed.isAccessToken() || parsed.username() == null || parsed.username().isBlank()) {
+            writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
+                    "Access token expired or invalid.");
+            return;
+        }
 
         // 4. Email ရှိပြီး လက်ရှိ SecurityContext မှာ Authentication မရှိသေးရင်
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+        if (SecurityContextHolder.getContext().getAuthentication() == null) {
 
             UserDetails userDetails;
             try {
-                userDetails = this.userDetailsService.loadUserByUsername(userEmail);
-            } catch (Exception ignored) {
-                filterChain.doFilter(request, response);
+                userDetails = this.userDetailsService.loadUserByUsername(parsed.username());
+            } catch (RuntimeException ignored) {
+                writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
+                        "Access token expired or invalid.");
                 return;
             }
 
             // 5. Token version စစ်ဆေးခြင်း — version မတိုက်မိရင် session invalid ဖြစ်သွားပြီ
             if (userDetails instanceof TokenAwareUserDetails tud) {
-                Integer jwtVersion = jwtService.extractTokenVersion(jwt);
+                Integer jwtVersion = parsed.tokenVersion();
                 if (jwtVersion == null || jwtVersion != tud.getTokenVersion()) {
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.setContentType("application/json;charset=UTF-8");
-                    response.getWriter().write(
-                            "{\"error\":\"SESSION_INVALIDATED\",\"message\":\"This session has been invalidated. Please log in again.\"}"
-                    );
+                    writeUnauthorized(response, "SESSION_INVALIDATED",
+                            "This session has been invalidated. Please log in again.");
                     return;
                 }
             }
 
             // 6. Token မှန်ကန်မှု စစ်ဆေးခြင်း
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-
-                authToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
-
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+            if (!userDetails.isEnabled() || !parsed.username().equals(userDetails.getUsername())) {
+                writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
+                        "Access token expired or invalid.");
+                return;
             }
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                    userDetails,
+                    null,
+                    userDetails.getAuthorities()
+            );
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authToken);
         }
 
         // နောက် filter တစ်ခုကို ဆက်သွားစေခြင်း
         filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorized(
+            HttpServletResponse response,
+            String error,
+            String message
+    ) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write(
+                "{\"error\":\"" + error + "\",\"message\":\"" + message + "\"}"
+        );
     }
 }

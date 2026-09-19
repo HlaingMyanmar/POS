@@ -14,9 +14,21 @@ import org.springframework.stereotype.Component;
 import org.sspd.servicemgmt.jwt.*;
 import org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth;
 
+import java.util.Set;
+
 @Component
 @RequiredArgsConstructor
 public class OrderWebSocketInterceptor implements ChannelInterceptor {
+    private static final Set<String> CUSTOMER_SUBSCRIBE = Set.of(
+            "/user/topic/customer-orders",
+            "/user/topic/chat"
+    );
+    private static final Set<String> CUSTOMER_SEND = Set.of(
+            "/app/chat.send",
+            "/app/chat/send"
+    );
+    private static final Set<String> STAFF_ORDER_SUBSCRIBE = Set.of("/topic/customer-order");
+
     private final JwtService jwtService;
     private final CustomUserDetailsService users;
 
@@ -24,43 +36,103 @@ public class OrderWebSocketInterceptor implements ChannelInterceptor {
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor headers = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
         if (headers == null) return message;
-        if (headers.getCommand() == StompCommand.CONNECT) {
-            String authorization = headers.getFirstNativeHeader("Authorization");
-            if (authorization != null) {
-                if (!authorization.startsWith("Bearer ")) throw new AccessDeniedException("Invalid token");
-                String token = authorization.substring(7);
-                var details = users.loadUserByUsername(jwtService.extractUsername(token));
-                if (!details.isEnabled() || !jwtService.isTokenValid(token, details)
-                        || !(details instanceof TokenAwareUserDetails aware)
-                        || !java.util.Objects.equals(jwtService.extractTokenVersion(token), aware.getTokenVersion())) {
-                    throw new AccessDeniedException("Invalid session");
-                }
-                // Canonical customer principal also supports older phone-based tokens.
-                String principal = details instanceof CustomerPortalUserDetails customer
-                        ? CustomerPortalAuth.usernameForCustomer(customer.getCustomerId()) : details.getUsername();
-                headers.setUser(new UsernamePasswordAuthenticationToken(principal, null, details.getAuthorities()));
-            }
+        StompCommand command = headers.getCommand();
+        if (command == StompCommand.CONNECT) {
+            authenticateConnect(headers);
+            return message;
         }
+        Authentication auth = headers.getUser() instanceof Authentication a ? a : null;
         String destination = headers.getDestination();
-        if (destination == null) return message;
-        if (headers.getCommand() == StompCommand.SEND && !destination.startsWith("/app/")) {
-            throw new AccessDeniedException("Clients cannot publish broker notifications");
-        }
-        if (headers.getCommand() == StompCommand.SUBSCRIBE) {
-            Authentication auth = headers.getUser() instanceof Authentication a ? a : null;
-            boolean customer = auth != null && CustomerPortalAuth.isCustomerUsername(auth.getName());
-            if (destination.contains("*") || destination.contains("{")) throw new AccessDeniedException("Wildcard subscription denied");
-            if (customer && !destination.equals("/user/topic/customer-orders")) {
-                throw new AccessDeniedException("Customer subscription denied");
-            }
-            if (destination.equals("/user/topic/customer-orders")) {
-                if (!customer) throw new AccessDeniedException("Customer login required");
-            } else if (destination.startsWith("/topic/customer-order") || destination.startsWith("/user/")) {
-                boolean staff = auth != null && !customer && auth.getAuthorities().stream().anyMatch(a ->
-                        a.getAuthority().equals("CAN_ACCESS_SALE_READ") || a.getAuthority().equals("CAN_ACCESS_CUSTOMER_APP_ORDER_READ"));
-                if (!destination.equals("/topic/customer-order") || !staff) throw new AccessDeniedException("Order subscription denied");
-            }
+        if (command == StompCommand.SEND) {
+            authorizeSend(destination, auth);
+        } else if (command == StompCommand.SUBSCRIBE) {
+            authorizeSubscribe(destination, auth);
         }
         return message;
+    }
+
+    private void authenticateConnect(StompHeaderAccessor headers) {
+        String authorization = headers.getFirstNativeHeader("Authorization");
+        if (authorization == null || authorization.isBlank()) {
+            throw new AccessDeniedException("Login required");
+        }
+        if (!authorization.startsWith("Bearer ")) throw new AccessDeniedException("Invalid token");
+        String token = authorization.substring(7);
+        try {
+            JwtService.ParsedToken parsed = jwtService.parseToken(token);
+            if (!parsed.isAccessToken() || parsed.username() == null || parsed.username().isBlank()) {
+                throw new AccessDeniedException("Invalid token");
+            }
+            var details = users.loadUserByUsername(parsed.username());
+            if (!details.isEnabled() || !parsed.username().equals(details.getUsername())
+                    || !(details instanceof TokenAwareUserDetails aware)
+                    || parsed.tokenVersion() == null
+                    || parsed.tokenVersion() != aware.getTokenVersion()) {
+                throw new AccessDeniedException("Invalid session");
+            }
+            String principal = details instanceof CustomerPortalUserDetails customer
+                    ? CustomerPortalAuth.usernameForCustomer(customer.getCustomerId()) : details.getUsername();
+            headers.setUser(new UsernamePasswordAuthenticationToken(
+                    principal, null, details.getAuthorities()));
+        } catch (AccessDeniedException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new AccessDeniedException("Invalid token");
+        }
+    }
+
+    private void authorizeSend(String destination, Authentication auth) {
+        if (destination == null || !destination.startsWith("/app/")) {
+            throw new AccessDeniedException("Clients cannot publish broker notifications");
+        }
+        Authentication principal = requireUser(auth);
+        if (isCustomer(principal) && !CUSTOMER_SEND.contains(destination)) {
+            throw new AccessDeniedException("Customer send denied");
+        }
+    }
+
+    private void authorizeSubscribe(String destination, Authentication auth) {
+        if (destination == null
+                || destination.contains("*")
+                || destination.contains("{")
+                || destination.contains("}")
+                || destination.contains("..")
+                || destination.contains("%")) {
+            throw new AccessDeniedException("Wildcard subscription denied");
+        }
+        Authentication principal = requireUser(auth);
+        if (isCustomer(principal)) {
+            if (!CUSTOMER_SUBSCRIBE.contains(destination)) {
+                throw new AccessDeniedException("Customer subscription denied");
+            }
+            return;
+        }
+        if (destination.startsWith("/topic/customer-order")) {
+            if (!STAFF_ORDER_SUBSCRIBE.contains(destination) || !hasStaffOrderAccess(principal)) {
+                throw new AccessDeniedException("Order subscription denied");
+            }
+            return;
+        }
+        if (destination.startsWith("/topic/") && destination.indexOf('/', 7) < 0) {
+            return;
+        }
+        throw new AccessDeniedException("Subscription denied");
+    }
+
+    private static Authentication requireUser(Authentication auth) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new AccessDeniedException("Login required");
+        }
+        return auth;
+    }
+
+    private static boolean isCustomer(Authentication auth) {
+        return CustomerPortalAuth.isCustomerUsername(auth.getName());
+    }
+
+    private static boolean hasStaffOrderAccess(Authentication auth) {
+        return auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("CAN_ACCESS_SALE_READ")
+                        || a.getAuthority().equals("CAN_ACCESS_CUSTOMER_APP_ORDER_READ"));
     }
 }

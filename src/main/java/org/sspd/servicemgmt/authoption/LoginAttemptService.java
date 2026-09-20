@@ -2,6 +2,7 @@ package org.sspd.servicemgmt.authoption;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,6 +15,8 @@ import java.util.Locale;
 @Service
 @RequiredArgsConstructor
 public class LoginAttemptService {
+
+    private static final int MAX_RECORD_RETRIES = 3;
 
     private final LoginAttemptStateRepository repository;
 
@@ -51,7 +54,26 @@ public class LoginAttemptService {
         if (loginKey == null || loginKey.isBlank()) {
             return false;
         }
+        DataIntegrityViolationException lastConflict = null;
+        for (int attempt = 0; attempt < MAX_RECORD_RETRIES; attempt++) {
+            try {
+                return recordFailureOnce(loginKey);
+            } catch (DataIntegrityViolationException ex) {
+                // Concurrent first-insert race — retry after the other transaction commits.
+                lastConflict = ex;
+            }
+        }
+        if (lastConflict != null) {
+            throw lastConflict;
+        }
+        return false;
+    }
+
+    private boolean recordFailureOnce(String loginKey) {
         Instant now = Instant.now();
+        // INSERT IGNORE so two concurrent first failures do not both try to create the row.
+        repository.insertIgnoreNew(loginKey, now);
+
         LoginAttemptState state = repository.findByLoginKeyForUpdate(loginKey)
                 .orElseGet(() -> LoginAttemptState.builder()
                         .loginKey(loginKey)

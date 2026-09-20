@@ -40,6 +40,7 @@ class LoginAttemptServiceTest {
 
     @Test
     void fifthFailureLocksAccount() {
+        when(repository.insertIgnoreNew(eq("alice"), any())).thenReturn(0);
         when(repository.findByLoginKeyForUpdate("alice")).thenReturn(Optional.of(
                 LoginAttemptState.builder()
                         .loginKey("alice")
@@ -50,10 +51,30 @@ class LoginAttemptServiceTest {
         boolean locked = service.recordFailure("alice");
 
         assertTrue(locked);
+        verify(repository).insertIgnoreNew(eq("alice"), any());
         verify(repository).save(argThat(state ->
                 state.getLockedUntil() != null
                         && state.getLockedUntil().isAfter(Instant.now())
                         && state.getFailedAttempts() == 0));
+    }
+
+    @Test
+    void concurrentFirstFailureRetriesAfterDuplicateKey() {
+        when(repository.insertIgnoreNew(eq("alice"), any()))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("dup"))
+                .thenReturn(0);
+        when(repository.findByLoginKeyForUpdate("alice")).thenReturn(Optional.of(
+                LoginAttemptState.builder()
+                        .loginKey("alice")
+                        .failedAttempts(0)
+                        .updatedAt(Instant.now())
+                        .build()));
+
+        boolean locked = service.recordFailure("alice");
+
+        assertFalse(locked);
+        verify(repository, times(2)).insertIgnoreNew(eq("alice"), any());
+        verify(repository).save(argThat(state -> state.getFailedAttempts() == 1));
     }
 
     @Test

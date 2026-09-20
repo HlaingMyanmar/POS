@@ -25,27 +25,29 @@ public class AuthController {
             HttpServletRequest httpRequest) {
 
         String ip = getClientIp(httpRequest);
-        String ua = httpRequest.getHeader("User-Agent");
-        String device = (ua != null && (ua.contains("okhttp") || ua.contains("Expo") || ua.contains("ReactNative")))
-                ? "MOBILE" : "WEB";
+        boolean mobile = isMobileClient(httpRequest);
+        String device = mobile ? "MOBILE" : "WEB";
 
         AuthService.LoginResult result = authService.authenticateUser(request, ip, device);
-        setRefreshCookie(response, result.refreshToken());
-        return authResponse(result, "Login Successful");
+        return issueAuthResponse(result, "Login Successful", mobile, response);
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthResponse>> refresh(
             @RequestBody(required = false) RefreshTokenRequest request,
             @CookieValue(name = "refreshToken", required = false) String refreshCookie,
-            HttpServletResponse response) {
-        String refreshToken = Optional.ofNullable(request)
+            HttpServletResponse response,
+            HttpServletRequest httpRequest) {
+        String bodyToken = Optional.ofNullable(request)
                 .map(RefreshTokenRequest::refreshToken)
                 .filter(token -> !token.isBlank())
-                .orElse(refreshCookie);
+                .orElse(null);
+        // Body token ⇒ native/mobile client; otherwise cookie-only web session.
+        boolean mobile = bodyToken != null || isMobileClient(httpRequest);
+        String refreshToken = bodyToken != null ? bodyToken : refreshCookie;
+
         AuthService.LoginResult result = authService.refresh(refreshToken);
-        setRefreshCookie(response, result.refreshToken());
-        return authResponse(result, "Token refreshed");
+        return issueAuthResponse(result, "Token refreshed", mobile, response);
     }
 
     @PostMapping("/logout")
@@ -61,23 +63,38 @@ public class AuthController {
         String accessToken = extractBearer(authorization);
         authService.logout(refreshToken, accessToken);
 
-        ResponseCookie expired = ResponseCookie.from("refreshToken", "")
-                .httpOnly(true)
-                .secure(true)
-                .path("/api/v1/auth")
-                .maxAge(0)
-                .sameSite("Lax")
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, expired.toString());
+        clearRefreshCookie(response);
         return ResponseEntity.ok(new ApiResponse<>(true, "Logged out", null));
     }
 
-    private ResponseEntity<ApiResponse<AuthResponse>> authResponse(
-            AuthService.LoginResult result, String message) {
-        AuthResponse authResponse = new AuthResponse(
-                result.accessToken(), result.refreshToken(), result.username(), result.name(), result.phone(),
-                result.staffId(), result.roles(), result.permissions());
-        return ResponseEntity.ok(new ApiResponse<>(true, message, authResponse));
+    /**
+     * Web: HttpOnly cookie only (refresh token never appears in JSON).
+     * Mobile: refresh token in response body (cookie clients cannot use cookies reliably).
+     */
+    private ResponseEntity<ApiResponse<AuthResponse>> issueAuthResponse(
+            AuthService.LoginResult result,
+            String message,
+            boolean mobile,
+            HttpServletResponse response) {
+        if (mobile) {
+            AuthResponse body = toAuthResponse(result, result.refreshToken());
+            return ResponseEntity.ok(new ApiResponse<>(true, message, body));
+        }
+        setRefreshCookie(response, result.refreshToken());
+        AuthResponse body = toAuthResponse(result, null);
+        return ResponseEntity.ok(new ApiResponse<>(true, message, body));
+    }
+
+    private static AuthResponse toAuthResponse(AuthService.LoginResult result, String refreshToken) {
+        return new AuthResponse(
+                result.accessToken(),
+                refreshToken,
+                result.username(),
+                result.name(),
+                result.phone(),
+                result.staffId(),
+                result.roles(),
+                result.permissions());
     }
 
     private void setRefreshCookie(HttpServletResponse response, String refreshToken) {
@@ -86,9 +103,25 @@ public class AuthController {
                 .secure(true)
                 .path("/api/v1/auth")
                 .maxAge(7 * 24 * 60 * 60)
-                .sameSite("Lax")
+                .sameSite("Strict")
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    private void clearRefreshCookie(HttpServletResponse response) {
+        ResponseCookie expired = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/api/v1/auth")
+                .maxAge(0)
+                .sameSite("Strict")
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, expired.toString());
+    }
+
+    private static boolean isMobileClient(HttpServletRequest request) {
+        String ua = request.getHeader("User-Agent");
+        return ua != null && (ua.contains("okhttp") || ua.contains("Expo") || ua.contains("ReactNative"));
     }
 
     private String extractBearer(String authorization) {

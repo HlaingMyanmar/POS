@@ -1,7 +1,7 @@
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { AuthResponse, User, DashboardStats, ApiResponse, PagedData } from '../types';
-import { getFromSession, saveToSession, removeFromSession } from '../utils/storageHelper';
+import { saveToSession, removeFromSession } from '../utils/storageHelper';
 
 const joinUrl = (base: string, path: string) =>
   `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
@@ -90,13 +90,14 @@ api.interceptors.response.use(
 
     // Session invalidated — another device logged in, no refresh attempt
     if (error.response?.status === 401 && errData?.error === 'SESSION_INVALIDATED') {
-      authService.logout();
-      Swal.fire({
-        icon: 'warning',
-        title: 'Session Ended',
-        text: 'This account has been logged in from another device. You have been signed out.',
-        confirmButtonText: 'OK'
-      }).then(() => { window.location.href = '#/login'; });
+      void authService.logout({ forceClearLocal: true }).finally(() => {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Session Ended',
+          text: 'This account has been logged in from another device. You have been signed out.',
+          confirmButtonText: 'OK'
+        }).then(() => { window.location.href = '#/login'; });
+      });
       return Promise.reject(errData);
     }
 
@@ -108,7 +109,7 @@ api.interceptors.response.use(
     if (!isPublicSetup && !isAuthRequest && error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        // Attempt silent refresh using the refreshToken from sessionStorage (tab-isolated)
+        // Silent refresh via HttpOnly cookie (withCredentials)
         const refreshRes = await authService.refresh();
         if (refreshRes.success) {
           setAccessToken(refreshRes.data.accessToken);
@@ -116,7 +117,7 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshError) {
-        authService.logout();
+        await authService.logout({ forceClearLocal: true });
         window.location.href = '#/login';
       }
     }
@@ -158,43 +159,76 @@ api.interceptors.response.use(
   }
 );
 
+export const SESSION_USER_EVENT = 'sspd:session-user';
+
+export const userFromAuthResponse = (data: AuthResponse): User => ({
+  username: data.username,
+  name: data.name,
+  phone: data.phone,
+  staffId: data.staffId,
+  roles: Array.isArray(data.roles) ? data.roles : [],
+  permissions: Array.isArray(data.permissions) ? data.permissions : [],
+});
+
+const persistSessionUser = (data: AuthResponse) => {
+  const user = userFromAuthResponse(data);
+  saveToSession('sspd_user', JSON.stringify(user));
+  // Notify App/Layout so menus & guards pick up role/permission changes mid-session.
+  window.dispatchEvent(new CustomEvent<User>(SESSION_USER_EVENT, { detail: user }));
+};
+
+const clearLocalAuthSession = () => {
+  setAccessToken(null);
+  removeFromSession('sspd_refresh');
+  removeFromSession('sspd_user');
+  removeFromSession('sspd_token'); // Clean up old legacy keys
+};
+
+const postLogout = async (): Promise<void> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (_accessToken) {
+    headers.Authorization = `Bearer ${_accessToken}`;
+  }
+  // Cookie-only logout for web (server clears HttpOnly refresh cookie).
+  await axios.post(
+    joinUrl(BASE_URL, '/v1/auth/logout'),
+    {},
+    { withCredentials: true, headers },
+  );
+};
+
+export type LogoutOptions = {
+  /** Always wipe local session (forced sign-out / session invalid). */
+  forceClearLocal?: boolean;
+};
+
 export const authService = {
   login: async (usernameOremail: string, password: string): Promise<ApiResponse<AuthResponse>> => {
     const response = await api.post<any, ApiResponse<any>>('/v1/auth/login', { usernameOremail, password });
     if (response.success) {
       setAccessToken(response.data.accessToken);
-      // We only store refreshToken and user info in sessionStorage for tab-level persistence
-      saveToSession('sspd_refresh', response.data.refreshToken);
-      saveToSession('sspd_user', JSON.stringify({
-        username: response.data.username,
-        name: response.data.name,
-        phone: response.data.phone,
-        staffId: response.data.staffId,
-        roles: response.data.roles,
-        permissions: response.data.permissions
-      }));
+      // Web refresh token is HttpOnly cookie-only (not in JSON body / not in sessionStorage).
+      removeFromSession('sspd_refresh');
+      persistSessionUser(response.data);
     }
     return response;
   },
 
   refresh: async (): Promise<ApiResponse<AuthResponse>> => {
-    const refreshToken = getFromSession('sspd_refresh');
-    if (!refreshToken) throw new Error('No refresh token available');
-
     if (!refreshInFlight) {
+      // Empty body → server uses HttpOnly refresh cookie; no refresh token in JS.
       refreshInFlight = axios
         .post<ApiResponse<AuthResponse>>(
           joinUrl(BASE_URL, '/v1/auth/refresh'),
-          { refreshToken },
+          {},
           { withCredentials: true, headers: { 'Content-Type': 'application/json' } },
         )
         .then(response => {
           const result = response.data;
           if (result.success && result.data?.accessToken) {
             setAccessToken(result.data.accessToken);
-            if (result.data.refreshToken) {
-              saveToSession('sspd_refresh', result.data.refreshToken);
-            }
+            // Keep UI roles/permissions in sync after admin role changes.
+            persistSessionUser(result.data);
           }
           return result;
         })
@@ -205,23 +239,47 @@ export const authService = {
     return refreshInFlight;
   },
 
-  logout: () => {
-    const refreshToken = getFromSession('sspd_refresh');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (_accessToken) {
-      headers.Authorization = `Bearer ${_accessToken}`;
+  clearLocalSession: clearLocalAuthSession,
+
+  /**
+   * Revokes the server refresh session, then clears local auth state.
+   * On network/server failure (user-initiated): offers Retry / local-only / stay signed in.
+   * Forced paths always clear local state so the UI cannot keep a dead session.
+   * @returns true when the local session was cleared
+   */
+  logout: async (options: LogoutOptions = {}): Promise<boolean> => {
+    const { forceClearLocal = false } = options;
+
+    try {
+      await postLogout();
+      clearLocalAuthSession();
+      return true;
+    } catch {
+      if (forceClearLocal) {
+        clearLocalAuthSession();
+        return true;
+      }
+
+      const decision = await Swal.fire({
+        icon: 'warning',
+        title: 'Logout incomplete',
+        text: 'Could not reach the server to end your session. The refresh token may still be active until logout succeeds.',
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: 'Retry',
+        denyButtonText: 'Sign out locally',
+        cancelButtonText: 'Stay signed in',
+      });
+
+      if (decision.isConfirmed) {
+        return authService.logout(options);
+      }
+      if (decision.isDenied) {
+        clearLocalAuthSession();
+        return true;
+      }
+      return false;
     }
-    void axios
-      .post(
-        joinUrl(BASE_URL, '/v1/auth/logout'),
-        refreshToken ? { refreshToken } : null,
-        { withCredentials: true, headers },
-      )
-      .catch(() => undefined);
-    setAccessToken(null);
-    removeFromSession('sspd_refresh');
-    removeFromSession('sspd_user');
-    removeFromSession('sspd_token'); // Clean up old legacy keys
   }
 };
 

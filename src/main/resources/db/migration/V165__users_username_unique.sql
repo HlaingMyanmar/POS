@@ -1,5 +1,5 @@
 -- Ensure every user has a unique, non-null username before enforcing the constraint.
--- When appending '_<id>', truncate the *prefix* so the suffix is never chopped by LEFT(..., 50).
+-- Duplicate resolution uses id-scoped values only (never LEFT()-truncate a uniqueness suffix).
 
 UPDATE users
 SET username = NULL
@@ -17,23 +17,8 @@ SET u.username = CONCAT(
 )
 WHERE u.username IS NULL;
 
--- Deduplicate: truncate prefix only, always preserve '_<id>' suffix.
-UPDATE users u
-JOIN (
-    SELECT id,
-           ROW_NUMBER() OVER (PARTITION BY username ORDER BY id) AS rn
-    FROM users
-    WHERE username IS NOT NULL
-) ranked ON ranked.id = u.id
-SET u.username = CONCAT(
-        LEFT(u.username, GREATEST(1, 50 - CHAR_LENGTH(CONCAT('_', u.id)))),
-        '_',
-        u.id
-)
-WHERE ranked.rn > 1;
-
--- Second pass: a rename can collide with an existing '<prefix>_<id>' value.
--- Use id + short hash (always <= 50 chars) so the unique index cannot fail on truncation.
+-- Deduplicate: losers get a guaranteed-unique name derived from id (always <= 50 chars).
+-- Form: u{id}_{12-hex} — unique per id, no suffix truncation risk.
 UPDATE users u
 JOIN (
     SELECT id,
@@ -46,7 +31,27 @@ SET u.username = LEFT(
                 'u',
                 u.id,
                 '_',
-                LOWER(SUBSTRING(SHA2(CONCAT(u.id, '#', IFNULL(u.email, '')), 256), 1, 12))
+                LOWER(SUBSTRING(SHA2(CONCAT(u.id, '#', IFNULL(u.email, ''), '#', IFNULL(u.username, '')), 256), 1, 12))
+        ),
+        50
+)
+WHERE ranked.rn > 1;
+
+-- Final safety pass: if a rename collided with an existing rn=1 value, force another unique form.
+-- Prefix 'x{id}_' is unique per primary key, so the unique index cannot fail on truncation.
+UPDATE users u
+JOIN (
+    SELECT id,
+           ROW_NUMBER() OVER (PARTITION BY username ORDER BY id) AS rn
+    FROM users
+    WHERE username IS NOT NULL
+) ranked ON ranked.id = u.id
+SET u.username = LEFT(
+        CONCAT(
+                'x',
+                u.id,
+                '_',
+                LOWER(SUBSTRING(SHA2(CONCAT('retry#', u.id, '#', IFNULL(u.email, '')), 256), 1, 16))
         ),
         50
 )

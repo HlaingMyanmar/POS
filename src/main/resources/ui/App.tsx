@@ -23,7 +23,7 @@ import Layout from './components/Layout';
 import RouteLoadBoundary from './components/RouteLoadBoundary';
 import { User, AppLanguage, AppRoute, AppTheme } from './types';
 import { getFromSession } from './utils/storageHelper';
-import { authService, setAccessToken, setupService } from './services/api';
+import { authService, setAccessToken, setupService, SESSION_USER_EVENT, userFromAuthResponse } from './services/api';
 import { disconnectWs, ensureWsConnected } from './services/wsClient';
 import { getCompanySettings } from './utils/companySettings';
 import { applyDocumentLanguage, resolveInitialLanguage, saveLanguagePreference } from './utils/language';
@@ -109,14 +109,15 @@ const App: React.FC = () => {
       }
 
       const savedUser = getFromSession('sspd_user');
-      const refreshToken = getFromSession('sspd_refresh');
 
-      if (!initialAdminNeeded && savedUser && refreshToken) {
+      // Bootstrap via HttpOnly refresh cookie + cached user profile (no JS-readable refresh token).
+      if (!initialAdminNeeded && savedUser) {
         try {
           const res = await authService.refresh();
           if (res.success) {
             setAccessToken(res.data.accessToken);
-            setUser(JSON.parse(savedUser));
+            // Always prefer refresh response profile (roles/permissions may have changed).
+            setUser(userFromAuthResponse(res.data));
             ensureWsConnected();
             void getCompanySettings(true);
             void checkSetup();
@@ -124,13 +125,24 @@ const App: React.FC = () => {
             throw new Error("Refresh failed");
           }
         } catch (e) {
-          authService.logout();
+          await authService.logout({ forceClearLocal: true });
         }
       }
       setLoading(false);
     };
 
     initializeAuth();
+  }, []);
+
+  useEffect(() => {
+    const onSessionUser = (event: Event) => {
+      const next = (event as CustomEvent<User>).detail;
+      if (next?.username) {
+        setUser(next);
+      }
+    };
+    window.addEventListener(SESSION_USER_EVENT, onSessionUser);
+    return () => window.removeEventListener(SESSION_USER_EVENT, onSessionUser);
   }, []);
 
   useEffect(() => {
@@ -171,9 +183,11 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    authService.logout();
-    disconnectWs();
-    setUser(null);
+    void authService.logout().then((cleared) => {
+      if (!cleared) return;
+      disconnectWs();
+      setUser(null);
+    });
   };
 
   // Permission guard for child routes (no Layout — Layout is the parent)

@@ -621,6 +621,14 @@ interface ApiService {
         @Body body: List<BookingItemDTO>
     ): Response<ApiResponse<BookingDTO>>
 
+    @PUT("bookings/{id}/items/{itemId}")
+    suspend fun updateBookingItem(
+        @Header("Authorization") auth: String,
+        @Path("id") id: Int,
+        @Path("itemId") itemId: Int,
+        @Body body: BookingItemDTO
+    ): Response<ApiResponse<BookingDTO>>
+
     @DELETE("bookings/{id}/items/{itemId}")
     suspend fun removeBookingItem(
         @Header("Authorization") auth: String,

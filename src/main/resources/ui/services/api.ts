@@ -52,7 +52,10 @@ export const getAccessToken = () => _accessToken;
 export const api = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' }
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Client-Type': 'web',
+  }
 });
 
 let refreshInFlight: Promise<ApiResponse<AuthResponse>> | null = null;
@@ -193,7 +196,7 @@ const postLogout = async (): Promise<void> => {
   await axios.post(
     joinUrl(BASE_URL, '/v1/auth/logout'),
     {},
-    { withCredentials: true, headers },
+    { withCredentials: true, headers: { ...headers, 'X-Client-Type': 'web' } },
   );
 };
 
@@ -221,7 +224,10 @@ export const authService = {
         .post<ApiResponse<AuthResponse>>(
           joinUrl(BASE_URL, '/v1/auth/refresh'),
           {},
-          { withCredentials: true, headers: { 'Content-Type': 'application/json' } },
+          {
+            withCredentials: true,
+            headers: { 'Content-Type': 'application/json', 'X-Client-Type': 'web' },
+          },
         )
         .then(response => {
           const result = response.data;
@@ -380,6 +386,8 @@ export const bookingService = {
   updateStatus: (id: number, status: string) =>
     api.patch<any, ApiResponse<any>>(`/v1/bookings/${id}/status?status=${status}`),
   addItems: (id: number, items: any[]) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/items`, items),
+  updateItem: (id: number, itemId: number, item: any) =>
+    api.put<any, ApiResponse<any>>(`/v1/bookings/${id}/items/${itemId}`, item),
   removeItem: (id: number, itemId: number) => api.delete<any, ApiResponse<any>>(`/v1/bookings/${id}/items/${itemId}`),
   convertOutdoor: (id: number) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/convert-outdoor`, {}),
   convertIndoor: (id: number) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/convert-indoor`, {}),

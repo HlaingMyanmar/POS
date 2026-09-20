@@ -6,6 +6,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
@@ -26,9 +28,10 @@ import org.sspd.servicemgmt.servicejoboptions.service.ServiceJobService;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -153,6 +156,41 @@ public class BookingService {
     }
 
     @Transactional
+    public BookingDTO updateItem(Integer bookingId, Integer itemId, BookingItemDTO dto) {
+        Booking booking = requireForUpdate(bookingId);
+        if (booking.getStatus() == BookingStatus.CANCELED)
+            throw new IllegalStateException("Canceled booking cannot be edited");
+        BookingItem item = itemRepository.findByIdAndBookingId(itemId, bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking item not found"));
+
+        boolean converted = item.getConvertedJobId() != null;
+        boolean photosProvided = dto.getPhotos() != null;
+        if (converted && photosProvided) {
+            throw new IllegalStateException("Converted booking item photos cannot be changed");
+        }
+
+        String itemName = trimToNull(dto.getItemName());
+        if (itemName == null) throw new IllegalArgumentException("Item name is required");
+        item.setItemName(itemName);
+        item.setDeviceType(trimToNull(dto.getDeviceType()));
+        item.setSerialNo(trimToNull(dto.getSerialNo()));
+        item.setColor(trimToNull(dto.getColor()));
+        item.setAccessories(trimToNull(dto.getAccessories()));
+        item.setProblemDesc(firstNonBlank(dto.getProblemDesc(), booking.getComplaintNote()));
+        item.setItemCondition(trimToNull(dto.getItemCondition()));
+        item.setNoticed(trimToNull(dto.getNoticed()));
+
+        if (photosProvided) {
+            syncItemPhotos(item, dto.getPhotos());
+        }
+
+        itemRepository.save(item);
+        BookingDTO result = toDto(booking, true);
+        broadcast("BOOKING_ITEM_UPDATED");
+        return result;
+    }
+
+    @Transactional
     public BookingDTO removeItem(Integer bookingId, Integer itemId) {
         Booking booking = requireForUpdate(bookingId);
         if (booking.getStatus() == BookingStatus.CANCELED)
@@ -161,12 +199,14 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking item not found"));
         if (item.getConvertedJobId() != null)
             throw new IllegalStateException("Converted booking item cannot be removed");
-        item.getPhotos().forEach(photo -> bookingPhotoStorageService.deleteExisting(
-            photo.getImagePath(), photo.getThumbnailPath()));
+        List<String[]> filesToDelete = item.getPhotos().stream()
+                .map(photo -> new String[]{photo.getImagePath(), photo.getThumbnailPath()})
+                .toList();
         booking.getItems().removeIf(existing -> existing.getId().equals(itemId));
         itemRepository.delete(item);
         if (booking.getItems().isEmpty()) booking.setStatus(BookingStatus.CONFIRMED);
         BookingDTO result = toDto(repository.save(booking), true);
+        schedulePhotoFileCleanup(filesToDelete, List.of());
         broadcast("BOOKING_ITEM_REMOVED");
         return result;
     }
@@ -352,6 +392,115 @@ public class BookingService {
         }
         if (item.getPhotos().size() > MAX_PHOTOS_PER_ITEM)
             throw new IllegalArgumentException("Each device can have at most " + MAX_PHOTOS_PER_ITEM + " photos");
+    }
+
+    /**
+     * Product-style photo sync for slots 1–3:
+     * - slots present in payload are kept
+     * - {@code dataUrl} replaces/adds that slot
+     * - path-only entries keep an existing slot (no client-supplied path hijack)
+     * - slots omitted from payload are deleted
+     * Disk deletes run only after successful commit; newly stored files are removed on rollback.
+     */
+    private void syncItemPhotos(BookingItem item, List<BookingItemPhotoDTO> photos) {
+        List<BookingItemPhotoDTO> incoming = photos == null ? List.of() : photos;
+        if (incoming.size() > MAX_PHOTOS_PER_ITEM)
+            throw new IllegalArgumentException("Each device can have at most " + MAX_PHOTOS_PER_ITEM + " photos");
+
+        Set<Integer> keepSlots = new HashSet<>();
+        for (BookingItemPhotoDTO photoDto : incoming) {
+            Integer slot = photoDto.getSlot();
+            if (slot == null || slot < 1 || slot > MAX_PHOTOS_PER_ITEM)
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + MAX_PHOTOS_PER_ITEM);
+            if (!keepSlots.add(slot))
+                throw new IllegalArgumentException("Duplicate photo slot: " + slot);
+        }
+
+        List<String[]> deleteOnCommit = new ArrayList<>();
+        List<String[]> deleteOnRollback = new ArrayList<>();
+
+        List<BookingItemPhoto> removed = item.getPhotos().stream()
+                .filter(photo -> photo.getSlot() != null && !keepSlots.contains(photo.getSlot()))
+                .toList();
+        for (BookingItemPhoto photo : removed) {
+            deleteOnCommit.add(new String[]{photo.getImagePath(), photo.getThumbnailPath()});
+            item.getPhotos().remove(photo);
+        }
+
+        Integer bookingId = item.getBooking() != null ? item.getBooking().getId() : null;
+        for (BookingItemPhotoDTO photoDto : incoming) {
+            int slot = photoDto.getSlot();
+            String dataUrl = trimToNull(photoDto.getDataUrl());
+            BookingItemPhoto existing = item.getPhotos().stream()
+                    .filter(photo -> Objects.equals(photo.getSlot(), slot))
+                    .findFirst()
+                    .orElse(null);
+
+            if (dataUrl != null) {
+                if (dataUrl.length() > MAX_PHOTO_DATA_URL_LENGTH)
+                    throw new IllegalArgumentException("Device photo is too large");
+                BookingPhotoStorageService.StoredPhoto stored =
+                        bookingPhotoStorageService.store(dataUrl, bookingId, slot);
+                deleteOnRollback.add(new String[]{stored.imagePath(), stored.thumbnailPath()});
+                if (existing != null) {
+                    deleteOnCommit.add(new String[]{existing.getImagePath(), existing.getThumbnailPath()});
+                    existing.setFileName(trimToNull(photoDto.getFileName()));
+                    existing.setContentType("image/webp");
+                    existing.setDataUrl(null);
+                    existing.setImagePath(stored.imagePath());
+                    existing.setThumbnailPath(stored.thumbnailPath());
+                } else {
+                    item.getPhotos().add(BookingItemPhoto.builder()
+                            .bookingItem(item)
+                            .slot(slot)
+                            .fileName(trimToNull(photoDto.getFileName()))
+                            .contentType("image/webp")
+                            .dataUrl(null)
+                            .imagePath(stored.imagePath())
+                            .thumbnailPath(stored.thumbnailPath())
+                            .build());
+                }
+                continue;
+            }
+
+            if (existing != null) {
+                // Keep existing stored file; ignore client-supplied paths (prevents cross-booking hijack).
+                if (photoDto.getFileName() != null) existing.setFileName(trimToNull(photoDto.getFileName()));
+                continue;
+            }
+
+            // No existing slot and no dataUrl — do not accept arbitrary client paths.
+            throw new IllegalArgumentException(
+                    "Photo slot " + slot + " requires a dataUrl to add a new image");
+        }
+
+        schedulePhotoFileCleanup(deleteOnCommit, deleteOnRollback);
+    }
+
+    /**
+     * Deletes obsolete files after commit; deletes newly written files if the transaction rolls back.
+     * When no transaction is active (unit tests), commit deletions run immediately.
+     */
+    private void schedulePhotoFileCleanup(List<String[]> deleteOnCommit, List<String[]> deleteOnRollback) {
+        List<String[]> onCommit = deleteOnCommit == null ? List.of() : List.copyOf(deleteOnCommit);
+        List<String[]> onRollback = deleteOnRollback == null ? List.of() : List.copyOf(deleteOnRollback);
+        if (onCommit.isEmpty() && onRollback.isEmpty()) return;
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            onCommit.forEach(paths -> bookingPhotoStorageService.deleteExisting(paths[0], paths[1]));
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) {
+                    onCommit.forEach(paths -> bookingPhotoStorageService.deleteExisting(paths[0], paths[1]));
+                } else {
+                    onRollback.forEach(paths -> bookingPhotoStorageService.deleteExisting(paths[0], paths[1]));
+                }
+            }
+        });
     }
 
     private boolean isFullyConverted(Booking booking) {

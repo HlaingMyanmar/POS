@@ -67,6 +67,15 @@ public class BookingController {
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
+    @PutMapping("/{id}/items/{itemId}")
+    public ResponseEntity<ApiResponse<BookingDTO>> updateItem(
+            @PathVariable Integer id,
+            @PathVariable Integer itemId,
+            @RequestBody BookingItemDTO item) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Item updated", service.updateItem(id, itemId, item)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
     @DeleteMapping("/{id}/items/{itemId}")
     public ResponseEntity<ApiResponse<BookingDTO>> removeItem(
             @PathVariable Integer id, @PathVariable Integer itemId) {

@@ -85,6 +85,29 @@ class BookingDetailViewModel(
         ApiClient.service.removeBookingItem(ApiClient.bearer(prefs.authToken), bookingId, itemId)
     }
 
+    fun updateItem(itemId: Int, item: BookingItemDTO, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(actionLoading = true, actionError = null) }
+            try {
+                val token = ApiClient.bearer(prefs.authToken)
+                val res = ApiClient.service.updateBookingItem(token, bookingId, itemId, item)
+                val data = res.body()?.data
+                if (res.isSuccessful && data != null) {
+                    _uiState.update {
+                        it.copy(booking = data, actionLoading = false, actionSuccess = "ပစ္စည်းပြင်ပြီးပါပြီ")
+                    }
+                    onSuccess()
+                } else {
+                    _uiState.update {
+                        it.copy(actionLoading = false, actionError = res.body()?.message ?: "ပစ္စည်းပြင်မရပါ")
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(actionLoading = false, actionError = e.message ?: "ချိတ်ဆက်မှု ချို့ယွင်း") }
+            }
+        }
+    }
+
     private inline fun runAction(successMsg: String, crossinline call: suspend () -> retrofit2.Response<com.sspd.servicemgmt.core.network.ApiResponse<BookingDTO>>) {
         viewModelScope.launch {
             _uiState.update { it.copy(actionLoading = true, actionError = null) }

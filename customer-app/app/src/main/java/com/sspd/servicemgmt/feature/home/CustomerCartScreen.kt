@@ -40,8 +40,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Person
@@ -55,14 +57,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -374,8 +380,6 @@ fun CustomerCartScreen(
             .fillMaxSize()
             .background(ScreenBg)
             .imePadding()
-            .navigationBarsPadding()
-            .padding(bottom = bottomBarPadding)
     ) {
         AnimatedContent(
             targetState = if (items.isEmpty()) null else step,
@@ -703,20 +707,12 @@ fun CustomerCartScreen(
                 }
                 if (paymentIsLast) {
                     CartCheckoutBar(
-                        note = note,
-                        onNoteChange = onNoteChange,
-                        itemCount = itemCount,
-                        itemsTotal = itemsTotal,
-                        deliveryFee = deliveryFee,
-                        showDeliveryLine = orderType == "DELIVERY",
                         subtotal = subtotal,
-                        discountAmount = promoDiscount.takeIf { it > 0 },
-                        pickupDepositPercent = if (needsDeposit) depositPercent else null,
-                        pickupDeposit = if (needsDeposit) orderDeposit else null,
-                        pickupRemaining = if (needsDeposit) remainingAfterDeposit else null,
+                        itemCount = itemCount,
                         enabled = checkoutEnabled && !checkoutPlacing && fulfillmentReady && quoteReady && (orderType != "DELIVERY" || recipientReady),
                         placing = checkoutPlacing,
-                        onCheckout = onCheckout
+                        onCheckout = onCheckout,
+                        showBottomNav = false
                     )
                 } else {
                     CheckoutNextBar(
@@ -768,25 +764,36 @@ fun CustomerCartScreen(
                             requestedDeliveryAt = requestedDeliveryAt
                         )
                     }
-                    item { Spacer(Modifier.height(4.dp)) }
+                    item {
+                        CheckoutNoteCard(
+                            note = note,
+                            onNoteChange = onNoteChange,
+                            enabled = !checkoutPlacing
+                        )
+                    }
+                    item {
+                        CheckoutPriceBreakdownCard(
+                            itemsTotal = itemsTotal,
+                            deliveryFee = deliveryFee,
+                            showDeliveryLine = orderType == "DELIVERY",
+                            subtotal = subtotal,
+                            discountAmount = promoDiscount.takeIf { it > 0 },
+                            pickupDepositPercent = if (needsDeposit) depositPercent else null,
+                            pickupDeposit = if (needsDeposit) orderDeposit else null,
+                            pickupRemaining = if (needsDeposit) remainingAfterDeposit else null
+                        )
+                    }
+                    item { Spacer(Modifier.height(8.dp)) }
                 }
                 if (confirmIsLast) {
                     CartCheckoutBar(
-                        note = note,
-                        onNoteChange = onNoteChange,
-                        itemCount = itemCount,
-                        itemsTotal = itemsTotal,
-                        deliveryFee = deliveryFee,
-                        showDeliveryLine = orderType == "DELIVERY",
                         subtotal = subtotal,
-                        discountAmount = promoDiscount.takeIf { it > 0 },
-                        pickupDepositPercent = if (needsDeposit) depositPercent else null,
-                        pickupDeposit = if (needsDeposit) orderDeposit else null,
-                        pickupRemaining = if (needsDeposit) remainingAfterDeposit else null,
+                        itemCount = itemCount,
                         enabled = checkoutEnabled && !checkoutPlacing && fulfillmentReady && quoteReady &&
                             (orderType != "DELIVERY" || (recipientReady && scheduleReady)),
                         placing = checkoutPlacing,
-                        onCheckout = onCheckout
+                        onCheckout = onCheckout,
+                        showBottomNav = false
                     )
                 } else {
                     CheckoutNextBar(
@@ -794,7 +801,8 @@ fun CustomerCartScreen(
                         detail = if (orderType == "DELIVERY") "ခန့်မှန်းပို့ဆောင်ခ" else "စုစုပေါင်း",
                         buttonLabel = "ငွေပေးချေနည်း ရွေးမည်",
                         enabled = fulfillmentReady && quoteReady,
-                        onClick = ::goNext
+                        onClick = ::goNext,
+                        showBottomNav = false
                     )
                 }
             }
@@ -915,7 +923,8 @@ private fun CheckoutNextBar(
     detail: String,
     buttonLabel: String,
     enabled: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    showBottomNav: Boolean = false
 ) {
     Surface(
         color = CardBg,
@@ -926,7 +935,13 @@ private fun CheckoutNextBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .then(if (!showBottomNav) Modifier.navigationBarsPadding() else Modifier)
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = if (showBottomNav) 10.dp + 68.dp else 10.dp
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -950,8 +965,7 @@ private fun CheckoutNextBar(
             Text(
                 detail,
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                modifier = Modifier.padding(top = (-4).dp)
+                color = TextMuted
             )
 
             Button(
@@ -1101,7 +1115,8 @@ private fun CartContinueBar(
     itemCount: Int,
     itemsTotal: Double,
     onContinueShopping: () -> Unit,
-    onContinueCheckout: () -> Unit
+    onContinueCheckout: () -> Unit,
+    showBottomNav: Boolean = true
 ) {
     Surface(
         color = CardBg,
@@ -1112,7 +1127,13 @@ private fun CartContinueBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .then(if (!showBottomNav) Modifier.navigationBarsPadding() else Modifier)
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = if (showBottomNav) 10.dp + 68.dp else 10.dp
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -1136,8 +1157,7 @@ private fun CartContinueBar(
             Text(
                 "$itemCount ခု",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                modifier = Modifier.padding(top = (-4).dp)
+                color = TextMuted
             )
 
             Button(
@@ -1812,52 +1832,72 @@ private fun CartFulfillmentCard(
                 )
                 val region = locations.firstOrNull { it.id == selectedRegionId }
                 val township = region?.townshipsOrEmpty()?.firstOrNull { it.id == selectedTownshipId }
-                LocationSearchField(
+                val ward = township?.wardsOrEmpty()?.firstOrNull { it.id == selectedWardId }
+
+                var activeSheet by remember { mutableStateOf<String?>(null) }
+
+                LocationSelectionRow(
                     title = "တိုင်း / ပြည်နယ်",
-                    searchLabel = "တိုင်း ရှာပါ",
-                    emptyText = "တိုင်း/ပြည်နယ် စာရင်း မရသေးပါ — Web မှ ထည့်ပါ",
-                    notFoundText = "တိုင်း မတွေ့ပါ",
+                    selectedValue = region?.name.orEmpty(),
+                    emptyText = "တိုင်း / ပြည်နယ် ရွေးပါ",
                     enabled = true,
-                    options = locations.map { LocationOption(it.id, it.name.orEmpty()) },
-                    selectedId = selectedRegionId,
-                    onSelect = {
-                        onRegionChange(it)
-                        onTownshipChange(null)
-                        onWardChange(null)
-                    },
-                    onFocusChange = onSearchFocusChange
+                    onClick = { activeSheet = "REGION" }
                 )
-                LocationSearchField(
+                LocationSelectionRow(
                     title = "မြို့နယ်",
-                    searchLabel = "မြို့နယ် ရှာပါ",
-                    emptyText = if (selectedRegionId == null) "အရင် တိုင်း ရွေးပါ" else "ဤတိုင်းတွင် မြို့နယ် မရှိသေးပါ",
-                    notFoundText = "မြို့နယ် မတွေ့ပါ",
+                    selectedValue = township?.name.orEmpty(),
+                    emptyText = if (selectedRegionId == null) "အရင် တိုင်း ရွေးပါ" else "မြို့နယ် ရွေးပါ",
                     enabled = selectedRegionId != null,
-                    options = region?.townshipsOrEmpty().orEmpty().map { LocationOption(it.id, it.name.orEmpty()) },
-                    selectedId = selectedTownshipId,
-                    onSelect = {
-                        onTownshipChange(it)
-                        onWardChange(null)
-                    },
-                    onFocusChange = onSearchFocusChange
+                    onClick = { activeSheet = "TOWNSHIP" }
                 )
-                LocationSearchField(
+                LocationSelectionRow(
                     title = "ရပ်ကွက်",
-                    searchLabel = "ရပ်ကွက် ရှာပါ",
-                    emptyText = if (selectedTownshipId == null) "အရင် မြို့နယ် ရွေးပါ" else "ဤမြို့နယ်တွင် ရပ်ကွက် မရှိသေးပါ — Web မှ ထည့်ပါ",
-                    notFoundText = "ရပ်ကွက် မတွေ့ပါ",
+                    selectedValue = listOfNotNull(ward?.name, ward?.deliveryCharge?.let { money(it) }).joinToString(" · "),
+                    emptyText = if (selectedTownshipId == null) "အရင် မြို့နယ် ရွေးပါ" else "ရပ်ကွက် ရွေးပါ",
                     enabled = selectedTownshipId != null,
-                    options = township?.wardsOrEmpty().orEmpty().map {
-                        LocationOption(
-                            it.id,
-                            it.name.orEmpty(),
-                            it.deliveryCharge?.let { charge -> money(charge) }
-                        )
-                    },
-                    selectedId = selectedWardId,
-                    onSelect = onWardChange,
-                    onFocusChange = onSearchFocusChange
+                    onClick = { activeSheet = "WARD" }
                 )
+
+                when (activeSheet) {
+                    "REGION" -> LocationSelectionSheet(
+                        title = "တိုင်း / ပြည်နယ် ရွေးပါ",
+                        searchPlaceholder = "တိုင်း ရှာပါ...",
+                        options = locations.map { LocationOption(it.id, it.name.orEmpty()) },
+                        selectedId = selectedRegionId,
+                        onSelect = {
+                            onRegionChange(it)
+                            onTownshipChange(null)
+                            onWardChange(null)
+                        },
+                        onDismiss = { activeSheet = null }
+                    )
+                    "TOWNSHIP" -> LocationSelectionSheet(
+                        title = "မြို့နယ် ရွေးပါ",
+                        searchPlaceholder = "မြို့နယ် ရှာပါ...",
+                        options = region?.townshipsOrEmpty().orEmpty().map { LocationOption(it.id, it.name.orEmpty()) },
+                        selectedId = selectedTownshipId,
+                        onSelect = {
+                            onTownshipChange(it)
+                            onWardChange(null)
+                        },
+                        onDismiss = { activeSheet = null }
+                    )
+                    "WARD" -> LocationSelectionSheet(
+                        title = "ရပ်ကွက် ရွေးပါ",
+                        searchPlaceholder = "ရပ်ကွက် ရှာပါ...",
+                        options = township?.wardsOrEmpty().orEmpty().map {
+                            LocationOption(
+                                it.id,
+                                it.name.orEmpty(),
+                                it.deliveryCharge?.let { charge -> money(charge) }
+                            )
+                        },
+                        selectedId = selectedWardId,
+                        onSelect = { onWardChange(it) },
+                        onDismiss = { activeSheet = null }
+                    )
+                    null -> {}
+                }
             } else {
                 Text(
                     "ဆိုင်သို့ လာယူပါမည် — ပို့ဆောင်ခ မလိုပါ",
@@ -1875,158 +1915,216 @@ private data class LocationOption(
     val subtitle: String? = null
 )
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LocationSearchField(
+private fun LocationSelectionRow(
     title: String,
-    searchLabel: String,
+    selectedValue: String,
     emptyText: String,
-    notFoundText: String,
     enabled: Boolean,
-    options: List<LocationOption>,
-    selectedId: Int?,
-    onSelect: (Int?) -> Unit,
-    onFocusChange: (Boolean) -> Unit = {}
+    onClick: () -> Unit
 ) {
-    val selected = options.firstOrNull { it.id == selectedId }
-    var query by remember { mutableStateOf("") }
-    var focused by remember { mutableStateOf(false) }
-    val focusManager = LocalFocusManager.current
-    val bringIntoViewRequester = remember { BringIntoViewRequester() }
-    val resultsScroll = rememberScrollState()
-
-    fun displayLabel(option: LocationOption): String =
-        if (option.subtitle.isNullOrBlank()) option.title else "${option.title} · ${option.subtitle}"
-
-    LaunchedEffect(selectedId, options, enabled) {
-        if (!focused) {
-            query = selected?.let(::displayLabel).orEmpty()
-        }
-    }
-
-    LaunchedEffect(focused) {
-        onFocusChange(focused)
-        if (focused) {
-            delay(120)
-            bringIntoViewRequester.bringIntoView()
-        }
-    }
-
-    val needle = query.trim()
-    val filtered = remember(needle, options, selectedId, focused) {
-        if (options.isEmpty()) emptyList()
-        else if (!focused && selected != null) emptyList()
-        else if (needle.isEmpty() || selected != null && query == displayLabel(selected)) options
-        else options.filter {
-            it.title.contains(needle, ignoreCase = true) ||
-                (it.subtitle?.contains(needle, ignoreCase = true) == true)
-        }
-    }
-
-    Column(
-        modifier = Modifier.bringIntoViewRequester(bringIntoViewRequester),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             title,
             fontWeight = FontWeight.SemiBold,
             color = TextMain,
             style = MaterialTheme.typography.bodyMedium
         )
-        if (!enabled || options.isEmpty()) {
-            Text(emptyText, color = if (enabled) Danger else TextMuted, style = MaterialTheme.typography.bodySmall)
-        } else {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { value ->
-                query = value
-                focused = true
-                val match = options.firstOrNull { displayLabel(it).equals(value.trim(), ignoreCase = true) }
-                    ?: options.firstOrNull { it.title.equals(value.trim(), ignoreCase = true) }
-                if (match == null) {
-                    if (selectedId != null) onSelect(null)
-                } else if (match.id != selectedId) {
-                    onSelect(match.id)
-                }
-            },
+        Surface(
+            onClick = onClick,
             enabled = enabled,
+            shape = RoundedCornerShape(12.dp),
+            color = SurfaceSoft,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .onFocusChanged { state ->
-                    focused = state.isFocused
-                    if (state.isFocused && selected != null) {
-                        query = selected.title
-                    } else if (!state.isFocused && selected != null) {
-                        query = displayLabel(selected)
-                    }
-                },
-            label = { Text(searchLabel) },
-            placeholder = { Text("အမည် ရိုက်ပြီး ရွေးပါ") },
-            leadingIcon = {
-                Icon(Icons.Outlined.Search, contentDescription = null, tint = Primary)
-            },
-            singleLine = true,
-            shape = FieldShape,
-            colors = cartFieldColors()
-        )
-        if (selected != null && !focused && !selected.subtitle.isNullOrBlank()) {
-            Text(
-                selected.subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = Primary,
-                fontWeight = FontWeight.SemiBold
-            )
+                .heightIn(min = 48.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (selectedValue.isNotBlank()) selectedValue else emptyText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selectedValue.isNotBlank() && enabled) TextMain else TextMuted
+                )
+                Icon(
+                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = if (enabled) TextMuted else TextMuted.copy(alpha = 0.4f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
-        if (focused) {
+    }
+}
+
+@Composable
+private fun CompactLocationSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholderText: String = "ရှာပါ"
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        placeholder = { Text(placeholderText, color = TextMuted, style = MaterialTheme.typography.bodyMedium) },
+        leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Primary, modifier = Modifier.size(20.dp)) },
+        trailingIcon = if (value.isNotBlank()) {
+            {
+                IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Outlined.Close, contentDescription = "ရှင်းရန်", tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+            }
+        } else null,
+        singleLine = true,
+        shape = FieldShape,
+        colors = cartFieldColors()
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocationSelectionSheet(
+    title: String,
+    searchPlaceholder: String,
+    options: List<LocationOption>,
+    selectedId: Int?,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filtered = remember(searchQuery, options) {
+        val q = searchQuery.trim().lowercase()
+        if (q.isBlank()) options
+        else options.filter { it.title.lowercase().contains(q) || (it.subtitle?.lowercase()?.contains(q) == true) }
+    }
+
+    BackHandler(enabled = true) {
+        onDismiss()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        containerColor = CardBg
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextMain
+                )
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(SurfaceSoft)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "ပိတ်မည်",
+                        tint = TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            CompactLocationSearchField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it.take(80) },
+                modifier = Modifier.fillMaxWidth(),
+                placeholderText = searchPlaceholder
+            )
+
+            Spacer(Modifier.height(12.dp))
+
             if (filtered.isEmpty()) {
-                Text(notFoundText, color = Danger, style = MaterialTheme.typography.bodySmall)
-            } else {
-                Surface(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 220.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = SurfaceSoft,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+                        .height(140.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(resultsScroll)
-                    ) {
-                        filtered.take(40).forEach { option ->
-                            val isSelected = option.id == selectedId
-                            Column(
+                    Text(
+                        "ရလဒ် မတွေ့ပါ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    itemsIndexed(filtered, key = { index, item -> "${item.id}-$index" }) { _, option ->
+                        val isSelected = selectedId == option.id
+                        val displayLabel = if (option.subtitle.isNullOrBlank()) option.title else "${option.title} · ${option.subtitle}"
+                        Surface(
+                            onClick = {
+                                onSelect(option.id)
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) PrimaryLight else Color.Transparent,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(if (isSelected) PrimaryLight else Color.Transparent)
-                                    .clickable {
-                                        onSelect(option.id)
-                                        query = displayLabel(option)
-                                        focused = false
-                                        focusManager.clearFocus()
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    option.title,
-                                    fontWeight = FontWeight.SemiBold,
+                                    text = displayLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) Primary else TextMain,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                if (!option.subtitle.isNullOrBlank()) {
-                                    Text(
-                                        option.subtitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextMuted
-                                    )
-                                }
+                                Spacer(Modifier.width(8.dp))
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        onSelect(option.id)
+                                        onDismiss()
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = Primary)
+                                )
                             }
                         }
+                        HorizontalDivider(color = BorderColor.copy(alpha = 0.3f))
                     }
                 }
             }
-        }
         }
     }
 }
@@ -2228,10 +2326,43 @@ private fun cartFieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun CartCheckoutBar(
+private fun CheckoutNoteCard(
     note: String,
     onNoteChange: (String) -> Unit,
-    itemCount: Int,
+    enabled: Boolean
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = PanelShape,
+        color = CardBg,
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "မှတ်ချက် (optional)",
+                fontWeight = FontWeight.Bold,
+                color = TextMain,
+                style = MaterialTheme.typography.titleSmall
+            )
+            OutlinedTextField(
+                value = note,
+                onValueChange = onNoteChange,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("ဥပမာ — မနက် ၁၀ နာရီ ခေါ်ပါ") },
+                singleLine = true,
+                shape = FieldShape,
+                colors = cartFieldColors()
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckoutPriceBreakdownCard(
     itemsTotal: Double,
     deliveryFee: Double,
     showDeliveryLine: Boolean,
@@ -2239,110 +2370,121 @@ private fun CartCheckoutBar(
     discountAmount: Double? = null,
     pickupDepositPercent: Double? = null,
     pickupDeposit: Double? = null,
-    pickupRemaining: Double? = null,
-    enabled: Boolean,
-    placing: Boolean = false,
-    onCheckout: () -> Unit
+    pickupRemaining: Double? = null
 ) {
     Surface(
-        modifier = Modifier.verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
+        shape = PanelShape,
+        color = CardBg,
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "ကျသင့်ငွေ အသေးစိတ်",
+                fontWeight = FontWeight.Bold,
+                color = TextMain,
+                style = MaterialTheme.typography.titleSmall
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("ပစ္စည်း စုစုပေါင်း", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                Text(money(itemsTotal), color = TextMain, style = MaterialTheme.typography.bodySmall)
+            }
+            val discount = discountAmount ?: 0.0
+            if (discount > 0) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Promo လျှော့", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    Text("-${money(discount)}", color = Success, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (showDeliveryLine) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("ခန့်မှန်းပို့ခ (ဆိုင်ပို့)", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(money(deliveryFee), color = TextMain, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (pickupDeposit != null && pickupDepositPercent != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("စရံ ${pickupDepositPercent.toInt()}% ကြိုလွှဲ", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(money(pickupDeposit), color = Success, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                }
+                if ((pickupRemaining ?: 0.0) > 0) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("ကျန် (လက်ခံချိန်)", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text(money(pickupRemaining ?: 0.0), color = TextMain, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Text(
+                    "စရံလွှဲပြီးမှ ပယ်ဖျက်ပါက စရံငွေ ဆုံးရှုံးမည်။",
+                    color = Warning,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            HorizontalDivider(color = BorderColor.copy(alpha = 0.5f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("ခန့်မှန်းစုစုပေါင်း", fontWeight = FontWeight.Bold, color = TextMain)
+                Text(money(subtotal), fontWeight = FontWeight.ExtraBold, color = Primary, fontSize = 16.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CartCheckoutBar(
+    subtotal: Double,
+    itemCount: Int,
+    enabled: Boolean,
+    placing: Boolean = false,
+    onCheckout: () -> Unit,
+    showBottomNav: Boolean = false
+) {
+    Surface(
         color = CardBg,
         shadowElevation = 8.dp,
         tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+        border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .then(if (!showBottomNav) Modifier.navigationBarsPadding() else Modifier)
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = if (showBottomNav) 10.dp + 68.dp else 10.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedTextField(
-                value = note,
-                onValueChange = onNoteChange,
-                enabled = !placing,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("မှတ်ချက် (optional)") },
-                placeholder = { Text("ဥပမာ — မနက် ၁၀ နာရီ ခေါ်ပါ") },
-                singleLine = true,
-                shape = FieldShape,
-                colors = cartFieldColors()
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("ပစ္စည်း", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                    Text(money(itemsTotal), color = TextMain, style = MaterialTheme.typography.bodySmall)
-                }
-                val discount = discountAmount ?: 0.0
-                if (discount > 0) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Promo လျှော့", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                        Text("-${money(discount)}", color = Success, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                if (showDeliveryLine) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("ခန့်မှန်းပို့ခ (ဆိုင်ပို့)", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            money(deliveryFee),
-                            color = TextMain,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-                if (pickupDeposit != null && pickupDepositPercent != null) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("စရံ ${pickupDepositPercent.toInt()}% ကြိုလွှဲ", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                        Text(money(pickupDeposit), color = Success, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                    }
-                    if ((pickupRemaining ?: 0.0) > 0) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("ကျန် (လက်ခံချိန်)", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                            Text(money(pickupRemaining ?: 0.0), color = TextMain, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Text(
-                        "စရံလွှဲပြီးမှ ပယ်ဖျက်ပါက စရံငွေ ဆုံးရှုံးမည်။",
-                        color = Warning,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(if (showDeliveryLine) "ခန့်မှန်းစုစုပေါင်း" else "စုစုပေါင်း", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        money(subtotal),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = Primary
-                    )
-                    Text("$itemCount ခု", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = SuccessBg,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.18f))
-                ) {
-                    Text(
-                        "အတည်ပြုပြီးမှ ပေးချေ",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        color = Success,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                Text(
+                    "စုစုပေါင်း",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+                Text(
+                    money(subtotal),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    color = Primary
+                )
             }
-
             Text(
-                "အခွန် ဆိုင်က တွက်ပါမည်",
+                "$itemCount ခု",
+                style = MaterialTheme.typography.labelSmall,
                 color = TextMuted,
-                style = MaterialTheme.typography.labelSmall
+                modifier = Modifier.padding(top = (-2).dp)
             )
 
             Button(
@@ -2351,7 +2493,7 @@ private fun CartCheckoutBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Primary,
                     disabledContainerColor = Primary.copy(alpha = 0.35f)
@@ -2360,25 +2502,25 @@ private fun CartCheckoutBar(
             ) {
                 if (placing) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp,
                         color = OnPrimary
                     )
-                    Spacer(Modifier.width(10.dp))
-                    Text("အော်ဒါတင်နေသည်…")
+                    Spacer(Modifier.width(8.dp))
+                    Text("အော်ဒါတင်နေသည်…", fontWeight = FontWeight.Bold)
                 } else {
-                    Text("အော်ဒါတင်မည်", fontWeight = FontWeight.SemiBold)
+                    Text("အော်ဒါ တင်မည်", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
             }
         }
     }
 }
 
-private fun money(amount: Double): String {
-    if (!amount.isFinite()) return "0 Ks"
-    val absValue = abs(amount).toLong()
+private fun money(amount: Double?): String {
+    val safe = amount?.takeIf { it.isFinite() } ?: 0.0
+    val absValue = abs(safe).toLong()
     val formatted = absValue.toString().reversed().chunked(3).joinToString(",").reversed()
-    return if (amount < 0) "-$formatted Ks" else "$formatted Ks"
+    return if (safe < 0) "-$formatted Ks" else "$formatted Ks"
 }
 
 private fun String.cartAssetUrl(): String =

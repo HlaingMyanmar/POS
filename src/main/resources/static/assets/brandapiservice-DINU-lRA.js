@@ -1,1 +1,0 @@
-import{f as e}from"./index-Chzd5G92.js";const n={getAll:async()=>(await e.get("/v1/brands")).data,getById:t=>e.get(`/v1/brands/${t}`).then(a=>a.data),create:t=>e.post("/v1/brands",t).then(a=>a.data),update:(t,a)=>e.put(`/v1/brands/${t}`,a).then(d=>d.data),delete:t=>e.delete(`/v1/brands/${t}`).then(a=>a.data)};export{n as b};

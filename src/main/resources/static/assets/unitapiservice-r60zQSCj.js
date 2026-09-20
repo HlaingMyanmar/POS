@@ -1,1 +1,0 @@
-import{f as a}from"./index-Chzd5G92.js";const i={getAll:async()=>(await a.get("/v1/units")).data,getById:t=>a.get(`/v1/units/${t}`).then(e=>e.data),create:t=>a.post("/v1/units",t).then(e=>e.data),update:(t,e)=>a.put(`/v1/units/${t}`,e).then(n=>n.data),delete:t=>a.delete(`/v1/units/${t}`).then(e=>e.data)};export{i as u};

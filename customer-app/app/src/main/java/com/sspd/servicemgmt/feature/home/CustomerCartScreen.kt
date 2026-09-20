@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -291,7 +292,11 @@ fun CustomerCartScreen(
     val itemCount = items.sumOf { it.qty }
     val itemsTotal = items.sumOf { (it.product.sellingPrice ?: 0.0) * it.qty }
     val context = LocalContext.current
-    val prefs = remember { PreferenceManager(context.applicationContext) }
+    val isPreview = LocalInspectionMode.current
+    val prefs = remember(context, isPreview) {
+        if (isPreview) null
+        else runCatching { PreferenceManager(context.applicationContext) }.getOrNull()
+    }
     val promoScope = rememberCoroutineScope()
     var promoCode by remember { mutableStateOf("") }
     var promoDiscount by remember { mutableDoubleStateOf(0.0) }
@@ -421,7 +426,7 @@ fun CustomerCartScreen(
                                             try {
                                                 val lines = items.map { OrderLineRequest(it.product.id, it.qty) }
                                                 val res = ApiClient.service.validatePromoCode(
-                                                    ApiClient.bearer(prefs.authToken),
+                                                    ApiClient.bearer(prefs?.authToken.orEmpty()),
                                                     PromoCodeRequest(code, lines)
                                                 )
                                                 val quote = res.body()?.data

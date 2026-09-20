@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.sspd.servicemgmt.dataevent.DataEventPublisher;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingRequestPhotoDTO;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItem;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
@@ -125,6 +126,52 @@ class BookingServiceTest {
 
         assertTrue(error.getMessage().contains("cannot be canceled"));
         verify(repository, never()).save(any(Booking.class));
+    }
+
+    @Test
+    void createsStructuredCustomerRequestWithStoredPhoto() {
+        Customer customer = Customer.builder()
+                .id(7).name("Customer").phone("091234567").address("Yangon").build();
+        when(customerRepository.findById(7)).thenReturn(Optional.of(customer));
+        when(repository.saveAndFlush(any(Booking.class))).thenAnswer(invocation -> {
+            Booking saved = invocation.getArgument(0);
+            saved.setId(42);
+            return saved;
+        });
+        when(repository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(companySettingsRepository.findAll()).thenReturn(List.of());
+        when(bookingPhotoStorageService.store("data:image/jpeg;base64,AA==", 42, 1))
+                .thenReturn(new BookingPhotoStorageService.StoredPhoto(
+                        "/uploads/booking-photos/booking-items/42/request.webp",
+                        "/uploads/booking-photos/booking-items/42/request-thumb.webp"));
+
+        BookingRequestPhotoDTO photo = new BookingRequestPhotoDTO();
+        photo.setSlot(1);
+        photo.setFileName("problem.jpg");
+        photo.setDataUrl("data:image/jpeg;base64,AA==");
+        BookingDTO request = new BookingDTO();
+        request.setCustomerId(7);
+        request.setComplaintNote("Screen flickers");
+        request.setRequestedServiceName("Laptop repair");
+        request.setRequestType("DIAGNOSIS");
+        request.setDeviceCategory("COMPUTER");
+        request.setDeviceName("ThinkPad");
+        request.setRequestedServiceMode("ONSITE");
+        request.setServiceAddress("Yangon");
+        request.setUrgency("SOON");
+        request.setContactPreference("VIBER");
+        request.setRequestPhotos(List.of(photo));
+
+        BookingDTO created = service.create(request);
+
+        assertEquals("BK-000042", created.getBookingNo());
+        assertEquals("Laptop repair", created.getRequestedServiceName());
+        assertEquals("ONSITE", created.getRequestedServiceMode());
+        assertEquals("Yangon", created.getServiceAddress());
+        assertEquals(1, created.getRequestPhotos().size());
+        assertEquals("/uploads/booking-photos/booking-items/42/request.webp",
+                created.getRequestPhotos().get(0).getImagePath());
+        verify(bookingPhotoStorageService).store("data:image/jpeg;base64,AA==", 42, 1);
     }
 
     private Booking booking(BookingStatus status) {

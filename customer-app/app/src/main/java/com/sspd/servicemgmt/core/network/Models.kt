@@ -149,10 +149,31 @@ data class CatalogService(
 
 data class ServiceRequestBody(
     val serviceName: String? = null,
+    val requestType: String? = "DIAGNOSIS",
+    val deviceCategory: String? = null,
     val deviceName: String? = null,
     val problem: String? = null,
+    val serviceMode: String? = "UNDECIDED",
+    val serviceAddress: String? = null,
+    val urgency: String? = "NORMAL",
+    val contactPreference: String? = "PHONE",
     val appointmentDate: String? = null,
-    val remark: String? = "CUSTOMER_APP"
+    val remark: String? = "CUSTOMER_APP",
+    val photos: List<BookingRequestPhotoBody> = emptyList()
+)
+
+data class BookingRequestPhotoBody(
+    val slot: Int,
+    val fileName: String? = null,
+    val contentType: String = "image/jpeg",
+    val dataUrl: String
+)
+
+data class BookingRequestPhotoSummary(
+    val id: Int? = null,
+    val slot: Int? = null,
+    val imagePath: String? = null,
+    val thumbnailPath: String? = null
 )
 
 data class BookingSummary(
@@ -161,7 +182,16 @@ data class BookingSummary(
     val status: String? = null,
     val complaintNote: String? = null,
     val appointmentDate: String? = null,
-    val source: String? = null
+    val source: String? = null,
+    val requestedServiceName: String? = null,
+    val requestType: String? = null,
+    val deviceCategory: String? = null,
+    val deviceName: String? = null,
+    val requestedServiceMode: String? = null,
+    val serviceAddress: String? = null,
+    val urgency: String? = null,
+    val contactPreference: String? = null,
+    val requestPhotos: List<BookingRequestPhotoSummary> = emptyList()
 )
 
 data class OrderLineRequest(val productId: Int, val qty: Int)

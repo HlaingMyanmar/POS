@@ -80,7 +80,7 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(
                 "Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin",
-                "X-Setup-Token", "X-Scanner-Token"));
+                "X-Setup-Token", "X-Scanner-Token", "X-Client-Type"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

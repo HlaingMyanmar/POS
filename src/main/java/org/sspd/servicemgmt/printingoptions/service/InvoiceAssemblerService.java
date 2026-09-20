@@ -243,6 +243,7 @@ public class InvoiceAssemblerService {
                     .problemDesc(problem)
                     .deviceConditions(safe(item.getItemCondition()))
                     .noticed(safe(item.getNoticed()))
+                    .components(formatIntakeComponents(item))
                     .build());
         }
         int deviceRowTotal = deviceRows.size();
@@ -293,6 +294,26 @@ public class InvoiceAssemblerService {
             case ARRIVED -> "ပစ္စည်းလက်ခံပြီး";
             case CANCELED -> "ပယ်ဖျက်ထား";
         };
+    }
+
+    private String formatIntakeComponents(BookingItem item) {
+        if (item.getComponents() == null || item.getComponents().isEmpty()) return "";
+        return item.getComponents().stream().map(component -> {
+            String details = java.util.stream.Stream.of(
+                            safe(component.getBrand()),
+                            safe(component.getModel()),
+                            safe(component.getSpecification()))
+                    .filter(value -> !value.isBlank())
+                    .collect(java.util.stream.Collectors.joining(" "));
+            String serial = safe(component.getSerialNo());
+            String condition = safe(component.getConditionNote());
+            int qty = component.getQuantity() == null ? 1 : component.getQuantity();
+            return safe(component.getComponentType()).replace('_', ' ')
+                    + (details.isBlank() ? "" : ": " + details)
+                    + (qty > 1 ? " × " + qty : "")
+                    + (serial.isBlank() ? "" : " [S/N " + serial + "]")
+                    + (condition.isBlank() ? "" : " (" + condition + ")");
+        }).collect(java.util.stream.Collectors.joining(" | "));
     }
 
     // ── Service Job ───────────────────────────────────────────────────────────

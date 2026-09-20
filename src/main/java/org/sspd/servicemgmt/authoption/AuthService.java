@@ -19,6 +19,7 @@ import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -37,15 +38,28 @@ public class AuthService {
     private final AuditLogService auditLogService;
     private final RefreshTokenReuseHandler refreshTokenReuseHandler;
 
+    @org.springframework.beans.factory.annotation.Value(
+            "${application.security.auth.single-session-per-user:true}")
+    private boolean singleSessionPerUser;
+
     @Transactional
     public LoginResult authenticateUser(AuthRequest request, String ip, String device) {
         String rawLogin = request.getUsernameOremail() == null ? "" : request.getUsernameOremail().trim();
         if (rawLogin.isBlank()) {
             throw new BadCredentialsException("Username သို့မဟုတ် Password မှားနေပါသည်");
         }
-        String loginKey = LoginAttemptService.normalizeKey(rawLogin);
 
-        loginAttemptService.assertNotLocked(loginKey);
+        Optional<User> knownUser = userRepository.findByUsernameOrEmail(rawLogin, rawLogin);
+        String lockKey = knownUser
+                .map(u -> LoginAttemptService.canonicalUserKey(u.getId()))
+                .orElseGet(() -> LoginAttemptService.normalizeKey(rawLogin));
+
+        loginAttemptService.assertNotLocked(lockKey);
+        // Honor any legacy locks still keyed by username/email from before canonical keys.
+        knownUser.ifPresent(u -> {
+            loginAttemptService.assertNotLocked(LoginAttemptService.normalizeKey(u.getUsername()));
+            loginAttemptService.assertNotLocked(LoginAttemptService.normalizeKey(u.getEmail()));
+        });
 
         try {
             authenticationManager.authenticate(
@@ -55,7 +69,7 @@ public class AuthService {
             auditFailedLogin(rawLogin, ip, device, "Account locked");
             throw ex;
         } catch (AuthenticationException ex) {
-            boolean lockedNow = loginAttemptService.recordFailure(loginKey);
+            boolean lockedNow = loginAttemptService.recordFailure(lockKey);
             auditFailedLogin(rawLogin, ip, device,
                     lockedNow
                             ? "Failed login; account locked after repeated attempts"
@@ -71,19 +85,24 @@ public class AuthService {
                 .orElseThrow(() -> new BadCredentialsException("Username သို့မဟုတ် Password မှားနေပါသည်"));
 
         loginAttemptService.clear(
-                loginKey,
+                lockKey,
+                LoginAttemptService.canonicalUserKey(user.getId()),
+                LoginAttemptService.normalizeKey(rawLogin),
                 LoginAttemptService.normalizeKey(user.getUsername()),
                 LoginAttemptService.normalizeKey(user.getEmail()));
 
-        int newVersion = (user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1;
-        user.setTokenVersion(newVersion);
-        userRepository.save(user);
-        refreshSessionRepository.revokeAllActiveForUser(user.getId(), Instant.now());
+        int tokenVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+        if (singleSessionPerUser) {
+            tokenVersion = tokenVersion + 1;
+            user.setTokenVersion(tokenVersion);
+            userRepository.save(user);
+            refreshSessionRepository.revokeAllActiveForUser(user.getId(), Instant.now());
+        }
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(rawLogin);
-        String accessToken = jwtService.generateToken(userDetails, newVersion);
+        String accessToken = jwtService.generateToken(userDetails, tokenVersion);
         String refreshJti = UUID.randomUUID().toString();
-        String refreshToken = jwtService.generateRefreshToken(userDetails, newVersion, refreshJti);
+        String refreshToken = jwtService.generateRefreshToken(userDetails, tokenVersion, refreshJti);
         persistRefreshSession(user.getId(), refreshToken, refreshJti, UUID.randomUUID().toString());
 
         LoginResult result = toLoginResult(userDetails, user, accessToken, refreshToken);
@@ -169,8 +188,9 @@ public class AuthService {
     }
 
     /**
-     * Revokes the caller's refresh family (when known) and bumps {@code tokenVersion}
-     * so outstanding access tokens fail the JWT filter immediately.
+     * Revokes the caller's refresh family (when known).
+     * When {@code single-session-per-user} is enabled, also revokes all other devices and bumps
+     * {@code tokenVersion} so outstanding access tokens fail immediately.
      */
     @Transactional
     public void logout(String refreshToken, String accessToken) {
@@ -190,14 +210,16 @@ public class AuthService {
                     }
                 }
             } catch (RuntimeException ignored) {
-                // Still invalidate access tokens below when user was resolved.
+                // Still invalidate below when configured for single-session.
             }
         }
 
-        refreshSessionRepository.revokeAllActiveForUser(user.getId(), now);
-        int nextVersion = (user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1;
-        user.setTokenVersion(nextVersion);
-        userRepository.save(user);
+        if (singleSessionPerUser) {
+            refreshSessionRepository.revokeAllActiveForUser(user.getId(), now);
+            int nextVersion = (user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1;
+            user.setTokenVersion(nextVersion);
+            userRepository.save(user);
+        }
     }
 
     private User resolveUserForLogout(String refreshToken, String accessToken) {

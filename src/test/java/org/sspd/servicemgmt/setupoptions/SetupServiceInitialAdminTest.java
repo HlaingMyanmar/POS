@@ -43,7 +43,7 @@ class SetupServiceInitialAdminTest {
         InitialAdminDTO dto = new InitialAdminDTO();
         dto.setUsername("admin");
         dto.setEmail("admin@example.com");
-        dto.setPassword("password1");
+        dto.setPassword("password12ab");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> service.createInitialAdministrator(dto, SETUP_TOKEN));
@@ -60,7 +60,7 @@ class SetupServiceInitialAdminTest {
         Role adminRole = new Role();
         adminRole.setName("ADMINISTRATOR");
         when(roles.findByName("ADMINISTRATOR")).thenReturn(Optional.of(adminRole));
-        when(encoder.encode("password1")).thenReturn("hashed");
+        when(encoder.encode("password12ab")).thenReturn("hashed");
         when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SetupService service = new SetupService(
@@ -76,7 +76,7 @@ class SetupServiceInitialAdminTest {
         InitialAdminDTO dto = new InitialAdminDTO();
         dto.setUsername("HlaingHtun");
         dto.setEmail("admin@example.com");
-        dto.setPassword("password1");
+        dto.setPassword("password12ab");
         service.createInitialAdministrator(dto, SETUP_TOKEN);
 
         verify(users).save(any(User.class));
@@ -125,7 +125,8 @@ class SetupServiceInitialAdminTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.createInitialAdministrator(dto, SETUP_TOKEN));
-        assertTrue(ex.getMessage().contains("8"));
+        assertTrue(ex.getMessage().toLowerCase().contains("12")
+                || ex.getMessage().toLowerCase().contains("administrator"));
         verify(users, never()).save(any(User.class));
     }
 }

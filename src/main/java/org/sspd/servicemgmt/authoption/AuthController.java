@@ -2,6 +2,7 @@ package org.sspd.servicemgmt.authoption;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 
+import java.util.Locale;
 import java.util.Optional;
 
 @RestController
@@ -16,11 +18,13 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AuthController {
 
+    public static final String CLIENT_TYPE_HEADER = "X-Client-Type";
+
     private final AuthService authService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(
-            @RequestBody AuthRequest request,
+            @Valid @RequestBody AuthRequest request,
             HttpServletResponse response,
             HttpServletRequest httpRequest) {
 
@@ -42,7 +46,7 @@ public class AuthController {
                 .map(RefreshTokenRequest::refreshToken)
                 .filter(token -> !token.isBlank())
                 .orElse(null);
-        // Body token ⇒ native/mobile client; otherwise cookie-only web session.
+        // Prefer explicit client type; body refresh token also implies mobile.
         boolean mobile = bodyToken != null || isMobileClient(httpRequest);
         String refreshToken = bodyToken != null ? bodyToken : refreshCookie;
 
@@ -119,7 +123,20 @@ public class AuthController {
         response.addHeader(HttpHeaders.SET_COOKIE, expired.toString());
     }
 
-    private static boolean isMobileClient(HttpServletRequest request) {
+    /**
+     * Prefer {@code X-Client-Type: mobile|web}. Fall back to known mobile User-Agents for older apps.
+     */
+    static boolean isMobileClient(HttpServletRequest request) {
+        String clientType = request.getHeader(CLIENT_TYPE_HEADER);
+        if (clientType != null && !clientType.isBlank()) {
+            String normalized = clientType.trim().toLowerCase(Locale.ROOT);
+            if ("mobile".equals(normalized)) {
+                return true;
+            }
+            if ("web".equals(normalized)) {
+                return false;
+            }
+        }
         String ua = request.getHeader("User-Agent");
         return ua != null && (ua.contains("okhttp") || ua.contains("Expo") || ua.contains("ReactNative"));
     }

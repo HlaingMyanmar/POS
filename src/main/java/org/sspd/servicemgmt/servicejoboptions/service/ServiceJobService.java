@@ -20,6 +20,8 @@ import org.sspd.servicemgmt.creditoptions.repository.CustomerCreditApplicationRe
 import org.sspd.servicemgmt.creditoptions.service.CreditService;
 import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemComponentDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -100,6 +102,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -1935,6 +1938,38 @@ public class ServiceJobService {
             bookingRepository.findById(j.getBookingId()).ifPresent(booking -> {
                 dto.setBookingNo(booking.getBookingNo());
                 dto.setAppointmentDate(booking.getAppointmentDate());
+                if (detail) {
+                    booking.getItems().stream()
+                            .filter(item -> Objects.equals(item.getConvertedJobId(), j.getId()))
+                            .findFirst()
+                            .ifPresent(item -> {
+                                dto.setIntakeBookingItemId(item.getId());
+                                dto.setIntakeNoticed(item.getNoticed());
+                                dto.setIntakeComponents(item.getComponents().stream().map(component -> {
+                                    BookingItemComponentDTO value = new BookingItemComponentDTO();
+                                    value.setId(component.getId());
+                                    value.setComponentType(component.getComponentType());
+                                    value.setBrand(component.getBrand());
+                                    value.setModel(component.getModel());
+                                    value.setSpecification(component.getSpecification());
+                                    value.setSerialNo(component.getSerialNo());
+                                    value.setQuantity(component.getQuantity());
+                                    value.setConditionNote(component.getConditionNote());
+                                    return value;
+                                }).toList());
+                                dto.setIntakePhotos(item.getPhotos().stream().map(photo -> {
+                                    BookingItemPhotoDTO value = new BookingItemPhotoDTO();
+                                    value.setId(photo.getId());
+                                    value.setSlot(photo.getSlot());
+                                    value.setFileName(photo.getFileName());
+                                    value.setContentType(photo.getContentType());
+                                    value.setImagePath(photo.getImagePath());
+                                    value.setThumbnailPath(photo.getThumbnailPath());
+                                    value.setUploadedAt(photo.getUploadedAt());
+                                    return value;
+                                }).toList());
+                            });
+                }
             });
         }
         dto.setSaleId(j.getSaleId());

@@ -3,9 +3,11 @@ package org.sspd.servicemgmt.bookingoptions.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemComponentDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItem;
+import org.sspd.servicemgmt.bookingoptions.model.BookingItemComponent;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItemPhoto;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingItemRepository;
@@ -234,6 +236,101 @@ class BookingServiceUpdateItemTest {
         verify(photoStorage, never()).deleteExisting(any(), any());
     }
 
+    @Test
+    void acceptsMoreThanThreeExistingItemPhotos() {
+        Fixture fx = fixture(false);
+        List<BookingItemPhotoDTO> incoming = new ArrayList<>();
+        for (int slot = 1; slot <= 4; slot++) {
+            BookingItemPhoto existing = BookingItemPhoto.builder()
+                    .id(slot)
+                    .bookingItem(fx.item)
+                    .slot(slot)
+                    .imagePath("/uploads/booking-photos/booking-items/10/photo-" + slot + ".webp")
+                    .thumbnailPath("/uploads/booking-photos/booking-items/10/photo-" + slot + "-thumb.webp")
+                    .build();
+            fx.item.getPhotos().add(existing);
+            BookingItemPhotoDTO keep = new BookingItemPhotoDTO();
+            keep.setSlot(slot);
+            keep.setImagePath(existing.getImagePath());
+            keep.setThumbnailPath(existing.getThumbnailPath());
+            incoming.add(keep);
+        }
+        BookingItemDTO dto = baseDto("Desktop");
+        dto.setPhotos(incoming);
+
+        service.updateItem(10, 5, dto);
+
+        assertEquals(4, fx.item.getPhotos().size());
+        verify(photoStorage, never()).store(any(), anyInt(), anyInt());
+        verify(photoStorage, never()).deleteExisting(any(), any());
+    }
+
+    @Test
+    void replacesStructuredComponentsAndNormalizesType() {
+        Fixture fx = fixture(false);
+        fx.item.getComponents().add(BookingItemComponent.builder()
+                .bookingItem(fx.item)
+                .componentType("CPU")
+                .specification("Old CPU")
+                .quantity(1)
+                .build());
+
+        BookingItemDTO dto = baseDto("Desktop");
+        BookingItemComponentDTO ram = new BookingItemComponentDTO();
+        ram.setComponentType("ram module");
+        ram.setBrand("Kingston");
+        ram.setSpecification("DDR4 16GB 3200MHz");
+        ram.setSerialNo("RAM-001");
+        ram.setQuantity(2);
+        ram.setConditionNote("Both detected");
+        dto.setComponents(List.of(ram));
+
+        service.updateItem(10, 5, dto);
+
+        assertEquals(1, fx.item.getComponents().size());
+        BookingItemComponent saved = fx.item.getComponents().get(0);
+        assertEquals("RAM_MODULE", saved.getComponentType());
+        assertEquals("Kingston", saved.getBrand());
+        assertEquals("DDR4 16GB 3200MHz", saved.getSpecification());
+        assertEquals("RAM-001", saved.getSerialNo());
+        assertEquals(2, saved.getQuantity());
+        assertEquals("Both detected", saved.getConditionNote());
+        assertEquals(fx.item, saved.getBookingItem());
+    }
+
+    @Test
+    void preservesComponentsWhenLegacyClientOmitsField() {
+        Fixture fx = fixture(false);
+        BookingItemComponent cpu = BookingItemComponent.builder()
+                .bookingItem(fx.item)
+                .componentType("CPU")
+                .specification("Core i5")
+                .quantity(1)
+                .build();
+        fx.item.getComponents().add(cpu);
+
+        service.updateItem(10, 5, baseDto("Desktop"));
+
+        assertEquals(List.of(cpu), fx.item.getComponents());
+    }
+
+    @Test
+    void rejectsInvalidComponentQuantity() {
+        Fixture fx = fixture(false);
+        BookingItemDTO dto = baseDto("Desktop");
+        BookingItemComponentDTO component = new BookingItemComponentDTO();
+        component.setComponentType("RAM");
+        component.setQuantity(0);
+        dto.setComponents(List.of(component));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.updateItem(10, 5, dto));
+
+        assertTrue(ex.getMessage().contains("between 1 and 100"));
+        verify(itemRepository, never()).save(any());
+        assertTrue(fx.item.getComponents().isEmpty());
+    }
+
     private Fixture fixture(boolean converted) {
         Customer customer = new Customer();
         customer.setId(1);
@@ -252,6 +349,7 @@ class BookingServiceUpdateItemTest {
                 .itemName("Phone")
                 .convertedJobId(converted ? 99 : null)
                 .photos(new ArrayList<>())
+                .components(new ArrayList<>())
                 .build();
         booking.getItems().add(item);
 

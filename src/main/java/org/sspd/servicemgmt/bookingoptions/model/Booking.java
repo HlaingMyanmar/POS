@@ -47,6 +47,29 @@ public class Booking {
     @Column(length = 20)
     private String source;
 
+    @Column(name = "requested_service_name", length = 200)
+    private String requestedServiceName;
+    @Column(name = "request_type", length = 30)
+    private String requestType;
+    @Column(name = "device_category", length = 80)
+    private String deviceCategory;
+    @Column(name = "device_name", length = 200)
+    private String deviceName;
+    @Column(name = "requested_service_mode", length = 20)
+    private String requestedServiceMode;
+
+    @Column(name = "service_address", columnDefinition = "TEXT")
+    private String serviceAddress;
+    @Column(length = 20)
+    private String urgency;
+    @Column(name = "contact_preference", length = 20)
+    private String contactPreference;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("slot ASC")
+    private List<BookingRequestPhoto> requestPhotos = new ArrayList<>();
+
     @Builder.Default
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")

@@ -21,8 +21,8 @@ class FlywayMigrationIT extends AbstractMysqlIntegrationTest {
         Integer latest = jdbc.queryForObject(
                 "SELECT MAX(CAST(SUBSTRING(version, 1) AS UNSIGNED)) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertTrue(latest != null && latest >= 159,
-                "Expected Flyway version >= 159 but was " + latest);
+        assertTrue(latest != null && latest >= 169,
+                "Expected Flyway version >= 169 but was " + latest);
 
         Integer jobs = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'service_jobs'",
@@ -33,5 +33,33 @@ class FlywayMigrationIT extends AbstractMysqlIntegrationTest {
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'bookings'",
                 Integer.class);
         assertTrue(bookings != null && bookings == 1, "bookings table should exist after migrations");
+
+        Integer bookingItemComponents = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'booking_item_components'",
+                Integer.class);
+        assertTrue(bookingItemComponents != null && bookingItemComponents == 1,
+                "booking_item_components (V169) should exist");
+
+        Integer refreshSessions = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'refresh_sessions'",
+                Integer.class);
+        assertTrue(refreshSessions != null && refreshSessions == 1, "refresh_sessions (V164/V167) should exist");
+
+        Integer loginAttempts = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'login_attempt_state'",
+                Integer.class);
+        assertTrue(loginAttempts != null && loginAttempts == 1, "login_attempt_state (V166) should exist");
+
+        Integer usernameNullable = jdbc.queryForObject(
+                """
+                        SELECT COUNT(*) FROM information_schema.columns
+                         WHERE table_schema = DATABASE()
+                           AND table_name = 'users'
+                           AND column_name = 'username'
+                           AND is_nullable = 'NO'
+                        """,
+                Integer.class);
+        assertTrue(usernameNullable != null && usernameNullable == 1,
+                "users.username should be NOT NULL after V165");
     }
 }

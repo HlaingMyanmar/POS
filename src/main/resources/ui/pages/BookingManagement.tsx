@@ -13,8 +13,17 @@ import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 
 type BookingStatus = 'CONFIRMED' | 'ARRIVED' | 'CANCELED';
 type ItemPhoto = { id?: number; slot?: number; fileName?: string; contentType?: string; dataUrl?: string; imagePath?: string; thumbnailPath?: string };
-type Item = { id?: number; itemName: string; deviceType: string; serialNo: string; color: string; accessories: string; problemDesc: string; itemCondition: string; noticed: string; convertedJobId?: number | null; photos?: ItemPhoto[] };
-type Booking = { id: number; bookingNo: string; customerId: number; customerName: string; customerPhone?: string; bookingDate: string; appointmentDate?: string; complaintNote?: string; status: BookingStatus; remark?: string; source?: string; items: Item[]; linkedJobs: any[]; unconvertedItemCount: number; fullyConverted: boolean };
+type ItemComponent = { id?: number; componentType: string; brand: string; model: string; specification: string; serialNo: string; quantity: number; conditionNote: string };
+type Item = { id?: number; itemName: string; deviceType: string; serialNo: string; color: string; accessories: string; problemDesc: string; itemCondition: string; noticed: string; convertedJobId?: number | null; photos?: ItemPhoto[]; components?: ItemComponent[] };
+type Booking = {
+  id: number; bookingNo: string; customerId: number; customerName: string; customerPhone?: string;
+  bookingDate: string; appointmentDate?: string; complaintNote?: string; status: BookingStatus;
+  remark?: string; source?: string; items: Item[]; linkedJobs: any[];
+  unconvertedItemCount: number; fullyConverted: boolean;
+  requestedServiceName?: string; requestType?: string; deviceCategory?: string; deviceName?: string;
+  requestedServiceMode?: string; serviceAddress?: string; urgency?: string; contactPreference?: string;
+  requestPhotos?: ItemPhoto[];
+};
 type Form = { customerId: string; bookingDate: string; appointmentDate: string; complaintNote: string; remark: string };
 type NewCustomerForm = { name: string; phone: string; address: string };
 
@@ -24,7 +33,10 @@ const localDate = () => {
 };
 const emptyForm = (): Form => ({ customerId: '', bookingDate: localDate(), appointmentDate: '', complaintNote: '', remark: '' });
 const emptyNewCustomer = (): NewCustomerForm => ({ name: '', phone: '', address: '' });
-const emptyItem = (): Item => ({ itemName: '', deviceType: '', serialNo: '', color: '', accessories: '', problemDesc: '', itemCondition: '', noticed: '', photos: [] });
+const emptyItem = (): Item => ({ itemName: '', deviceType: '', serialNo: '', color: '', accessories: '', problemDesc: '', itemCondition: '', noticed: '', photos: [], components: [] });
+const componentTypes = ['CPU', 'MOTHERBOARD', 'RAM', 'STORAGE', 'GPU', 'PSU', 'COOLING', 'NETWORK', 'OTHER'];
+const emptyComponent = (componentType = 'OTHER'): ItemComponent => ({ componentType, brand: '', model: '', specification: '', serialNo: '', quantity: 1, conditionNote: '' });
+const desktopTemplate = () => ['CPU', 'MOTHERBOARD', 'RAM', 'STORAGE', 'GPU', 'PSU'].map(emptyComponent);
 const input = 'w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 const status: Record<BookingStatus, { label: string; style: string }> = {
   CONFIRMED: { label: 'အတည်ပြုပြီး', style: 'bg-blue-100 text-blue-700' },
@@ -49,6 +61,39 @@ const Modal = ({ title, close, children, wide = false, elevated = false }: { tit
   </div>
 );
 
+const ComponentEditor = ({ components, onChange }: { components: ItemComponent[]; onChange: (next: ItemComponent[]) => void }) => {
+  const update = (index: number, patch: Partial<ItemComponent>) =>
+    onChange(components.map((component, i) => i === index ? { ...component, ...patch } : component));
+  const addDesktopTemplate = () => {
+    const present = new Set(components.map(component => component.componentType));
+    onChange([...components, ...desktopTemplate().filter(component => !present.has(component.componentType))]);
+  };
+  return <div className="rounded-xl border bg-slate-50 p-3">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div><b>Hardware Components</b><div className="text-xs text-slate-500">CPU, RAM, Storage စသဖြင့် သီးခြားလက်ခံပါ</div></div>
+      <div className="flex gap-2">
+        <button type="button" onClick={addDesktopTemplate} className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700">Desktop Template</button>
+        <button type="button" onClick={() => onChange([...components, emptyComponent()])} className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white">+ Component</button>
+      </div>
+    </div>
+    {!components.length ? <div className="rounded-lg border border-dashed bg-white p-4 text-center text-xs text-slate-400">Component မထည့်ရသေးပါ</div> :
+      <div className="space-y-3">{components.map((component, index) =>
+        <div key={component.id || index} className="grid gap-2 rounded-lg border bg-white p-3 md:grid-cols-4">
+          <select className={input} value={component.componentType} onChange={e => update(index, { componentType: e.target.value })}>
+            {componentTypes.map(type => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
+          </select>
+          <input className={input} placeholder="Brand" value={component.brand} onChange={e => update(index, { brand: e.target.value })} />
+          <input className={input} placeholder="Model" value={component.model} onChange={e => update(index, { model: e.target.value })} />
+          <input className={input} placeholder="Specification (8GB DDR4 3200MHz)" value={component.specification} onChange={e => update(index, { specification: e.target.value })} />
+          <input className={input} placeholder="Serial No" value={component.serialNo} onChange={e => update(index, { serialNo: e.target.value })} />
+          <input className={input} type="number" min={1} max={100} value={component.quantity} onChange={e => update(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} />
+          <input className={input + ' md:col-span-2'} placeholder="Condition / မှတ်ချက်" value={component.conditionNote} onChange={e => update(index, { conditionNote: e.target.value })} />
+          <button type="button" onClick={() => onChange(components.filter((_, i) => i !== index))} className="justify-self-end text-xs font-semibold text-rose-600 md:col-span-4">ဖယ်ရှား</button>
+        </div>
+      )}</div>}
+  </div>;
+};
+
 const PhotoLightbox = ({ photos, index, onClose, onChange }: { photos: ItemPhoto[]; index: number; onClose: () => void; onChange: (next: number) => void }) => {
   const photo = photos[index];
   if (!photoUrl(photo)) return null;
@@ -72,7 +117,16 @@ const PhotoLightbox = ({ photos, index, onClose, onChange }: { photos: ItemPhoto
 
 const DevicePhotoSlots = ({ photos, onChange, readOnly = false }: { photos: ItemPhoto[]; onChange?: (next: ItemPhoto[]) => void; readOnly?: boolean }) => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const slots = [1, 2, 3];
+  const maxPhotos = 50;
+  const occupiedSlots = useMemo(
+    () => [...new Set(photos.map(p => p.slot).filter((slot): slot is number => Number.isInteger(slot) && slot > 0))]
+      .sort((a, b) => a - b),
+    [photos],
+  );
+  const nextSlot = readOnly
+    ? undefined
+    : Array.from({ length: maxPhotos }, (_, index) => index + 1).find(slot => !occupiedSlots.includes(slot));
+  const slots = readOnly || nextSlot === undefined ? occupiedSlots : [...occupiedSlots, nextSlot].sort((a, b) => a - b);
   const filledPhotos = useMemo(
     () => photos.filter(p => photoUrl(p)).sort((a, b) => (a.slot || 0) - (b.slot || 0)),
     [photos],
@@ -96,8 +150,13 @@ const DevicePhotoSlots = ({ photos, onChange, readOnly = false }: { photos: Item
   const remove = (slot: number) => onChange?.(photos.filter(p => p.slot !== slot));
   return (
     <div>
-      <div className="mb-2 text-sm font-medium text-slate-700">Device Photos <span className="text-xs text-slate-400">(အများဆုံး ၃ ပုံ)</span></div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="mb-2 flex items-center justify-between text-sm font-medium text-slate-700">
+        <span>Device Photos</span>
+        <span className="text-xs text-slate-400">{occupiedSlots.length} / {maxPhotos}</span>
+      </div>
+      {!slots.length && readOnly ? (
+        <div className="rounded-lg border border-dashed bg-slate-50 p-4 text-center text-xs text-slate-400">ဓာတ်ပုံမရှိပါ</div>
+      ) : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {slots.map(slot => {
           const photo = bySlot(slot);
           return (
@@ -133,7 +192,7 @@ const DevicePhotoSlots = ({ photos, onChange, readOnly = false }: { photos: Item
             </div>
           );
         })}
-      </div>
+      </div>}
       {lightboxIndex !== null && (
         <PhotoLightbox
           photos={filledPhotos}
@@ -285,6 +344,15 @@ export default function BookingManagement() {
         itemCondition: x.itemCondition.trim() || null,
         noticed: x.noticed.trim() || null,
         problemDesc: x.problemDesc.trim() || detail.complaintNote || null,
+        components: (x.components || []).map(component => ({
+          componentType: component.componentType,
+          brand: component.brand.trim() || null,
+          model: component.model.trim() || null,
+          specification: component.specification.trim() || null,
+          serialNo: component.serialNo.trim() || null,
+          quantity: component.quantity || 1,
+          conditionNote: component.conditionNote.trim() || null,
+        })),
         photos: (x.photos || []).filter(p => p.dataUrl).map(p => ({
           slot: p.slot,
           fileName: p.fileName || null,
@@ -313,6 +381,16 @@ export default function BookingManagement() {
       itemCondition: item.itemCondition || '',
       noticed: item.noticed || '',
       photos: (item.photos || []).map(p => ({ ...p })),
+      components: (item.components || []).map(component => ({
+        ...component,
+        componentType: component.componentType || 'OTHER',
+        brand: component.brand || '',
+        model: component.model || '',
+        specification: component.specification || '',
+        serialNo: component.serialNo || '',
+        quantity: component.quantity || 1,
+        conditionNote: component.conditionNote || '',
+      })),
     });
     setEditItemOpen(true);
   };
@@ -331,6 +409,16 @@ export default function BookingManagement() {
         itemCondition: editItem.itemCondition.trim() || null,
         noticed: editItem.noticed.trim() || null,
         problemDesc: editItem.problemDesc.trim() || detail.complaintNote || null,
+        components: (editItem.components || []).map(component => ({
+          id: component.id,
+          componentType: component.componentType,
+          brand: component.brand.trim() || null,
+          model: component.model.trim() || null,
+          specification: component.specification.trim() || null,
+          serialNo: component.serialNo.trim() || null,
+          quantity: component.quantity || 1,
+          conditionNote: component.conditionNote.trim() || null,
+        })),
         photos: (editItem.photos || []).map(p => ({
           slot: p.slot,
           fileName: p.fileName || null,
@@ -365,6 +453,18 @@ export default function BookingManagement() {
     {detail && <Modal title={detail.bookingNo + ' အသေးစိတ်'} close={() => setDetail(null)} wide><div className="space-y-5 p-5">
       <div className="grid gap-3 rounded-xl bg-slate-50 p-4 md:grid-cols-4"><div><small>Customer</small><div className="font-semibold">{detail.customerName}</div><small>{detail.customerPhone}</small></div><div><small>Appointment</small><div className="font-semibold">{dateText(detail.appointmentDate || detail.bookingDate)}</div></div><div><small>Status</small><div><span className={'rounded-full px-2.5 py-1 text-xs font-semibold ' + status[detail.status].style}>{status[detail.status].label}</span></div></div><div><small>Next action</small><div className="font-semibold text-blue-700">{detail.status === 'CONFIRMED' ? detail.linkedJobs.length ? 'Outdoor Job ပြောင်းပြီး' : 'Outdoor ပြောင်း / ပစ္စည်းလက်ခံ' : detail.status === 'ARRIVED' ? detail.unconvertedItemCount ? 'Indoor Job ပြောင်းရန်' : 'Items အားလုံးပြောင်းပြီး' : 'လုပ်ဆောင်၍မရ'}</div></div></div>
       <div><h3 className="font-semibold">Complaint</h3><p className="whitespace-pre-wrap text-sm text-slate-600">{detail.complaintNote || '—'}</p></div>
+      {(detail.source === 'CUSTOMER_APP' || detail.requestedServiceName || detail.requestType) && <section className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+        <div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-indigo-900">Customer App Request</h3><span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-700">{detail.urgency || 'NORMAL'}</span></div>
+        <div className="grid gap-3 text-sm md:grid-cols-4">
+          <div><small className="text-slate-500">Requested service</small><div className="font-semibold">{detail.requestedServiceName || 'Technician အကြံပြုရန်'}</div></div>
+          <div><small className="text-slate-500">Request type</small><div className="font-semibold">{detail.requestType || 'DIAGNOSIS'}</div></div>
+          <div><small className="text-slate-500">Device</small><div className="font-semibold">{[detail.deviceCategory, detail.deviceName].filter(Boolean).join(' · ') || 'မဖော်ပြထား'}</div></div>
+          <div><small className="text-slate-500">Service mode</small><div className="font-semibold">{detail.requestedServiceMode || 'UNDECIDED'}</div></div>
+          <div><small className="text-slate-500">Contact</small><div className="font-semibold">{detail.contactPreference || 'PHONE'}</div></div>
+          {detail.serviceAddress && <div className="md:col-span-3"><small className="text-slate-500">Service address</small><div className="font-semibold">{detail.serviceAddress}</div></div>}
+        </div>
+        {!!detail.requestPhotos?.length && <div className="mt-4"><DevicePhotoSlots photos={detail.requestPhotos} readOnly /></div>}
+      </section>}
       <div className="flex flex-wrap gap-2">
         {can('CAN_ACCESS_BOOKING_CONVERT_JOB') && detail.status === 'CONFIRMED' && !detail.linkedJobs.length && <button disabled={saving} onClick={() => action('Outdoor Job ပြောင်းမည်လား?', 'OUTDOOR ServiceJob တစ်ခုဖန်တီးပါမည်။', () => bookingService.convertOutdoor(detail.id), 'Outdoor Job ဖန်တီးပြီးပါပြီ')} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white"><MapPin size={17} /> Outdoor Job ပြောင်း</button>}
         {can('CAN_ACCESS_BOOKING_UPDATE') && detail.status === 'CONFIRMED' && !detail.linkedJobs.length && <button onClick={() => { setItems([emptyItem()]); setItemsOpen(true); }} className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-semibold text-white"><PackagePlus size={17} /> ပစ္စည်းလက်ခံ</button>}
@@ -373,13 +473,13 @@ export default function BookingManagement() {
         {can('CAN_ACCESS_BOOKING_UPDATE') && detail.status !== 'CANCELED' && !detail.linkedJobs.length && <button disabled={saving} onClick={() => action('Booking ပယ်ဖျက်မည်လား?', 'Job ပြောင်းပြီးပါက Cancel မရပါ။', () => bookingService.updateStatus(detail.id, 'CANCELED'), 'ပယ်ဖျက်ပြီးပါပြီ')} className="rounded-xl border border-rose-300 px-4 py-2.5 font-semibold text-rose-600">Cancel</button>}
         {can('CAN_ACCESS_BOOKING_UPDATE') && detail.status !== 'CANCELED' && !detail.fullyConverted && <button onClick={() => openEdit(detail)} className="flex items-center gap-2 rounded-xl border px-4 py-2.5"><Pencil size={17} /> ပြင်ဆင်ရန်</button>}
       </div>
-      <section><h3 className="mb-2 flex items-center gap-2 font-semibold"><PackagePlus size={18} /> လက်ခံပစ္စည်း ({detail.items.length})</h3>{!detail.items.length ? <div className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">ဆိုင်အပ်ပစ္စည်း မရှိသေးပါ။</div> : <div className="grid gap-3 md:grid-cols-2">{detail.items.map((x, i) => <div key={x.id || i} className="rounded-xl border p-4"><div className="flex justify-between gap-2"><div><b>{i + 1}. {x.itemName}</b><div className="text-xs text-slate-500">{x.deviceType || 'Device type မရှိ'} {x.serialNo ? '• S/N ' + x.serialNo : ''}</div></div><div className="flex h-fit items-center gap-1">{x.convertedJobId ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">Job #{x.convertedJobId}</span> : can('CAN_ACCESS_BOOKING_UPDATE') && detail.status !== 'CANCELED' && <><button type="button" onClick={() => openEditItem(x)} className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50" title="ပြင်ဆင်ရန်"><Pencil size={16} /></button><button type="button" onClick={() => action('ပစ္စည်းဖယ်မည်လား?', x.itemName, () => bookingService.removeItem(detail.id, x.id!), 'ဖယ်ပြီးပါပြီ')} className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50" title="ဖယ်ရှား"><Trash2 size={16} /></button></>}</div></div>{x.noticed && <p className="mt-2 text-sm text-amber-800"><span className="font-semibold">Noticed:</span> {x.noticed}</p>}<p className="mt-2 text-sm text-slate-600">{x.problemDesc || detail.complaintNote || 'ပြဿနာဖော်ပြချက်မရှိ'}</p><div className="mt-3"><DevicePhotoSlots photos={x.photos || []} readOnly /></div></div>)}</div>}</section>
+      <section><h3 className="mb-2 flex items-center gap-2 font-semibold"><PackagePlus size={18} /> လက်ခံပစ္စည်း ({detail.items.length})</h3>{!detail.items.length ? <div className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">ဆိုင်အပ်ပစ္စည်း မရှိသေးပါ။</div> : <div className="grid gap-3 md:grid-cols-2">{detail.items.map((x, i) => <div key={x.id || i} className="rounded-xl border p-4"><div className="flex justify-between gap-2"><div><b>{i + 1}. {x.itemName}</b><div className="text-xs text-slate-500">{x.deviceType || 'Device type မရှိ'} {x.serialNo ? '• S/N ' + x.serialNo : ''}</div></div><div className="flex h-fit items-center gap-1">{x.convertedJobId ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">Job #{x.convertedJobId}</span> : can('CAN_ACCESS_BOOKING_UPDATE') && detail.status !== 'CANCELED' && <><button type="button" onClick={() => openEditItem(x)} className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50" title="ပြင်ဆင်ရန်"><Pencil size={16} /></button><button type="button" onClick={() => action('ပစ္စည်းဖယ်မည်လား?', x.itemName, () => bookingService.removeItem(detail.id, x.id!), 'ဖယ်ပြီးပါပြီ')} className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50" title="ဖယ်ရှား"><Trash2 size={16} /></button></>}</div></div>{x.noticed && <p className="mt-2 text-sm text-amber-800"><span className="font-semibold">Noticed:</span> {x.noticed}</p>}<p className="mt-2 text-sm text-slate-600">{x.problemDesc || detail.complaintNote || 'ပြဿနာဖော်ပြချက်မရှိ'}</p>{!!x.components?.length && <div className="mt-3 grid gap-1 rounded-lg bg-slate-50 p-2 text-xs">{x.components.map((component, componentIndex) => <div key={component.id || componentIndex}><b>{component.componentType.replaceAll('_', ' ')}:</b> {[component.brand, component.model, component.specification].filter(Boolean).join(' ') || '—'}{component.quantity > 1 ? ' × ' + component.quantity : ''}{component.serialNo ? ' · S/N ' + component.serialNo : ''}{component.conditionNote ? ' · ' + component.conditionNote : ''}</div>)}</div>}<div className="mt-3"><DevicePhotoSlots photos={x.photos || []} readOnly /></div></div>)}</div>}</section>
       <section><h3 className="mb-2 flex items-center gap-2 font-semibold"><Wrench size={18} /> Linked Jobs ({detail.linkedJobs.length})</h3>{!detail.linkedJobs.length ? <div className="rounded-xl border border-dashed p-5 text-center text-sm text-slate-500">Service Job မပြောင်းရသေးပါ။</div> : <div className="overflow-x-auto rounded-xl border"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left"><tr><th className="px-3 py-2">Job No</th><th>Mode</th><th>Item</th><th>Status</th></tr></thead><tbody className="divide-y">{detail.linkedJobs.map(j => <tr key={j.id}><td className="px-3 py-2 font-semibold text-blue-700">{j.jobNo}</td><td>{j.serviceMode}</td><td>{j.itemName}</td><td>{j.status === 'CANCELLED' ? <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">Job ပယ်ဖျက်ထား</span> : j.status}</td></tr>)}</tbody></table></div>}</section>
     </div></Modal>}
 
     {formOpen && <Modal title={editId ? 'Booking ပြင်ဆင်ရန်' : 'Booking အသစ်'} close={() => setFormOpen(false)} elevated><form onSubmit={save} className="grid gap-4 p-5 md:grid-cols-2"><div className="md:col-span-2"><div className="mb-1 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Customer <b className="text-rose-500">*</b></span><button type="button" onClick={() => setShowAddCustomer(true)} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Plus size={12} /> အသစ်</button></div><PortaledCombobox items={customerItems} value={Number(form.customerId) || 0} placeholder="အမည် / ဖုန်းနံပါတ်ဖြင့်ရှာပါ..." inputClassName={input} onChange={id => setForm({ ...form, customerId: id ? String(id) : '' })} /></div><Label text="Booking Date" required><input type="date" className={input} value={form.bookingDate} onChange={e => setForm({ ...form, bookingDate: e.target.value })} /></Label><Label text="Appointment Time"><input type="datetime-local" className={input} value={form.appointmentDate} onChange={e => setForm({ ...form, appointmentDate: e.target.value })} /></Label><div className="md:col-span-2"><Label text="Customer Complaint"><textarea rows={4} className={input} value={form.complaintNote} onChange={e => setForm({ ...form, complaintNote: e.target.value })} /></Label></div><div className="md:col-span-2"><Label text="Remark"><textarea rows={2} className={input} value={form.remark} onChange={e => setForm({ ...form, remark: e.target.value })} /></Label></div><div className="flex justify-end gap-2 md:col-span-2"><button type="button" onClick={() => setFormOpen(false)} className="rounded-xl border px-4 py-2.5">မလုပ်တော့ပါ</button><button disabled={saving} className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white disabled:opacity-50">သိမ်းမည်</button></div></form></Modal>}
 
-    {itemsOpen && detail && <Modal title="ဆိုင်အပ်ပစ္စည်း လက်ခံရန်" close={() => setItemsOpen(false)} wide elevated><div className="space-y-4 p-5"><div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-800">ပစ္စည်းတစ်ခုစီသည် Indoor convert လုပ်ချိန်တွင် Service Job တစ်ခုစီဖြစ်လာပါမည်။</div>{items.map((x, i) => <div key={i} className="relative grid gap-3 rounded-xl border p-4 pt-6 md:grid-cols-3"><span className="absolute -top-3 left-3 rounded-full bg-slate-800 px-2 py-1 text-xs text-white">ပစ္စည်း {i + 1}</span>{items.length > 1 && <button onClick={() => setItems(a => a.filter((_, n) => n !== i))} className="absolute right-2 top-2 text-rose-600"><Trash2 size={16} /></button>}<Label text="ပစ္စည်းအမည်" required><input className={input} value={x.itemName} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, itemName: e.target.value } : v))} /></Label><Label text="Device Type"><input className={input} value={x.deviceType} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, deviceType: e.target.value } : v))} /></Label><Label text="Serial No"><input className={input} value={x.serialNo} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, serialNo: e.target.value } : v))} /></Label><Label text="Color"><input className={input} value={x.color} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, color: e.target.value } : v))} /></Label><Label text="Accessories"><input className={input} value={x.accessories} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, accessories: e.target.value } : v))} /></Label><Label text="လက်ခံချိန် Condition"><input className={input} value={x.itemCondition} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, itemCondition: e.target.value } : v))} /></Label><div className="md:col-span-3"><Label text="Noticed"><textarea className={input} rows={2} placeholder="လက်ခံစဉ် သတိထားမိသော အချက်အလက်" value={x.noticed} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, noticed: e.target.value } : v))} /></Label></div><div className="md:col-span-3"><Label text="Problem Description"><textarea className={input} rows={2} placeholder={detail.complaintNote || 'Booking complaint ကို fallback သုံးပါမည်'} value={x.problemDesc} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, problemDesc: e.target.value } : v))} /></Label></div><div className="md:col-span-3"><DevicePhotoSlots photos={x.photos || []} onChange={photos => setItems(a => a.map((v, n) => n === i ? { ...v, photos } : v))} /></div></div>)}<button onClick={() => setItems(a => [...a, emptyItem()])} className="flex items-center gap-2 rounded-xl border border-dashed border-blue-400 px-4 py-2.5 font-semibold text-blue-700"><Plus size={17} /> နောက်ထပ်ပစ္စည်း</button><div className="flex justify-end gap-2 border-t pt-4"><button onClick={() => setItemsOpen(false)} className="rounded-xl border px-4 py-2.5">မလုပ်တော့ပါ</button><button disabled={saving} onClick={receive} className="rounded-xl bg-amber-500 px-5 py-2.5 font-semibold text-white disabled:opacity-50">ပစ္စည်းလက်ခံမည်</button></div></div></Modal>}
+    {itemsOpen && detail && <Modal title="ဆိုင်အပ်ပစ္စည်း လက်ခံရန်" close={() => setItemsOpen(false)} wide elevated><div className="space-y-4 p-5"><div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-800">ပစ္စည်းတစ်ခုစီသည် Indoor convert လုပ်ချိန်တွင် Service Job တစ်ခုစီဖြစ်လာပါမည်။</div>{items.map((x, i) => <div key={i} className="relative grid gap-3 rounded-xl border p-4 pt-6 md:grid-cols-3"><span className="absolute -top-3 left-3 rounded-full bg-slate-800 px-2 py-1 text-xs text-white">ပစ္စည်း {i + 1}</span>{items.length > 1 && <button onClick={() => setItems(a => a.filter((_, n) => n !== i))} className="absolute right-2 top-2 text-rose-600"><Trash2 size={16} /></button>}<Label text="ပစ္စည်းအမည်" required><input className={input} value={x.itemName} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, itemName: e.target.value } : v))} /></Label><Label text="Device Type"><input className={input} value={x.deviceType} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, deviceType: e.target.value } : v))} /></Label><Label text="Serial No"><input className={input} value={x.serialNo} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, serialNo: e.target.value } : v))} /></Label><Label text="Color"><input className={input} value={x.color} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, color: e.target.value } : v))} /></Label><Label text="Accessories"><input className={input} value={x.accessories} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, accessories: e.target.value } : v))} /></Label><Label text="လက်ခံချိန် Condition"><input className={input} value={x.itemCondition} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, itemCondition: e.target.value } : v))} /></Label><div className="md:col-span-3"><Label text="Noticed"><textarea className={input} rows={2} placeholder="လက်ခံစဉ် သတိထားမိသော အချက်အလက်" value={x.noticed} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, noticed: e.target.value } : v))} /></Label></div><div className="md:col-span-3"><Label text="Problem Description"><textarea className={input} rows={2} placeholder={detail.complaintNote || 'Booking complaint ကို fallback သုံးပါမည်'} value={x.problemDesc} onChange={e => setItems(a => a.map((v, n) => n === i ? { ...v, problemDesc: e.target.value } : v))} /></Label></div><div className="md:col-span-3"><ComponentEditor components={x.components || []} onChange={components => setItems(a => a.map((v, n) => n === i ? { ...v, components } : v))} /></div><div className="md:col-span-3"><DevicePhotoSlots photos={x.photos || []} onChange={photos => setItems(a => a.map((v, n) => n === i ? { ...v, photos } : v))} /></div></div>)}<button onClick={() => setItems(a => [...a, emptyItem()])} className="flex items-center gap-2 rounded-xl border border-dashed border-blue-400 px-4 py-2.5 font-semibold text-blue-700"><Plus size={17} /> နောက်ထပ်ပစ္စည်း</button><div className="flex justify-end gap-2 border-t pt-4"><button onClick={() => setItemsOpen(false)} className="rounded-xl border px-4 py-2.5">မလုပ်တော့ပါ</button><button disabled={saving} onClick={receive} className="rounded-xl bg-amber-500 px-5 py-2.5 font-semibold text-white disabled:opacity-50">ပစ္စည်းလက်ခံမည်</button></div></div></Modal>}
 
     {editItemOpen && detail && editItem && (
       <Modal title="ပစ္စည်း ပြင်ဆင်ရန်" close={() => { setEditItemOpen(false); setEditItem(null); }} wide elevated>
@@ -411,6 +511,12 @@ export default function BookingManagement() {
             <Label text="Problem Description">
               <textarea className={input} rows={2} value={editItem.problemDesc} onChange={e => setEditItem({ ...editItem, problemDesc: e.target.value })} />
             </Label>
+          </div>
+          <div className="md:col-span-3">
+            <ComponentEditor
+              components={editItem.components || []}
+              onChange={components => setEditItem({ ...editItem, components })}
+            />
           </div>
           <div className="md:col-span-3">
             <DevicePhotoSlots

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -131,19 +132,22 @@ fun AuthModeSelector(mode: AuthMode, onModeChange: (AuthMode) -> Unit) {
                 val selected = mode == item
                 Surface(
                     onClick = { onModeChange(item) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                     shape = RoundedCornerShape(10.dp),
                     color = if (selected) Primary else Color.Transparent,
                     shadowElevation = 0.dp
                 ) {
-                    Text(
-                        text = label,
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color = if (selected) OnPrimary else TextMuted,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        style = MaterialTheme.typography.labelLarge,
-                        textAlign = TextAlign.Center
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = label,
+                            color = if (selected) OnPrimary else TextMuted,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            style = MaterialTheme.typography.labelLarge,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
     }

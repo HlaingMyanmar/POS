@@ -76,7 +76,7 @@ public class SetupService {
 
         String username = UsernamePolicy.requireValid(dto.getUsername());
         String email = dto.getEmail() == null ? "" : dto.getEmail().trim();
-        String password = PasswordPolicy.requireValid(dto.getPassword());
+        String password = PasswordPolicy.requireAdminValid(dto.getPassword());
 
         if (email.isBlank() || !email.contains("@")) {
             throw new IllegalArgumentException("A valid email is required.");
@@ -112,6 +112,11 @@ public class SetupService {
 
     @Transactional
     public void initialize(SetupInitDTO dto) {
+        SetupStatusDTO status = getStatus();
+        if (status.isComplete()) {
+            throw new IllegalStateException("Setup is already complete and cannot be re-run.");
+        }
+
         // ── Company Info ────────────────────────────────────────────────────
         List<CompanySettings> all = companySettingsRepository.findAll();
         CompanySettings cs = all.isEmpty() ? new CompanySettings() : all.get(0);

@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.bookingoptions.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -10,10 +11,14 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemComponentDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingRequestPhotoDTO;
 import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItem;
+import org.sspd.servicemgmt.bookingoptions.model.BookingItemComponent;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItemPhoto;
+import org.sspd.servicemgmt.bookingoptions.model.BookingRequestPhoto;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingItemRepository;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
@@ -38,7 +43,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class BookingService {
-    private static final int MAX_PHOTOS_PER_ITEM = 3;
+    private static final int MAX_REQUEST_PHOTOS = 3;
+    private static final int MAX_COMPONENTS_PER_ITEM = 30;
     private static final int MAX_PHOTO_DATA_URL_LENGTH = 4_500_000;
 
     private final BookingRepository repository;
@@ -49,6 +55,9 @@ public class BookingService {
     private final ServiceJobService serviceJobService;
     private final DataEventPublisher dataEventPublisher;
     private final BookingPhotoStorageService bookingPhotoStorageService;
+
+    @Value("${app.booking-photo.max-per-item:50}")
+    private int maxPhotosPerItem = 50;
 
     @Transactional(readOnly = true)
     public Page<BookingDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
@@ -81,10 +90,20 @@ public class BookingService {
                 .status(BookingStatus.CONFIRMED)
                 .remark(trimToNull(dto.getRemark()))
                 .source(trimToNull(dto.getSource()))
+                .requestedServiceName(trimToNull(dto.getRequestedServiceName()))
+                .requestType(trimToNull(dto.getRequestType()))
+                .deviceCategory(trimToNull(dto.getDeviceCategory()))
+                .deviceName(trimToNull(dto.getDeviceName()))
+                .requestedServiceMode(trimToNull(dto.getRequestedServiceMode()))
+                .serviceAddress(trimToNull(dto.getServiceAddress()))
+                .urgency(trimToNull(dto.getUrgency()))
+                .contactPreference(trimToNull(dto.getContactPreference()))
+                .requestPhotos(new ArrayList<>())
                 .items(new ArrayList<>())
                 .build();
         booking = repository.saveAndFlush(booking);
         booking.setBookingNo(generateBookingNo(booking.getId()));
+        attachRequestPhotos(booking, dto.getRequestPhotos());
         BookingDTO result = toDto(repository.save(booking), true);
         broadcast("BOOKING_CREATED");
         return result;
@@ -145,8 +164,10 @@ public class BookingService {
                     .itemCondition(trimToNull(dto.getItemCondition()))
                     .noticed(trimToNull(dto.getNoticed()))
                     .photos(new ArrayList<>())
+                    .components(new ArrayList<>())
                     .build();
             attachPhotos(item, dto.getPhotos());
+            attachComponents(item, dto.getComponents());
             booking.getItems().add(item);
         }
         booking.setStatus(BookingStatus.ARRIVED);
@@ -179,6 +200,9 @@ public class BookingService {
         item.setProblemDesc(firstNonBlank(dto.getProblemDesc(), booking.getComplaintNote()));
         item.setItemCondition(trimToNull(dto.getItemCondition()));
         item.setNoticed(trimToNull(dto.getNoticed()));
+        if (dto.getComponents() != null) {
+            syncComponents(item, dto.getComponents());
+        }
 
         if (photosProvided) {
             syncItemPhotos(item, dto.getPhotos());
@@ -221,7 +245,7 @@ public class BookingService {
 
         ServiceJobDTO request = baseJob(booking, ServiceMode.OUTDOOR);
         request.setItemName(outdoorItemName(booking));
-        request.setProblemDesc(booking.getComplaintNote());
+        request.setProblemDesc(firstNonBlank(booking.getComplaintNote(), booking.getRequestedServiceName()));
         serviceJobService.create(request);
         BookingDTO result = toDto(booking, true);
         broadcast("BOOKING_OUTDOOR_CONVERTED");
@@ -266,7 +290,11 @@ public class BookingService {
             throw new IllegalStateException("Booking with received items cannot be deleted");
         if (!serviceJobRepository.findAllByBookingIdOrderByIdAsc(id).isEmpty())
             throw new IllegalStateException("Booking with linked service jobs cannot be deleted");
+        List<String[]> requestFiles = booking.getRequestPhotos().stream()
+                .map(photo -> new String[]{photo.getImagePath(), photo.getThumbnailPath()})
+                .toList();
         repository.delete(booking);
+        schedulePhotoFileCleanup(requestFiles, List.of());
         broadcast("BOOKING_DELETED");
     }
 
@@ -306,6 +334,19 @@ public class BookingService {
         dto.setStatus(booking.getStatus());
         dto.setRemark(booking.getRemark());
         dto.setSource(booking.getSource());
+        dto.setRequestedServiceName(booking.getRequestedServiceName());
+        dto.setRequestType(booking.getRequestType());
+        dto.setDeviceCategory(booking.getDeviceCategory());
+        dto.setDeviceName(booking.getDeviceName());
+        dto.setRequestedServiceMode(booking.getRequestedServiceMode());
+        dto.setServiceAddress(booking.getServiceAddress());
+        dto.setUrgency(booking.getUrgency());
+        dto.setContactPreference(booking.getContactPreference());
+        if (booking.getRequestPhotos() != null) {
+            dto.setRequestPhotos(booking.getRequestPhotos().stream()
+                    .map(this::toRequestPhotoDto)
+                    .toList());
+        }
         dto.setCreatedAt(booking.getCreatedAt());
         dto.setUpdatedAt(booking.getUpdatedAt());
         if (detail) {
@@ -333,7 +374,60 @@ public class BookingService {
         if (item.getPhotos() != null) {
             dto.setPhotos(item.getPhotos().stream().map(this::toPhotoDto).toList());
         }
+        if (item.getComponents() != null) {
+            dto.setComponents(item.getComponents().stream().map(this::toComponentDto).toList());
+        }
         return dto;
+    }
+
+    private BookingItemComponentDTO toComponentDto(BookingItemComponent component) {
+        BookingItemComponentDTO dto = new BookingItemComponentDTO();
+        dto.setId(component.getId());
+        dto.setComponentType(component.getComponentType());
+        dto.setBrand(component.getBrand());
+        dto.setModel(component.getModel());
+        dto.setSpecification(component.getSpecification());
+        dto.setSerialNo(component.getSerialNo());
+        dto.setQuantity(component.getQuantity());
+        dto.setConditionNote(component.getConditionNote());
+        return dto;
+    }
+
+    private void syncComponents(BookingItem item, List<BookingItemComponentDTO> components) {
+        item.getComponents().clear();
+        attachComponents(item, components);
+    }
+
+    private void attachComponents(BookingItem item, List<BookingItemComponentDTO> components) {
+        if (components == null || components.isEmpty()) return;
+        if (components.size() > MAX_COMPONENTS_PER_ITEM) {
+            throw new IllegalArgumentException("Each device can have at most " + MAX_COMPONENTS_PER_ITEM + " components");
+        }
+        for (BookingItemComponentDTO componentDto : components) {
+            boolean empty = trimToNull(componentDto.getComponentType()) == null
+                    && trimToNull(componentDto.getBrand()) == null
+                    && trimToNull(componentDto.getModel()) == null
+                    && trimToNull(componentDto.getSpecification()) == null
+                    && trimToNull(componentDto.getSerialNo()) == null
+                    && trimToNull(componentDto.getConditionNote()) == null;
+            if (empty) continue;
+            String type = limited(componentDto.getComponentType(), 40, "Component type");
+            if (type == null) throw new IllegalArgumentException("Component type is required");
+            int quantity = componentDto.getQuantity() == null ? 1 : componentDto.getQuantity();
+            if (quantity < 1 || quantity > 100) {
+                throw new IllegalArgumentException("Component quantity must be between 1 and 100");
+            }
+            item.getComponents().add(BookingItemComponent.builder()
+                    .bookingItem(item)
+                    .componentType(type.toUpperCase(Locale.ROOT).replace(' ', '_'))
+                    .brand(limited(componentDto.getBrand(), 120, "Component brand"))
+                    .model(limited(componentDto.getModel(), 160, "Component model"))
+                    .specification(limited(componentDto.getSpecification(), 255, "Component specification"))
+                    .serialNo(limited(componentDto.getSerialNo(), 160, "Component serial"))
+                    .quantity(quantity)
+                    .conditionNote(trimToNull(componentDto.getConditionNote()))
+                    .build());
+        }
     }
 
     private BookingItemPhotoDTO toPhotoDto(BookingItemPhoto photo) {
@@ -347,6 +441,58 @@ public class BookingService {
         dto.setThumbnailPath(photo.getThumbnailPath());
         dto.setUploadedAt(photo.getUploadedAt());
         return dto;
+    }
+
+    private BookingRequestPhotoDTO toRequestPhotoDto(BookingRequestPhoto photo) {
+        BookingRequestPhotoDTO dto = new BookingRequestPhotoDTO();
+        dto.setId(photo.getId());
+        dto.setSlot(photo.getSlot());
+        dto.setFileName(photo.getFileName());
+        dto.setContentType(photo.getContentType());
+        dto.setImagePath(photo.getImagePath());
+        dto.setThumbnailPath(photo.getThumbnailPath());
+        dto.setUploadedAt(photo.getUploadedAt());
+        return dto;
+    }
+
+    private void attachRequestPhotos(Booking booking, List<BookingRequestPhotoDTO> photos) {
+        if (photos == null || photos.isEmpty()) return;
+        if (photos.size() > MAX_REQUEST_PHOTOS) {
+            throw new IllegalArgumentException("A booking request can have at most " + MAX_REQUEST_PHOTOS + " photos");
+        }
+        Set<Integer> usedSlots = new HashSet<>();
+        List<String[]> deleteOnRollback = new ArrayList<>();
+        try {
+            int autoSlot = 1;
+            for (BookingRequestPhotoDTO photoDto : photos) {
+                String dataUrl = trimToNull(photoDto.getDataUrl());
+                if (dataUrl == null) continue;
+                if (dataUrl.length() > MAX_PHOTO_DATA_URL_LENGTH) {
+                    throw new IllegalArgumentException("Booking request photo is too large");
+                }
+                int slot = photoDto.getSlot() != null ? photoDto.getSlot() : autoSlot;
+                if (slot < 1 || slot > MAX_REQUEST_PHOTOS) {
+                    throw new IllegalArgumentException("Photo slot must be between 1 and " + MAX_REQUEST_PHOTOS);
+                }
+                if (!usedSlots.add(slot)) {
+                    throw new IllegalArgumentException("Duplicate photo slot: " + slot);
+                }
+                BookingPhotoStorageService.StoredPhoto stored =
+                        bookingPhotoStorageService.store(dataUrl, booking.getId(), slot);
+                deleteOnRollback.add(new String[]{stored.imagePath(), stored.thumbnailPath()});
+                booking.getRequestPhotos().add(BookingRequestPhoto.builder()
+                        .booking(booking)
+                        .slot(slot)
+                        .fileName(trimToNull(photoDto.getFileName()))
+                        .contentType("image/webp")
+                        .imagePath(stored.imagePath())
+                        .thumbnailPath(stored.thumbnailPath())
+                        .build());
+                autoSlot++;
+            }
+        } finally {
+            schedulePhotoFileCleanup(List.of(), deleteOnRollback);
+        }
     }
 
     private void migrateLegacyPhotos(Booking booking) {
@@ -364,8 +510,8 @@ public class BookingService {
 
     private void attachPhotos(BookingItem item, List<BookingItemPhotoDTO> photos) {
         if (photos == null || photos.isEmpty()) return;
-        if (photos.size() > MAX_PHOTOS_PER_ITEM)
-            throw new IllegalArgumentException("Each device can have at most " + MAX_PHOTOS_PER_ITEM + " photos");
+        if (photos.size() > maxPhotosPerItem)
+            throw new IllegalArgumentException("Each device can have at most " + maxPhotosPerItem + " photos");
         Set<Integer> usedSlots = new HashSet<>();
         int autoSlot = 1;
         for (BookingItemPhotoDTO photoDto : photos) {
@@ -374,8 +520,8 @@ public class BookingService {
             if (dataUrl.length() > MAX_PHOTO_DATA_URL_LENGTH)
                 throw new IllegalArgumentException("Device photo is too large");
             int slot = photoDto.getSlot() != null ? photoDto.getSlot() : autoSlot;
-            if (slot < 1 || slot > MAX_PHOTOS_PER_ITEM)
-                throw new IllegalArgumentException("Photo slot must be between 1 and " + MAX_PHOTOS_PER_ITEM);
+            if (slot < 1 || slot > maxPhotosPerItem)
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotosPerItem);
             if (!usedSlots.add(slot))
                 throw new IllegalArgumentException("Duplicate photo slot: " + slot);
                 BookingPhotoStorageService.StoredPhoto stored = bookingPhotoStorageService.store(dataUrl, item.getBooking().getId(), slot);
@@ -390,12 +536,12 @@ public class BookingService {
                     .build());
             autoSlot++;
         }
-        if (item.getPhotos().size() > MAX_PHOTOS_PER_ITEM)
-            throw new IllegalArgumentException("Each device can have at most " + MAX_PHOTOS_PER_ITEM + " photos");
+        if (item.getPhotos().size() > maxPhotosPerItem)
+            throw new IllegalArgumentException("Each device can have at most " + maxPhotosPerItem + " photos");
     }
 
     /**
-     * Product-style photo sync for slots 1–3:
+     * Product-style photo sync for configurable numbered slots:
      * - slots present in payload are kept
      * - {@code dataUrl} replaces/adds that slot
      * - path-only entries keep an existing slot (no client-supplied path hijack)
@@ -404,14 +550,14 @@ public class BookingService {
      */
     private void syncItemPhotos(BookingItem item, List<BookingItemPhotoDTO> photos) {
         List<BookingItemPhotoDTO> incoming = photos == null ? List.of() : photos;
-        if (incoming.size() > MAX_PHOTOS_PER_ITEM)
-            throw new IllegalArgumentException("Each device can have at most " + MAX_PHOTOS_PER_ITEM + " photos");
+        if (incoming.size() > maxPhotosPerItem)
+            throw new IllegalArgumentException("Each device can have at most " + maxPhotosPerItem + " photos");
 
         Set<Integer> keepSlots = new HashSet<>();
         for (BookingItemPhotoDTO photoDto : incoming) {
             Integer slot = photoDto.getSlot();
-            if (slot == null || slot < 1 || slot > MAX_PHOTOS_PER_ITEM)
-                throw new IllegalArgumentException("Photo slot must be between 1 and " + MAX_PHOTOS_PER_ITEM);
+            if (slot == null || slot < 1 || slot > maxPhotosPerItem)
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotosPerItem);
             if (!keepSlots.add(slot))
                 throw new IllegalArgumentException("Duplicate photo slot: " + slot);
         }
@@ -526,8 +672,12 @@ public class BookingService {
     }
 
     private String outdoorItemName(Booking booking) {
-        String value = firstNonBlank(booking.getComplaintNote(),
-                "Outdoor service - " + booking.getCustomer().getName());
+        String value = firstNonBlank(
+                booking.getDeviceName(),
+                firstNonBlank(
+                        booking.getRequestedServiceName(),
+                        firstNonBlank(booking.getComplaintNote(),
+                                "Outdoor service - " + booking.getCustomer().getName())));
         return value.length() <= 200 ? value : value.substring(0, 200);
     }
 
@@ -544,6 +694,14 @@ public class BookingService {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String limited(String value, int maxLength, String label) {
+        String trimmed = trimToNull(value);
+        if (trimmed != null && trimmed.length() > maxLength) {
+            throw new IllegalArgumentException(label + " is too long");
+        }
+        return trimmed;
     }
 
     private static String firstNonBlank(String first, String fallback) {

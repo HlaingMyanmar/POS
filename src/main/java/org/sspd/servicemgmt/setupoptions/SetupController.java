@@ -2,6 +2,7 @@ package org.sspd.servicemgmt.setupoptions;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 
@@ -25,7 +26,11 @@ public class SetupController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Administrator created. Please log in.", null));
     }
 
+    /**
+     * Completes first-run company/payment setup. Only ADMINISTRATOR, and only while setup is incomplete.
+     */
     @PostMapping("/initialize")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<Void>> initialize(@RequestBody SetupInitDTO dto) {
         setupService.initialize(dto);
         return ResponseEntity.ok(new ApiResponse<>(true, "Setup complete", null));

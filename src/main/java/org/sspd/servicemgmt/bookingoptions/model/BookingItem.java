@@ -57,4 +57,9 @@ public class BookingItem {
     @OneToMany(mappedBy = "bookingItem", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("slot ASC")
     private List<BookingItemPhoto> photos = new ArrayList<>();
+
+    @Builder.Default
+    @OneToMany(mappedBy = "bookingItem", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    private List<BookingItemComponent> components = new ArrayList<>();
 }

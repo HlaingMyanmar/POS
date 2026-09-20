@@ -43,7 +43,7 @@ public class UserService {
     public UserDTO save(UserDTO dto) {
         String username = UsernamePolicy.requireValid(dto.getUsername());
         String email = requireEmail(dto.getEmail());
-        String password = PasswordPolicy.requireValid(dto.getPassword());
+        String password = requirePasswordForRoles(dto.getPassword(), dto.getRoles());
         if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("Username '" + username + "' is already registered!");
         }
@@ -103,7 +103,10 @@ public class UserService {
         }
 
         if (userDTO.getPassword() != null && !userDTO.getPassword().isBlank()) {
-            String password = PasswordPolicy.requireValid(userDTO.getPassword());
+            Set<String> rolesForPolicy = userDTO.getRoles() != null
+                    ? userDTO.getRoles()
+                    : existingEntity.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
+            String password = requirePasswordForRoles(userDTO.getPassword(), rolesForPolicy);
             existingEntity.setPassword(passwordEncoder.encode(password));
             invalidateSessions(existingEntity);
         }
@@ -126,6 +129,12 @@ public class UserService {
             throw new IllegalArgumentException("A valid email is required.");
         }
         return value;
+    }
+
+    private static String requirePasswordForRoles(String password, Set<String> roles) {
+        boolean admin = roles != null && roles.stream().anyMatch(role ->
+                "ADMINISTRATOR".equalsIgnoreCase(role) || "ROLE_ADMINISTRATOR".equalsIgnoreCase(role));
+        return admin ? PasswordPolicy.requireAdminValid(password) : PasswordPolicy.requireValid(password);
     }
 
     private void invalidateSessions(User user) {

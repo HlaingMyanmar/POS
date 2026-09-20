@@ -2483,8 +2483,7 @@ private fun CartCheckoutBar(
             Text(
                 "$itemCount ခု",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                modifier = Modifier.padding(top = (-2).dp)
+                color = TextMuted
             )
 
             Button(

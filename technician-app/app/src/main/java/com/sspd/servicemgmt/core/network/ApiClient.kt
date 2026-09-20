@@ -38,8 +38,11 @@ object ApiClient {
                 refreshAndRetry(response)
             }
             .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("X-Client-Type", "mobile")
+                    .build()
                 val response = try {
-                    chain.proceed(chain.request())
+                    chain.proceed(request)
                 } catch (error: IllegalStateException) {
                     // OkHttp may surface a broken HTTP/1 codec state as a runtime
                     // exception. Convert it to an I/O failure so Retrofit delivers
@@ -90,6 +93,13 @@ object ApiClient {
             val refreshClient = OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
+                .addInterceptor { chain ->
+                    chain.proceed(
+                        chain.request().newBuilder()
+                            .header("X-Client-Type", "mobile")
+                            .build()
+                    )
+                }
                 .build()
             val refreshService = Retrofit.Builder()
                 .baseUrl(_baseUrl)

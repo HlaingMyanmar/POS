@@ -18,4 +18,5 @@ public class BookingItemDTO {
     private String noticed;
     private Integer convertedJobId;
     private List<BookingItemPhotoDTO> photos = new ArrayList<>();
+    private List<BookingItemComponentDTO> components;
 }

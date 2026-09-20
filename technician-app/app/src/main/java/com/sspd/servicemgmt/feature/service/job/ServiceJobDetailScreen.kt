@@ -29,6 +29,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import com.sspd.servicemgmt.core.network.AssignmentDTO
+import com.sspd.servicemgmt.core.network.BookingItemPhotoDTO
 import com.sspd.servicemgmt.core.network.TeamSnapshotDTO
 import com.sspd.servicemgmt.core.network.TechnicianVisitDTO
 import com.sspd.servicemgmt.core.tracking.LocationPermission
@@ -44,6 +45,8 @@ import com.sspd.servicemgmt.core.network.ServiceJobPartDTO
 import com.sspd.servicemgmt.core.network.StaffDTO
 import com.sspd.servicemgmt.core.ui.theme.*
 import com.sspd.servicemgmt.core.ui.component.AppLoading
+import com.sspd.servicemgmt.core.ui.component.BookingItemPhotoThumb
+import com.sspd.servicemgmt.core.ui.component.BookingPhotoViewerDialog
 
 import com.sspd.servicemgmt.core.util.PreferenceManager
 import com.sspd.servicemgmt.core.util.fmtWarranty
@@ -196,6 +199,7 @@ fun ServiceJobDetailScreen(
     }
     var pendingVisitAction by remember { mutableStateOf<String?>(null) }
     var showReasonDialog by remember { mutableStateOf(false) }
+    var intakeViewerPhoto by remember { mutableStateOf<BookingItemPhotoDTO?>(null) }
     val locationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
@@ -214,6 +218,10 @@ fun ServiceJobDetailScreen(
             "resume" -> visitVm.resumeTracking()
         }
         pendingVisitAction = null
+    }
+
+    intakeViewerPhoto?.let { photo ->
+        BookingPhotoViewerDialog(photo = photo, onDismiss = { intakeViewerPhoto = null })
     }
 
     fun runVisit(action: String) {
@@ -940,6 +948,39 @@ fun ServiceJobDetailScreen(
                         if (!job.itemCondition.isNullOrBlank()) {
                             HorizontalDivider(color = BorderColor)
                             JobInfoRow(Icons.Outlined.Info, "အခြေအနေ",    job.itemCondition)
+                        }
+                        if (!job.intakeNoticed.isNullOrBlank()) {
+                            HorizontalDivider(color = BorderColor)
+                            JobInfoRow(Icons.Outlined.Visibility, "လက်ခံချိန်တွေ့ရှိချက်", job.intakeNoticed)
+                        }
+                        if (!job.intakeComponents.isNullOrEmpty()) {
+                            HorizontalDivider(color = BorderColor)
+                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("Hardware Components", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                                job.intakeComponents.orEmpty().forEach { component ->
+                                    val detailText = listOfNotNull(component.brand, component.model, component.specification)
+                                        .filter { it.isNotBlank() }.joinToString(" ")
+                                    Text(
+                                        component.componentType.replace('_', ' ') + ": " + detailText.ifBlank { "—" }
+                                                + if (component.quantity > 1) " × ${component.quantity}" else ""
+                                                + (component.serialNo?.takeIf { it.isNotBlank() }?.let { " · S/N $it" } ?: "")
+                                                + (component.conditionNote?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                                        fontSize = 12.sp,
+                                        color = TextMain,
+                                    )
+                                }
+                            }
+                        }
+                        if (!job.intakePhotos.isNullOrEmpty()) {
+                            HorizontalDivider(color = BorderColor)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("လက်ခံချိန်ပုံများ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    job.intakePhotos.orEmpty().forEach { photo ->
+                                        BookingItemPhotoThumb(photo = photo, onClick = { intakeViewerPhoto = photo })
+                                    }
+                                }
+                            }
                         }
                         if (!job.partRequests.isNullOrBlank()) {
                             HorizontalDivider(color = BorderColor)

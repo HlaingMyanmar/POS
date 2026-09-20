@@ -136,6 +136,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     var message by mutableStateOf<String?>(null)
     var cartIssues by mutableStateOf<List<CartIssue>>(emptyList()); private set
     var checkoutPlacing by mutableStateOf(false); private set
+    var serviceRequestSubmitting by mutableStateOf(false); private set
     var openHistoryTab by mutableStateOf(false)
     private var pendingCheckout: PendingCheckout? = null
     private var lastCheckoutKey: String? = null
@@ -733,13 +734,19 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun requestService(service: String, device: String, problem: String) {
+    fun requestService(request: ServiceRequestBody) {
+        if (serviceRequestSubmitting) return
         viewModelScope.launch {
+            serviceRequestSubmitting = true
             try {
-                val res = ApiClient.service.requestService(auth(), ServiceRequestBody(service, device, problem))
+                val res = ApiClient.service.requestService(auth(), request)
                 message = if (res.isSuccessful && res.body()?.success == true) "Service ခေါ်ပြီးပါပြီ" else (res.body()?.message ?: "မအောင်မြင်ပါ")
-                loadMine()
-            } catch (e: Exception) { message = e.message }
+                if (res.isSuccessful && res.body()?.success == true) loadMine()
+            } catch (e: Exception) {
+                message = networkErrorMessage(e)
+            } finally {
+                serviceRequestSubmitting = false
+            }
         }
     }
 
@@ -1424,30 +1431,12 @@ private fun ProductTab(vm: HomeViewModel, onOpenCart: () -> Unit) {
 
 @Composable
 private fun ServiceTab(vm: HomeViewModel) {
-    var selected by remember { mutableStateOf<CatalogService?>(null) }
-    var device by remember { mutableStateOf("") }
-    var problem by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Service ခေါ်ရန်", fontWeight = FontWeight.Bold)
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(vm.services, key = { index, s -> "s-${s.id}-$index" }) { _, s ->
-                ElevatedCard(Modifier.fillMaxWidth().clickable { selected = s }) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(s.name ?: "-", fontWeight = FontWeight.Bold)
-                        Text(listOfNotNull(s.serviceTypeName, s.price?.toInt()?.let { "$it Ks" }).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-                        if (selected?.id == s.id) Text("ရွေးထားသည်", color = Primary, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-        OutlinedTextField(device, { device = it }, label = { Text("ပစ္စည်းအမည်") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(problem, { problem = it }, label = { Text("ပြဿနာ") }, modifier = Modifier.fillMaxWidth())
-        Button(
-            onClick = { vm.requestService(selected?.name ?: "", device, problem) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = selected != null && problem.isNotBlank()
-        ) { Text("Service ခေါ်မည်") }
-    }
+    CustomerServiceBookingForm(
+        services = vm.services,
+        defaultAddress = vm.profile.address.orEmpty(),
+        submitting = vm.serviceRequestSubmitting,
+        onSubmit = vm::requestService
+    )
 }
 
 @Composable
@@ -2111,4 +2100,3 @@ private fun AccountTab(
         )
     }
 }
-

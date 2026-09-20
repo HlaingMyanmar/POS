@@ -52,10 +52,11 @@
         <td class="bk-c-prob">
           <div th:text="${not #strings.isEmpty(dev.problemDesc) ? dev.problemDesc : '—'}"></div>
           <div class="bk-extra"
-               th:if="${!#strings.isEmpty(dev.accessories) or !#strings.isEmpty(dev.deviceConditions) or !#strings.isEmpty(dev.noticed)}">
+               th:if="${!#strings.isEmpty(dev.accessories) or !#strings.isEmpty(dev.deviceConditions) or !#strings.isEmpty(dev.noticed) or !#strings.isEmpty(dev.components)}">
             <span th:if="${!#strings.isEmpty(dev.accessories)}" th:text="${'Acc: ' + dev.accessories}"></span>
             <span th:if="${!#strings.isEmpty(dev.deviceConditions)}" th:text="${'Cond: ' + dev.deviceConditions}"></span>
             <span th:if="${!#strings.isEmpty(dev.noticed)}" th:text="${'Note: ' + dev.noticed}"></span>
+            <span th:if="${!#strings.isEmpty(dev.components)}" th:text="${'Specs: ' + dev.components}"></span>
           </div>
         </td>
       </tr>

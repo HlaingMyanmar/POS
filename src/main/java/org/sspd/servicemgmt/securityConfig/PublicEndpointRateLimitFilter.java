@@ -17,6 +17,12 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * In-memory (Caffeine) rate limiting for selected public POST endpoints.
+ * <p>
+ * Suitable for single-instance deployments. Counters reset on process restart and are not shared
+ * across cluster nodes — use Redis or gateway rate limiting for multi-instance production.
+ */
 @Component
 public class PublicEndpointRateLimitFilter extends OncePerRequestFilter {
     private static final Map<String, Policy> POLICIES = Map.ofEntries(

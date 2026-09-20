@@ -11,6 +11,10 @@ import org.sspd.servicemgmt.jwt.CustomUserDetailsService;
 import org.sspd.servicemgmt.jwt.JwtService;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -40,6 +44,8 @@ class AuthServiceLoginLockoutTest {
                 loginAttemptService,
                 auditLogService,
                 refreshTokenReuseHandler);
+        ReflectionTestUtils.setField(service, "singleSessionPerUser", true);
+        when(userRepository.findByUsernameOrEmail(anyString(), anyString())).thenReturn(Optional.empty());
     }
 
     @Test

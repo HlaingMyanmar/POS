@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -197,9 +198,10 @@ fun CustomerServiceJobsScreen(
                             onClick = onRequestNewService,
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryLight, contentColor = PrimaryDark),
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.heightIn(min = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text("+ Service ခေါ်မည်", fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+                            Text("+ Service တောင်းမည်", fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                         }
                     }
 
@@ -212,15 +214,15 @@ fun CustomerServiceJobsScreen(
                     ) {
                         Column {
                             Text("ဆောင်ရွက်ဆဲ", style = MaterialTheme.typography.labelSmall, color = OnPrimary.copy(alpha = 0.7f), fontSize = 10.sp)
-                            Text("$activeCount ခု", fontWeight = FontWeight.Bold, color = OnPrimary, fontSize = 13.sp)
+                            Text("$activeCount ခု", fontWeight = FontWeight.Bold, color = OnPrimary, fontSize = 14.sp)
                         }
                         Column {
                             Text("ပြီးစီးပြီး", style = MaterialTheme.typography.labelSmall, color = OnPrimary.copy(alpha = 0.7f), fontSize = 10.sp)
-                            Text("$doneCount ခု", fontWeight = FontWeight.Bold, color = OnPrimary, fontSize = 13.sp)
+                            Text("$doneCount ခု", fontWeight = FontWeight.Bold, color = OnPrimary, fontSize = 14.sp)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("စုစုပေါင်း ကုန်ကျစရိတ်", style = MaterialTheme.typography.labelSmall, color = OnPrimary.copy(alpha = 0.7f), fontSize = 10.sp)
-                            Text(money(totalSpent), fontWeight = FontWeight.Bold, color = OnPrimary, fontSize = 13.sp)
+                            Text(money(totalSpent), fontWeight = FontWeight.Bold, color = OnPrimary, fontSize = 14.sp)
                         }
                     }
                 }
@@ -262,21 +264,22 @@ fun CustomerServiceJobsScreen(
                     if (filterMode == id) {
                         Button(
                             onClick = { filterMode = id },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).height(40.dp),
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Primary)
                         ) {
-                            Text(label, fontSize = 11.sp, maxLines = 1)
+                            Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     } else {
                         OutlinedButton(
                             onClick = { filterMode = id },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).height(40.dp),
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            border = BorderStroke(1.dp, BorderColor)
                         ) {
-                            Text(label, fontSize = 11.sp, maxLines = 1)
+                            Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = TextMain, maxLines = 1)
                         }
                     }
                 }
@@ -290,6 +293,11 @@ fun CustomerServiceJobsScreen(
             item { CustomerServiceJobEmpty(onRequestNewService = onRequestNewService) }
         } else if (filteredJobs.isEmpty()) {
             item {
+                val emptyMsg = when (filterMode) {
+                    "ACTIVE" -> "ဆောင်ရွက်ဆဲ Service Job မရှိပါ"
+                    "DONE" -> "ပြီးစီးထားသော Service Job မရှိပါ"
+                    else -> "ကိုက်ညီသော Service Job မရှိပါ"
+                }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = CardBg,
@@ -300,7 +308,9 @@ fun CustomerServiceJobsScreen(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("ကိုက်ညီသော Service Job မရှိပါ", fontWeight = FontWeight.Bold, color = TextMain)
+                        Icon(Icons.Outlined.Handyman, null, tint = TextMuted, modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(emptyMsg, fontWeight = FontWeight.Bold, color = TextMain)
                         Spacer(Modifier.height(4.dp))
                         Text("Filter သို့မဟုတ် ရှာဖွေစာကို ပြောင်းကြည့်ပါ", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                     }
@@ -311,13 +321,13 @@ fun CustomerServiceJobsScreen(
                 ServiceJobCard(job = job, onClick = { selectedJob = job })
             }
         }
-        item { Spacer(Modifier.height(84.dp)) }
+        item { Spacer(Modifier.height(96.dp)) }
     }
-}
 
     selectedJob?.let { job ->
         JobDetailFullDialog(job = job, onDismiss = { selectedJob = null })
     }
+}
 }
 
 @Composable
@@ -1085,6 +1095,113 @@ private fun CustomerServiceJobsScreenPreview() {
                     netAmount = 145_000.0
                 )
             )
+        )
+    }
+}
+
+private fun sampleCompletedJob(): CustomerJob = CustomerJob(
+    id = 45,
+    jobNo = "SJ-000045",
+    status = "COMPLETED",
+    itemName = "IMO 360 Camera 3Mp",
+    deviceType = "CCTV Camera",
+    problemDesc = "IMO 360 Camera 3Mp တပ်ဆင်ပေးရန်။",
+    receivedDate = "2026-09-18T00:55:00",
+    completedDate = "2026-09-18T14:55:00",
+    deliveredDate = "2026-09-18T16:00:00",
+    totalAmount = 325_000.0,
+    discountAmount = 10_000.0,
+    netAmount = 315_000.0,
+    paymentStatus = "PAID",
+    completedSaleId = 128,
+    saleCode = "SALE-000128",
+    services = listOf(
+        JobServiceLine(
+            name = "Transportation charge",
+            qty = 1,
+            unitPrice = 15_000.0,
+            subtotal = 15_000.0,
+            warrantyMonths = 0
+        ),
+        JobServiceLine(
+            name = "Computer General Diagnosis & Installation",
+            qty = 1,
+            unitPrice = 30_000.0,
+            subtotal = 30_000.0,
+            warrantyMonths = 6,
+            warrantyStatus = "ACTIVE"
+        )
+    ),
+    parts = listOf(
+        JobPartLine(
+            productName = "Micro SD Card 32GB",
+            qty = 1,
+            unitPrice = 20_000.0,
+            subtotal = 20_000.0,
+            warrantyMonths = 12,
+            warrantyStatus = "ACTIVE",
+            serialNumber = "SN-SD32-9901"
+        ),
+        JobPartLine(
+            productName = "CCTV IMOU Camera Ranger 2 Indoor Smart Security Camera 3MP",
+            qty = 1,
+            unitPrice = 260_000.0,
+            subtotal = 260_000.0,
+            warrantyMonths = 12,
+            warrantyStatus = "ACTIVE",
+            serialNumber = "SN-IMOU-8821"
+        )
+    )
+)
+
+private fun sampleInProgressJob(): CustomerJob = CustomerJob(
+    id = 42,
+    jobNo = "JOB-000042",
+    status = "IN_PROGRESS",
+    itemName = "Dell Inspiron 15 Laptop",
+    deviceType = "Laptop",
+    problemDesc = "Screen အက်ကွဲ ပျက်စီးနေခြင်း",
+    receivedDate = "2026-09-17T10:20:00",
+    netAmount = 145_000.0,
+    services = listOf(
+        JobServiceLine(
+            name = "Display Screen Replacement Service",
+            qty = 1,
+            unitPrice = 25_000.0,
+            subtotal = 25_000.0,
+            warrantyMonths = 3
+        )
+    ),
+    parts = listOf(
+        JobPartLine(
+            productName = "Dell 15.6 FHD LED Screen Panel",
+            qty = 1,
+            unitPrice = 120_000.0,
+            subtotal = 120_000.0,
+            warrantyMonths = 6,
+            serialNumber = "SN-SCR-5542"
+        )
+    )
+)
+
+@Preview(name = "Job Detail — Completed", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun ServiceJobDetailCompletedPreview() {
+    AppTheme {
+        JobDetailFullDialog(
+            job = sampleCompletedJob(),
+            onDismiss = {}
+        )
+    }
+}
+
+@Preview(name = "Job Detail — In Progress", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun ServiceJobDetailInProgressPreview() {
+    AppTheme {
+        JobDetailFullDialog(
+            job = sampleInProgressJob(),
+            onDismiss = {}
         )
     }
 }

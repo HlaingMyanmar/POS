@@ -32,4 +32,12 @@ public interface LoginAttemptStateRepository extends JpaRepository<LoginAttemptS
     int insertIgnoreNew(@Param("loginKey") String loginKey, @Param("updatedAt") Instant updatedAt);
 
     void deleteByLoginKey(String loginKey);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            delete from LoginAttemptState s
+             where s.updatedAt < :cutoff
+               and (s.lockedUntil is null or s.lockedUntil < :now)
+            """)
+    int deleteStaleUnlocked(@Param("cutoff") Instant cutoff, @Param("now") Instant now);
 }

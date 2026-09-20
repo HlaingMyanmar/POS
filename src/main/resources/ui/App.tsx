@@ -110,8 +110,8 @@ const App: React.FC = () => {
 
       const savedUser = getFromSession('sspd_user');
 
-      // Bootstrap via HttpOnly refresh cookie + cached user profile (no JS-readable refresh token).
-      if (!initialAdminNeeded && savedUser) {
+      // Cookie may outlive tab sessionStorage — try refresh whenever past initial-admin.
+      if (!initialAdminNeeded) {
         try {
           const res = await authService.refresh();
           if (res.success) {
@@ -121,11 +121,16 @@ const App: React.FC = () => {
             ensureWsConnected();
             void getCompanySettings(true);
             void checkSetup();
-          } else {
+          } else if (savedUser) {
             throw new Error("Refresh failed");
           }
         } catch (e) {
-          await authService.logout({ forceClearLocal: true });
+          // No cookie / expired session: stay logged out without noisy logout when nothing was cached.
+          if (savedUser) {
+            await authService.logout({ forceClearLocal: true });
+          } else {
+            authService.clearLocalSession();
+          }
         }
       }
       setLoading(false);

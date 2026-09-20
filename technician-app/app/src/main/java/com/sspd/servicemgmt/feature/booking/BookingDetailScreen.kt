@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sspd.servicemgmt.core.network.BookingItemDTO
+import com.sspd.servicemgmt.core.network.BookingItemComponentDTO
 import com.sspd.servicemgmt.core.network.BookingItemPhotoDTO
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.network.displayNo
@@ -314,6 +315,23 @@ private fun BookingItemCard(
                 }
             }
             item.noticed?.takeIf { it.isNotBlank() }?.let { Text("Noticed: $it", fontSize = 12.sp, color = Warning) }
+            item.components?.takeIf { it.isNotEmpty() }?.let { components ->
+                Column(Modifier.fillMaxWidth().background(ScreenBg, RoundedCornerShape(8.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Hardware Components", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Primary)
+                    components.forEach { component ->
+                        val detail = listOfNotNull(component.brand, component.model, component.specification)
+                            .filter { it.isNotBlank() }.joinToString(" ")
+                        Text(
+                            component.componentType.replace('_', ' ') + ": " + detail.ifBlank { "—" }
+                                    + if (component.quantity > 1) " × ${component.quantity}" else ""
+                                    + (component.serialNo?.takeIf { it.isNotBlank() }?.let { " · S/N $it" } ?: "")
+                                    + (component.conditionNote?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                            fontSize = 11.sp,
+                            color = TextMain
+                        )
+                    }
+                }
+            }
             Text(item.problemDesc ?: complaintFallback ?: "ပြဿနာဖော်ပြချက်မရှိ", fontSize = 12.sp, color = TextMain)
             item.photos?.takeIf { it.isNotEmpty() }?.let { photos ->
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -353,8 +371,154 @@ private data class ReceiveItemDraft(
     var itemCondition: String = "",
     var noticed: String = "",
     var problemDesc: String = "",
-    var photos: List<BookingItemPhotoDTO> = emptyList()
+    var photos: List<BookingItemPhotoDTO> = emptyList(),
+    var components: List<BookingItemComponentDTO> = emptyList()
 )
+
+private const val MAX_BOOKING_ITEM_PHOTOS = 50
+
+@Composable
+private fun BookingItemPhotoEditor(
+    photos: List<BookingItemPhotoDTO>,
+    onPick: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
+) {
+    val occupiedSlots = photos.mapNotNull { photo -> photo.slot?.takeIf { it > 0 } }.distinct().sorted()
+    val nextSlot = (1..MAX_BOOKING_ITEM_PHOTOS).firstOrNull { it !in occupiedSlots }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Device Photos", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+            Text("${occupiedSlots.size} / $MAX_BOOKING_ITEM_PHOTOS", fontSize = 11.sp, color = TextMuted)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            occupiedSlots.forEach { slot ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    OutlinedButton(onClick = { onPick(slot) }) {
+                        Text("Photo $slot ✓", fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { onRemove(slot) }) {
+                        Text("Remove", fontSize = 10.sp, color = Danger)
+                    }
+                }
+            }
+            if (nextSlot != null) {
+                OutlinedButton(onClick = { onPick(nextSlot) }) {
+                    Icon(Icons.Outlined.AddAPhoto, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add photo", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun desktopComponents() = listOf("CPU", "MOTHERBOARD", "RAM", "STORAGE", "GPU", "PSU")
+    .map { BookingItemComponentDTO(componentType = it) }
+
+@Composable
+private fun IntakeComponentEditor(
+    components: List<BookingItemComponentDTO>,
+    onChange: (List<BookingItemComponentDTO>) -> Unit,
+) {
+    fun update(index: Int, value: BookingItemComponentDTO) {
+        onChange(components.toMutableList().also { it[index] = value })
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, BorderColor),
+        colors = CardDefaults.cardColors(containerColor = ScreenBg),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Hardware Components", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("CPU, RAM, Storage စသဖြင့် သီးခြားလက်ခံပါ", fontSize = 10.sp, color = TextMuted)
+                }
+                Row {
+                    TextButton(onClick = {
+                        val present = components.map { it.componentType }.toSet()
+                        onChange(components + desktopComponents().filterNot { it.componentType in present })
+                    }) { Text("Desktop Template", fontSize = 10.sp) }
+                    IconButton(onClick = { onChange(components + BookingItemComponentDTO()) }) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Add component")
+                    }
+                }
+            }
+            if (components.isEmpty()) {
+                Text("Component မထည့်ရသေးပါ", modifier = Modifier.fillMaxWidth().padding(12.dp), color = TextMuted, fontSize = 11.sp)
+            }
+            components.forEachIndexed { index, component ->
+                Card(colors = CardDefaults.cardColors(containerColor = CardBg), border = BorderStroke(1.dp, BorderColor)) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = component.componentType,
+                                onValueChange = { update(index, component.copy(componentType = it.uppercase().take(40))) },
+                                label = { Text("Component Type") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            IconButton(onClick = { onChange(components.filterIndexed { i, _ -> i != index }) }) {
+                                Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = Danger)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = component.brand.orEmpty(),
+                                onValueChange = { update(index, component.copy(brand = it)) },
+                                label = { Text("Brand") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                value = component.model.orEmpty(),
+                                onValueChange = { update(index, component.copy(model = it)) },
+                                label = { Text("Model") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                        }
+                        OutlinedTextField(
+                            value = component.specification.orEmpty(),
+                            onValueChange = { update(index, component.copy(specification = it)) },
+                            label = { Text("Specification — 8GB DDR4 3200MHz") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = component.serialNo.orEmpty(),
+                                onValueChange = { update(index, component.copy(serialNo = it)) },
+                                label = { Text("Serial No") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                value = component.quantity.toString(),
+                                onValueChange = { update(index, component.copy(quantity = it.toIntOrNull()?.coerceIn(1, 100) ?: 1)) },
+                                label = { Text("Qty") },
+                                modifier = Modifier.width(90.dp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            )
+                        }
+                        OutlinedTextField(
+                            value = component.conditionNote.orEmpty(),
+                            onValueChange = { update(index, component.copy(conditionNote = it)) },
+                            label = { Text("Condition / မှတ်ချက်") },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -378,6 +542,7 @@ private fun EditItemSheet(
                 noticed = item.noticed.orEmpty(),
                 problemDesc = item.problemDesc.orEmpty(),
                 photos = item.photos.orEmpty(),
+                components = item.components.orEmpty(),
             )
         )
     }
@@ -420,6 +585,10 @@ private fun EditItemSheet(
                 label = { Text("Device Type") },
                 modifier = Modifier.fillMaxWidth(),
             )
+            IntakeComponentEditor(
+                components = draft.components,
+                onChange = { draft = draft.copy(components = it) },
+            )
             OutlinedTextField(
                 draft.serialNo,
                 { draft = draft.copy(serialNo = it) },
@@ -458,28 +627,16 @@ private fun EditItemSheet(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
             )
-            Text("Device Photos", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(1, 2, 3).forEach { slot ->
-                    val existing = draft.photos.find { it.slot == slot }
-                    OutlinedButton(onClick = {
+            BookingItemPhotoEditor(
+                photos = draft.photos,
+                onPick = { slot ->
                         photoSlot = slot
                         galleryLauncher.launch("image/*")
-                    }) {
-                        Text(
-                            if (existing != null) "ပုံ $slot ✓" else "ပုံ $slot",
-                            fontSize = 11.sp,
-                        )
-                    }
-                    if (existing != null) {
-                        TextButton(onClick = {
-                            draft = draft.copy(photos = draft.photos.filterNot { it.slot == slot })
-                        }) {
-                            Text("ဖယ်", fontSize = 11.sp, color = Danger)
-                        }
-                    }
-                }
-            }
+                },
+                onRemove = { slot ->
+                    draft = draft.copy(photos = draft.photos.filterNot { it.slot == slot })
+                },
+            )
             Button(
                 onClick = {
                     onSubmit(
@@ -504,6 +661,7 @@ private fun EditItemSheet(
                                     thumbnailPath = photo.thumbnailPath,
                                 )
                             },
+                            components = draft.components,
                         )
                     )
                 },
@@ -606,6 +764,12 @@ private fun ReceiveItemsFormContent(
                         label = { Text("Device Type") },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    IntakeComponentEditor(
+                        components = draft.components,
+                        onChange = { value ->
+                            onItemsChange(items.toMutableList().also { it[index] = it[index].copy(components = value) })
+                        },
+                    )
                     OutlinedTextField(
                         draft.serialNo,
                         { v -> onItemsChange(items.toMutableList().also { it[index] = it[index].copy(serialNo = v) }) },
@@ -619,13 +783,15 @@ private fun ReceiveItemsFormContent(
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(1, 2, 3).forEach { slot ->
-                            OutlinedButton(onClick = { onPhotoClick(index, slot) }) {
-                                Text("ပုံ $slot", fontSize = 11.sp)
-                            }
-                        }
-                    }
+                    BookingItemPhotoEditor(
+                        photos = draft.photos,
+                        onPick = { slot -> onPhotoClick(index, slot) },
+                        onRemove = { slot ->
+                            onItemsChange(items.toMutableList().also {
+                                it[index] = it[index].copy(photos = it[index].photos.filterNot { photo -> photo.slot == slot })
+                            })
+                        },
+                    )
                 }
             }
         }
@@ -650,6 +816,7 @@ private fun ReceiveItemsFormContent(
                         noticed = d.noticed.trim().ifBlank { null },
                         problemDesc = d.problemDesc.trim().ifBlank { complaintNote },
                         photos = d.photos,
+                        components = d.components,
                     )
                 })
             },

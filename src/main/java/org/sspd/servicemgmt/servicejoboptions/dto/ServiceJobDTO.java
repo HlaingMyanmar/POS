@@ -1,6 +1,8 @@
 package org.sspd.servicemgmt.servicejoboptions.dto;
 
 import lombok.Data;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemComponentDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkType;
 import org.sspd.servicemgmt.servicejoboptions.model.ReworkResolutionMode;
 import org.sspd.servicemgmt.servicejoboptions.model.OldPartDisposition;
@@ -58,6 +60,10 @@ public class ServiceJobDTO {
     private Integer paymentMethodId;
     private String paymentMethodName;
     private Integer bookingId;
+    private Integer intakeBookingItemId;
+    private String intakeNoticed;
+    private List<BookingItemComponentDTO> intakeComponents;
+    private List<BookingItemPhotoDTO> intakePhotos;
     private String bookingNo;
     private LocalDateTime appointmentDate;
     private Integer saleId;

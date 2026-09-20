@@ -194,26 +194,40 @@ public class CustomerPortalService {
         if (req == null || blank(req.getProblem()) && blank(req.getServiceName())) {
             throw new IllegalArgumentException("ပြဿနာ သို့မဟုတ် ဝန်ဆောင်မှု ထည့်ပါ");
         }
-        StringBuilder note = new StringBuilder();
-        if (!blank(req.getServiceName())) note.append("Service: ").append(req.getServiceName().trim());
-        if (!blank(req.getDeviceName())) {
-            if (!note.isEmpty()) note.append('\n');
-            note.append("Device: ").append(req.getDeviceName().trim());
+        String requestType = choice(req.getRequestType(), "DIAGNOSIS",
+                Set.of("DIAGNOSIS", "REPAIR", "MAINTENANCE", "INSTALLATION", "CONSULTATION"));
+        String serviceMode = choice(req.getServiceMode(), "UNDECIDED",
+                Set.of("ONSITE", "SHOP", "UNDECIDED"));
+        String urgency = choice(req.getUrgency(), "NORMAL",
+                Set.of("NORMAL", "SOON", "EMERGENCY"));
+        String contactPreference = choice(req.getContactPreference(), "PHONE",
+                Set.of("PHONE", "VIBER", "CHAT"));
+        if ("ONSITE".equals(serviceMode) && blank(req.getServiceAddress())) {
+            throw new IllegalArgumentException("အိမ်အရောက်ဝန်ဆောင်မှုအတွက် လိပ်စာထည့်ပါ");
         }
-        if (!blank(req.getProblem())) {
-            if (!note.isEmpty()) note.append('\n');
-            note.append(req.getProblem().trim());
+        if (req.getAppointmentDate() != null
+                && req.getAppointmentDate().isBefore(LocalDateTime.now().minusMinutes(5))) {
+            throw new IllegalArgumentException("ချိန်းဆိုချိန်သည် လက်ရှိအချိန်နောက်ပိုင်း ဖြစ်ရပါမည်");
         }
         BookingDTO dto = new BookingDTO();
         dto.setCustomerId(me.getCustomerId());
         dto.setAppointmentDate(req.getAppointmentDate());
-        dto.setComplaintNote(note.toString());
+        dto.setComplaintNote(blank(req.getProblem()) ? null : req.getProblem().trim());
         dto.setRemark(blank(req.getRemark()) ? "CUSTOMER_APP" : req.getRemark().trim());
         dto.setSource("CUSTOMER_APP");
+        dto.setRequestedServiceName(clean(req.getServiceName(), 200));
+        dto.setRequestType(requestType);
+        dto.setDeviceCategory(clean(req.getDeviceCategory(), 80));
+        dto.setDeviceName(clean(req.getDeviceName(), 200));
+        dto.setRequestedServiceMode(serviceMode);
+        dto.setServiceAddress(clean(req.getServiceAddress(), 2000));
+        dto.setUrgency(urgency);
+        dto.setContactPreference(contactPreference);
+        dto.setRequestPhotos(req.getPhotos());
         BookingDTO created = bookingService.create(dto);
         accountRepository.findByCustomer_Id(me.getCustomerId()).ifPresent(account ->
                 activityService.record(account, "SERVICE_REQUESTED",
-                        created.getId() != null ? "Booking #" + created.getId() : note.toString()));
+                        created.getBookingNo() != null ? created.getBookingNo() : "Service booking requested"));
         return created;
     }
 
@@ -1607,6 +1621,23 @@ public class CustomerPortalService {
     }
 
     private record Actor(String name, String type) {}
+
+    private static String clean(String value, int maxLength) {
+        if (blank(value)) return null;
+        String cleaned = value.trim();
+        if (cleaned.length() > maxLength) {
+            throw new IllegalArgumentException("စာသားအရှည်က သတ်မှတ်ထားသည်ထက် ကျော်နေသည်");
+        }
+        return cleaned;
+    }
+
+    private static String choice(String value, String fallback, Set<String> allowed) {
+        String normalized = blank(value) ? fallback : value.trim().toUpperCase();
+        if (!allowed.contains(normalized)) {
+            throw new IllegalArgumentException("မမှန်ကန်သော ရွေးချယ်မှု: " + normalized);
+        }
+        return normalized;
+    }
 
     private static boolean blank(String v) {
         return v == null || v.isBlank();

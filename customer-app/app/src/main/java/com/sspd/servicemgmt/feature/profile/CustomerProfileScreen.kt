@@ -3,6 +3,7 @@ package com.sspd.servicemgmt.feature.profile
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,6 +85,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -193,65 +195,93 @@ fun CustomerProfileScreen(
         ) {
             Text(
                 text = "အကောင့်",
-                fontSize = 15.sp,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = TextMain
             )
             IconButton(
                 onClick = { editingProfile = true },
-                modifier = Modifier
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceSoft)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Settings,
                     contentDescription = "Settings",
                     tint = TextMain,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        // 2. User Name & "ပရိုဖိုင်ကြည့်ရန်" Subtitle
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { editingProfile = true }
-                .padding(vertical = 4.dp)
+        // 2. Compact Profile Card (Avatar + Customer Name + Phone/Email + Subtitle)
+        Surface(
+            onClick = { editingProfile = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = CardBg,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f)),
+            shadowElevation = 1.dp
         ) {
-            Text(
-                text = profile.name.orEmpty().ifBlank { "SSPD Customer" },
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextMain
-            )
-            Spacer(Modifier.height(3.dp))
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "ပရိုဖိုင်ကြည့်ရန် / ပြင်ဆင်ရန်",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                    fontWeight = FontWeight.Medium
-                )
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(PrimaryLight)
+                        .border(1.dp, Primary.copy(alpha = 0.25f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = profile.name.initials(),
+                        color = Primary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = profile.name.orEmpty().ifBlank { "SSPD Customer" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMain,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = profile.phone.orEmpty().ifBlank { profile.email.orEmpty().ifBlank { "မထည့်ရသေးပါ" } },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = "ပရိုဖိုင်ကြည့်ရန် / ပြင်ဆင်ရန် ➔",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                     contentDescription = null,
                     tint = TextMuted,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
 
         // 3. 2x2 Action Cards Grid (Orders, Wishlist, Payments, Addresses)
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ProfileGridCard(
                     icon = Icons.AutoMirrored.Outlined.ReceiptLong,
@@ -269,7 +299,7 @@ fun CustomerProfileScreen(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ProfileGridCard(
                     icon = Icons.Rounded.CreditCard,
@@ -1002,7 +1032,11 @@ private fun CustomerHistoryCard(
         bookings.take(2).forEach {
             add(HistoryPreviewItem(
                 title = it.bookingNo.orEmpty().ifBlank { "Service တောင်းချက်" },
-                detail = listOfNotNull(it.appointmentDate?.replace('T', ' ')?.take(10), it.status?.replace('_', ' ')).joinToString(" • "),
+                detail = listOfNotNull(
+                    it.appointmentDate?.replace('T', ' ')?.take(10),
+                    it.requestedServiceName,
+                    it.status?.replace('_', ' ')
+                ).joinToString(" • "),
                 amount = null,
                 kind = HistoryKind.BOOKING,
                 rawItem = it
@@ -1508,6 +1542,27 @@ private fun BookingDetailContent(booking: BookingSummary) {
             DetailInfoRow(label = "ချိန်းဆိုသည့် ရက်စွဲ", value = it.replace('T', ' ').take(16))
         }
         DetailInfoRow(label = "အခြေအနေ", value = booking.status?.replace('_', ' ') ?: "—")
+        if (!booking.requestedServiceName.isNullOrBlank()) {
+            DetailInfoRow(label = "ရွေးထားသော Service", value = booking.requestedServiceName)
+        }
+        if (!booking.requestType.isNullOrBlank()) {
+            DetailInfoRow(label = "တောင်းဆိုမှုအမျိုးအစား", value = booking.requestType.replace('_', ' '))
+        }
+        listOfNotNull(booking.deviceCategory, booking.deviceName).takeIf { it.isNotEmpty() }?.let {
+            DetailInfoRow(label = "ပစ္စည်း", value = it.joinToString(" · "))
+        }
+        if (!booking.requestedServiceMode.isNullOrBlank()) {
+            DetailInfoRow(label = "ဝန်ဆောင်မှုပုံစံ", value = booking.requestedServiceMode.replace('_', ' '))
+        }
+        if (!booking.urgency.isNullOrBlank()) {
+            DetailInfoRow(label = "ဦးစားပေးမှု", value = booking.urgency)
+        }
+        if (!booking.contactPreference.isNullOrBlank()) {
+            DetailInfoRow(label = "ဆက်သွယ်ရန်", value = booking.contactPreference)
+        }
+        if (!booking.serviceAddress.isNullOrBlank()) {
+            DetailInfoRow(label = "ဝန်ဆောင်မှုလိပ်စာ", value = booking.serviceAddress)
+        }
         if (!booking.complaintNote.isNullOrBlank()) {
             DetailInfoRow(label = "တောင်းဆိုချက် / ပြဿနာ", value = booking.complaintNote)
         }
@@ -1565,6 +1620,15 @@ private fun ProfileInfoRow(
             Text(label, style = MaterialTheme.typography.labelSmall, color = TextMuted)
             Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+private fun String?.initials(): String {
+    val words = this.orEmpty().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    return when {
+        words.isEmpty() -> "C"
+        words.size == 1 -> words.first().take(1).uppercase()
+        else -> "${words.first().first()}${words.last().first()}".uppercase()
     }
 }
 

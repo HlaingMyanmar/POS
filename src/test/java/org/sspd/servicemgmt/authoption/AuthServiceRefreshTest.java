@@ -46,6 +46,7 @@ class AuthServiceRefreshTest {
                 loginAttemptService,
                 auditLogService,
                 refreshTokenReuseHandler);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "singleSessionPerUser", true);
     }
 
     @Test

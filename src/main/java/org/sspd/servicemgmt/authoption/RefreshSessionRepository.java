@@ -35,4 +35,12 @@ public interface RefreshSessionRepository extends JpaRepository<RefreshSession, 
                and s.revokedAt is null
             """)
     int revokeAllActiveInFamily(@Param("familyId") String familyId, @Param("now") Instant now);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            delete from RefreshSession s
+             where s.expiresAt < :cutoff
+                or (s.revokedAt is not null and s.revokedAt < :cutoff)
+            """)
+    int deleteObsoleteBefore(@Param("cutoff") Instant cutoff);
 }

@@ -355,7 +355,19 @@ data class BookingItemDTO(
     val itemCondition: String? = null,
     val noticed: String? = null,
     val convertedJobId: Int? = null,
-    val photos: List<BookingItemPhotoDTO>? = null
+    val photos: List<BookingItemPhotoDTO>? = null,
+    val components: List<BookingItemComponentDTO>? = null
+)
+
+data class BookingItemComponentDTO(
+    val id: Int? = null,
+    val componentType: String = "OTHER",
+    val brand: String? = null,
+    val model: String? = null,
+    val specification: String? = null,
+    val serialNo: String? = null,
+    val quantity: Int = 1,
+    val conditionNote: String? = null
 )
 
 data class BookingItemPhotoDTO(
@@ -660,6 +672,10 @@ data class ServiceJobDTO(
     val refundDate: String? = null,
     val bookingId: Int? = null,
     val bookingNo: String? = null,
+    val intakeBookingItemId: Int? = null,
+    val intakeNoticed: String? = null,
+    val intakeComponents: List<BookingItemComponentDTO>? = null,
+    val intakePhotos: List<BookingItemPhotoDTO>? = null,
     val serialNo: String? = null,
     val color: String? = null,
     val shelfLocationId: Int? = null,

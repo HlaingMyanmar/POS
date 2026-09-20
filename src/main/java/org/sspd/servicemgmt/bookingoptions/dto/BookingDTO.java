@@ -22,9 +22,18 @@ public class BookingDTO {
     private BookingStatus status;
     private String remark;
     private String source;
+    private String requestedServiceName;
+    private String requestType;
+    private String deviceCategory;
+    private String deviceName;
+    private String requestedServiceMode;
+    private String serviceAddress;
+    private String urgency;
+    private String contactPreference;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<BookingItemDTO> items = new ArrayList<>();
+    private List<BookingRequestPhotoDTO> requestPhotos = new ArrayList<>();
     private List<ServiceJobDTO> linkedJobs = new ArrayList<>();
     private long unconvertedItemCount;
     private boolean fullyConverted;

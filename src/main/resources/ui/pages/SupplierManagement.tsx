@@ -14,6 +14,7 @@ import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { Download } from 'lucide-react';
+import { toCsv } from '../utils/csv';
 
 const SupplierManagement: React.FC = () => {
   const [suppliers, setSuppliers] = useState<SupplierDTO[]>([]);
@@ -139,10 +140,11 @@ const SupplierManagement: React.FC = () => {
 
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['Code', 'Name', 'Phone', 'Address', 'Current Balance'],
-      ...bulk.selectedRows.map((supplier) => [supplier.code, supplier.name, supplier.phone || '', supplier.address || '', String(supplier.currentBalance ?? 0)])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+      ...bulk.selectedRows.map((supplier) => [supplier.code, supplier.name, supplier.phone || '', supplier.address || '', supplier.currentBalance ?? 0])
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

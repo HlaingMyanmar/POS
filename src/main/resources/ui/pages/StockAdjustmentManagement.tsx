@@ -23,6 +23,7 @@ import { AdjustmentType, ProductDTO, ProductSerialDTO, StaffDTO, StockAdjustment
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { toCsv } from '../utils/csv';
 
 type TypeFilter = 'ALL' | AdjustmentType;
 
@@ -438,10 +439,11 @@ const StockAdjustmentManagement: React.FC = () => {
 
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['ID', 'Product', 'Type', 'Qty Before', 'Qty Change', 'Qty After', 'Staff', 'Date', 'Reason'],
       ...bulk.selectedRows.map((row) => [row.id, row.productName || row.productId, row.adjustmentType, row.qtyBefore ?? '', row.qtyChange, row.qtyAfter ?? '', row.staffName || row.staffId, row.createdAt || '', row.reason || ''])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

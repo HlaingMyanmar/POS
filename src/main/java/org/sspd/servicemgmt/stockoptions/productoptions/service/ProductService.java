@@ -146,7 +146,20 @@ public class ProductService {
         Product existingEntity = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with id " + id));
 
+        Integer stockQty = existingEntity.getStockQty();
+        Integer quarantinedQty = existingEntity.getQuarantinedQty();
+        Integer reservedQty = existingEntity.getCustomerReservedQty();
+        Boolean hasSerial = existingEntity.getHasSerial();
+        if (dto.getHasSerial() != null && hasSerial != null && !dto.getHasSerial().equals(hasSerial)) {
+            throw new IllegalArgumentException(
+                    "Serial tracking can only be changed through the stock serial assignment workflow");
+        }
+
         mapper.updateEntityFromDto(dto, existingEntity);
+        existingEntity.setStockQty(stockQty);
+        existingEntity.setQuarantinedQty(quarantinedQty);
+        existingEntity.setCustomerReservedQty(reservedQty);
+        existingEntity.setHasSerial(hasSerial);
         applyNotNullDefaults(existingEntity);
         if (dto.getReorderLevel() != null) {
             existingEntity.setReorderLevel(sanitizeReorderLevel(dto.getReorderLevel()));

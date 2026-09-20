@@ -18,7 +18,7 @@ import java.util.List;
 public class UnitService {
 
     private final SimpMessagingTemplate messagingTemplate;
-    private static final String UNIT_TOPIC = "/topic/brand";
+    private static final String UNIT_TOPIC = "/topic/unit";
     private final UnitMapper mapper;
     private final UnitRepository unitRepository;
 

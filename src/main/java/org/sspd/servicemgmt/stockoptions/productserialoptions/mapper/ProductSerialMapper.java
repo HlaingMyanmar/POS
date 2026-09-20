@@ -28,9 +28,14 @@ public interface ProductSerialMapper {
     @Mapping(target = "status", expression = "java(dto.getStatus() != null ? dto.getStatus() : org.sspd.servicemgmt.stockoptions.productserialoptions.enums.SerialStatus.Available)")
     ProductSerial toEntity(ProductSerialDTO dto);
 
-    // Update
+    // Update — identity, status, and warranty belong to workflow transitions only.
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "product", ignore = true)
+    @Mapping(target = "serialNumber", ignore = true)
+    @Mapping(target = "status", ignore = true)
+    @Mapping(target = "warrantyMonths", ignore = true)
+    @Mapping(target = "warrantyStartDate", ignore = true)
+    @Mapping(target = "warrantyEndDate", ignore = true)
     void updateEntityFromDto(ProductSerialDTO dto, @MappingTarget ProductSerial entity);
 
     @AfterMapping

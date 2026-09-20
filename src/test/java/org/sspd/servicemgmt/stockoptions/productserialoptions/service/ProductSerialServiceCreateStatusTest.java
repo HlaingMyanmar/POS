@@ -53,7 +53,8 @@ class ProductSerialServiceCreateStatusTest {
                 serials,
                 ProductSerialMapper.INSTANCE,
                 products,
-                warranties
+                warranties,
+                mock(SerialDocumentHistory.class)
         );
 
         ProductSerialDTO dto = new ProductSerialDTO();

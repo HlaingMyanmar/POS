@@ -30,6 +30,8 @@
 	<properties>
             <java.version>17</java.version>
             <skip.integration.tests>true</skip.integration.tests>
+            <node.version>v24.21.0</node.version>
+            <npm.version>11.19.0</npm.version>
 	</properties>
 	<dependencies>
 
@@ -251,8 +253,10 @@
 					<exclude>ui/node_modules/**</exclude>
 					<exclude>db/migration_archive/**</exclude>
 					<exclude>**/*.p12</exclude>
+					<exclude>**/*.pfx</exclude>
 					<exclude>**/*.pem</exclude>
 					<exclude>**/*.jks</exclude>
+					<exclude>**/*.keystore</exclude>
 					<exclude>application-secrets.properties</exclude>
 					<exclude>.env</exclude>
 				</excludes>
@@ -287,8 +291,10 @@
 				<configuration>
 					<packagingExcludes>
 						WEB-INF/classes/**/*.p12,
+						WEB-INF/classes/**/*.pfx,
 						WEB-INF/classes/**/*.pem,
 						WEB-INF/classes/**/*.jks,
+						WEB-INF/classes/**/*.keystore,
 						WEB-INF/classes/application-secrets.properties,
 						WEB-INF/classes/.env
 					</packagingExcludes>
@@ -346,14 +352,15 @@
 						<id>install-node-and-npm</id>
 						<goals><goal>install-node-and-npm</goal></goals>
 						<configuration>
-							<nodeVersion>v22.14.0</nodeVersion>
+							<nodeVersion>${node.version}</nodeVersion>
+							<npmVersion>${npm.version}</npmVersion>
 						</configuration>
 					</execution>
 					<execution>
-						<id>npm-install</id>
+						<id>npm-ci</id>
 						<goals><goal>npm</goal></goals>
 						<configuration>
-							<arguments>install</arguments>
+							<arguments>ci</arguments>
 						</configuration>
 					</execution>
 					<execution>

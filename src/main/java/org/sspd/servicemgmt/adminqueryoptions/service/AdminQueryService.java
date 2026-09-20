@@ -184,7 +184,7 @@ public class AdminQueryService {
 
     private void ensureEnabled() {
         if (!adminQueryProperties.isEnabled()) {
-            throw new IllegalStateException("SQL Console is disabled on this server.");
+            throw new AdminQueryDisabledException();
         }
     }
 }

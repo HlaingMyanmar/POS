@@ -1,0 +1,2 @@
+ALTER TABLE product_serials
+    ADD COLUMN version BIGINT NOT NULL DEFAULT 0;

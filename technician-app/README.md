@@ -34,8 +34,13 @@ KEY_PASSWORD=your-password
 ```
 
 `assembleRelease` fails if the keystore file or passwords are missing.
+CI may provide the same names as environment variables instead of writing
+`local.properties`; environment variables take precedence.
 
 Do not commit keystores, passwords, `local.properties`, or generated build directories.
+If a keystore ever used a password that appeared in source control, rotate its
+store and key passwords before the next release. Keep the existing signing key
+and certificate so installed apps can still receive updates.
 
 ## Release and in-app update
 

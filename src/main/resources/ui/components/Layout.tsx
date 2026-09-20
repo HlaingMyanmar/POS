@@ -59,6 +59,8 @@ import { useWebsocket } from '../hooks/useWebsocket';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsHelp from './KeyboardShortcutsHelp';
 import CustomerOrderNotification from './CustomerOrderNotification';
+import { preloadRoute } from '../routeModules';
+import { adminQueryService } from '../services/api';
 
 /* ── Tab Close Menu ─────────────────────────────────────────── */
 const TabCloseMenu: React.FC<{
@@ -175,6 +177,7 @@ const Layout: React.FC<LayoutProps> = ({
     { path: AppRoute.DASHBOARD, name: 'ခွဲခြမ်းစိတ်ဖြာ' }
   ]);
   const [company, setCompany] = useState<CompanySettings>(() => getCachedCompanySettings());
+  const [adminQueryEnabled, setAdminQueryEnabled] = useState(false);
 
   useKeyboardShortcuts(() => setShowShortcuts(true));
 
@@ -184,6 +187,21 @@ const Layout: React.FC<LayoutProps> = ({
     window.addEventListener('company-settings-updated', handler);
     return () => window.removeEventListener('company-settings-updated', handler);
   }, []);
+
+  useEffect(() => {
+    const canSeeAdminQuery = hasMenuAccess(
+      user,
+      ['CAN_ACCESS_ADMIN_QUERY_READ', 'CAN_ACCESS_ADMIN_QUERY_WRITE'],
+      'any'
+    );
+    if (!canSeeAdminQuery) {
+      setAdminQueryEnabled(false);
+      return;
+    }
+    void adminQueryService.status()
+      .then(response => setAdminQueryEnabled(response.data?.enabled === true))
+      .catch(() => setAdminQueryEnabled(false));
+  }, [user]);
 
   const menuItems = useMemo(
     () => [
@@ -289,10 +307,11 @@ const Layout: React.FC<LayoutProps> = ({
         description: groupDescriptions[group],
         items: menuItems
           .filter((item) => item.group === group)
+          .filter((item) => item.path !== AppRoute.ADMIN_QUERIES || adminQueryEnabled)
           .filter((item) => hasMenuAccess(user, item.permission, item.permissionMatch ?? 'all'))
       }))
       .filter((group) => group.items.length > 0);
-  }, [menuItems, user]);
+  }, [adminQueryEnabled, menuItems, user]);
 
   const activeGroupName = useMemo(() => {
     const activeItem = menuItems.find((item) => item.path === location.pathname);
@@ -477,6 +496,8 @@ const Layout: React.FC<LayoutProps> = ({
                         key={item.path}
                         to={item.path}
                         onClick={() => setSidebarOpen(false)}
+                        onPointerEnter={() => preloadRoute(item.path)}
+                        onFocus={() => preloadRoute(item.path)}
                         className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all ${
                           isActive
                             ? 'bg-indigo-50 text-indigo-600 font-semibold'
@@ -569,6 +590,8 @@ const Layout: React.FC<LayoutProps> = ({
                             key={item.path}
                             to={item.path}
                             onClick={() => setSidebarOpen(false)}
+                            onPointerEnter={() => preloadRoute(item.path)}
+                            onFocus={() => preloadRoute(item.path)}
                             className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all ${
                               isActive
                                 ? 'bg-indigo-50 text-indigo-600 font-semibold'

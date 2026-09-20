@@ -25,8 +25,10 @@ fun signingProp(name: String, default: String = ""): String {
 }
 
 fun releaseKeystoreFile(): File {
-    val raw = signingProp("KEYSTORE_PATH", "../sspd-release.keystore")
-        .replace('\\', '/')
+    val raw = signingProp("KEYSTORE_PATH").replace('\\', '/')
+    if (raw.isBlank()) {
+        return File(System.getProperty("user.home"), ".sspd/missing-release-keystore")
+    }
     val candidate = File(raw)
     val resolved = if (candidate.isAbsolute) candidate else rootProject.file(raw)
     if (resolved.isFile) return resolved

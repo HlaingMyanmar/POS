@@ -17,6 +17,7 @@ import { useBulkSelection } from '../hooks/useBulkSelection';
 import { buildPurchaseVoucherHtml } from './purchaseVoucherTemplate';
 import { getCachedCompanySettings } from '../utils/companySettings';
 import { getFromSession } from '../utils/storageHelper';
+import { toCsv } from '../utils/csv';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import Swal from 'sweetalert2';
@@ -1989,10 +1990,11 @@ const PurchaseManagement: React.FC = () => {
 
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['ID', 'Purchase Code', 'Date', 'Supplier', 'Staff', 'Total', 'Due'],
       ...bulk.selectedRows.map((purchase) => [purchase.id, purchase.purchaseCode || '', purchase.purchaseDate || '', purchase.supplierName || '', purchase.staffName || '', purchase.totalAmount || 0, purchase.dueAmount || 0])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

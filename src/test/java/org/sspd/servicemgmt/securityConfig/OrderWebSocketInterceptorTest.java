@@ -49,6 +49,13 @@ class OrderWebSocketInterceptorTest {
         assertDoesNotThrow(() -> subscribe("/topic/technician-location", "staff", "CAN_ACCESS_SALE_READ"));
     }
 
+    @Test void unitTopicUsesExistingStaffOnlyTopicPolicy() {
+        assertDoesNotThrow(() -> subscribe("/topic/unit", "staff", "CAN_ACCESS_UNIT_READ"));
+        assertThrows(AccessDeniedException.class,
+                () -> subscribe("/topic/unit", "customer:id:7", "ROLE_CUSTOMER"));
+        assertThrows(AccessDeniedException.class, () -> subscribe("/topic/unit", null, ""));
+    }
+
     @Test void clientsCannotForgeNotifications() {
         var h = StompHeaderAccessor.create(StompCommand.SEND);
         h.setDestination("/topic/customer-order");

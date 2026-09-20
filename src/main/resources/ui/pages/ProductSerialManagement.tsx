@@ -13,6 +13,9 @@ import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 
+const isAvailableSerial = (serial?: { status?: SerialStatus | string } | null) =>
+  String(serial?.status ?? '').toUpperCase() === 'AVAILABLE';
+
 const ProductSerialManagement: React.FC = () => {
   const [serials, setSerials] = useState<ProductSerialDTO[]>([]);
   const [products, setProducts] = useState<ProductDTO[]>([]);
@@ -196,7 +199,15 @@ const ProductSerialManagement: React.FC = () => {
       return;
     }
 
-    const payload = { ...formData, ...buildWarrantyPayload() };
+    const payload = {
+      ...formData,
+      ...buildWarrantyPayload(),
+      status: editingSerial ? editingSerial.status : SerialStatus.AVAILABLE,
+      productId: editingSerial ? editingSerial.productId : formData.productId,
+      serialNumber: editingSerial && !isAvailableSerial(editingSerial)
+        ? editingSerial.serialNumber
+        : formData.serialNumber,
+    };
 
     setSaving(true);
     try {
@@ -358,9 +369,11 @@ const ProductSerialManagement: React.FC = () => {
                       <button onClick={() => handleOpenModal(serial)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-xl shadow-sm transition-all">
                         <Edit2 size={12} />
                       </button>
-                      <button onClick={() => handleDelete(serial.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded-xl shadow-sm transition-all">
-                        <Trash2 size={12} />
-                      </button>
+                      {isAvailableSerial(serial) && (
+                        <button onClick={() => handleDelete(serial.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded-xl shadow-sm transition-all">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -472,9 +485,10 @@ const ProductSerialManagement: React.FC = () => {
                   <input
                     type="text" required
                     autoFocus
+                    disabled={!!editingSerial && !isAvailableSerial(editingSerial)}
                     value={formData.serialNumber}
                     onChange={(e) => setFormData(prev => ({...prev, serialNumber: e.target.value.toUpperCase()}))}
-                    className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
+                    className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                     placeholder="ဥပမာ SN-8829-XL"
                   />
                 </div>
@@ -486,12 +500,13 @@ const ProductSerialManagement: React.FC = () => {
                   <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={16} />
                   <select
                     required
+                    disabled={!!editingSerial}
                     value={formData.productId ?? ""}
                     onChange={(e) => {
                       const val = e.target.value ? Number(e.target.value) : undefined;
                       setFormData(prev => ({...prev, productId: val}));
                     }}
-                    className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none shadow-sm"
+                    className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                   >
                     <option value="" disabled>ယူလုံ့စုံစုံဆိုင်ရာ ထုတ်ကုန် ရွေးချယ်</option>
                     {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.productCode})</option>)}
@@ -500,25 +515,11 @@ const ProductSerialManagement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 text-left">လက်ရှိ အခြေအနေ</label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
-                  {Object.values(SerialStatus).map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => setFormData(prev => ({...prev, status}))}
-                      className={`py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
-                        formData.status === status
-                        ? 'bg-white text-indigo-600 border-indigo-100 shadow-sm'
-                        : 'text-slate-400 border-transparent hover:text-slate-600'
-                      }`}
-                    >
-                      {status.replace(/_/g, ' ')}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {editingSerial && (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-semibold text-slate-500">
+                  Status ကို Sale / Service / Return / Stock Adjustment ကနေသာ ပြောင်းနိုင်သည်။ ယခု: {String(editingSerial.status).replace(/_/g, ' ')}
+                </p>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အာမခံ ကာလ</label>
@@ -526,15 +527,17 @@ const ProductSerialManagement: React.FC = () => {
                   <input
                     type="number"
                     min={0}
+                    disabled={!!editingSerial && !isAvailableSerial(editingSerial)}
                     value={wValue}
                     onChange={e => setWValue(Math.max(0, Number(e.target.value) || 0))}
-                    className="flex-1 px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
+                    className="flex-1 px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                     placeholder="0"
                   />
                   <select
                     value={wUnit}
+                    disabled={!!editingSerial && !isAvailableSerial(editingSerial)}
                     onChange={e => setWUnit(e.target.value as 'ရက်' | 'လ' | 'နှစ်')}
-                    className="px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
+                    className="px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                   >
                     <option value="လ">လ</option>
                     <option value="ရက်">ရက်</option>
@@ -553,8 +556,9 @@ const ProductSerialManagement: React.FC = () => {
                 <input
                   type="date"
                   value={formData.warrantyStartDate ? String(formData.warrantyStartDate).slice(0, 10) : ''}
+                  disabled={!!editingSerial && !isAvailableSerial(editingSerial)}
                   onChange={(e) => setFormData(prev => ({ ...prev, warrantyStartDate: e.target.value || undefined }))}
-                  className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm"
+                  className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                 />
               </div>
 

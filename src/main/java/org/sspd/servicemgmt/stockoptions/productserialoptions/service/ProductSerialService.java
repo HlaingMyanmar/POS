@@ -5,17 +5,15 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.sspd.servicemgmt.categoryoptions.model.Category;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
-import org.sspd.servicemgmt.purchaseoptions.purchasedetails.model.PurchaseDetailWarranty;
 import org.sspd.servicemgmt.purchaseoptions.purchasedetails.repository.PurchaseDetailWarrantyRepository;
-import org.sspd.servicemgmt.stockoptions.productoptions.model.Product;
 import org.sspd.servicemgmt.stockoptions.productoptions.repository.ProductRepository;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.dto.ProductSerialDTO;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.mapper.ProductSerialMapper;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.model.ProductSerial;
 import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.ProductSerialRepository;
 import java.util.List;
+import java.util.Objects;
 import java.time.LocalDate;
 
 @Service
@@ -27,10 +25,12 @@ public class ProductSerialService {
     private final ProductSerialMapper mapper;
     private final ProductRepository productRepository;
     private final PurchaseDetailWarrantyRepository warrantyRepository;
+    private final SerialDocumentHistory documentHistory;
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_SERIAL_CREATE')")
     @Transactional
     public ProductSerialDTO save(ProductSerialDTO dto) {
+        SerialMasterPolicy.assertCreateStatus(dto.getStatus());
         if (productSerialRepository.existsBySerialNumber(dto.getSerialNumber())) {
             throw new RuntimeException(
                     "Product Serial '" + dto.getSerialNumber() + "' is already registered!"
@@ -94,19 +94,32 @@ public class ProductSerialService {
 
         ProductSerial existingEntity = productSerialRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product Serial Not Found with id " + id));
-        if (!existingEntity.getSerialNumber().equals(dto.getSerialNumber())
-                && productSerialRepository.existsBySerialNumber(dto.getSerialNumber())) {
+        boolean hasHistory = documentHistory.exists(existingEntity.getSerialNumber());
+        SerialMasterPolicy.assertStatusUnchanged(existingEntity.getStatus(), dto.getStatus());
+
+        boolean productChanged = dto.getProductId() != null
+                && (existingEntity.getProduct() == null
+                || !existingEntity.getProduct().getId().equals(dto.getProductId()));
+        boolean serialChanged = dto.getSerialNumber() != null
+                && !dto.getSerialNumber().isBlank()
+                && !existingEntity.getSerialNumber().equalsIgnoreCase(dto.getSerialNumber().trim());
+        if (productChanged || serialChanged) {
+            SerialMasterPolicy.assertCanChangeIdentity(existingEntity.getStatus(), hasHistory);
+        }
+        if (serialChanged && productSerialRepository.existsBySerialNumber(dto.getSerialNumber().trim())) {
             throw new RuntimeException("Product Serial '" + dto.getSerialNumber() + "' is already registered!");
         }
+        if (warrantyChanged(existingEntity, dto)) {
+            SerialMasterPolicy.assertCanChangeWarranty(existingEntity.getStatus(), hasHistory);
+        }
+
         mapper.updateEntityFromDto(dto, existingEntity);
         applyNotNullDefaults(existingEntity);
-        applyWarrantyFields(existingEntity, dto);
-        if (dto.getProductId() != null &&
-                (existingEntity.getProduct() == null || !existingEntity.getProduct().getId().equals(dto.getProductId()))) {
-            org.sspd.servicemgmt.stockoptions.productoptions.model.Product product = productRepository
-                    .findById(dto.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-            existingEntity.setProduct(product);
+        if (serialChanged) {
+            existingEntity.setSerialNumber(dto.getSerialNumber().trim());
+        }
+        if (warrantyChanged(existingEntity, dto)) {
+            applyWarrantyFields(existingEntity, dto);
         }
         ProductSerial savedEntity = productSerialRepository.save(existingEntity);
         messagingTemplate.convertAndSend(PRODUCT_SERIAL_TOPIC, "PRODUCT_SERIAL_UPDATED");
@@ -130,17 +143,17 @@ public class ProductSerialService {
     public void delete(Integer id){
         ProductSerial existingEntity = productSerialRepository.findById(id)
                 .orElseThrow(()->new ResourceNotFoundException("Product Serial Not Found with id " + id));
+        assertDeletable(existingEntity);
         productSerialRepository.delete(existingEntity);
         messagingTemplate.convertAndSend(PRODUCT_SERIAL_TOPIC,"PRODUCT_SERIAL_DELETE");
     }
     @PreAuthorize("hasAuthority('CAN_ACCESS_PRODUCT_SERIAL_DELETE')")
     @Transactional
     public void deleteBySerialNumber(String serialNumber) {
-        if (!productSerialRepository.existsBySerialNumber(serialNumber)) {
-            throw new ResourceNotFoundException("Product Serial Not Found with serial number: " + serialNumber);
-        }
-
-        productSerialRepository.deleteBySerialNumber(serialNumber);
+        ProductSerial existingEntity = productSerialRepository.findBySerialNumber(serialNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Product Serial Not Found with serial number: " + serialNumber));
+        assertDeletable(existingEntity);
+        productSerialRepository.delete(existingEntity);
         messagingTemplate.convertAndSend(PRODUCT_SERIAL_TOPIC, "PRODUCT_SERIAL_DELETE");
     }
 
@@ -153,6 +166,18 @@ public class ProductSerialService {
                 .stream()
                 .map(mapper::toDto)
                 .toList();
+    }
+
+    private void assertDeletable(ProductSerial existing) {
+        SerialMasterPolicy.assertCanHardDelete(
+                existing.getStatus(),
+                documentHistory.exists(existing.getSerialNumber()));
+    }
+
+    private static boolean warrantyChanged(ProductSerial existing, ProductSerialDTO dto) {
+        return (dto.getWarrantyMonths() != null && !Objects.equals(dto.getWarrantyMonths(), existing.getWarrantyMonths()))
+                || (dto.getWarrantyStartDate() != null && !Objects.equals(dto.getWarrantyStartDate(), existing.getWarrantyStartDate()))
+                || (dto.getWarrantyEndDate() != null && !Objects.equals(dto.getWarrantyEndDate(), existing.getWarrantyEndDate()));
     }
 
     private void applyNotNullDefaults(ProductSerial entity) {

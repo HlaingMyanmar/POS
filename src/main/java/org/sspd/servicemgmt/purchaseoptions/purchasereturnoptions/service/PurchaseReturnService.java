@@ -171,8 +171,7 @@ public class PurchaseReturnService {
                     if (isSerialAlreadyReturned(purchase.getId(), product.getId(), sn, null)) {
                         throw new RuntimeException("Serial number '" + sn + "' was already returned");
                     }
-                    ProductSerial serial = productSerialRepository.findBySerialNumber(sn)
-                            .orElseThrow(() -> new RuntimeException("Serial number '" + sn + "' not found in inventory"));
+                    ProductSerial serial = requireLockedSerial(sn, "Serial number '" + sn + "' not found in inventory");
                     if (!serial.getProduct().getId().equals(product.getId())) {
                         throw new RuntimeException("Serial number '" + sn + "' does not belong to product: " + product.getName());
                     }
@@ -302,8 +301,7 @@ public class PurchaseReturnService {
                 productRepository.save(product);
             } else {
                 for (String sn : serials) {
-                    ProductSerial serial = productSerialRepository.findBySerialNumber(sn)
-                            .orElseThrow(() -> new IllegalStateException("Serial not found: " + sn));
+                    ProductSerial serial = requireLockedSerial(sn, "Serial not found: " + sn);
                     if (serial.getStatus() != SerialStatus.Available)
                         throw new IllegalStateException("Serial is not available to quarantine: " + sn);
                     serial.setStatus(SerialStatus.Quarantined);
@@ -362,8 +360,7 @@ public class PurchaseReturnService {
                 productRepository.save(product);
             } else {
                 for (String sn : serials) {
-                    ProductSerial serial = productSerialRepository.findBySerialNumber(sn)
-                            .orElseThrow(() -> new IllegalStateException("Serial not found: " + sn));
+                    ProductSerial serial = requireLockedSerial(sn, "Serial not found: " + sn);
                     if (serial.getStatus() != SerialStatus.Quarantined)
                         throw new IllegalStateException("Serial is not quarantined: " + sn);
                     serial.setStatus(SerialStatus.Returned_To_Supplier);
@@ -540,7 +537,7 @@ public class PurchaseReturnService {
                     productRepository.save(product);
                 }
                 for (String sn : serials) {
-                    productSerialRepository.findBySerialNumber(sn).ifPresent(serial -> {
+                    productSerialRepository.findLockedBySerialNumber(sn).ifPresent(serial -> {
                         if (serial.getStatus() == SerialStatus.Quarantined) {
                             serial.setStatus(SerialStatus.Available);
                             productSerialRepository.save(serial);
@@ -552,7 +549,7 @@ public class PurchaseReturnService {
             }
             if (!serials.isEmpty()) {
                 for (String sn : serials) {
-                    var tracked = productSerialRepository.findBySerialNumber(sn);
+                    var tracked = productSerialRepository.findLockedBySerialNumber(sn);
                     if (tracked.isPresent()) {
                         if (tracked.get().getStatus() != SerialStatus.Returned_To_Supplier) {
                             throw new RuntimeException("Cannot void return. Serial is already active in inventory: " + sn);
@@ -850,6 +847,11 @@ public class PurchaseReturnService {
                 .filter(w -> w.getSerialNumber() != null && normalized.equals(w.getSerialNumber().trim().toUpperCase()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private ProductSerial requireLockedSerial(String serialNumber, String missingMessage) {
+        return productSerialRepository.findLockedBySerialNumber(serialNumber)
+                .orElseThrow(() -> new IllegalStateException(missingMessage));
     }
 
     private List<String> normalizeSerials(List<String> serials) {

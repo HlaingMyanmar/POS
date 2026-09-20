@@ -24,7 +24,7 @@ From the repo root:
 
 Windows: `mvnw.cmd -DskipTests package`.
 
-This runs `frontend-maven-plugin` (`install-node-and-npm` Node v22.14.0, `npm install`, `npm run build` in `src/main/resources/ui`). Vite writes to `src/main/resources/static`, then a post-build script copies that tree into `target/classes/static`. Artifact: `target/pos-0.0.1-SNAPSHOT.war` (`artifactId` `pos`, packaging `war`).
+This runs `frontend-maven-plugin` (`install-node-and-npm` Node v24.21.0 and npm 11.19.0, `npm ci`, `npm run build` in `src/main/resources/ui`). Vite writes to `src/main/resources/static`, then a post-build script copies that tree into `target/classes/static`. Artifact: `target/pos-0.0.1-SNAPSHOT.war` (`artifactId` `pos`, packaging `war`).
 
 `spring-boot-starter-tomcat` is a **compile** dependency (not `provided`). There is **no** `SpringBootServletInitializer`. Local/runtime assumption in this repo is **embedded Tomcat** via `spring-boot:run` or the Spring Boot plugin. Deploying the WAR into an **external** servlet container is **Needs Confirmation**.
 
@@ -58,8 +58,16 @@ Use profile `prod` and environment variables from `.env.example`. Copy that file
 | `SETUP_INITIAL_ADMIN_TOKEN` | Random 32+ character secret required by the one-time web admin setup |
 | `SCANNER_PAIRING_TOKEN` | Optional random 32+ character token for standalone `/scan` devices |
 | `BOOTSTRAP_ADMIN_*` | Preferred first-admin creation at process startup; disable and remove password afterward |
+| `ADMIN_QUERY_ENABLED=false` | Privileged SQL Console; explicit opt-in only, with RBAC still enforced |
 
 Flyway stays enabled; `spring.jpa.hibernate.ddl-auto=validate`; `spring.flyway.clean-disabled=true`. This does **not** drop or recreate the database.
+
+The SQL Console remains disabled in all profiles unless
+`ADMIN_QUERY_ENABLED=true` is deliberately set. Because it permits custom
+`SELECT`, `INSERT`, `UPDATE`, and `DELETE`, keep it false in normal operation.
+If temporarily enabled for diagnostics, grant only the required
+`CAN_ACCESS_ADMIN_QUERY_READ` / `CAN_ACCESS_ADMIN_QUERY_WRITE` permission,
+then set the flag back to false and restart the service.
 
 For a fresh deployment, prefer setting `BOOTSTRAP_ADMIN_ENABLED=true` with a
 one-time bootstrap password before the first start. After the administrator is
@@ -110,6 +118,11 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo certbot --nginx -d YOUR_DOMAIN
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+The sample config overwrites `X-Forwarded-For` with `$remote_addr` and
+clears `Forwarded`. Do not change that to `$proxy_add_x_forwarded_for`;
+the login rate limiter keys on the Spring remote address after forwarded
+headers are applied.
 
 Start command (manual, equivalent to the systemd unit):
 

@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "npm@11.19.0",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "npm": ">=11.0.0 <12"
+  },
   "scripts": {
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0 --port 3000",
@@ -11,6 +16,9 @@
     "preview": "vite preview",
     "preview:lan": "vite preview --host 0.0.0.0 --port 4173",
     "preview:standalone": "vite preview --outDir dist --port 4173 --host 0.0.0.0",
+    "test": "node --test",
+    "test:csv": "node --test utils/csv.test.mjs",
+    "test:websocket-topics": "node --test pages/managementWebSocketTopics.test.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,7 +38,7 @@
     "sweetalert2": "11.22.4"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
+    "@types/node": "^24.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "esbuild": "^0.28.0",
     "typescript": "~5.8.2",

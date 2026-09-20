@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -9,6 +10,17 @@ plugins {
 val localProps = Properties().also { props ->
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use(props::load)
+}
+
+fun signingProp(name: String, default: String = ""): String =
+    System.getenv(name)?.trim().takeUnless { it.isNullOrEmpty() }
+        ?: localProps.getProperty(name, default).trim()
+
+val releaseKeystorePath = signingProp("KEYSTORE_PATH")
+val releaseKeystore = if (releaseKeystorePath.isBlank()) {
+    File(System.getProperty("user.home"), ".sspd/missing-release-keystore")
+} else {
+    File(releaseKeystorePath).let { if (it.isAbsolute) it else rootProject.file(it.path) }
 }
 
 android {
@@ -31,10 +43,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile     = file(localProps.getProperty("KEYSTORE_PATH", "../sspd-release.keystore"))
-            storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
-            keyAlias      = localProps.getProperty("KEY_ALIAS", "sspd")
-            keyPassword   = localProps.getProperty("KEY_PASSWORD", "")
+            storeFile     = releaseKeystore
+            storePassword = signingProp("KEYSTORE_PASSWORD")
+            keyAlias      = signingProp("KEY_ALIAS", "sspd")
+            keyPassword   = signingProp("KEY_PASSWORD")
         }
     }
 

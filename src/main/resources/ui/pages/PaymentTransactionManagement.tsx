@@ -8,6 +8,7 @@ import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { getFromSession } from '../utils/storageHelper';
+import { toCsv } from '../utils/csv';
 
 const currentStaffId = () => {
   try {
@@ -135,7 +136,7 @@ const PaymentTransactionManagement: React.FC = () => {
     const activeSelected = selected.filter(isActivePayment);
     const exportIn = activeSelected.filter((t) => directionOf(t.referenceType) === 'IN').reduce((s, t) => s + (t.amount || 0), 0);
     const exportOut = activeSelected.filter((t) => directionOf(t.referenceType) === 'OUT').reduce((s, t) => s + (t.amount || 0), 0);
-    const csv = [
+    const csvRows = [
       ['ID', 'Date', 'Type', 'Reference', 'Entity', 'Method', 'Transaction No', 'Amount', 'Status'],
       ...selected.map((transaction) => [
         transaction.id,
@@ -151,7 +152,8 @@ const PaymentTransactionManagement: React.FC = () => {
       [],
       ['', '', '', '', '', '', 'Active Total IN', exportIn, ''],
       ['', '', '', '', '', '', 'Active Total OUT', exportOut, '']
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

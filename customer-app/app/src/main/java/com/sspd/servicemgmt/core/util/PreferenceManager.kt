@@ -2,14 +2,20 @@ package com.sspd.servicemgmt.core.util
 
 import android.content.Context
 import android.util.Base64
+import com.sspd.servicemgmt.core.security.KeystoreSessionStore
 import com.sspd.servicemgmt.feature.auth.CustomerAuthPolicy
 import java.io.File
 
 class PreferenceManager(context: Context) {
     private val app = context.applicationContext
     private val p = app.getSharedPreferences("sspd_customer", Context.MODE_PRIVATE)
+    private val secrets = KeystoreSessionStore(app, p)
     private val logoFile get() = File(app.filesDir, "company_logo.bin")
     private val logoMeta get() = File(app.filesDir, "company_logo.meta")
+
+    init {
+        secrets.migrateLegacy("auth_token")
+    }
 
     var serverUrl: String
         get() {
@@ -21,8 +27,8 @@ class PreferenceManager(context: Context) {
         set(v) { p.edit().putString("server_url", migrateLegacyServerUrl(v)).apply() }
 
     var authToken: String
-        get() = p.getString("auth_token", "") ?: ""
-        set(v) { p.edit().putString("auth_token", v).apply() }
+        get() = secrets.get("auth_token")
+        set(v) { secrets.put("auth_token", v) }
 
     var displayName: String
         get() = p.getString("display_name", "") ?: ""
@@ -168,6 +174,7 @@ class PreferenceManager(context: Context) {
         val hasLogo = companyHasLogo
         val logoUrl = companyLogoUrl
         val logoBytes = companyLogoBytes()
+        secrets.clear()
         p.edit().clear().apply()
         if (url.isNotBlank()) serverUrl = url
         if (name.isNotBlank()) companyName = name

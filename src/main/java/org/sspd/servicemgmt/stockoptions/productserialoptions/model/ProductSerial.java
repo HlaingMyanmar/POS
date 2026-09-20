@@ -19,6 +19,9 @@ public class ProductSerial {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Version
+    private Long version;
+
     @Column(name = "serial_number", length = 100, unique = true, nullable = false)
     private String serialNumber;
 

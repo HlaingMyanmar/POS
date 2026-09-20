@@ -14,6 +14,7 @@ import SplitPaymentEditor from '../components/SplitPaymentEditor';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { toCsv } from '../utils/csv';
 
 type DetailForm = SaleReturnDetailDTO & { productSearch: string; serialNumbers: string[]; restock: boolean; reasonId?: number };
 
@@ -572,10 +573,11 @@ const SaleReturnManagement: React.FC = () => {
   const bulk = useBulkSelection<SaleReturnDTO & { id: number }>(visibleReturnRows);
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['ID', 'Return Code', 'Date', 'Customer', 'Total', 'Refund'],
       ...bulk.selectedRows.map((row) => [row.id, row.returnCode || '', row.returnDate || '', row.customerName || '', row.totalReturnAmount || 0, row.refundAmount ?? row.totalReturnAmount ?? 0])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = `sale-returns-selected-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
     bulk.clear();

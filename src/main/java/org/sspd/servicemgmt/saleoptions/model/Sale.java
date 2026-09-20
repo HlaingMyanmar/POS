@@ -31,6 +31,9 @@ public class Sale {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Version
+    private Long version;
+
     @Column(name = "sale_code", nullable = false, unique = true, length = 50)
     private String saleCode;
 

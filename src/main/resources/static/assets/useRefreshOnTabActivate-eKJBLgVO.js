@@ -1,0 +1,1 @@
+import{b as c,r as e}from"./react-vendor-BRHkPwyY.js";const o=s=>{const t=c(),a=e.useRef(t.pathname),r=e.useRef(!1),n=e.useRef(s);n.current=s,e.useEffect(()=>{t.pathname!==a.current?r.current=!0:r.current&&(r.current=!1,n.current())},[t.pathname])};export{o as u};

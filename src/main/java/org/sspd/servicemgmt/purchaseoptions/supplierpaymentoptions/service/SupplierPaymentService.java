@@ -23,6 +23,7 @@ import org.sspd.servicemgmt.purchaseoptions.repository.PurchaseRepository;
 import org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.dto.*;
 import org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.model.*;
 import org.sspd.servicemgmt.purchaseoptions.supplierpaymentoptions.repository.SupplierPaymentRepository;
+import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
 import org.sspd.servicemgmt.supplieroptions.model.Supplier;
 import org.sspd.servicemgmt.supplieroptions.repository.SupplierRepository;
@@ -39,6 +40,7 @@ public class SupplierPaymentService {
     private final PurchaseRepository purchaseRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final UserRepository userRepository;
     private final StaffRepository staffRepository;
     private final PaymentBalanceValidator paymentBalanceValidator;
     private final CashDrawerService cashDrawerService;
@@ -57,8 +59,7 @@ public class SupplierPaymentService {
         PaymentMethod method = paymentMethodRepository.findById(request.getPaymentMethodId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment method not found"));
         if (method.getAccount() == null) throw new RuntimeException("Payment method must have a linked account.");
-        if (request.getStaffId() == null || !staffRepository.existsById(request.getStaffId()))
-            throw new RuntimeException("Valid staff is required for supplier payment journal.");
+        Integer staffId = requireAuthenticatedStaffId();
         paymentBalanceValidator.validateSufficientBalance(method, request.getAmount());
 
         List<AllocationWork> work = resolveAllocations(request, supplier);
@@ -103,7 +104,7 @@ public class SupplierPaymentService {
         payment = supplierPaymentRepository.save(payment);
 
         syncSupplierBalance(supplier);
-        postJournal(payment, request.getStaffId());
+        postJournal(payment, staffId);
         if (isCash(method))
             cashDrawerService.recordPurchaseCashOut(request.getAmount(), "Supplier payment " + payment.getPaymentNo(),
                     "Supplier_Payment", payment.getId());
@@ -112,7 +113,7 @@ public class SupplierPaymentService {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
     @Transactional
-    public SupplierPaymentDTO voidPayment(Integer id, String reason, Integer staffId) {
+    public SupplierPaymentDTO voidPayment(Integer id, String reason) {
         periodGuard.assertOpen(LocalDateTime.now(), "void supplier payment");
         SupplierPayment payment = supplierPaymentRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier payment not found"));
@@ -120,8 +121,6 @@ public class SupplierPaymentService {
             throw new IllegalStateException("Payment is already voided.");
         if (reason == null || reason.isBlank())
             throw new IllegalArgumentException("Void reason is required.");
-        if (staffId == null || !staffRepository.existsById(staffId))
-            throw new IllegalArgumentException("Valid staff is required.");
 
         Supplier supplier = supplierRepository.findByIdForUpdate(payment.getSupplier().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier not found"));
@@ -209,8 +208,7 @@ public class SupplierPaymentService {
         if (target.getSupplier() == null || !supplier.getId().equals(target.getSupplier().getId()))
             throw new RuntimeException("Target voucher belongs to another supplier.");
         requireConfirmedPurchase(target);
-        if (request.getStaffId() == null || !staffRepository.existsById(request.getStaffId()))
-            throw new RuntimeException("Valid staff is required.");
+        Integer staffId = requireAuthenticatedStaffId();
         BigDecimal amount = safe(request.getAmount());
         if (amount.compareTo(BigDecimal.ZERO) <= 0 || amount.compareTo(safe(target.getDueAmount())) > 0)
             throw new RuntimeException("Credit amount must be within target voucher due amount.");
@@ -257,7 +255,7 @@ public class SupplierPaymentService {
         if (advanceUsed.compareTo(BigDecimal.ZERO) > 0) {
             JournalEntryDTO entry = new JournalEntryDTO();
             entry.setReferenceNo(application.getApplicationNo()); entry.setEntryDate(application.getAppliedAt());
-            entry.setDescription("Apply supplier advance to " + target.getPurchaseCode()); entry.setStaffId(request.getStaffId());
+            entry.setDescription("Apply supplier advance to " + target.getPurchaseCode()); entry.setStaffId(staffId);
             entry.setDetails(List.of(line(accounts.payable().getId(), advanceUsed, BigDecimal.ZERO),
                     line(accounts.supplierAdvance().getId(), BigDecimal.ZERO, advanceUsed)));
             journalWriter.write(entry);
@@ -265,7 +263,7 @@ public class SupplierPaymentService {
         if (returnUsed.compareTo(BigDecimal.ZERO) > 0) {
             JournalEntryDTO entry = new JournalEntryDTO();
             entry.setReferenceNo(application.getApplicationNo() + "-RC"); entry.setEntryDate(application.getAppliedAt());
-            entry.setDescription("Apply supplier return credit to " + target.getPurchaseCode()); entry.setStaffId(request.getStaffId());
+            entry.setDescription("Apply supplier return credit to " + target.getPurchaseCode()); entry.setStaffId(staffId);
             // Clear AP on target against the supplier-credit asset created by the return journal.
             entry.setDetails(List.of(line(accounts.payable().getId(), returnUsed, BigDecimal.ZERO),
                     line(accounts.supplierAdvance().getId(), BigDecimal.ZERO, returnUsed)));
@@ -289,12 +287,10 @@ public class SupplierPaymentService {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_PAYMENT_TRANSACTION_CREATE')")
     @Transactional
-    public SupplierCreditApplicationDTO voidCreditApplication(Integer id, String reason, Integer staffId) {
+    public SupplierCreditApplicationDTO voidCreditApplication(Integer id, String reason) {
         periodGuard.assertOpen(LocalDateTime.now(), "void supplier credit application");
         if (reason == null || reason.isBlank())
             throw new IllegalArgumentException("Void reason is required.");
-        if (staffId == null || !staffRepository.existsById(staffId))
-            throw new IllegalArgumentException("Valid staff is required.");
 
         var snapshot = creditApplicationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Supplier credit application not found"));
@@ -557,6 +553,19 @@ public class SupplierPaymentService {
     private boolean isCash(PaymentMethod method) {
         String name = method.getMethodName() == null ? "" : method.getMethodName().toLowerCase();
         return name.contains("cash") || name.contains("ငွေသား");
+    }
+    private Integer requireAuthenticatedStaffId() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new IllegalArgumentException("Authenticated staff is required for supplier payment journal.");
+        }
+        Integer staffId = userRepository.findByUsernameOrEmail(auth.getName(), auth.getName())
+                .map(user -> user.getStaff() == null ? null : user.getStaff().getId())
+                .orElse(null);
+        if (staffId == null || !staffRepository.existsById(staffId)) {
+            throw new IllegalArgumentException("Authenticated user is not linked to a staff record.");
+        }
+        return staffId;
     }
     private String currentUsername() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();

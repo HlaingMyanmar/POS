@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
+import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.service.PaymentBalanceValidator;
@@ -78,6 +79,7 @@ public class SaleReturnService {
     private final CashDrawerService cashDrawerService;
     private final org.sspd.servicemgmt.saleoptions.salereturnreasonoptions.repository.SaleReturnReasonRepository reasonRepository;
     private final org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService customerPaymentService;
+    private final AccountingPeriodGuard periodGuard;
 
     private static final String SALE_RETURN_TOPIC = "/topic/sale-return";
 
@@ -90,6 +92,7 @@ public class SaleReturnService {
         if (dto.getSaleId() == null) {
             throw new RuntimeException("Sale reference is required for sale return");
         }
+        periodGuard.assertOpen(dto.getReturnDate(), "create sale return");
 
         Sale sale = saleRepository.findLockedWithDetails(dto.getSaleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found"));
@@ -286,6 +289,8 @@ public class SaleReturnService {
         if (Boolean.TRUE.equals(existing.getDeleted())) {
             throw new ResourceNotFoundException("Sale return not found with id: " + id);
         }
+        periodGuard.assertOpen(existing.getReturnDate(), "update sale return");
+        periodGuard.assertOpen(dto.getReturnDate() != null ? dto.getReturnDate() : existing.getReturnDate(), "update sale return");
         if (dto.getReturnDate() != null) {
             existing.setReturnDate(dto.getReturnDate());
         }
@@ -312,6 +317,8 @@ public class SaleReturnService {
         if (Boolean.TRUE.equals(existing.getDeleted()) || "VOIDED".equalsIgnoreCase(existing.getStatus())) {
             throw new IllegalStateException("Sale return is already voided");
         }
+        periodGuard.assertOpen(existing.getReturnDate(), "void sale return");
+        periodGuard.assertOpen(LocalDateTime.now(), "post sale return void reversal");
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("Void reason is required");
         }

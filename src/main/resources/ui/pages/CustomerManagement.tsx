@@ -33,6 +33,7 @@ import { CreditAlertDTO, CustomerCreditTermDTO, CustomerCreditTermHistoryDTO, Cu
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { toCsv } from '../utils/csv';
 
 type ModalTab = 'basic' | 'credit' | 'payments' | 'history';
 type StatusFilter = 'all' | 'normal' | 'hold' | 'blacklist' | 'hasDue' | 'overdue';
@@ -261,8 +262,9 @@ const CustomerManagement: React.FC = () => {
     const csv = [
       ['ID', 'Name', 'Phone', 'Address', 'Credit Hold', 'Blacklisted'],
       ...bulk.selectedRows.map((customer) => [customer.id, customer.name, customer.phone || '', customer.address || '', customer.creditHold ? 'Yes' : 'No', customer.blacklisted ? 'Yes' : 'No'])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    ];
+    const csvContent = toCsv(csv, { alwaysQuote: true });
+    const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = `customers-selected-${new Date().toISOString().slice(0, 10)}.csv`;

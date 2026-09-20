@@ -11,6 +11,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { adminQueryService } from '../services/api';
+import { toCsv as serializeCsv } from '../utils/csv';
 import { getFromSession } from '../utils/storageHelper';
 
 type AdminQueryDefinition = {
@@ -50,18 +51,11 @@ const fmtCell = (value: unknown) => {
   if (value == null) return '—';
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   if (value instanceof Date) return value.toLocaleString();
-  return String(value);
+  return value;
 };
 
-const toCsv = (columns: string[], rows: unknown[][]) => {
-  const escape = (v: unknown) => {
-    const s = fmtCell(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = [columns.map(escape).join(',')];
-  rows.forEach(row => lines.push(row.map(escape).join(',')));
-  return lines.join('\n');
-};
+const toCsv = (columns: string[], rows: unknown[][]) =>
+  serializeCsv([columns, ...rows.map((row) => row.map(fmtCell))]);
 
 const ResultsPanel: React.FC<{ result: AdminQueryResult | null; onExport?: () => void }> = ({ result, onExport }) => {
   if (!result) {
@@ -164,6 +158,7 @@ const AdminQueryPage: React.FC = () => {
 
   const canRead = hasPerm(sessionUser, 'CAN_ACCESS_ADMIN_QUERY_READ');
   const canWrite = hasPerm(sessionUser, 'CAN_ACCESS_ADMIN_QUERY_WRITE');
+  const [featureEnabled, setFeatureEnabled] = useState<boolean | null>(null);
 
   const [tab, setTab] = useState<'console' | 'catalog'>(canRead ? 'console' : 'catalog');
   const [sql, setSql] = useState('SELECT * FROM products LIMIT 20');
@@ -179,7 +174,7 @@ const AdminQueryPage: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>('');
 
   const loadQueries = useCallback(async () => {
-    if (!canRead) {
+    if (!canRead || featureEnabled !== true) {
       setQueries([]);
       setLoadingList(false);
       return;
@@ -195,9 +190,17 @@ const AdminQueryPage: React.FC = () => {
     } finally {
       setLoadingList(false);
     }
-  }, [canRead]);
+  }, [canRead, featureEnabled]);
 
-  useEffect(() => { void loadQueries(); }, [loadQueries]);
+  useEffect(() => {
+    void adminQueryService.status()
+      .then(response => setFeatureEnabled(response.data?.enabled === true))
+      .catch(() => setFeatureEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    if (featureEnabled === true) void loadQueries();
+  }, [featureEnabled, loadQueries]);
 
   const categories = useMemo(() => [...new Set(queries.map(q => q.category))], [queries]);
 
@@ -213,6 +216,7 @@ const AdminQueryPage: React.FC = () => {
   }, [queries, filter, activeCategory]);
 
   const runCustom = async () => {
+    if (featureEnabled !== true) return;
     const trimmed = sql.trim();
     if (!trimmed) {
       Swal.fire('SQL ထည့်ပါ', 'Query ရိုက်ထည့်ပြီး Run နှိပ်ပါ', 'warning');
@@ -253,6 +257,7 @@ const AdminQueryPage: React.FC = () => {
   };
 
   const runCatalogQuery = async (query: AdminQueryDefinition) => {
+    if (featureEnabled !== true) return;
     setRunningId(query.id);
     setCatalogResult(null);
     try {
@@ -276,6 +281,26 @@ const AdminQueryPage: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  if (featureEnabled === null) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+        SQL Console availability စစ်ဆေးနေသည်...
+      </div>
+    );
+  }
+
+  if (!featureEnabled) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center text-amber-900">
+        <ShieldCheck size={28} className="mx-auto mb-3" />
+        <h1 className="text-lg font-black">SQL Console disabled</h1>
+        <p className="mt-2 text-sm">
+          Server configuration မှာ explicit opt-in မလုပ်ထားသောကြောင့် query execution ပိတ်ထားသည်။
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-10">

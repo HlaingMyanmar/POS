@@ -6,6 +6,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
+import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.model.PaymentMethod;
 import org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.dto.PaymentTransactionDTO;
@@ -138,6 +139,7 @@ public class ServiceJobService {
     private final CompanySettingsRepository companySettingsRepository;
     private final CustomerNotifier customerNotifier;
     private final org.sspd.servicemgmt.customerportaloptions.service.CustomerFcmService customerFcmService;
+    private final AccountingPeriodGuard periodGuard;
 
     private static final Collection<AssignmentStatus> VISIBLE_ASSIGNMENT_STATUSES = EnumSet.of(
             AssignmentStatus.PENDING,
@@ -685,6 +687,7 @@ public class ServiceJobService {
     public ServiceJobDTO settle(Integer id, SettleDTO dto) {
         ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        periodGuard.assertOpen(LocalDateTime.now(), "settle service job");
 
         teamService.assertCanComplete(id);
         assertReadyForSettlement(job);
@@ -1221,6 +1224,10 @@ public class ServiceJobService {
             throw new IllegalArgumentException("Void reason is required");
         ServiceJob job = repo.findByIdForUpdate(id)
             .orElseThrow(() -> new ResourceNotFoundException("Service job not found: " + id));
+        periodGuard.assertOpen(
+                job.getCompletedDate() != null ? job.getCompletedDate() : LocalDateTime.now(),
+                "void service job settlement");
+        periodGuard.assertOpen(LocalDateTime.now(), "post service job settlement reversal");
         if (Boolean.TRUE.equals(job.getVoided()))
             throw new IllegalStateException("Settlement is already voided");
         if (job.getPaymentStatus() == null)

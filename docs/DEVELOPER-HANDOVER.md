@@ -11,7 +11,7 @@ Android (`android-app/`) and `mobile-app/` are adjacent clients, not required to
 ### Clone
 
 - [ ] Clone the git remote (**Needs Confirmation** of the canonical URL).
-- [ ] JDK 17, Maven (or `mvnw.cmd`), MySQL, Node 22+ if using Vite.
+- [ ] JDK 17, Maven (or `mvnw.cmd`), MySQL, Node 24.x and npm 11.x if using Vite.
 
 See [LOCAL-SETUP.md](LOCAL-SETUP.md).
 
@@ -31,7 +31,7 @@ See [DATABASE.md](DATABASE.md).
 
 ### Frontend run
 
-- [ ] `cd src/main/resources/ui && npm install && npm run dev` → `http://localhost:3000`.
+- [ ] `cd src/main/resources/ui && npm ci && npm run dev` → `http://localhost:3000`.
 - [ ] If the Vite proxy cannot reach the API, set `VITE_DEV_PROXY_TARGET=http://localhost:8080`.
 
 ### Authentication

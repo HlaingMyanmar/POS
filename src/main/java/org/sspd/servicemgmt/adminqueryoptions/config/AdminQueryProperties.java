@@ -4,8 +4,8 @@ import lombok.Data;
 
 @Data
 public class AdminQueryProperties {
-    /** Enable predefined admin query runner (READ-only, catalog-based). */
-    private boolean enabled = true;
+    /** Enable the admin SQL console, including custom read and write statements. */
+    private boolean enabled = false;
     private int maxRows = 500;
     private int timeoutSeconds = 30;
 }

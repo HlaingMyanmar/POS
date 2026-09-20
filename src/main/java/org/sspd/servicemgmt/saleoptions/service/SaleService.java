@@ -46,6 +46,7 @@ import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.model.Re
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.repository.PaymentTransactionRepository;
 import org.sspd.servicemgmt.accountingoptions.paymenttransactionoptions.support.PaymentTransactionNumbers;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.AccountResolver;
+import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.creditoptions.dto.CustomerPaymentDTO;
 import org.sspd.servicemgmt.creditoptions.model.AlertType;
 import org.sspd.servicemgmt.creditoptions.model.CreditOverrideLog;
@@ -99,6 +100,7 @@ public class SaleService {
     private final SimpMessagingTemplate messagingTemplate;
     private final CashDrawerService cashDrawerService;
     private final ObjectProvider<CustomerOrderPaymentService> customerOrderPayments;
+    private final AccountingPeriodGuard periodGuard;
 
     private static final BigDecimal CASHIER_DISCOUNT_PERCENT = new BigDecimal("5");
     private static final BigDecimal MANAGER_DISCOUNT_PERCENT = new BigDecimal("20");
@@ -108,6 +110,8 @@ public class SaleService {
     public SaleDTO payDue(Integer saleId, SalePaymentDTO dto) {
         Sale sale = saleRepository.findLockedWithDetails(saleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + saleId));
+        periodGuard.assertOpen(sale.getSaleDate(), "record sale payment");
+        periodGuard.assertOpen(LocalDateTime.now(), "record sale payment");
         if (Boolean.TRUE.equals(sale.getVoided())) {
             throw new RuntimeException("Cannot record payment for a voided sale.");
         }
@@ -156,6 +160,7 @@ public class SaleService {
         if (dto.getCustomerId() == null) {
             throw new RuntimeException("Customer is required");
         }
+        periodGuard.assertOpen(dto.getSaleDate(), "create sale");
         Customer customer = customerRepository.findById(dto.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
         Staff staff = dto.getStaffId() != null
@@ -302,8 +307,10 @@ public class SaleService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_SALE_UPDATE')")
     @Transactional
     public SaleDTO update(Integer id, SaleDTO dto) {
-        Sale existing = saleRepository.findById(id)
+        Sale existing = saleRepository.findLockedWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + id));
+        periodGuard.assertOpen(existing.getSaleDate(), "update sale");
+        periodGuard.assertOpen(dto.getSaleDate() != null ? dto.getSaleDate() : existing.getSaleDate(), "update sale");
 
         if (dto.getCustomerId() != null) {
             Customer customer = customerRepository.findById(dto.getCustomerId())
@@ -329,7 +336,10 @@ public class SaleService {
         BigDecimal tax = dto.getTaxAmount() != null ? dto.getTaxAmount() : existing.getTaxAmount();
         if (tax != null && tax.signum() < 0) throw new RuntimeException("Tax amount cannot be negative");
         existing.setTaxAmount(tax != null ? tax : BigDecimal.ZERO);
-        BigDecimal paid = dto.getPaidAmount() != null ? dto.getPaidAmount() : existing.getPaidAmount();
+        BigDecimal recordedPaid = existing.getPaidAmount() != null ? existing.getPaidAmount() : BigDecimal.ZERO;
+        if (dto.getPaidAmount() != null && dto.getPaidAmount().compareTo(recordedPaid) != 0) {
+            throw new IllegalStateException("Sale payment can only change through the due-payment workflow");
+        }
         LocalDate dueDate = dto.getDueDate() != null ? dto.getDueDate() : existing.getDueDate();
 
         BigDecimal totalPreview = calculateTotal(details);
@@ -338,8 +348,11 @@ public class SaleService {
                 .add(existing.getTaxAmount() != null ? existing.getTaxAmount() : BigDecimal.ZERO)
                 .add(existing.getDeliveryCharge() != null ? existing.getDeliveryCharge() : BigDecimal.ZERO);
         if (netPreview.compareTo(BigDecimal.ZERO) < 0) netPreview = BigDecimal.ZERO;
-        BigDecimal paidPreview = paid != null ? paid : BigDecimal.ZERO;
-        if (paidPreview.compareTo(netPreview) > 0) paidPreview = netPreview;
+        if (recordedPaid.compareTo(netPreview) > 0) {
+            throw new IllegalStateException(
+                    "Recorded payments exceed the updated sale total. Adjust discount/tax or use the payment workflow.");
+        }
+        BigDecimal paidPreview = recordedPaid;
         BigDecimal duePreview = netPreview.subtract(paidPreview);
 
         if (duePreview.compareTo(BigDecimal.ZERO) > 0 && dueDate == null) {
@@ -388,6 +401,8 @@ public class SaleService {
     public SaleDTO voidSale(Integer id, String reason) {
         Sale existing = saleRepository.findLockedWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sale not found with id: " + id));
+        periodGuard.assertOpen(existing.getSaleDate(), "void sale");
+        periodGuard.assertOpen(LocalDateTime.now(), "post sale void reversal");
         if (Boolean.TRUE.equals(existing.getVoided())) {
             throw new RuntimeException("Sale is already voided");
         }

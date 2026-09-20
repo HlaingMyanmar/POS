@@ -36,6 +36,7 @@ import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { productSerialService } from '../services/productserialapiservice';
 import { creditTermService } from '../services/credittermapiservice';
 import { customerPaymentService } from '../services/customerpaymentapiservice';
+import { toCsv } from '../utils/csv';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import SplitPaymentEditor from '../components/SplitPaymentEditor';
@@ -905,10 +906,11 @@ const SaleManagement: React.FC = () => {
 
   const handleBulkAction = (action: { key: string }) => {
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['ID', 'Sale Code', 'Date', 'Customer', 'Staff', 'Net Amount', 'Paid', 'Due'],
       ...bulk.selectedRows.map((sale) => [sale.id, sale.saleCode || '', sale.saleDate || '', sale.customerName || '', sale.staffName || '', sale.netAmount || 0, sale.paidAmount || 0, sale.dueAmount || 0])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

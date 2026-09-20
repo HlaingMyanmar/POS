@@ -8,10 +8,13 @@ import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.adminqueryoptions.dto.AdminQueryDefinitionDTO;
 import org.sspd.servicemgmt.adminqueryoptions.dto.AdminQueryExecuteRequest;
 import org.sspd.servicemgmt.adminqueryoptions.dto.AdminQueryResultDTO;
+import org.sspd.servicemgmt.adminqueryoptions.config.AdminQueryProperties;
+import org.sspd.servicemgmt.adminqueryoptions.service.AdminQueryDisabledException;
 import org.sspd.servicemgmt.adminqueryoptions.service.AdminQueryService;
 import org.sspd.servicemgmt.api.ApiResponse;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/admin-queries")
@@ -20,6 +23,15 @@ import java.util.List;
 public class AdminQueryController {
 
     private final AdminQueryService adminQueryService;
+    private final AdminQueryProperties adminQueryProperties;
+
+    @GetMapping("/status")
+    public ResponseEntity<ApiResponse<Map<String, Boolean>>> status() {
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Admin query feature status",
+                Map.of("enabled", adminQueryProperties.isEnabled())));
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority('CAN_ACCESS_ADMIN_QUERY_READ')")
@@ -49,13 +61,19 @@ public class AdminQueryController {
         } catch (org.springframework.security.access.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(new ApiResponse<>(false, e.getMessage(), null));
-        } catch (IllegalStateException e) {
+        } catch (AdminQueryDisabledException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(new ApiResponse<>(false, e.getMessage(), null));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ApiResponse<>(false, e.getMessage(), null));
         }
+    }
+
+    @ExceptionHandler(AdminQueryDisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> disabled(AdminQueryDisabledException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiResponse<>(false, e.getMessage(), null));
     }
 
     @FunctionalInterface

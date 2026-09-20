@@ -21,6 +21,7 @@ import { productService } from '../services/productapiservice';
 import { staffService } from '../services/staffapiservice';
 import { stockLotApiService } from '../services/stocklotapiservice';
 import { ProductDTO, StaffDTO } from '../types';
+import { toCsv } from '../utils/csv';
 
 interface StockRow {
   productId: number;
@@ -246,11 +247,8 @@ const OpeningStockPage: React.FC = () => {
   const exportCountSheet = () => {
     const header = ['Product Code', 'Product Name', 'Category', 'Brand', 'Unit', 'Current Stock', 'Cost Price', 'Counted Qty', 'Note'];
     const csvRows = [header, ...filteredRows.map((row) => [row.productCode, row.productName, row.category, row.brand, row.unit, row.currentStock, row.costPrice, row.openingQty, row.hasSerial ? 'Serial product' : !hasCost(row) ? 'Cost price required' : ''])];
-    const csv = csvRows.map((line) => line.map((value) => {
-      const cell = String(value ?? '');
-      return /[",\n]/.test(cell) ? '"' + cell.replace(/"/g, '""') + '"' : cell;
-    }).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const csv = toCsv(csvRows, { bom: true });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

@@ -9,6 +9,7 @@ local.properties
 .externalNativeBuild
 .cxx
 app/build/
+app/release/
 
 # Signing keystores — never commit to git
 *.keystore

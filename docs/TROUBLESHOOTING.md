@@ -129,7 +129,7 @@ STOMP endpoints are `permitAll`. Topics include `/topic/data-events`, `/topic/sa
 
 ## Maven frontend plugin fails
 
-`generate-resources` downloads Node **v22.14.0** into `target/` and runs `npm install` / `npm run build`. Network blocks or npm registry issues fail the whole `spring-boot:run` / `package`.
+`generate-resources` downloads Node **v24.21.0** and npm **11.19.0** into `target/` and runs `npm ci` / `npm run build`. Network blocks, npm registry issues, or a package/lockfile mismatch fail the whole `spring-boot:run` / `package`.
 
 There is **no** Maven profile in `pom.xml` to skip the plugin (**Needs Confirmation** of a local workaround).
 

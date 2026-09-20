@@ -9,5 +9,6 @@
     <exclude domain="sharedpref" path="." />
     <!-- Exclude all databases -->
     <exclude domain="database" path="." />
-<exclude domain="external" path="." />
+    <exclude domain="file" path="datastore/" />
+    <exclude domain="external" path="." />
 </full-backup-content>

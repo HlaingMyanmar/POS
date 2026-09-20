@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts.RequestPermissi
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -29,13 +30,41 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.atomic.AtomicBoolean
 
-@OptIn(ExperimentalGetImage::class)
+@ExperimentalGetImage
+private class BarcodeFrameAnalyzer(
+    private val barcodeScanner: BarcodeScanner,
+    private val scanned: AtomicBoolean,
+    private val onResult: (String) -> Unit
+) : ImageAnalysis.Analyzer {
+    @ExperimentalGetImage
+    override fun analyze(proxy: ImageProxy) {
+        val mediaImage = proxy.image
+        if (mediaImage != null && !scanned.get()) {
+            val inputImage = InputImage.fromMediaImage(
+                mediaImage, proxy.imageInfo.rotationDegrees
+            )
+            barcodeScanner.process(inputImage)
+                .addOnSuccessListener { barcodes ->
+                    barcodes.firstOrNull()?.rawValue?.let { value ->
+                        if (scanned.compareAndSet(false, true)) {
+                            onResult(value)
+                        }
+                    }
+                }
+                .addOnCompleteListener { proxy.close() }
+        } else {
+            proxy.close()
+        }
+    }
+}
+
 @Composable
 fun BarcodeScannerView(
     onResult: (String) -> Unit,
@@ -76,25 +105,10 @@ fun BarcodeScannerView(
                             val analysis = ImageAnalysis.Builder()
                                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                 .build()
-                            analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
-                                val mediaImage = proxy.image
-                                if (mediaImage != null && !scanned.get()) {
-                                    val inputImage = InputImage.fromMediaImage(
-                                        mediaImage, proxy.imageInfo.rotationDegrees
-                                    )
-                                    barcodeScanner.process(inputImage)
-                                        .addOnSuccessListener { barcodes ->
-                                            barcodes.firstOrNull()?.rawValue?.let { value ->
-                                                if (scanned.compareAndSet(false, true)) {
-                                                    onResult(value)
-                                                }
-                                            }
-                                        }
-                                        .addOnCompleteListener { proxy.close() }
-                                } else {
-                                    proxy.close()
-                                }
-                            }
+                            analysis.setAnalyzer(
+                                ContextCompat.getMainExecutor(ctx),
+                                BarcodeFrameAnalyzer(barcodeScanner, scanned, onResult)
+                            )
                             try {
                                 provider.unbindAll()
                                 provider.bindToLifecycle(

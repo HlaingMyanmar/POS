@@ -1,0 +1,1 @@
+import{f as r}from"./index-Chzd5G92.js";const a={getAll(){return r.get("/v1/voucher-settings").then(t=>t.data)},getByType(t){return r.get(`/v1/voucher-settings/${t}`).then(e=>e.data)},save(t,e){return r.put(`/v1/voucher-settings/${t}`,e).then(s=>s.data)},reset(t){return r.post(`/v1/voucher-settings/${t}/reset`).then(e=>e.data)}};export{a as v};

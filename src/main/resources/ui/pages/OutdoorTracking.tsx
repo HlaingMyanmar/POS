@@ -9,6 +9,7 @@ import {
   VisitEventDTO,
   technicianVisitService
 } from '../services/technicianVisitService';
+import { toCsv } from '../utils/csv';
 
 declare global {
   interface Window {
@@ -145,7 +146,6 @@ const downloadText = (content: string, type: string, fileName: string) => {
   URL.revokeObjectURL(url);
 };
 
-const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 const xmlEscape = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -579,9 +579,11 @@ const OutdoorTracking: React.FC = () => {
       row.stopCount, row.stopMinutes, row.stopReasons?.join(' | '),
       row.gpsPointCount, row.maxGpsGapMinutes, row.gpsException
     ]);
-    const csv = '\uFEFF' + [headers, ...rows]
-      .map((row) => row.map(csvCell).join(','))
-      .join('\r\n');
+    const csv = toCsv([headers, ...rows], {
+      alwaysQuote: true,
+      bom: true,
+      lineEnding: '\r\n'
+    });
     downloadText(
       csv,
       'text/csv;charset=utf-8',

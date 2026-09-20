@@ -27,6 +27,13 @@ Authorities from `CustomUserDetailsService`:
 
 Web UI: `canAccess` also bypasses checks when `user.roles` contains `ADMINISTRATOR` or `ROLE_ADMINISTRATOR`. Role **ADMIN** does **not** get this bypass and is seeded **without** permissions.
 
+The SQL Console is additionally protected by the `ADMIN_QUERY_ENABLED` feature
+flag. It defaults to `false` in every profile, including `dev` and `prod`.
+Enabling it requires an explicit `ADMIN_QUERY_ENABLED=true`; read/write
+permissions are still checked independently in the controller and service.
+When disabled, catalog and custom read/write execution are rejected server-side
+with HTTP 403, and the web navigation hides the feature.
+
 Android drawer is **not** permission-filtered (technician vs full app). Mutations use `prefs.hasPermission`.
 
 `hasRole('ADMINISTRATOR')` is used for assigning/removing permissions (maps to `ROLE_ADMINISTRATOR`).
@@ -72,11 +79,24 @@ Production: Nginx terminates TLS on 443; Spring Boot uses HTTP on `127.0.0.1:808
 
 Local optional JVM SSL: `SSL_ENABLED=true` and `SSL_KEYSTORE=file:keystore.p12` (gitignored, excluded from the WAR).
 
+Two historical private-key containers require coordinated rotation and history
+purging. Follow [KEYSTORE-INCIDENT-RUNBOOK.md](KEYSTORE-INCIDENT-RUNBOOK.md);
+do not rewrite shared history until the repository owner approves the outage,
+force-push, and collaborator recovery plan.
+
 ## File / data sensitivity
 
 - APK upload directory `app.apk.storage-dir`; served as `/app/**` (`WebMvcConfig`).
 - Booking/job/return images stored as LONGTEXT data URLs in DB.
 - Backup restore pipes SQL into `mysql` using datasource username/password.
+- Android access/refresh tokens are AES-256-GCM encrypted with a non-exportable,
+  per-app Android Keystore key. Existing plaintext preference values migrate on
+  first access and are removed only after the encrypted value is committed.
+- The technician app PIN is stored only as salted PBKDF2-HMAC-SHA256
+  (210,000 iterations). Five failed PIN attempts cause a persistent five-minute
+  lockout; biometric/device-credential unlock remains available.
+- Android backup and device-transfer rules exclude SharedPreferences, databases,
+  external storage, and Preferences DataStore security state.
 
 ## Protected vs JWT-only
 
@@ -89,6 +109,13 @@ configured `X-Scanner-Token`.
 ## Logging
 
 No `logback.xml` in repo. Default Spring Boot logging. `GlobalExceptionHandler` logs unexpected 500s at error and business `RuntimeException` at warn. Backup/print/seeders use SLF4J.
+
+## CSV exports
+
+Web CSV exports use the shared `ui/utils/csv.js` serializer. It escapes CSV
+syntax and prefixes untrusted string cells whose first effective character is
+`=`, `+`, `-`, or `@`, including leading whitespace/control-character
+bypasses. Typed numeric values are not modified.
 
 ## Public endpoint rate limits
 
@@ -106,6 +133,11 @@ Rejected requests return HTTP `429` with `Retry-After`. The cache is capped at
 50,000 client/endpoint buckets and expires idle entries. For a multi-instance
 deployment, add a shared Redis or edge-proxy limiter because this application
 limiter is intentionally process-local.
+
+Production Nginx must overwrite `X-Forwarded-For` with `$remote_addr` and
+clear `Forwarded`. Do not use `$proxy_add_x_forwarded_for`: Spring
+`forward-headers-strategy=framework` would then treat a client-supplied IP as
+`request.getRemoteAddr()` and the login rate-limit key.
 
 ## Security findings (do not “fix” in this docs pass)
 

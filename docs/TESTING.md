@@ -48,6 +48,16 @@ These ITs do **not** replace a full UI E2E. For browser/device:
 
 Server must be listening (default `:8080`) before browser automation.
 
+## Web CSV unit tests
+
+Run the focused serializer tests and TypeScript check from
+`src/main/resources/ui`:
+
+```powershell
+npm run test:csv
+npm run lint
+```
+
 ## Android JVM unit tests
 
 Run both app suites without an emulator:
@@ -63,7 +73,9 @@ Pop-Location
 ```
 
 The technician suite covers authorization normalization, refresh retry/loop
-prevention, inactivity lock/logout thresholds, and location heartbeat policy.
+prevention, inactivity lock/logout thresholds, location heartbeat policy,
+AES-GCM envelope integrity, salted PIN hashing, and PIN lockout policy.
 The customer suite covers startup authentication/biometric decisions, idle
 logout, unauthorized-response handling, cart serialization recovery, and
-deposit/remainder payment calculations.
+deposit/remainder payment calculations. It also verifies its AES-GCM session
+envelope round trip and tamper rejection.

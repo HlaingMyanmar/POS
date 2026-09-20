@@ -39,6 +39,10 @@ fun TechnicianAppRoot() {
     val scope = rememberCoroutineScope()
     var sessionGeneration by remember { mutableIntStateOf(0) }
 
+    LaunchedEffect(settings) {
+        runCatching { settings.migrateLegacyPinIfNeeded() }
+    }
+
     DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {

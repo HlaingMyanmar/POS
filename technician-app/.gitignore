@@ -9,11 +9,15 @@ local.properties
 .externalNativeBuild
 .cxx
 app/build/
+app/release/
 technician/build/
 
 # Signing keystores — never commit to git
 *.keystore
 *.jks
+*.p12
+*.pfx
+/app/keystore
 
 # Firebase client config — never commit
 google-services.json

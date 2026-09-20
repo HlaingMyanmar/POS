@@ -1,11 +1,18 @@
 package com.sspd.servicemgmt.core.util
 
 import android.content.Context
+import com.sspd.servicemgmt.core.security.KeystoreSessionStore
 import com.sspd.servicemgmt.core.security.TechnicianAuthorization
 
 class PreferenceManager(context: Context) {
     private val p = context.getSharedPreferences("sspd_prefs", Context.MODE_PRIVATE)
     private val rememberPrefs = context.getSharedPreferences("sspd_login_remember", Context.MODE_PRIVATE)
+    private val secrets = KeystoreSessionStore(context, p)
+
+    init {
+        secrets.migrateLegacy("auth_token")
+        secrets.migrateLegacy("refresh_token")
+    }
 
     var rememberedUsername: String
         get() = rememberPrefs.getString("username", "") ?: ""
@@ -16,8 +23,8 @@ class PreferenceManager(context: Context) {
         set(v) { p.edit().putString("server_url", v).apply() }
 
     var authToken: String
-        get() = p.getString("auth_token", "") ?: ""
-        set(v) { p.edit().putString("auth_token", v).apply() }
+        get() = secrets.get("auth_token")
+        set(v) { secrets.put("auth_token", v) }
 
     var username: String
         get() = p.getString("username", "") ?: ""
@@ -32,8 +39,8 @@ class PreferenceManager(context: Context) {
         set(v) { p.edit().putString("permissions", v).apply() }
 
     var refreshToken: String
-        get() = p.getString("refresh_token", "") ?: ""
-        set(v) { p.edit().putString("refresh_token", v).apply() }
+        get() = secrets.get("refresh_token")
+        set(v) { secrets.put("refresh_token", v) }
 
     var staffId: Int
         get() = p.getInt("staff_id", 0)
@@ -91,5 +98,8 @@ class PreferenceManager(context: Context) {
     fun shouldScopeToOwnStaff(): Boolean =
         staffId > 0 && !hasPermission("CAN_ACCESS_SERVICE_TECHNICIAN_ASSIGN")
 
-    fun clear() = p.edit().clear().apply()
+    fun clear() {
+        secrets.clear()
+        p.edit().clear().apply()
+    }
 }

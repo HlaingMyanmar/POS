@@ -29,6 +29,7 @@ import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
+import { toCsv } from '../utils/csv';
 
 interface CategoryOption {
   id: number;
@@ -178,6 +179,9 @@ const FilterSelect: React.FC<{
     </select>
   </label>
 );
+const isAvailableSerial = (serial?: { status?: SerialStatus | string } | null) =>
+  String(serial?.status ?? '').toUpperCase() === 'AVAILABLE';
+
 const OpeningStockBadge: React.FC<{ product: ProductDTO }> = ({ product }) => {
   const qtyStock = Number(product.stockQty ?? product.currentStock ?? 0);
   const cost = Number(product.costPrice ?? 0);
@@ -535,7 +539,7 @@ const ProductManagement: React.FC = () => {
   };
 
   const handleExportFiltered = () => {
-    const rows: string[][] = [
+    const rows: unknown[][] = [
       ['ကုဒ်', 'ကုန်ပစ္စည်းနာမည်', 'ဘရန်း', 'အမျိုးအစား', 'ယူနစ်', 'ပစ္စည်းအခြေအနေ', 'ခြေရာခံနည်း', 'ကုန်ကျစရိတ်', 'ရောင်းဈေး', 'ရောင်းနိုင်သောပမာဏ', 'ပြန်မှာမည့်အဆင့်', 'အာမခံ'],
     ];
     productGroups.forEach(group => {
@@ -549,18 +553,17 @@ const ProductManagement: React.FC = () => {
           p.unitName || '',
           p.productType === 'NEW' ? 'အသစ်' : p.productType === 'SECOND_NEW' ? 'အသစ်နှင့်တူသော' : 'အသုံးပြုပြီး',
           p.hasSerial !== false ? 'Serial' : 'Qty',
-          String(p.costPrice ?? 0),
-          String(p.sellingPrice ?? 0),
-          String(available),
-          String(p.reorderLevel ?? 0),
+          p.costPrice ?? 0,
+          p.sellingPrice ?? 0,
+          available,
+          p.reorderLevel ?? 0,
           formatWarranty(p),
         ]);
       });
     });
 
-    const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
-    const bom = '﻿';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvContent = toCsv(rows, { alwaysQuote: true, bom: true, lineEnding: '\r\n' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -788,10 +791,11 @@ const ProductManagement: React.FC = () => {
       return;
     }
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['ID', 'Product Code', 'Name', 'Tracking', 'Stock', 'Selling Price'],
       ...bulk.selectedRows.map((product) => [product.id, product.productCode, product.name, product.hasSerial === false ? 'Quantity' : 'Serial', product.stockQty ?? product.currentStock ?? 0, product.sellingPrice])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -1026,8 +1030,8 @@ const ProductManagement: React.FC = () => {
         row.currentStock, row.reorderLevel, row.suggestedQuantity, row.currentCost || 0,
       ]),
     ];
-    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
-    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    const csv = toCsv(rows, { alwaysQuote: true, bom: true, lineEnding: '\r\n' });
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = `reorder-suggestions-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -1112,7 +1116,7 @@ const ProductManagement: React.FC = () => {
   const exportStockHistory = () => {
     if (!stockHistory) return;
     const allProducts = !stockHistoryProduct;
-    const csv = [
+    const csvRows = [
       ['Date', 'Product', 'Code', 'Type', 'Reference', 'Supplier / Customer', 'In', 'Out', 'Balance'],
       ...stockHistory.movements.map((row) => [
         row.date,
@@ -1125,7 +1129,8 @@ const ProductManagement: React.FC = () => {
         row.quantityOut,
         row.balance,
       ])
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -1186,8 +1191,8 @@ const ProductManagement: React.FC = () => {
     try {
       await productSerialService.update(serial.id, {
         ...serial,
-        serialNumber,
-        status: serialEditForm.status,
+        serialNumber: isAvailableSerial(serial) ? serialNumber : serial.serialNumber,
+        status: serial.status,
         ...buildSerialWarrantyPayload(serial),
       });
       cancelEditSerial();
@@ -1426,18 +1431,22 @@ const ProductManagement: React.FC = () => {
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ကုန်သိုလှောင်မှု နည်းလမ်း <span className="text-rose-400">*</span></label>
                   <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
                     <button type="button"
+                      disabled={!!editingProduct}
                       onClick={() => setFormData({ ...formData, hasSerial: true, stockQty: 0 })}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.hasSerial !== false ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.hasSerial !== false ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'} ${editingProduct ? 'cursor-not-allowed opacity-70' : ''}`}>
                       စီရီရယ်လိုအပ်သည်
                     </button>
                     <button type="button"
+                      disabled={!!editingProduct}
                       onClick={() => setFormData({ ...formData, hasSerial: false, stockQty: Number(formData.stockQty || 0) })}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.hasSerial === false ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.hasSerial === false ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'} ${editingProduct ? 'cursor-not-allowed opacity-70' : ''}`}>
                       အရေအတွက်သာ
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 ml-1">
-                    {formData.hasSerial !== false
+                    {editingProduct
+                      ? 'Tracking mode ကို Product edit မှ ပြောင်းမရပါ။ Serial assignment / stock workflow ကိုသုံးပါ။'
+                      : formData.hasSerial !== false
                       ? 'စီရီရယ်နံပါတ်ဖြင့် တစ်ခုချင်းစီ ခြေရာခံသည်။'
                       : 'ကုန်သိုလှောင်မှုကို စုစုပေါင်းအရေအတွက်ဖြင့် ခြေရာခံသည် — စီရီရယ်မလိုအပ်ပါ။'}
                   </p>
@@ -2668,7 +2677,9 @@ const ProductManagement: React.FC = () => {
                                           ) : (
                                             <>
                                               <button onClick={() => { setSelectedSerialGroup(group); startEditSerial(s); }} title="Edit Serial Warranty" className="p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-600 rounded-md"><Shield size={12} /></button>
-                                              <button onClick={() => handleDeleteSerial(s.id)} title="Remove Serial" className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md"><Trash2 size={12} /></button>
+                                              {isAvailableSerial(s) && (
+                                                <button onClick={() => handleDeleteSerial(s.id)} title="Remove Serial" className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md"><Trash2 size={12} /></button>
+                                              )}
                                             </>
                                           )}
                                         </div>
@@ -2816,8 +2827,9 @@ const ProductManagement: React.FC = () => {
                               {isEditing ? (
                                 <input
                                   value={serialEditForm.serialNumber}
+                                  disabled={!isAvailableSerial(serial)}
                                   onChange={(e) => setSerialEditForm(prev => ({ ...prev, serialNumber: e.target.value }))}
-                                  className="w-full min-w-[160px] px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs font-black text-slate-800 tabular-nums focus:outline-none focus:border-indigo-500"
+                                  className="w-full min-w-[160px] px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs font-black text-slate-800 tabular-nums focus:outline-none focus:border-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed"
                                 />
                               ) : (
                                 <span className="font-black text-slate-800 tabular-nums">{serial.serialNumber}</span>
@@ -2840,14 +2852,16 @@ const ProductManagement: React.FC = () => {
                                   <input
                                     type="number"
                                     min={0}
+                                    disabled={!isAvailableSerial(serial)}
                                     value={serialEditForm.warrantyValue}
                                     onChange={(e) => setSerialEditForm(prev => ({ ...prev, warrantyValue: Math.max(0, Number(e.target.value) || 0) }))}
-                                    className="w-16 px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs text-center font-bold focus:outline-none focus:border-indigo-500"
+                                    className="w-16 px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs text-center font-bold focus:outline-none focus:border-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed"
                                   />
                                   <select
                                     value={serialEditForm.warrantyUnit}
+                                    disabled={!isAvailableSerial(serial)}
                                     onChange={(e) => setSerialEditForm(prev => ({ ...prev, warrantyUnit: e.target.value as 'ရက်' | 'လ' | 'နှစ်' }))}
-                                    className="px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed"
                                   >
                                     <option value="လ">လ</option>
                                     <option value="ရက်">ရက်</option>
@@ -2859,19 +2873,9 @@ const ProductManagement: React.FC = () => {
                               )}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              {isEditing ? (
-                                <select
-                                  value={serialEditForm.status}
-                                  onChange={(e) => setSerialEditForm(prev => ({ ...prev, status: e.target.value as SerialStatus }))}
-                                  className="px-2 py-1.5 rounded-md border border-indigo-200 bg-white text-[10px] font-black uppercase text-slate-700 focus:outline-none focus:border-indigo-500"
-                                >
-                                  {Object.values(SerialStatus).map(status => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
-                                </select>
-                              ) : (
                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${serial.status === SerialStatus.AVAILABLE ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
                                   {serial.status.replace(/_/g, ' ')}
                                 </span>
-                              )}
                             </td>
                             <td className="px-4 py-3 text-right">
                               {isEditing ? (
@@ -3105,13 +3109,15 @@ const ProductManagement: React.FC = () => {
                         <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{s.status.replace(/_/g, ' ')}</span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteSerial(s.id)}
-                      title="Delete Serial"
-                      className="p-2 rounded-xl text-rose-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {isAvailableSerial(s) && (
+                      <button
+                        onClick={() => handleDeleteSerial(s.id)}
+                        title="Delete Serial"
+                        className="p-2 rounded-xl text-rose-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

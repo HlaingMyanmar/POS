@@ -34,6 +34,23 @@ export default defineConfig(({ mode }) => {
       build: {
         outDir: '../static',
         emptyOutDir: true,
+        rollupOptions: {
+          output: {
+            manualChunks(id) {
+              if (!id.includes('node_modules')) return undefined;
+              if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+                return 'react-vendor';
+              }
+              if (id.includes('/node_modules/lucide-react/') || id.includes('\\node_modules\\lucide-react\\')) {
+                return 'icons-vendor';
+              }
+              if (id.includes('/node_modules/sweetalert2/') || id.includes('\\node_modules\\sweetalert2\\')) {
+                return 'alerts-vendor';
+              }
+              return undefined;
+            }
+          }
+        }
       },
       plugins: [react()],
       define: {

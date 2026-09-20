@@ -16,6 +16,7 @@ import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
 import { getCachedCompanySettings } from '../utils/companySettings';
 import { buildPurchaseReturnVoucherHtml } from './purchaseReturnVoucherTemplate';
 import PortaledCombobox from '../components/PortaledCombobox';
+import { toCsv } from '../utils/csv';
 
 type DetailForm = PurchaseReturnDetailDTO & { productSearch: string; serialNumbers: string[] };
 
@@ -872,10 +873,11 @@ const PurchaseReturnManagement: React.FC = () => {
       try{setSaving(true);await Promise.all(eligible.map(r=>action.key==='submit'?purchaseReturnApiService.submit(r.id!):purchaseReturnApiService.approve(r.id!,'Bulk approved')));bulk.clear();await loadRows(currentPage,pageSize,debouncedSearch);Swal.fire('Completed',`${eligible.length} return(s) processed.`,'success');}catch(e:any){Swal.fire('Bulk action failed',e.message||'Some records could not be processed','error');}finally{setSaving(false);} return;
     }
     if (action.key !== 'export') return;
-    const csv = [
+    const csvRows = [
       ['ID','Return No','Date','Supplier','Purchase','Status','Product','Qty','Unit Price','Line Total','Serials','Reason','Shipping','Settlement','Refund','RMA','Claim Status'],
       ...bulk.selectedRows.flatMap(row=>(row.details?.length?row.details:[{} as PurchaseReturnDetailDTO]).map(d=>[row.id,row.returnNo||'',row.returnDate||'',row.supplierName||'',row.purchaseCode||'',row.status||'',d.productName||d.productId||'',d.qty||'',d.unitPrice||'',d.subtotal||'',d.serialNumbers?.join('|')||'',d.reasonName||d.reasonCode||row.reason||'',d.allocatedShippingCost||0,row.settlementType||'',row.refundAmount||0,row.rmaNumber||'',row.claimStatus||'']))
-    ].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    ];
+    const csv = toCsv(csvRows, { alwaysQuote: true });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = `purchase-returns-selected-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
     bulk.clear();

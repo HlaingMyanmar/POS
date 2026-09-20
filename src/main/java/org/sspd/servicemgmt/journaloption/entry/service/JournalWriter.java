@@ -5,6 +5,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.accountingoptions.periodlock.service.AccountingPeriodGuard;
 import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.model.AccountBalance;
 import org.sspd.servicemgmt.accountingoptions.accountbalanceoptions.repository.AccountBalanceRepository;
 import org.sspd.servicemgmt.accountingoptions.coaoptions.enums.AccountType;
@@ -41,6 +42,7 @@ public class JournalWriter {
     private final StaffRepository staffRepository;
     private final JournalMapper journalMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final AccountingPeriodGuard periodGuard;
 
     private static final String ACCOUNTING_TOPIC = "/topic/accounting";
 
@@ -71,6 +73,7 @@ public class JournalWriter {
     @Transactional
     public JournalEntryDTO write(JournalEntryDTO dto) {
         validate(dto);
+        periodGuard.assertOpen(dto.getEntryDate(), "post journal");
         if (dto.getReferenceNo() != null && dto.getReferenceNo().isBlank()) {
             dto.setReferenceNo(null);
         }
@@ -139,8 +142,10 @@ public class JournalWriter {
             if ("REVERSED".equals(journal.getStatus()) || journalRepository.findByReferenceNo(referenceNo + "-REV").isPresent()) {
                 return;
             }
-            lockAccounts(journal.getDetails().stream().map(detail -> detail.getAccount().getId()).toList());
             LocalDateTime now = LocalDateTime.now();
+            periodGuard.assertOpen(journal.getEntryDate(), "reverse journal " + referenceNo);
+            periodGuard.assertOpen(now, "post journal reversal " + referenceNo);
+            lockAccounts(journal.getDetails().stream().map(detail -> detail.getAccount().getId()).toList());
             JournalEntry reversal = JournalEntry.builder()
                     .entryDate(now)
                     .referenceNo(referenceNo + "-REV")

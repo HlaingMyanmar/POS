@@ -9,7 +9,7 @@ These steps match the **current source**. Production host names and secrets are 
 - JDK 17+
 - Maven 3.8+ **or** use the repo wrapper (`mvnw` / `mvnw.cmd`)
 - MySQL 8+ (or a MariaDB server compatible with the configured `MariaDBDialect`)
-- Node.js 22+ **if** you run the UI with Vite (`npm run dev`). A backend-only Maven build downloads Node v22.14.0 via `frontend-maven-plugin` into `target/`
+- Node.js 24.x and npm 11.x **if** you run the UI with Vite (`npm run dev`). A backend-only Maven build downloads Node v24.21.0 and npm 11.19.0 via `frontend-maven-plugin` into `target/`
 
 Confirm:
 
@@ -77,7 +77,7 @@ mvnw.cmd spring-boot:run
 First run will:
 
 1. Compile Java (Lombok + MapStruct annotation processing)
-2. Run `frontend-maven-plugin` (`npm install` + `npm run build` in `ui/`) unless you skip that plugin
+2. Run `frontend-maven-plugin` (`npm ci` + `npm run build` in `ui/`) unless you skip that plugin
 3. Start Tomcat with SSL
 4. Run seeders and schema migrations
 
@@ -91,7 +91,7 @@ Use this when you change React code often.
 
 ```bash
 cd src/main/resources/ui
-npm install
+npm ci
 npm run dev
 ```
 
@@ -135,7 +135,7 @@ Backup uses `mysqldump`; restore uses `mysql`. Install the MySQL client and put 
 | CORS error | Origin not in `CORS_ALLOWED_ORIGINS` and not going through Vite/Nginx proxy | Add `http://localhost:3000` only if the UI calls the API origin directly |
 | 401 on every API | Missing `Authorization: Bearer` | Complete login; check token in memory |
 | Frontend 401 then bounce to login | `POST /api/v1/auth/refresh` is called but **not implemented** | Re-login; access token lasts `jwt.expiration` |
-| Maven frontend plugin fails | Node download / npm network | Network access; or run `npm install` in `ui/` once |
+| Maven frontend plugin fails | Node/npm download, registry access, or package/lockfile mismatch | Check network access and keep `package.json` synchronized with `package-lock.json`; run `npm ci` in `ui/` to reproduce |
 | App fails looking for `keystore.p12` | `SSL_ENABLED=true` without `SSL_KEYSTORE` | Set `SSL_ENABLED=false`, or `SSL_KEYSTORE=file:keystore.p12` |
 | APK upload fails | `APP_APK_STORAGE_DIR` does not exist | Create the directory |
 | Permission denied (403) | Role has no permission | `RoleSeeder`: `ADMIN` and `PURCHASER` start empty unless assigned in Role Management |

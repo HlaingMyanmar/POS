@@ -33,7 +33,7 @@ const UnitManagement: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useRefreshOnTabActivate(fetchData);
-  useWebsocket('/topic/brand', () => { setWsStatus('online'); fetchData(); setTimeout(() => setWsStatus('offline'), 5000); });
+  useWebsocket('/topic/unit', () => { setWsStatus('online'); fetchData(); setTimeout(() => setWsStatus('offline'), 5000); });
 
   const filteredUnits = useMemo(() => {
     return units.filter(u => u.unitName.toLowerCase().includes(searchTerm.toLowerCase()));

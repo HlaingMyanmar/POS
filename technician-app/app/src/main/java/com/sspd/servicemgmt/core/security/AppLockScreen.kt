@@ -44,21 +44,33 @@ fun AppLockScreen(
 
     var enteredPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
+    var verificationInProgress by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun handleKeyPress(key: String) {
-        if (enteredPin.length < 4) {
+        if (!verificationInProgress && enteredPin.length < 4) {
             val newPin = enteredPin + key
             enteredPin = newPin
             pinError = null
             if (newPin.length == 4) {
                 scope.launch {
-                    if (settings.verifyPin(newPin)) {
-                        onUnlock()
-                    } else {
-                        pinError = "PIN မှားယွင်းနေပါသည်။"
-                        enteredPin = ""
+                    verificationInProgress = true
+                    when (val result = settings.verifyPin(newPin)) {
+                        PinVerification.Verified -> onUnlock()
+                        is PinVerification.Invalid -> {
+                            pinError = "PIN မှားနေပါသည်။ ${result.remainingAttempts} ကြိမ် ထပ်စမ်းနိုင်ပါသည်။"
+                        }
+                        is PinVerification.Locked -> {
+                            val seconds = ((result.untilMillis - System.currentTimeMillis())
+                                .coerceAtLeast(1L) + 999L) / 1000L
+                            pinError = "စမ်းသပ်မှုများလွန်းသဖြင့် ${seconds} စက္ကန့် ယာယီပိတ်ထားပါသည်။"
+                        }
+                        PinVerification.Unavailable -> {
+                            pinError = "PIN မရှိပါ။ Biometric / Device Lock ကို အသုံးပြုပါ။"
+                        }
                     }
+                    enteredPin = ""
+                    verificationInProgress = false
                 }
             }
         }

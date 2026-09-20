@@ -1,74 +1,26 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import UserManagement from './pages/UserManagement';
-import RoleManagement from './pages/RoleManagement';
-import PermissionManagement from './pages/PermissionManagement';
-import ProductManagement from './pages/ProductManagement';
-import LabelDesigner from './pages/LabelDesigner';
-import ProductSerialManagement from './pages/ProductSerialManagement';
-import BrandManagement from './pages/BrandManagement';
-import CategoryManagement from './pages/CategoryManagement';
-import UnitManagement from './pages/UnitManagement';
-import SupplierManagement from './pages/SupplierManagement';
-import CustomerManagement from './pages/CustomerManagement';
-import StaffManagement from './pages/StaffManagement';
-import ChartOfAccountManagement from './pages/ChartOfAccountManagement';
-import PaymentMethodManagement from './pages/PaymentMethodManagement';
-import CashDrawerManagement from './pages/CashDrawerManagement';
-import AccountingDashboard from './pages/AccountingDashboard';
-import PaymentTransactionManagement from './pages/PaymentTransactionManagement';
-import JournalEntryManagement from './pages/JournalEntryManagement';
-import PurchaseManagement from './pages/PurchaseManagement';
-import PurchaseReturnManagement from './pages/PurchaseReturnManagement';
-import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
-import SaleManagement from './pages/SaleManagement';
-import WarrantyLookupPage from './pages/WarrantyLookupPage';
-import QuotationManagement from './pages/QuotationManagement';
-import SaleReturnManagement from './pages/SaleReturnManagement';
-import CustomerAppOrdersPage from './pages/CustomerAppOrdersPage';
-import CustomerPromoCodesPage from './pages/CustomerPromoCodesPage';
-import DeliveryChargesPage from './pages/DeliveryChargesPage';
-import CustomerAppAccountsPage from './pages/CustomerAppAccountsPage';
-import CustomerShopPage from './pages/customer-shop/CustomerShopPage';
-import CustomerPasswordResetPage from './pages/customer-shop/CustomerPasswordResetPage';
-import CreditManagement from './pages/CreditManagement';
-import StockAdjustmentManagement from './pages/StockAdjustmentManagement';
-import ExpenseIncomeManagement from './pages/ExpenseIncomeManagement';
-import ProfitLossReport from './pages/ProfitLossReport';
-import TrialBalanceReport from './pages/TrialBalanceReport';
-import BalanceSheetReport from './pages/BalanceSheetReport';
-import AgingReportPage from './pages/AgingReportPage';
-import BackupSettings from './pages/BackupSettings';
-import AdminQueryPage from './pages/AdminQueryPage';
-import CompanySettingsPage from './pages/CompanySettingsPage';
-import VoucherSettingsPage from './pages/VoucherSettingsPage';
-import ServiceManagement from './pages/ServiceManagement';
-import BookingManagement from './pages/BookingManagement';
-import ServiceJobManagement from './pages/ServiceJobManagement';
-import ServiceHelpPage from './pages/ServiceHelpPage';
-import ShelfLocationManagement from './pages/ShelfLocationManagement';
-import AuditLogManagement from './pages/AuditLogManagement';
-import SalesRankingPage from './pages/SalesRankingPage';
-import DailyReport from './pages/reports/DailyReport';
-import DailySnapshotReport from './pages/reports/DailySnapshotReport';
-import SalesSummaryReport from './pages/reports/SalesSummaryReport';
-import PurchaseSummaryReport from './pages/reports/PurchaseSummaryReport';
-import ServiceSummaryReport from './pages/reports/ServiceSummaryReport';
-import StockReport from './pages/reports/StockReport';
-import StaffPerformanceReport from './pages/reports/StaffPerformanceReport';
-import CustomerHistoryReport from './pages/reports/CustomerHistoryReport';
-import SetupWizardPage from './pages/SetupWizardPage';
-import InitialAdminPage from './pages/InitialAdminPage';
-import ScanPage from './pages/ScanPage';
-import OpeningBalancePage from './pages/OpeningBalancePage';
-import OpeningStockPage from './pages/OpeningStockPage';
-import AppVersionSettingsPage from './pages/AppVersionSettingsPage';
-import OutdoorTracking from './pages/OutdoorTracking';
-import VideoManagement from './pages/VideoManagement';
+import {
+  AccountingDashboard, AdminQueryPage, AgingReportPage, AppVersionSettingsPage,
+  AuditLogManagement, BackupSettings, BalanceSheetReport, BookingManagement,
+  BrandManagement, CashDrawerManagement, CategoryManagement, ChartOfAccountManagement,
+  CompanySettingsPage, CreditManagement, CustomerAppAccountsPage, CustomerAppOrdersPage,
+  CustomerHistoryReport, CustomerManagement, CustomerPasswordResetPage, CustomerPromoCodesPage,
+  CustomerShopPage, DailyReport, DailySnapshotReport, Dashboard, DeliveryChargesPage,
+  ExpenseIncomeManagement, InitialAdminPage, JournalEntryManagement, LabelDesigner, Login,
+  OpeningBalancePage, OpeningStockPage, OutdoorTracking, PaymentMethodManagement,
+  PaymentTransactionManagement, PermissionManagement, ProductManagement, ProductSerialManagement,
+  ProfitLossReport, PurchaseManagement, PurchaseOrderManagement, PurchaseReturnManagement,
+  PurchaseSummaryReport, QuotationManagement, RoleManagement, SaleManagement, SaleReturnManagement,
+  SalesRankingPage, SalesSummaryReport, ScanPage, ServiceHelpPage, ServiceJobManagement,
+  ServiceManagement, ServiceSummaryReport, SetupWizardPage, ShelfLocationManagement,
+  StaffManagement, StaffPerformanceReport, StockAdjustmentManagement, StockReport,
+  SupplierManagement, TrialBalanceReport, UnitManagement, UserManagement, VideoManagement,
+  VoucherSettingsPage, WarrantyLookupPage
+} from './routeModules';
 import Layout from './components/Layout';
+import RouteLoadBoundary from './components/RouteLoadBoundary';
 import { User, AppLanguage, AppRoute, AppTheme } from './types';
 import { getFromSession } from './utils/storageHelper';
 import { authService, setAccessToken, setupService } from './services/api';
@@ -228,19 +180,19 @@ const App: React.FC = () => {
   const guard = (element: React.ReactNode, perm?: RequiredPermission) => {
     if (!user) return <Navigate to={AppRoute.LOGIN} replace />;
     if (perm && !canAccess(user, perm)) return <Navigate to={AppRoute.DASHBOARD} replace />;
-    return <>{element}</>;
+    return <RouteLoadBoundary>{element}</RouteLoadBoundary>;
   };
 
   const guardAny = (element: React.ReactNode, perms: readonly string[]) => {
     if (!user) return <Navigate to={AppRoute.LOGIN} replace />;
     if (!canAccessAny(user, perms)) return <Navigate to={AppRoute.DASHBOARD} replace />;
-    return <>{element}</>;
+    return <RouteLoadBoundary>{element}</RouteLoadBoundary>;
   };
 
   const publicCustomerRoutes = (
     <>
-      <Route path={AppRoute.CUSTOMER_SHOP} element={<CustomerShopPage />} />
-      <Route path={AppRoute.CUSTOMER_PASSWORD_RESET} element={<CustomerPasswordResetPage />} />
+      <Route path={AppRoute.CUSTOMER_SHOP} element={<RouteLoadBoundary><CustomerShopPage /></RouteLoadBoundary>} />
+      <Route path={AppRoute.CUSTOMER_PASSWORD_RESET} element={<RouteLoadBoundary><CustomerPasswordResetPage /></RouteLoadBoundary>} />
     </>
   );
 
@@ -264,7 +216,7 @@ const App: React.FC = () => {
       <HashRouter>
         <Routes>
           {publicCustomerRoutes}
-          <Route path="*" element={<InitialAdminPage onComplete={() => { setNeedsInitialAdmin(false); }} />} />
+          <Route path="*" element={<RouteLoadBoundary><InitialAdminPage onComplete={() => { setNeedsInitialAdmin(false); }} /></RouteLoadBoundary>} />
         </Routes>
       </HashRouter>
     );
@@ -275,12 +227,12 @@ const App: React.FC = () => {
       <HashRouter>
         <Routes>
           {publicCustomerRoutes}
-          <Route path="*" element={
+          <Route path="*" element={<RouteLoadBoundary>
             <SetupWizardPage onComplete={() => {
               setNeedsSetup(false);
               void getCompanySettings(true);
             }} />
-          } />
+          </RouteLoadBoundary>} />
         </Routes>
       </HashRouter>
     );
@@ -295,10 +247,12 @@ const App: React.FC = () => {
     <HashRouter>
       <Routes>
         {publicCustomerRoutes}
-        <Route path="/scan" element={<ScanPage />} />
+        <Route path="/scan" element={<RouteLoadBoundary><ScanPage /></RouteLoadBoundary>} />
         <Route
           path={AppRoute.LOGIN}
-          element={!user ? <Login onLoginSuccess={handleLoginSuccess} language={language} onLanguageChange={setLanguage} /> : <Navigate to={AppRoute.DASHBOARD} />}
+          element={!user
+            ? <RouteLoadBoundary><Login onLoginSuccess={handleLoginSuccess} language={language} onLanguageChange={setLanguage} /></RouteLoadBoundary>
+            : <Navigate to={AppRoute.DASHBOARD} />}
         />
 
         {/* ONE Layout wraps all protected pages — keeps components mounted across tab switches */}

@@ -90,7 +90,7 @@ Frontend lives inside the backend repo. Maven `generate-resources` runs `npm run
 |---|---|
 | JDK | 17+ |
 | Maven | 3.8+ (or `./mvnw` / `mvnw.cmd`) |
-| Node.js | 22.14.0 (Maven frontend plugin installs this into `target/` during backend build) |
+| Node.js | 24.21.0 (Maven frontend plugin installs Node 24.21.0 and npm 11.19.0 into `target/`) |
 | MySQL | 8+ (database name `ser_db`) |
 | Optional | Nginx (production), `mysqldump` / `mysql` CLI (backup/restore) |
 
@@ -101,7 +101,7 @@ Frontend lives inside the backend repo. Maven `generate-resources` runs `npm run
 1. Create MySQL database `ser_db` (utf8mb4). See [docs/LOCAL-SETUP.md](docs/LOCAL-SETUP.md).
 2. Copy `.env.example` to `.env` (or `application-secrets.properties.example` to `application-secrets.properties`) and set secrets there. **Do not commit real secrets.**
 3. Start backend: `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`).
-4. For UI hot-reload: `cd src/main/resources/ui && npm install && npm run dev`.
+4. For UI hot-reload: `cd src/main/resources/ui && npm ci && npm run dev`.
 5. Open `http://localhost:3000` (Vite) or `http://localhost:8080` (embedded UI after Maven build).
 6. Log in with an existing user. A bootstrap admin is created only when `BOOTSTRAP_ADMIN_ENABLED=true`.
 
@@ -121,7 +121,7 @@ API base path: `/api/v1/` (except backup history: `/api/backups`).
 
 ```bash
 cd src/main/resources/ui
-npm install
+npm ci
 npm run dev
 ```
 

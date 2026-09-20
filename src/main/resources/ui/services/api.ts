@@ -262,6 +262,7 @@ export const backupService = {
 };
 
 export const adminQueryService = {
+  status: () => api.get<any, ApiResponse<{ enabled: boolean }>>('/v1/admin-queries/status'),
   list: () => api.get<any, ApiResponse<any[]>>('/v1/admin-queries'),
   run: (id: string) => api.post<any, ApiResponse<any>>(`/v1/admin-queries/${encodeURIComponent(id)}/run`),
   execute: (sql: string, mode: 'READ' | 'WRITE') =>

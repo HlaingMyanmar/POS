@@ -24,6 +24,7 @@ import { paymentMethodService } from '../services/paymentmethodapiservice';
 import { staffService } from '../services/staffapiservice';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { getFromSession } from '../utils/storageHelper';
+import { toCsv } from '../utils/csv';
 import {
   AccountType,
   ChartOfAccountDTO,
@@ -94,14 +95,6 @@ const isManualIncomeAccount = (account: ChartOfAccountDTO) => {
   if (INCOME_SYSTEM_CODES.has((account.code || '').toUpperCase())) return false;
   const text = `${account.accountName || ''} ${account.code || ''}`.toLowerCase();
   return !includesAny(text, AUTO_INCOME_KEYWORDS);
-};
-
-const toCsvCell = (value: unknown) => {
-  const text = String(value ?? '');
-  if (text.includes('"') || text.includes(',') || text.includes('\n')) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
 };
 
 type ExpenseIncomeManagementProps = {
@@ -541,7 +534,7 @@ const ExpenseIncomeManagement: React.FC<ExpenseIncomeManagementProps> = ({
       r.staffName || ''
     ]));
 
-    const csv = [headers, ...lines].map((row) => row.map(toCsvCell).join(',')).join('\n');
+    const csv = toCsv([headers, ...lines]);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

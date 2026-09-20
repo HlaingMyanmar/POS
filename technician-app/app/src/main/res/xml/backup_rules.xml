@@ -9,5 +9,7 @@
     <exclude domain="sharedpref" path="." />
     <!-- Exclude all databases -->
     <exclude domain="database" path="." />
-<exclude domain="external" path="." />
+    <!-- Preferences DataStore is file-backed and includes PIN hash/throttle state. -->
+    <exclude domain="file" path="datastore/" />
+    <exclude domain="external" path="." />
 </full-backup-content>

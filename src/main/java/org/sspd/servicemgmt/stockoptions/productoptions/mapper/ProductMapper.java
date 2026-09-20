@@ -34,19 +34,27 @@ public interface ProductMapper {
     @Mapping(target = "brand", ignore = true)
     @Mapping(target = "unit", ignore = true)
     @Mapping(target = "serials", ignore = true)
+    @Mapping(target = "photos", ignore = true)
     @Mapping(target = "lastPurchaseCost", ignore = true)
+    @Mapping(target = "stockQty", ignore = true)
+    @Mapping(target = "quarantinedQty", ignore = true)
+    @Mapping(target = "customerReservedQty", ignore = true)
     @Mapping(target = "archived", expression = "java(dto.getArchived() != null ? dto.getArchived() : Boolean.FALSE)")
-    @Mapping(target = "quarantinedQty", expression = "java(dto.getQuarantinedQty() != null ? dto.getQuarantinedQty() : 0)")
     Product toEntity(ProductDTO dto);
 
-    // Update Method
+    // Update Method — stock and serial tracking belong to dedicated workflows only.
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "brand", ignore = true)
     @Mapping(target = "unit", ignore = true)
     @Mapping(target = "serials", ignore = true)
+    @Mapping(target = "photos", ignore = true)
     @Mapping(target = "photoBase64", ignore = true)
     @Mapping(target = "lastPurchaseCost", ignore = true)
+    @Mapping(target = "stockQty", ignore = true)
+    @Mapping(target = "quarantinedQty", ignore = true)
+    @Mapping(target = "customerReservedQty", ignore = true)
+    @Mapping(target = "hasSerial", ignore = true)
     void updateEntityFromDto(ProductDTO dto, @MappingTarget Product entity);
 
     @AfterMapping

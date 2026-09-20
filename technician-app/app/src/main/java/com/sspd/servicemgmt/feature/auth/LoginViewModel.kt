@@ -40,7 +40,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(loading = true, error = "") }
             try {
                 val response = ApiClient.service.login(
-                    LoginRequest(username.trim(), password.trim())
+                    LoginRequest(username.trim(), password)
                 )
                 if (response.isSuccessful && response.body()?.success == true) {
                     val auth = response.body()?.data

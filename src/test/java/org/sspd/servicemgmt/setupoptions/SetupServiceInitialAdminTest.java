@@ -103,4 +103,29 @@ class SetupServiceInitialAdminTest {
         verify(users, never()).count();
         verify(users, never()).save(any(User.class));
     }
+
+    @Test
+    void rejectsShortPasswordForInitialAdmin() {
+        UserRepository users = mock(UserRepository.class);
+        when(users.count()).thenReturn(0L);
+        SetupService service = new SetupService(
+                mock(PaymentMethodRepository.class),
+                mock(ChartOfAccountRepository.class),
+                mock(CompanySettingsRepository.class),
+                users,
+                mock(RoleRepository.class),
+                mock(PasswordEncoder.class)
+        );
+        ReflectionTestUtils.setField(service, "initialAdminToken", SETUP_TOKEN);
+
+        InitialAdminDTO dto = new InitialAdminDTO();
+        dto.setUsername("admin");
+        dto.setEmail("admin@example.com");
+        dto.setPassword("short");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.createInitialAdministrator(dto, SETUP_TOKEN));
+        assertTrue(ex.getMessage().contains("8"));
+        verify(users, never()).save(any(User.class));
+    }
 }

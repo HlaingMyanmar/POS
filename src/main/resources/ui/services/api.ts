@@ -206,7 +206,18 @@ export const authService = {
   },
 
   logout: () => {
-    void axios.post(joinUrl(BASE_URL, '/v1/auth/logout'), null, { withCredentials: true }).catch(() => undefined);
+    const refreshToken = getFromSession('sspd_refresh');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (_accessToken) {
+      headers.Authorization = `Bearer ${_accessToken}`;
+    }
+    void axios
+      .post(
+        joinUrl(BASE_URL, '/v1/auth/logout'),
+        refreshToken ? { refreshToken } : null,
+        { withCredentials: true, headers },
+      )
+      .catch(() => undefined);
     setAccessToken(null);
     removeFromSession('sspd_refresh');
     removeFromSession('sspd_user');

@@ -48,6 +48,10 @@ data class LoginRequest(
     @SerializedName("password") val password: String
 )
 
+data class RefreshTokenRequest(
+    @SerializedName("refreshToken") val refreshToken: String
+)
+
 data class AuthResponse(
     @SerializedName("accessToken") val accessToken: String = "",
     @SerializedName("refreshToken") val refreshToken: String? = null,

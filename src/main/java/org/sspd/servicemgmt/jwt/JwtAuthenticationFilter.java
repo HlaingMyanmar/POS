@@ -32,6 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final JwtService.ParsedToken parsed;
+        final boolean logoutRequest = isAuthLogout(request);
 
         // 1. Authorization Header ပါမပါ နဲ့ "Bearer " နဲ့ စမစ စစ်ဆေးခြင်း
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -44,14 +45,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // Parse and validate signature/expiration exactly once. Any malformed,
         // expired, unsupported, or incorrectly signed token becomes a stable 401.
+        // Logout may still revoke via refresh cookie/body when the access token is stale.
         try {
             parsed = jwtService.parseToken(jwt);
         } catch (io.jsonwebtoken.JwtException | IllegalArgumentException ex) {
+            if (logoutRequest) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
                     "Access token expired or invalid.");
             return;
         }
         if (!parsed.isAccessToken() || parsed.username() == null || parsed.username().isBlank()) {
+            if (logoutRequest) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
                     "Access token expired or invalid.");
             return;
@@ -64,6 +74,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 userDetails = this.userDetailsService.loadUserByUsername(parsed.username());
             } catch (RuntimeException ignored) {
+                if (logoutRequest) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
                         "Access token expired or invalid.");
                 return;
@@ -73,6 +87,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (userDetails instanceof TokenAwareUserDetails tud) {
                 Integer jwtVersion = parsed.tokenVersion();
                 if (jwtVersion == null || jwtVersion != tud.getTokenVersion()) {
+                    if (logoutRequest) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
                     writeUnauthorized(response, "SESSION_INVALIDATED",
                             "This session has been invalidated. Please log in again.");
                     return;
@@ -81,6 +99,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // 6. Token မှန်ကန်မှု စစ်ဆေးခြင်း
             if (!userDetails.isEnabled() || !parsed.username().equals(userDetails.getUsername())) {
+                if (logoutRequest) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 writeUnauthorized(response, "TOKEN_EXPIRED_OR_INVALID",
                         "Access token expired or invalid.");
                 return;
@@ -96,6 +118,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // နောက် filter တစ်ခုကို ဆက်သွားစေခြင်း
         filterChain.doFilter(request, response);
+    }
+
+    private static boolean isAuthLogout(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path != null && path.endsWith("/auth/logout");
     }
 
     private void writeUnauthorized(

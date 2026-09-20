@@ -71,6 +71,9 @@ interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthResponse>>
 
+    @POST("auth/logout")
+    suspend fun logout(@Body body: RefreshTokenRequest): Response<ApiResponse<Void>>
+
     @GET("dashboard/stats")
     suspend fun getStats(@Header("Authorization") auth: String): Response<ApiResponse<DashboardStats>>
 

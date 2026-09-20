@@ -89,7 +89,7 @@ class OrderWebSocketInterceptorTest {
         var details = new CustomerPortalUserDetails("customer:09123", "", true,
                 List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")), 2, 7, "Customer", "09123");
         when(jwt.parseToken("token")).thenReturn(
-                new JwtService.ParsedToken("customer:09123", 2, "access"));
+                new JwtService.ParsedToken("customer:09123", 2, "access", null));
         when(users.loadUserByUsername("customer:09123")).thenReturn(details);
         var h = StompHeaderAccessor.create(StompCommand.CONNECT);
         h.setNativeHeader("Authorization", "Bearer token");
@@ -97,7 +97,7 @@ class OrderWebSocketInterceptorTest {
         interceptor.preSend(MessageBuilder.createMessage(new byte[0], h.getMessageHeaders()), null);
         assertEquals("customer:id:7", h.getUser().getName());
         when(jwt.parseToken("token")).thenReturn(
-                new JwtService.ParsedToken("customer:09123", 1, "access"));
+                new JwtService.ParsedToken("customer:09123", 1, "access", null));
         assertThrows(AccessDeniedException.class, () -> interceptor.preSend(
                 MessageBuilder.createMessage(new byte[0], h.getMessageHeaders()), null));
     }

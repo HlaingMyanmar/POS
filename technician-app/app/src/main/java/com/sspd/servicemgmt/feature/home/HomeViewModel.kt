@@ -9,6 +9,7 @@ import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.BookingDTO
 import com.sspd.servicemgmt.core.network.DashboardStats
 import com.sspd.servicemgmt.core.network.HandoverDTO
+import com.sspd.servicemgmt.core.network.RefreshTokenRequest
 import com.sspd.servicemgmt.core.network.ServiceJobDTO
 import com.sspd.servicemgmt.core.tracking.VisitTracker
 import com.sspd.servicemgmt.core.util.PreferenceManager
@@ -179,9 +180,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Clears stored user preferences and session tokens, triggering the logout flow. */
     fun logout() {
-        com.sspd.servicemgmt.core.network.TechnicianPushRegistration.unregister(getApplication())
-        prefs.clear()
-        _uiState.update { it.copy(isLoggedOut = true) }
+        viewModelScope.launch {
+            val refresh = prefs.refreshToken
+            if (refresh.isNotBlank()) {
+                runCatching {
+                    ApiClient.service.logout(RefreshTokenRequest(refresh))
+                }
+            }
+            com.sspd.servicemgmt.core.network.TechnicianPushRegistration.unregister(getApplication())
+            prefs.clear()
+            _uiState.update { it.copy(isLoggedOut = true) }
+        }
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────

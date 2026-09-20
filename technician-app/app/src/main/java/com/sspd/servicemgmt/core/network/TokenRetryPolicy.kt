@@ -17,6 +17,7 @@ object TokenRetryPolicy {
     ): TokenRetryAction {
         if (responseCount >= 2 ||
             requestPath.endsWith("/auth/refresh") ||
+            requestPath.endsWith("/auth/logout") ||
             responseBody.contains("SESSION_INVALIDATED")
         ) {
             return TokenRetryAction.STOP

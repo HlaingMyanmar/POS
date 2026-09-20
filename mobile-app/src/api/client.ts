@@ -69,6 +69,16 @@ export const authApi = {
     return res;
   },
   logout: async () => {
+    const token = _token;
+    try {
+      if (token) {
+        await _client.post('/auth/logout', null, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+      // Local clear still proceeds if the server is unreachable.
+    }
     _token = null;
     await AsyncStorage.removeItem(KEY_TOKEN);
   },

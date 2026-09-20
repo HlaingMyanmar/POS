@@ -18,6 +18,8 @@ import org.sspd.servicemgmt.rbacoptions.roleoptions.model.Role;
 import org.sspd.servicemgmt.rbacoptions.roleoptions.repository.RoleRepository;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
+import org.sspd.servicemgmt.security.PasswordPolicy;
+import org.sspd.servicemgmt.security.UsernamePolicy;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -72,18 +74,12 @@ public class SetupService {
             throw new IllegalStateException("Initial administrator can only be created when no users exist.");
         }
 
-        String username = dto.getUsername() == null ? "" : dto.getUsername().trim();
+        String username = UsernamePolicy.requireValid(dto.getUsername());
         String email = dto.getEmail() == null ? "" : dto.getEmail().trim();
-        String password = dto.getPassword() == null ? "" : dto.getPassword();
+        String password = PasswordPolicy.requireValid(dto.getPassword());
 
-        if (username.length() < 3) {
-            throw new IllegalArgumentException("Username must be at least 3 characters.");
-        }
         if (email.isBlank() || !email.contains("@")) {
             throw new IllegalArgumentException("A valid email is required.");
-        }
-        if (password.length() < 8) {
-            throw new IllegalArgumentException("Password must be at least 8 characters.");
         }
 
         Role adminRole = roleRepository.findByName("ADMINISTRATOR")

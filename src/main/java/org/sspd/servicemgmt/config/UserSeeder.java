@@ -12,6 +12,8 @@ import org.sspd.servicemgmt.rbacoptions.roleoptions.model.Role;
 import org.sspd.servicemgmt.rbacoptions.roleoptions.repository.RoleRepository;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
+import org.sspd.servicemgmt.security.PasswordPolicy;
+import org.sspd.servicemgmt.security.UsernamePolicy;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -48,10 +50,25 @@ public class UserSeeder implements CommandLineRunner {
             log.warn("No ADMINISTRATOR user found. Set BOOTSTRAP_ADMIN_PASSWORD (and optional EMAIL/USERNAME) to create one.");
             return;
         }
+        if (!PasswordPolicy.isValid(adminPassword)) {
+            log.warn("BOOTSTRAP_ADMIN_PASSWORD rejected: {}", PasswordPolicy.MESSAGE);
+            return;
+        }
+        String username;
+        try {
+            username = UsernamePolicy.requireValid(adminUsername);
+        } catch (IllegalArgumentException ex) {
+            log.warn("BOOTSTRAP_ADMIN_USERNAME rejected: {}", ex.getMessage());
+            return;
+        }
 
         if (repository.existsByEmail(adminEmail.trim())) {
             log.warn("User {} exists but has no ADMINISTRATOR role; not overwriting. Assign ADMINISTRATOR in Role Management.",
                     adminEmail.trim());
+            return;
+        }
+        if (repository.existsByUsername(username)) {
+            log.warn("Username {} already exists; not creating bootstrap ADMINISTRATOR.", username);
             return;
         }
 
@@ -63,7 +80,7 @@ public class UserSeeder implements CommandLineRunner {
         user.setAuthProvider("LOCAL");
         user.setEmail(adminEmail.trim());
         user.setIsActive(true);
-        user.setUsername(adminUsername.trim());
+        user.setUsername(username);
         user.setPassword(passwordEncoder.encode(adminPassword));
 
         Set<Role> roles = new HashSet<>();

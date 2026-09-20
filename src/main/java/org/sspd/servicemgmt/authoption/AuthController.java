@@ -8,7 +8,6 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
-import org.sspd.servicemgmt.auditoptions.service.AuditLogService;
 
 import java.util.Optional;
 
@@ -18,7 +17,6 @@ import java.util.Optional;
 public class AuthController {
 
     private final AuthService authService;
-    private final AuditLogService auditLogService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(
@@ -26,18 +24,12 @@ public class AuthController {
             HttpServletResponse response,
             HttpServletRequest httpRequest) {
 
-        // ၁. AuthService မှ Login ရလဒ်ကို ယူပါ
-        AuthService.LoginResult result = authService.authenticateUser(request);
+        String ip = getClientIp(httpRequest);
+        String ua = httpRequest.getHeader("User-Agent");
+        String device = (ua != null && (ua.contains("okhttp") || ua.contains("Expo") || ua.contains("ReactNative")))
+                ? "MOBILE" : "WEB";
 
-        // Login audit log
-        try {
-            String ip = getClientIp(httpRequest);
-            String ua = httpRequest.getHeader("User-Agent");
-            String device = (ua != null && (ua.contains("okhttp") || ua.contains("Expo") || ua.contains("ReactNative"))) ? "MOBILE" : "WEB";
-            String role = result.roles().stream().findFirst().map(r -> r.replace("ROLE_","")).orElse("");
-            auditLogService.log(result.username(), role, "LOGIN", "Auth", null, "User logged in", ip, device);
-        } catch (Exception ignored) {}
-
+        AuthService.LoginResult result = authService.authenticateUser(request, ip, device);
         setRefreshCookie(response, result.refreshToken());
         return authResponse(result, "Login Successful");
     }
@@ -57,7 +49,18 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @RequestBody(required = false) RefreshTokenRequest request,
+            @CookieValue(name = "refreshToken", required = false) String refreshCookie,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            HttpServletResponse response) {
+        String refreshToken = Optional.ofNullable(request)
+                .map(RefreshTokenRequest::refreshToken)
+                .filter(token -> !token.isBlank())
+                .orElse(refreshCookie);
+        String accessToken = extractBearer(authorization);
+        authService.logout(refreshToken, accessToken);
+
         ResponseCookie expired = ResponseCookie.from("refreshToken", "")
                 .httpOnly(true)
                 .secure(true)
@@ -86,6 +89,14 @@ public class AuthController {
                 .sameSite("Lax")
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    private String extractBearer(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = authorization.substring(7).trim();
+        return token.isEmpty() ? null : token;
     }
 
     private String getClientIp(HttpServletRequest req) {

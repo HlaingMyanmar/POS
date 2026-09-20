@@ -1,8 +1,10 @@
 package org.sspd.servicemgmt.rbacoptions.useroptions.mapper;
 
+import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.NullValuePropertyMappingStrategy;
 import org.mapstruct.factory.Mappers;
 import org.sspd.servicemgmt.rbacoptions.roleoptions.model.Role;
 import org.sspd.servicemgmt.rbacoptions.useroptions.dto.UserDTO;
@@ -16,22 +18,23 @@ public interface UserMapper {
 
     UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
 
-    // Entity -> DTO
     @Mapping(target = "roles", expression = "java(mapRolesToStrings(entity.getRoles()))")
     @Mapping(source = "staff.id", target = "staffId")
     @Mapping(source = "staff.name", target = "staffName")
     UserDTO toDto(User entity);
 
-    // DTO -> Entity
     @Mapping(target = "roles", ignore = true)
     @Mapping(target = "staff", ignore = true)
+    @Mapping(target = "password", ignore = true)
+    @Mapping(target = "tokenVersion", ignore = true)
     User toEntity(UserDTO dto);
 
-
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "roles", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "password", ignore = true)
+    @Mapping(target = "tokenVersion", ignore = true)
     @Mapping(target = "staff", ignore = true)
     void updateEntityFromDto(UserDTO dto, @MappingTarget User entity);
 
@@ -41,5 +44,4 @@ public interface UserMapper {
                 .map(Role::getName)
                 .collect(Collectors.toSet());
     }
-
 }

@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.sspd.servicemgmt.authoption.RefreshSessionRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.rbacoptions.roleoptions.model.Role;
 import org.sspd.servicemgmt.rbacoptions.roleoptions.repository.RoleRepository;
@@ -13,8 +14,12 @@ import org.sspd.servicemgmt.rbacoptions.useroptions.dto.UserDTO;
 import org.sspd.servicemgmt.rbacoptions.useroptions.mapper.UserMapper;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
+import org.sspd.servicemgmt.security.PasswordPolicy;
+import org.sspd.servicemgmt.security.UsernamePolicy;
 import org.sspd.servicemgmt.staffoptions.model.Staff;
 import org.sspd.servicemgmt.staffoptions.repository.StaffRepository;
+
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -30,71 +35,105 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final UserMapper mapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final RefreshSessionRepository refreshSessionRepository;
     private static final String USER_TOPIC = "/topic/user";
 
-
-
-    // 1. User အသစ်သိမ်းခြင်း (Create)
     @PreAuthorize("hasAuthority('CAN_ACCESS_USER_CREATE')")
     @Transactional
-    public UserDTO save(UserDTO dto){
-        User entity = mapper.toEntity(dto);
-        entity.setStaff(resolveStaff(dto.getStaffId()));
-        if (userRepository.existsByEmail(dto.getEmail())) {
-            throw new RuntimeException("Email '" + dto.getEmail() + "' is already registered!");
+    public UserDTO save(UserDTO dto) {
+        String username = UsernamePolicy.requireValid(dto.getUsername());
+        String email = requireEmail(dto.getEmail());
+        String password = PasswordPolicy.requireValid(dto.getPassword());
+        if (userRepository.existsByUsername(username)) {
+            throw new IllegalArgumentException("Username '" + username + "' is already registered!");
         }
-        // ၄။ Password ကို Encode လုပ်တဲ့ အပိုင်း (အဓိက အချက်)
-        if (dto.getPassword() != null && !dto.getPassword().isEmpty()) {
-            // Raw password ကို hash လုပ်ပြီးမှ Entity ထဲ ပြန်ထည့်မယ်
-            String encodedPassword = passwordEncoder.encode(dto.getPassword());
-            entity.setPassword(encodedPassword);
+        if (userRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("Email '" + email + "' is already registered!");
+        }
+
+        User entity = mapper.toEntity(dto);
+        entity.setUsername(username);
+        entity.setEmail(email);
+        entity.setStaff(resolveStaff(dto.getStaffId()));
+        entity.setPassword(passwordEncoder.encode(password));
+        if (entity.getTokenVersion() == null) {
+            entity.setTokenVersion(0);
         }
         User savedEntity = userRepository.save(entity);
-        messagingTemplate.convertAndSend(USER_TOPIC,"USER_CREATED");
+        messagingTemplate.convertAndSend(USER_TOPIC, "USER_CREATED");
         return mapper.toDto(savedEntity);
-
     }
-    // 2. User အားလုံးကို List လိုက် ဆွဲထုတ်ခြင်း (Read All)
+
     @PreAuthorize("hasAuthority('CAN_ACCESS_USERS_READ')")
     @Transactional(readOnly = true)
-    public List<UserDTO> findAll(){
+    public List<UserDTO> findAll() {
         return userRepository.findAll()
                 .stream()
                 .map(mapper::toDto)
                 .collect(Collectors.toList());
     }
 
-    // 3. ID တစ်ခုတည်းနဲ့ ရှာခြင်း (Read by ID)
     @PreAuthorize("hasAuthority('CAN_ACCESS_USERS_READ')")
     @Transactional(readOnly = true)
-    public UserDTO findById(Long id){
+    public UserDTO findById(Long id) {
         User entity = userRepository.findById(id)
-                .orElseThrow(()->new ResourceNotFoundException("User Not Found  with id "+id));
+                .orElseThrow(() -> new ResourceNotFoundException("User Not Found  with id " + id));
         return mapper.toDto(entity);
-
     }
 
-    // 4. User id ဖြင့်ရှာပြီး update လုပ်ခြင်း
     @PreAuthorize("hasAuthority('CAN_ACCESS_USER_UPDATE')")
     @Transactional
     public UserDTO update(Long id, UserDTO userDTO) {
         User existingEntity = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User Not Found with id " + id));
 
-        // ၁။ Password Update Logic (သီးသန့်ကိုင်တွယ်မယ်)
-        if (userDTO.getPassword() != null && !userDTO.getPassword().trim().isEmpty()) {
-            // Password အသစ်ပါလာမှသာ Encode လုပ်ပြီး Entity ထဲ တိုက်ရိုက်ထည့်မယ်
-            existingEntity.setPassword(passwordEncoder.encode(userDTO.getPassword()));
+        if (userDTO.getUsername() != null) {
+            String username = UsernamePolicy.requireValid(userDTO.getUsername());
+            if (userRepository.existsByUsernameAndIdNot(username, id)) {
+                throw new IllegalArgumentException("Username '" + username + "' is already registered!");
+            }
+            existingEntity.setUsername(username);
         }
-        // Password အလွတ်လာရင် (သို့မဟုတ်) Null လာရင် ဘာမှမလုပ်ဘဲ ထားလိုက်မယ် (အဟောင်းအတိုင်း ရှိနေမယ်)
+        if (userDTO.getEmail() != null) {
+            String email = requireEmail(userDTO.getEmail());
+            if (userRepository.existsByEmailAndIdNot(email, id)) {
+                throw new IllegalArgumentException("Email '" + email + "' is already registered!");
+            }
+            existingEntity.setEmail(email);
+        }
 
-        // ၂။ Mapper ထဲမှာ Password ကို Ignore လုပ်ထားဖို့ လိုအပ်ပါတယ် (အောက်မှာ ပြထားပါတယ်)
+        if (userDTO.getPassword() != null && !userDTO.getPassword().isBlank()) {
+            String password = PasswordPolicy.requireValid(userDTO.getPassword());
+            existingEntity.setPassword(passwordEncoder.encode(password));
+            invalidateSessions(existingEntity);
+        }
+
+        // Null fields in the DTO are ignored (partial updates) — see UserMapper.
         mapper.updateEntityFromDto(userDTO, existingEntity);
-        existingEntity.setStaff(resolveStaff(userDTO.getStaffId()));
 
-        // ၃။ WebSocket & Save
+        // staffId null = omit; 0 = explicitly unlink
+        if (userDTO.getStaffId() != null) {
+            existingEntity.setStaff(resolveStaff(userDTO.getStaffId()));
+        }
+
         messagingTemplate.convertAndSend(USER_TOPIC, "USER_UPDATED");
         return mapper.toDto(userRepository.save(existingEntity));
+    }
+
+    private static String requireEmail(String email) {
+        String value = email == null ? "" : email.trim();
+        if (value.isBlank() || !value.contains("@")) {
+            throw new IllegalArgumentException("A valid email is required.");
+        }
+        return value;
+    }
+
+    private void invalidateSessions(User user) {
+        int nextVersion = (user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1;
+        user.setTokenVersion(nextVersion);
+        if (user.getId() != null) {
+            refreshSessionRepository.revokeAllActiveForUser(user.getId(), Instant.now());
+        }
     }
 
     private Staff resolveStaff(Integer staffId) {
@@ -105,18 +144,17 @@ public class UserService {
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_USER_DELETE')")
     @Transactional
-    public void delete(Long id){
+    public void delete(Long id) {
         User entity = userRepository.findById(id)
-                .orElseThrow(()->new ResourceNotFoundException("User Not Found  with id "+id));
-       userRepository.delete(entity);
+                .orElseThrow(() -> new ResourceNotFoundException("User Not Found  with id " + id));
+        userRepository.delete(entity);
         messagingTemplate.convertAndSend(USER_TOPIC, "USER_DELETED");
-
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_USER_ASSIGN_ROLES')")
     @Transactional
-    public void assignRole(Long userId, Set<Long> roleIds){
-        User user= userRepository.findById(userId)
+    public void assignRole(Long userId, Set<Long> roleIds) {
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Set<Role> roles = new HashSet<>(roleRepository.findAllById(roleIds));
         user.setRoles(roles);
@@ -143,7 +181,7 @@ public class UserService {
     @PreAuthorize("hasAuthority('CAN_ACCESS_USER_REMOVE_ROLES')")
     @Transactional
     public void removeRole(Long userId, Long roleId) {
-        User user= userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Permission not found"));
@@ -151,5 +189,4 @@ public class UserService {
         userRepository.save(user);
         messagingTemplate.convertAndSend(USER_TOPIC, "USER_ASSIGN_REMOVE");
     }
-
 }

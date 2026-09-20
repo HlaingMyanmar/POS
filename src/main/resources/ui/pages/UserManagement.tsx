@@ -99,7 +99,19 @@ const UserManagement: React.FC = () => {
     }
     setSaving(true);
     const payload = { ...formData };
+    const username = String(payload.username || '').trim();
+    if (username.length < 3 || username.length > 50 || /\s/.test(username)) {
+      setSaving(false);
+      Swal.fire('Invalid username', 'Username must be 3-50 characters with no spaces.', 'warning');
+      return;
+    }
+    payload.username = username;
     if (editingUser && !payload.password) delete (payload as any).password;
+    else if (payload.password && payload.password.length < 8) {
+      setSaving(false);
+      Swal.fire('Invalid password', 'Password must be at least 8 characters.', 'warning');
+      return;
+    }
 
     try {
       if (editingUser) {
@@ -256,7 +268,17 @@ const UserManagement: React.FC = () => {
             <form onSubmit={handleSaveUser} className="p-4 space-y-3 text-left">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
-                <input type="text" required value={formData.username} onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs" />
+                <input
+                  type="text"
+                  required
+                  minLength={3}
+                  maxLength={50}
+                  value={formData.username}
+                  onChange={(e) => setFormData({...formData, username: e.target.value})}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs"
+                  placeholder="At least 3 characters"
+                  autoComplete="username"
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Email</label>
@@ -264,7 +286,17 @@ const UserManagement: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Password {editingUser && '(Optional)'}</label>
-                <input type="password" required={!editingUser} value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs" placeholder={editingUser ? "Unchanged" : "••••••••"} />
+                <input
+                  type="password"
+                  required={!editingUser}
+                  minLength={editingUser && !formData.password ? undefined : 8}
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs"
+                  placeholder={editingUser ? "Leave blank to keep current" : "At least 8 characters"}
+                  autoComplete="new-password"
+                />
+                <p className="text-[10px] text-slate-500">အနည်းဆုံး ၈ လုံး။ Password ပြောင်းရင် လက်ရှိ session များ ပိတ်မည်။</p>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Linked Staff (ဝန်ထမ်း)</label>

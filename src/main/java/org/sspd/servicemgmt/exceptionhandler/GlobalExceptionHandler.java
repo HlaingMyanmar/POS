@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -30,6 +31,16 @@ public class GlobalExceptionHandler {
                         ex.getMessage() != null && !ex.getMessage().isBlank()
                                 ? ex.getMessage()
                                 : "Username သို့မဟုတ် Password မှားနေပါသည်",
+                        null));
+    }
+
+    @ExceptionHandler(LockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLockedAccount(LockedException ex) {
+        return ResponseEntity.status(HttpStatus.LOCKED)
+                .body(new ApiResponse<>(false,
+                        ex.getMessage() != null && !ex.getMessage().isBlank()
+                                ? ex.getMessage()
+                                : "Account temporarily locked due to failed login attempts.",
                         null));
     }
 

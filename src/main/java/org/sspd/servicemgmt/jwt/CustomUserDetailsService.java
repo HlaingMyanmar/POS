@@ -45,7 +45,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         return new TokenAwareUserDetails(
                 principal,
                 user.getPassword(),
-                user.getIsActive(),
+                Boolean.TRUE.equals(user.getIsActive()),
                 getAuthorities(user),
                 user.getTokenVersion() != null ? user.getTokenVersion() : 0
         );

@@ -106,8 +106,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // ── Auth ──────────────────────────────────────────────────────────────────
 
     fun logout() {
-        prefs.clear()
-        _uiState.update { it.copy(isLoggedOut = true) }
+        viewModelScope.launch {
+            val refresh = prefs.refreshToken
+            if (refresh.isNotBlank()) {
+                runCatching {
+                    ApiClient.service.logout(
+                        com.sspd.servicemgmt.core.network.RefreshTokenRequest(refresh)
+                    )
+                }
+            }
+            prefs.clear()
+            _uiState.update { it.copy(isLoggedOut = true) }
+        }
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────

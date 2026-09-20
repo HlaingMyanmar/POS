@@ -24,6 +24,7 @@ class TokenRetryPolicyTest {
     fun `stops retry loops and invalidated sessions`() {
         assertEquals(TokenRetryAction.STOP, decide(responseCount = 2))
         assertEquals(TokenRetryAction.STOP, decide(path = "/api/v1/auth/refresh"))
+        assertEquals(TokenRetryAction.STOP, decide(path = "/api/v1/auth/logout"))
         assertEquals(TokenRetryAction.STOP, decide(body = """{"code":"SESSION_INVALIDATED"}"""))
     }
 

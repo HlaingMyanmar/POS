@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/delivery-townships").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/delivery-locations").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/branding", "/api/v1/customer-portal/branding/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/customer-portal/booking-availability/**").permitAll()
                         // Controller enforces staff CAN_ACCESS_SALE_CREATE or X-Scanner-Token.
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/scan").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()

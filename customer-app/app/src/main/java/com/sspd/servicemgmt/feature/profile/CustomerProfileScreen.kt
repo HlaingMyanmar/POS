@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.sspd.servicemgmt.core.network.ApiClient
 import com.sspd.servicemgmt.core.network.BookingSummary
 import com.sspd.servicemgmt.core.network.CustomerAuthResponse
 import com.sspd.servicemgmt.core.network.CustomerJob
@@ -1035,7 +1036,10 @@ private fun CustomerHistoryCard(
                 detail = listOfNotNull(
                     it.appointmentDate?.replace('T', ' ')?.take(10),
                     it.requestedServiceName,
-                    it.status?.replace('_', ' ')
+                    when (it.status?.uppercase()) {
+                        "CANCELED", "CANCELLED", "REJECTED" -> "ငြင်းပယ်"
+                        else -> it.status?.replace('_', ' ')
+                    }
                 ).joinToString(" • "),
                 amount = null,
                 kind = HistoryKind.BOOKING,
@@ -1536,12 +1540,66 @@ private fun OrderDetailContent(order: CustomerOrder) {
 
 @Composable
 private fun BookingDetailContent(booking: BookingSummary) {
+    val canceled = booking.status?.uppercase() in setOf("CANCELED", "CANCELLED", "REJECTED")
+    var rejectionMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(canceled) {
+        if (!canceled) return@LaunchedEffect
+        rejectionMessage = runCatching {
+            ApiClient.service.branding().body()?.data?.bookingRejectionMessage
+        }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "သင့် service တောင်းဆိုမှုကို ဆိုင်မှ လက်မခံနိုင်ပါ။ နောက်ထပ်အသေးစိတ်အတွက် ဆိုင်သို့ ဆက်သွယ်ပေးပါ။"
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DetailInfoRow(label = "Booking နံပါတ်", value = booking.bookingNo.orEmpty().ifBlank { "—" })
+        booking.serviceDate?.takeIf { it.isNotBlank() }?.let {
+            DetailInfoRow(label = "Service date", value = it)
+        }
+        booking.arrivalWindowId?.let {
+            DetailInfoRow(label = "Arrival window", value = "Window #$it")
+        }
+        when {
+            booking.preferredAnytime == false && !booking.preferredTime.isNullOrBlank() ->
+                DetailInfoRow(label = "Preferred time", value = booking.preferredTime!!.take(5))
+            booking.serviceDate != null ->
+                DetailInfoRow(label = "Preferred time", value = "Anytime")
+        }
+        booking.customerPreferenceNote?.takeIf { it.isNotBlank() }?.let {
+            DetailInfoRow(label = "Preference note", value = it)
+        }
         booking.appointmentDate?.takeIf { it.isNotBlank() }?.let {
             DetailInfoRow(label = "ချိန်းဆိုသည့် ရက်စွဲ", value = it.replace('T', ' ').take(16))
         }
-        DetailInfoRow(label = "အခြေအနေ", value = booking.status?.replace('_', ' ') ?: "—")
+        DetailInfoRow(
+            label = "အခြေအနေ",
+            value = when (booking.status?.uppercase()) {
+                "CANCELED", "CANCELLED", "REJECTED" -> "ငြင်းပယ် / ပယ်ဖျက်"
+                "CONFIRMED" -> "လက်ခံထား"
+                "ARRIVED" -> "ဆိုင်ရောက်"
+                else -> booking.status?.replace('_', ' ') ?: "—"
+            }
+        )
+        if (canceled && !rejectionMessage.isNullOrBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFFFF1F2),
+                border = BorderStroke(1.dp, Color(0xFFFECDD3))
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "ဆိုင်မှ အသိပေးချက်",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF9F1239)
+                    )
+                    Text(
+                        rejectionMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF881337)
+                    )
+                }
+            }
+        }
         if (!booking.requestedServiceName.isNullOrBlank()) {
             DetailInfoRow(label = "ရွေးထားသော Service", value = booking.requestedServiceName)
         }

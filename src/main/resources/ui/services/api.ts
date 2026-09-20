@@ -297,6 +297,24 @@ export const companySettingsService = {
     api.post<any, ApiResponse<void>>('/v1/company-settings/test-mail', { to }),
 };
 
+// ── Service & Booking Settings ─────────────────────────────
+export const serviceBookingSettingsService = {
+  getSettings: () => api.get<any, ApiResponse<any>>('/v1/service-booking-settings'),
+  saveSettings: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-booking-settings', dto),
+  listWeekdayHours: () => api.get<any, ApiResponse<any[]>>('/v1/service-booking-settings/weekday-hours'),
+  createWeekdayHours: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-booking-settings/weekday-hours', dto),
+  updateWeekdayHours: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-booking-settings/weekday-hours/${id}`, dto),
+  deleteWeekdayHours: (id: number) => api.delete<any, ApiResponse<void>>(`/v1/service-booking-settings/weekday-hours/${id}`),
+  listArrivalWindows: () => api.get<any, ApiResponse<any[]>>('/v1/service-booking-settings/arrival-windows'),
+  createArrivalWindow: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-booking-settings/arrival-windows', dto),
+  updateArrivalWindow: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-booking-settings/arrival-windows/${id}`, dto),
+  deleteArrivalWindow: (id: number) => api.delete<any, ApiResponse<void>>(`/v1/service-booking-settings/arrival-windows/${id}`),
+  listDateExceptions: () => api.get<any, ApiResponse<any[]>>('/v1/service-booking-settings/date-exceptions'),
+  createDateException: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-booking-settings/date-exceptions', dto),
+  updateDateException: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-booking-settings/date-exceptions/${id}`, dto),
+  deleteDateException: (id: number) => api.delete<any, ApiResponse<void>>(`/v1/service-booking-settings/date-exceptions/${id}`),
+};
+
 // ── App Version Settings ───────────────────────────────────
 export const appVersionSettingsService = {
   getSettings: () => api.get<any, ApiResponse<any>>('/v1/app-version-settings'),

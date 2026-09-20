@@ -16,6 +16,7 @@ import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepo
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.dataevent.DataEventPublisher;
+import org.sspd.servicemgmt.servicebookingsettingsoptions.service.ServiceBookingSettingsService;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.servicejoboptions.service.ServiceJobService;
 
@@ -41,6 +42,7 @@ class BookingServiceUpdateItemTest {
     private ServiceJobRepository serviceJobRepository;
     private ServiceJobService serviceJobService;
     private BookingPhotoStorageService photoStorage;
+    private ServiceBookingSettingsService bookingSettingsService;
     private BookingService service;
 
     @BeforeEach
@@ -50,6 +52,8 @@ class BookingServiceUpdateItemTest {
         serviceJobRepository = mock(ServiceJobRepository.class);
         serviceJobService = mock(ServiceJobService.class);
         photoStorage = mock(BookingPhotoStorageService.class);
+        bookingSettingsService = mock(ServiceBookingSettingsService.class);
+        when(bookingSettingsService.getMaxPhotosPerItem()).thenReturn(50);
         service = new BookingService(
                 bookingRepository,
                 itemRepository,
@@ -58,7 +62,8 @@ class BookingServiceUpdateItemTest {
                 serviceJobRepository,
                 serviceJobService,
                 mock(DataEventPublisher.class),
-                photoStorage
+                photoStorage,
+                bookingSettingsService
         );
         when(serviceJobService.findByBookingId(anyInt())).thenReturn(List.of());
         when(itemRepository.save(any(BookingItem.class))).thenAnswer(inv -> inv.getArgument(0));

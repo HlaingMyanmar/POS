@@ -17,6 +17,7 @@ import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
+import org.sspd.servicemgmt.servicebookingsettingsoptions.service.ServiceBookingSettingsService;
 import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,14 +47,16 @@ class BookingServiceTest {
     @Mock ServiceJobService serviceJobService;
     @Mock DataEventPublisher dataEventPublisher;
     @Mock BookingPhotoStorageService bookingPhotoStorageService;
+    @Mock ServiceBookingSettingsService serviceBookingSettingsService;
 
     private BookingService service;
 
     @BeforeEach
     void setUp() {
+        lenient().when(serviceBookingSettingsService.getMaxPhotosPerItem()).thenReturn(50);
         service = new BookingService(repository, itemRepository, customerRepository,
             companySettingsRepository, serviceJobRepository, serviceJobService, dataEventPublisher,
-            bookingPhotoStorageService);
+            bookingPhotoStorageService, serviceBookingSettingsService);
     }
 
     @Test

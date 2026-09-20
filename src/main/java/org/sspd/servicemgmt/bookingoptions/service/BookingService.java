@@ -1,7 +1,6 @@
 package org.sspd.servicemgmt.bookingoptions.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -29,6 +28,7 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 import org.sspd.servicemgmt.servicejoboptions.model.ServiceMode;
 import org.sspd.servicemgmt.servicejoboptions.repository.ServiceJobRepository;
 import org.sspd.servicemgmt.dataevent.DataEventPublisher;
+import org.sspd.servicemgmt.servicebookingsettingsoptions.service.ServiceBookingSettingsService;
 import org.sspd.servicemgmt.servicejoboptions.service.ServiceJobService;
 
 import java.time.LocalDate;
@@ -39,6 +39,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -55,9 +56,7 @@ public class BookingService {
     private final ServiceJobService serviceJobService;
     private final DataEventPublisher dataEventPublisher;
     private final BookingPhotoStorageService bookingPhotoStorageService;
-
-    @Value("${app.booking-photo.max-per-item:50}")
-    private int maxPhotosPerItem = 50;
+    private final ServiceBookingSettingsService serviceBookingSettingsService;
 
     @Transactional(readOnly = true)
     public Page<BookingDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
@@ -98,6 +97,11 @@ public class BookingService {
                 .serviceAddress(trimToNull(dto.getServiceAddress()))
                 .urgency(trimToNull(dto.getUrgency()))
                 .contactPreference(trimToNull(dto.getContactPreference()))
+                .serviceDate(dto.getServiceDate())
+                .arrivalWindowId(dto.getArrivalWindowId())
+                .preferredTime(dto.getPreferredTime())
+                .preferredAnytime(dto.getPreferredAnytime() == null || dto.getPreferredAnytime())
+                .customerPreferenceNote(trimToNull(dto.getCustomerPreferenceNote()))
                 .requestPhotos(new ArrayList<>())
                 .items(new ArrayList<>())
                 .build();
@@ -342,6 +346,11 @@ public class BookingService {
         dto.setServiceAddress(booking.getServiceAddress());
         dto.setUrgency(booking.getUrgency());
         dto.setContactPreference(booking.getContactPreference());
+        dto.setServiceDate(booking.getServiceDate());
+        dto.setArrivalWindowId(booking.getArrivalWindowId());
+        dto.setPreferredTime(booking.getPreferredTime());
+        dto.setPreferredAnytime(booking.getPreferredAnytime() == null || booking.getPreferredAnytime());
+        dto.setCustomerPreferenceNote(booking.getCustomerPreferenceNote());
         if (booking.getRequestPhotos() != null) {
             dto.setRequestPhotos(booking.getRequestPhotos().stream()
                     .map(this::toRequestPhotoDto)
@@ -510,8 +519,9 @@ public class BookingService {
 
     private void attachPhotos(BookingItem item, List<BookingItemPhotoDTO> photos) {
         if (photos == null || photos.isEmpty()) return;
-        if (photos.size() > maxPhotosPerItem)
-            throw new IllegalArgumentException("Each device can have at most " + maxPhotosPerItem + " photos");
+        int maxPhotos = maxPhotosPerItem();
+        if (photos.size() > maxPhotos)
+            throw new IllegalArgumentException("Each device can have at most " + maxPhotos + " photos");
         Set<Integer> usedSlots = new HashSet<>();
         int autoSlot = 1;
         for (BookingItemPhotoDTO photoDto : photos) {
@@ -520,8 +530,8 @@ public class BookingService {
             if (dataUrl.length() > MAX_PHOTO_DATA_URL_LENGTH)
                 throw new IllegalArgumentException("Device photo is too large");
             int slot = photoDto.getSlot() != null ? photoDto.getSlot() : autoSlot;
-            if (slot < 1 || slot > maxPhotosPerItem)
-                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotosPerItem);
+            if (slot < 1 || slot > maxPhotos)
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotos);
             if (!usedSlots.add(slot))
                 throw new IllegalArgumentException("Duplicate photo slot: " + slot);
                 BookingPhotoStorageService.StoredPhoto stored = bookingPhotoStorageService.store(dataUrl, item.getBooking().getId(), slot);
@@ -536,8 +546,8 @@ public class BookingService {
                     .build());
             autoSlot++;
         }
-        if (item.getPhotos().size() > maxPhotosPerItem)
-            throw new IllegalArgumentException("Each device can have at most " + maxPhotosPerItem + " photos");
+        if (item.getPhotos().size() > maxPhotos)
+            throw new IllegalArgumentException("Each device can have at most " + maxPhotos + " photos");
     }
 
     /**
@@ -550,17 +560,26 @@ public class BookingService {
      */
     private void syncItemPhotos(BookingItem item, List<BookingItemPhotoDTO> photos) {
         List<BookingItemPhotoDTO> incoming = photos == null ? List.of() : photos;
-        if (incoming.size() > maxPhotosPerItem)
-            throw new IllegalArgumentException("Each device can have at most " + maxPhotosPerItem + " photos");
+        int maxPhotos = maxPhotosPerItem();
+        Set<Integer> existingSlots = item.getPhotos().stream()
+                .map(BookingItemPhoto::getSlot)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
 
         Set<Integer> keepSlots = new HashSet<>();
         for (BookingItemPhotoDTO photoDto : incoming) {
             Integer slot = photoDto.getSlot();
-            if (slot == null || slot < 1 || slot > maxPhotosPerItem)
-                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotosPerItem);
+            if (slot == null || slot < 1)
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotos);
+            // Grandfather slots already stored above a newly lowered limit.
+            if (slot > maxPhotos && !existingSlots.contains(slot))
+                throw new IllegalArgumentException("Photo slot must be between 1 and " + maxPhotos);
             if (!keepSlots.add(slot))
                 throw new IllegalArgumentException("Duplicate photo slot: " + slot);
         }
+        long withinCap = incoming.stream().filter(dto -> dto.getSlot() != null && dto.getSlot() <= maxPhotos).count();
+        if (withinCap > maxPhotos)
+            throw new IllegalArgumentException("Each device can have at most " + maxPhotos + " photos");
 
         List<String[]> deleteOnCommit = new ArrayList<>();
         List<String[]> deleteOnRollback = new ArrayList<>();
@@ -621,6 +640,10 @@ public class BookingService {
         }
 
         schedulePhotoFileCleanup(deleteOnCommit, deleteOnRollback);
+    }
+
+    private int maxPhotosPerItem() {
+        return serviceBookingSettingsService.getMaxPhotosPerItem();
     }
 
     /**

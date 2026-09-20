@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
   AccountingDashboard, AdminQueryPage, AgingReportPage, AppVersionSettingsPage,
   AuditLogManagement, BackupSettings, BalanceSheetReport, BookingManagement,
+  ServiceBookingSettingsPage,
   BrandManagement, CashDrawerManagement, CategoryManagement, ChartOfAccountManagement,
   CompanySettingsPage, CreditManagement, CustomerAppAccountsPage, CustomerAppOrdersPage,
   CustomerHistoryReport, CustomerManagement, CustomerPasswordResetPage, CustomerPromoCodesPage,
@@ -333,6 +334,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.ADMIN_QUERIES}      element={guardAny(<AdminQueryPage />, ['CAN_ACCESS_ADMIN_QUERY_READ', 'CAN_ACCESS_ADMIN_QUERY_WRITE'])} />
           <Route path={AppRoute.COMPANY_SETTINGS}    element={guard(<CompanySettingsPage />)} />
           <Route path={AppRoute.VOUCHER_SETTINGS}    element={guard(<VoucherSettingsPage />)} />
+          <Route path={AppRoute.SERVICE_BOOKING_SETTINGS} element={guardAny(<ServiceBookingSettingsPage />, ['CAN_ACCESS_BOOKING_READ', 'CAN_ACCESS_SERVICE_JOB_READ', 'CAN_ACCESS_SERVICE_READ'])} />
           <Route path={AppRoute.APP_VERSION_SETTINGS} element={guard(<AppVersionSettingsPage />,   'CAN_ACCESS_USERS_READ')} />
           <Route path={AppRoute.AUDIT_LOGS}          element={guard(<AuditLogManagement />,         'CAN_ACCESS_AUDIT_LOG_READ')} />
           <Route path={AppRoute.INCOME_REPORT}       element={guard(<DailyReport />,                'CAN_ACCESS_REPORT_READ')} />

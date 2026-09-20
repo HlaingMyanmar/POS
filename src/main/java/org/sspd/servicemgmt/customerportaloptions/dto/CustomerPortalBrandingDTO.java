@@ -27,4 +27,14 @@ public class CustomerPortalBrandingDTO {
     private java.util.List<org.sspd.servicemgmt.customerportaloptions.support.DeliveryScheduleRules.DayWindowRow> deliveryWeekdays;
     private java.util.List<org.sspd.servicemgmt.customerportaloptions.support.DeliveryScheduleRules.ClosedDate> deliveryClosedDates;
     private Integer deliveryMinLeadDays;
+    /** Company-defined outdoor/ONSITE transportation disclosure for customer booking. */
+    private String outdoorTransportationNotice;
+    /** Optional fixed outdoor transportation fee (null = distance-based / quote later). */
+    private java.math.BigDecimal outdoorTransportationFee;
+    /** Shown when a customer booking was canceled/rejected by the shop. */
+    private String bookingRejectionMessage;
+    /** When false, customer app cannot select ONSITE outdoor service. */
+    private boolean outdoorBookingEnabled;
+    /** Reason shown while outdoor booking is disabled. */
+    private String outdoorBookingDisabledReason;
 }

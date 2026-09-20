@@ -83,7 +83,12 @@ data class CustomerBranding(
     val deliveryDays: String? = "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY",
     val deliveryWeekdays: List<DeliveryWeekdayHours>? = null,
     val deliveryClosedDates: List<DeliveryClosedDate>? = null,
-    val deliveryMinLeadDays: Int? = 1
+    val deliveryMinLeadDays: Int? = 1,
+    val outdoorTransportationNotice: String? = null,
+    val outdoorTransportationFee: Double? = null,
+    val bookingRejectionMessage: String? = null,
+    val outdoorBookingEnabled: Boolean? = true,
+    val outdoorBookingDisabledReason: String? = null
 )
 
 data class DeliveryWeekdayHours(
@@ -158,8 +163,30 @@ data class ServiceRequestBody(
     val urgency: String? = "NORMAL",
     val contactPreference: String? = "PHONE",
     val appointmentDate: String? = null,
+    val serviceDate: String? = null,
+    val arrivalWindowId: Int? = null,
+    val preferredTime: String? = null,
+    val preferredAnytime: Boolean? = true,
+    val customerPreferenceNote: String? = null,
     val remark: String? = "CUSTOMER_APP",
     val photos: List<BookingRequestPhotoBody> = emptyList()
+)
+
+data class BookingAvailabilityDate(
+    val date: String? = null,
+    val available: Boolean? = false,
+    val reason: String? = null
+)
+
+data class BookingAvailabilityWindow(
+    val windowId: Int? = null,
+    val name: String? = null,
+    val startTime: String? = null,
+    val endTime: String? = null,
+    val capacity: Int? = 0,
+    val booked: Int? = 0,
+    val remaining: Int? = 0,
+    val state: String? = null
 )
 
 data class BookingRequestPhotoBody(
@@ -191,6 +218,11 @@ data class BookingSummary(
     val serviceAddress: String? = null,
     val urgency: String? = null,
     val contactPreference: String? = null,
+    val serviceDate: String? = null,
+    val arrivalWindowId: Int? = null,
+    val preferredTime: String? = null,
+    val preferredAnytime: Boolean? = null,
+    val customerPreferenceNote: String? = null,
     val requestPhotos: List<BookingRequestPhotoSummary> = emptyList()
 )
 

@@ -117,6 +117,20 @@ interface ApiService {
         @Body body: ServiceRequestBody
     ): Response<ApiResponse<BookingSummary>>
 
+    @GET("customer-portal/booking-availability/dates")
+    suspend fun bookingAvailabilityDates(
+        @Query("mode") mode: String,
+        @Query("from") from: String? = null,
+        @Query("days") days: Int? = null,
+        @Query("emergency") emergency: Boolean = false
+    ): Response<ApiResponse<List<BookingAvailabilityDate>>>
+
+    @GET("customer-portal/booking-availability/windows")
+    suspend fun bookingAvailabilityWindows(
+        @Query("date") date: String,
+        @Query("emergency") emergency: Boolean = false
+    ): Response<ApiResponse<List<BookingAvailabilityWindow>>>
+
     @GET("customer-portal/bookings")
     suspend fun myBookings(@Header("Authorization") auth: String): Response<ApiResponse<List<BookingSummary>>>
 

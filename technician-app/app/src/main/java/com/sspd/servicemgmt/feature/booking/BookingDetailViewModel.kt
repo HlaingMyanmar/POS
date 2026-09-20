@@ -39,7 +39,12 @@ class BookingDetailViewModel(
             try {
                 val token = ApiClient.bearer(prefs.authToken)
                 val res   = ApiClient.service.getBookingById(token, bookingId)
-                _uiState.update { it.copy(booking = res.body()?.data, loading = false) }
+                val maxPhotos = runCatching {
+                    ApiClient.service.getServiceBookingSettings(token).body()?.data?.maxPhotosPerItem
+                }.getOrNull()?.takeIf { it in 1..100 } ?: 50
+                _uiState.update {
+                    it.copy(booking = res.body()?.data, loading = false, maxPhotosPerItem = maxPhotos)
+                }
             } catch (_: Exception) {
                 _uiState.update { it.copy(loading = false) }
             }
@@ -133,6 +138,7 @@ class BookingDetailViewModel(
         val loading:       Boolean     = true,
         val actionLoading: Boolean     = false,
         val actionSuccess: String?     = null,
-        val actionError:   String?     = null
+        val actionError:   String?     = null,
+        val maxPhotosPerItem: Int      = 50
     )
 }

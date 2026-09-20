@@ -741,6 +741,11 @@ interface ApiService {
         @Header("Authorization") auth: String
     ): Response<ApiResponse<CompanySettingsDTO>>
 
+    @GET("service-booking-settings")
+    suspend fun getServiceBookingSettings(
+        @Header("Authorization") auth: String
+    ): Response<ApiResponse<ServiceBookingSettingsDTO>>
+
     @POST("service-jobs/{id}/deliver")
     suspend fun deliverServiceJob(
         @Header("Authorization") auth: String,

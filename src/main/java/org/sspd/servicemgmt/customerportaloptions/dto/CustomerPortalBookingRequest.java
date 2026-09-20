@@ -3,7 +3,9 @@ package org.sspd.servicemgmt.customerportaloptions.dto;
 import lombok.Data;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingRequestPhotoDTO;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +21,13 @@ public class CustomerPortalBookingRequest {
     private String urgency;
     private String contactPreference;
     private LocalDateTime appointmentDate;
+    /** ONSITE: authoritative service day. */
+    private LocalDate serviceDate;
+    /** ONSITE: authoritative arrival window. */
+    private Integer arrivalWindowId;
+    private LocalTime preferredTime;
+    private Boolean preferredAnytime;
+    private String customerPreferenceNote;
     private String remark;
     private List<BookingRequestPhotoDTO> photos = new ArrayList<>();
 }

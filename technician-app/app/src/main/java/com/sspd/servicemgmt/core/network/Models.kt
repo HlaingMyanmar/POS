@@ -794,6 +794,12 @@ data class CompanySettingsDTO(
     val serviceAllowDeliveryWithDue: Boolean? = false
 )
 
+data class ServiceBookingSettingsDTO(
+    val outdoorTransportationNotice: String? = null,
+    val outdoorTransportationFee: Double? = null,
+    val maxPhotosPerItem: Int? = 50
+)
+
 data class AssignmentDecisionRequest(
     val reason: String? = null
 )

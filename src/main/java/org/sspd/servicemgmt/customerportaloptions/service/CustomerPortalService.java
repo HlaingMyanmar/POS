@@ -76,7 +76,9 @@ import org.sspd.servicemgmt.stockoptions.productserialoptions.repository.Product
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -115,6 +117,8 @@ public class CustomerPortalService {
     private final CustomerOrderPaymentService orderPayments;
     private final DeliveryPricingService deliveryPricing;
     private final CompanySettingsService companySettingsService;
+    private final org.sspd.servicemgmt.servicebookingsettingsoptions.service.ServiceBookingSettingsService serviceBookingSettingsService;
+    private final org.sspd.servicemgmt.servicebookingsettingsoptions.service.BookingAvailabilityService bookingAvailabilityService;
     private final PlatformTransactionManager transactionManager;
     private final org.sspd.servicemgmt.accountingoptions.paymentmethodoptions.repository.PaymentMethodRepository paymentMethodRepository;
     private final CustomerOrderRatingService orderRatings;
@@ -198,6 +202,14 @@ public class CustomerPortalService {
                 Set.of("DIAGNOSIS", "REPAIR", "MAINTENANCE", "INSTALLATION", "CONSULTATION"));
         String serviceMode = choice(req.getServiceMode(), "UNDECIDED",
                 Set.of("ONSITE", "SHOP", "UNDECIDED"));
+        if ("ONSITE".equals(serviceMode) && !serviceBookingSettingsService.isOutdoorBookingEnabled()) {
+            var settings = serviceBookingSettingsService.getSettings();
+            String reason = settings.getOutdoorBookingDisabledReason();
+            if (reason == null || reason.isBlank()) {
+                reason = org.sspd.servicemgmt.servicebookingsettingsoptions.service.ServiceBookingSettingsService.DEFAULT_OUTDOOR_DISABLED_REASON;
+            }
+            throw new IllegalArgumentException(reason);
+        }
         String urgency = choice(req.getUrgency(), "NORMAL",
                 Set.of("NORMAL", "SOON", "EMERGENCY"));
         String contactPreference = choice(req.getContactPreference(), "PHONE",
@@ -205,13 +217,59 @@ public class CustomerPortalService {
         if ("ONSITE".equals(serviceMode) && blank(req.getServiceAddress())) {
             throw new IllegalArgumentException("အိမ်အရောက်ဝန်ဆောင်မှုအတွက် လိပ်စာထည့်ပါ");
         }
-        if (req.getAppointmentDate() != null
-                && req.getAppointmentDate().isBefore(LocalDateTime.now().minusMinutes(5))) {
-            throw new IllegalArgumentException("ချိန်းဆိုချိန်သည် လက်ရှိအချိန်နောက်ပိုင်း ဖြစ်ရပါမည်");
+
+        boolean emergency = "EMERGENCY".equals(urgency);
+        LocalDateTime appointmentDate = req.getAppointmentDate();
+        LocalDate serviceDate = req.getServiceDate();
+        Integer arrivalWindowId = req.getArrivalWindowId();
+        LocalTime preferredTime = req.getPreferredTime();
+        Boolean preferredAnytime = req.getPreferredAnytime();
+        String preferenceNote = blank(req.getCustomerPreferenceNote()) ? null : req.getCustomerPreferenceNote().trim();
+
+        if ("ONSITE".equals(serviceMode)) {
+            var window = bookingAvailabilityService.lockAndValidateOnsiteSlot(
+                    serviceDate, arrivalWindowId, preferredTime, preferredAnytime, emergency);
+            boolean anytime = preferredAnytime == null || preferredAnytime;
+            preferredAnytime = anytime;
+            if (anytime) {
+                preferredTime = null;
+            }
+            // Compat display only — service_date + window remain authoritative.
+            appointmentDate = LocalDateTime.of(
+                    serviceDate,
+                    anytime || preferredTime == null ? window.getStartTime() : preferredTime);
+        } else if ("SHOP".equals(serviceMode)) {
+            if (appointmentDate != null
+                    && appointmentDate.isBefore(LocalDateTime.now().minusMinutes(5))) {
+                throw new IllegalArgumentException("ချိန်းဆိုချိန်သည် လက်ရှိအချိန်နောက်ပိုင်း ဖြစ်ရပါမည်");
+            }
+            bookingAvailabilityService.validateShopAppointment(appointmentDate, emergency);
+            serviceDate = null;
+            arrivalWindowId = null;
+            preferredTime = null;
+            preferredAnytime = true;
+            preferenceNote = null;
+        } else {
+            // UNDECIDED — keep optional free-form appointment for backward compat; no window.
+            if (appointmentDate != null
+                    && appointmentDate.isBefore(LocalDateTime.now().minusMinutes(5))) {
+                throw new IllegalArgumentException("ချိန်းဆိုချိန်သည် လက်ရှိအချိန်နောက်ပိုင်း ဖြစ်ရပါမည်");
+            }
+            serviceDate = null;
+            arrivalWindowId = null;
+            preferredTime = null;
+            preferredAnytime = true;
+            preferenceNote = null;
         }
+
         BookingDTO dto = new BookingDTO();
         dto.setCustomerId(me.getCustomerId());
-        dto.setAppointmentDate(req.getAppointmentDate());
+        dto.setAppointmentDate(appointmentDate);
+        dto.setServiceDate(serviceDate);
+        dto.setArrivalWindowId(arrivalWindowId);
+        dto.setPreferredTime(preferredTime);
+        dto.setPreferredAnytime(preferredAnytime == null || preferredAnytime);
+        dto.setCustomerPreferenceNote(preferenceNote);
         dto.setComplaintNote(blank(req.getProblem()) ? null : req.getProblem().trim());
         dto.setRemark(blank(req.getRemark()) ? "CUSTOMER_APP" : req.getRemark().trim());
         dto.setSource("CUSTOMER_APP");
@@ -229,6 +287,18 @@ public class CustomerPortalService {
                 activityService.record(account, "SERVICE_REQUESTED",
                         created.getBookingNo() != null ? created.getBookingNo() : "Service booking requested"));
         return created;
+    }
+
+    @Transactional(readOnly = true)
+    public List<org.sspd.servicemgmt.servicebookingsettingsoptions.dto.BookingAvailabilityDateDTO> bookingAvailabilityDates(
+            String mode, LocalDate from, Integer days, boolean emergency) {
+        return bookingAvailabilityService.listDates(mode, from, days, emergency);
+    }
+
+    @Transactional(readOnly = true)
+    public List<org.sspd.servicemgmt.servicebookingsettingsoptions.dto.BookingAvailabilityWindowDTO> bookingAvailabilityWindows(
+            LocalDate date, boolean emergency) {
+        return bookingAvailabilityService.listWindows(date, emergency);
     }
 
     @Transactional(readOnly = true)

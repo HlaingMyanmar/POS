@@ -82,6 +82,7 @@ fun BookingDetailScreen(
         ReceiveItemsSheet(
             complaintNote = booking?.complaintNote ?: booking?.problemDesc,
             loading = state.actionLoading,
+            maxPhotosPerItem = state.maxPhotosPerItem,
             onDismiss = { showReceiveSheet = false },
             onSubmit = { items ->
                 vm.receiveItems(items) {
@@ -97,6 +98,7 @@ fun BookingDetailScreen(
             item = item,
             complaintNote = state.booking?.complaintNote ?: state.booking?.problemDesc,
             loading = state.actionLoading,
+            maxPhotosPerItem = state.maxPhotosPerItem,
             onDismiss = { editingItem = null },
             onSubmit = { updated ->
                 val id = item.id ?: return@EditItemSheet
@@ -375,20 +377,24 @@ private data class ReceiveItemDraft(
     var components: List<BookingItemComponentDTO> = emptyList()
 )
 
-private const val MAX_BOOKING_ITEM_PHOTOS = 50
+private const val DEFAULT_MAX_BOOKING_ITEM_PHOTOS = 50
 
 @Composable
 private fun BookingItemPhotoEditor(
     photos: List<BookingItemPhotoDTO>,
     onPick: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    maxPhotos: Int = DEFAULT_MAX_BOOKING_ITEM_PHOTOS,
 ) {
+    val limit = maxPhotos.coerceIn(1, 100)
     val occupiedSlots = photos.mapNotNull { photo -> photo.slot?.takeIf { it > 0 } }.distinct().sorted()
-    val nextSlot = (1..MAX_BOOKING_ITEM_PHOTOS).firstOrNull { it !in occupiedSlots }
+    val withinCapCount = occupiedSlots.count { it <= limit }
+    val nextSlot = if (withinCapCount >= limit) null
+    else (1..limit).firstOrNull { it !in occupiedSlots }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Device Photos", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-            Text("${occupiedSlots.size} / $MAX_BOOKING_ITEM_PHOTOS", fontSize = 11.sp, color = TextMuted)
+            Text("${occupiedSlots.size} / $limit", fontSize = 11.sp, color = TextMuted)
         }
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -526,6 +532,7 @@ private fun EditItemSheet(
     item: BookingItemDTO,
     complaintNote: String?,
     loading: Boolean,
+    maxPhotosPerItem: Int = DEFAULT_MAX_BOOKING_ITEM_PHOTOS,
     onDismiss: () -> Unit,
     onSubmit: (BookingItemDTO) -> Unit,
 ) {
@@ -629,6 +636,7 @@ private fun EditItemSheet(
             )
             BookingItemPhotoEditor(
                 photos = draft.photos,
+                maxPhotos = maxPhotosPerItem,
                 onPick = { slot ->
                         photoSlot = slot
                         galleryLauncher.launch("image/*")
@@ -678,7 +686,13 @@ private fun EditItemSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReceiveItemsSheet(complaintNote: String?, loading: Boolean, onDismiss: () -> Unit, onSubmit: (List<BookingItemDTO>) -> Unit) {
+private fun ReceiveItemsSheet(
+    complaintNote: String?,
+    loading: Boolean,
+    maxPhotosPerItem: Int = DEFAULT_MAX_BOOKING_ITEM_PHOTOS,
+    onDismiss: () -> Unit,
+    onSubmit: (List<BookingItemDTO>) -> Unit
+) {
     val context = LocalContext.current
     var items by remember { mutableStateOf(listOf(ReceiveItemDraft())) }
     var photoTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -785,6 +799,7 @@ private fun ReceiveItemsFormContent(
                     )
                     BookingItemPhotoEditor(
                         photos = draft.photos,
+                        maxPhotos = maxPhotosPerItem,
                         onPick = { slot -> onPhotoClick(index, slot) },
                         onRemove = { slot ->
                             onItemsChange(items.toMutableList().also {

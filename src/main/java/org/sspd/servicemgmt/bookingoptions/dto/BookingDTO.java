@@ -6,6 +6,7 @@ import org.sspd.servicemgmt.servicejoboptions.dto.ServiceJobDTO;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +31,11 @@ public class BookingDTO {
     private String serviceAddress;
     private String urgency;
     private String contactPreference;
+    private LocalDate serviceDate;
+    private Integer arrivalWindowId;
+    private LocalTime preferredTime;
+    private Boolean preferredAnytime;
+    private String customerPreferenceNote;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<BookingItemDTO> items = new ArrayList<>();

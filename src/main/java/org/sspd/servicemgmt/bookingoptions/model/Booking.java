@@ -6,6 +6,7 @@ import org.sspd.servicemgmt.customeroptions.model.Customer;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,6 +34,24 @@ public class Booking {
 
     @Column(name = "booking_datetime")
     private LocalDateTime appointmentDate;
+
+    /** Authoritative outdoor service day when an arrival window is selected. */
+    @Column(name = "service_date")
+    private LocalDate serviceDate;
+
+    @Column(name = "arrival_window_id")
+    private Integer arrivalWindowId;
+
+    /** Customer preference inside the window; not a guaranteed arrival time. */
+    @Column(name = "preferred_time")
+    private LocalTime preferredTime;
+
+    @Column(name = "preferred_anytime", nullable = false)
+    @Builder.Default
+    private Boolean preferredAnytime = true;
+
+    @Column(name = "customer_preference_note", columnDefinition = "TEXT")
+    private String customerPreferenceNote;
 
     @Column(name = "complaint_note", columnDefinition = "TEXT")
     private String complaintNote;

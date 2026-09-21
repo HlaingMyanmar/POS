@@ -18,7 +18,9 @@ import java.util.Locale;
 @Service
 public class LoginAttemptService {
 
-    private static final int MAX_RECORD_RETRIES = 5;
+    private static final int MAX_RECORD_RETRIES = 10;
+    private static final long INITIAL_RETRY_DELAY_MILLIS = 5L;
+    private static final long MAX_RETRY_DELAY_MILLIS = 100L;
 
     private final LoginAttemptStateRepository repository;
     private final TransactionTemplate requiresNewTx;
@@ -77,12 +79,24 @@ public class LoginAttemptService {
             } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
                 // Concurrent first-insert / InnoDB deadlock — retry in a fresh transaction.
                 lastConflict = ex;
+                pauseBeforeRetry(attempt);
             }
         }
         if (lastConflict != null) {
             throw lastConflict;
         }
         return false;
+    }
+
+    private static void pauseBeforeRetry(int attempt) {
+        long multiplier = 1L << Math.min(attempt, 5);
+        long delay = Math.min(MAX_RETRY_DELAY_MILLIS, INITIAL_RETRY_DELAY_MILLIS * multiplier);
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while retrying login-attempt update", ex);
+        }
     }
 
     private boolean recordFailureOnce(String loginKey) {

@@ -1,0 +1,1 @@
+import{f as t}from"./index-B9qo04FS.js";const a={getAllUnresolved:async()=>(await t.get("/v1/credit-alerts")).data,getByCustomer:async e=>(await t.get(`/v1/credit-alerts/customer/${e}`)).data,resolve:async e=>(await t.post(`/v1/credit-alerts/${e}/resolve`)).data};export{a as c};

@@ -90,6 +90,29 @@ class LoginAttemptServiceTest {
     }
 
     @Test
+    void transientLockConflictsRetryBeyondOriginalLimit() {
+        when(repository.insertIgnoreNew(eq("alice"), any()))
+                .thenThrow(
+                        new org.springframework.dao.CannotAcquireLockException("deadlock-1"),
+                        new org.springframework.dao.CannotAcquireLockException("deadlock-2"),
+                        new org.springframework.dao.CannotAcquireLockException("deadlock-3"),
+                        new org.springframework.dao.CannotAcquireLockException("deadlock-4"),
+                        new org.springframework.dao.CannotAcquireLockException("deadlock-5"))
+                .thenReturn(0);
+        when(repository.findByLoginKeyForUpdate("alice")).thenReturn(Optional.of(
+                LoginAttemptState.builder()
+                        .loginKey("alice")
+                        .failedAttempts(0)
+                        .updatedAt(Instant.now())
+                        .build()));
+
+        assertFalse(service.recordFailure("alice"));
+
+        verify(repository, times(6)).insertIgnoreNew(eq("alice"), any());
+        verify(repository).save(argThat(state -> state.getFailedAttempts() == 1));
+    }
+
+    @Test
     void clearDeletesAttemptState() {
         service.clear("alice", "alice@example.com");
         verify(repository).deleteByLoginKey("alice");

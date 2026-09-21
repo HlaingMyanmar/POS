@@ -1,6 +1,5 @@
 package com.sspd.servicemgmt.core.security
 
-import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -30,13 +29,12 @@ data class CryptoEnvelope(val iv: ByteArray, val ciphertext: ByteArray) {
 }
 
 class AesGcmCipher(
-    private val key: SecretKey,
-    private val random: SecureRandom = SecureRandom()
+    private val key: SecretKey
 ) {
     fun encrypt(plaintext: String): String {
-        val iv = ByteArray(12).also(random::nextBytes)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
         return CryptoEnvelope(iv, cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))).encode()
     }
 

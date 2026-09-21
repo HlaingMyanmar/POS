@@ -722,6 +722,7 @@ private fun ReceiveItemsSheet(
             onItemsChange = { items = it },
             complaintNote = complaintNote,
             loading = loading,
+            maxPhotosPerItem = maxPhotosPerItem,
             onPhotoClick = { index, slot ->
                 photoTarget = index to slot
                 galleryLauncher.launch("image/*")
@@ -738,6 +739,7 @@ private fun ReceiveItemsFormContent(
     onItemsChange: (List<ReceiveItemDraft>) -> Unit,
     complaintNote: String?,
     loading: Boolean,
+    maxPhotosPerItem: Int = DEFAULT_MAX_BOOKING_ITEM_PHOTOS,
     onPhotoClick: (Int, Int) -> Unit,
     onSubmit: (List<BookingItemDTO>) -> Unit,
     modifier: Modifier = Modifier,

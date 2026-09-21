@@ -1,0 +1,1 @@
+import{f as t}from"./index-B9qo04FS.js";const r={getAll:async()=>(await t.get("/v1/permissions")).data,getById:e=>t.get(`/v1/permissions/${e}`).then(s=>s.data),create:e=>t.post("/v1/permissions",e).then(s=>s.data),update:(e,s)=>t.put(`/v1/permissions/${e}`,s).then(a=>a.data),delete:e=>t.delete(`/v1/permissions/${e}`).then(s=>s.data)};export{r as p};

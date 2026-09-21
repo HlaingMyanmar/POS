@@ -21,8 +21,8 @@ class FlywayMigrationIT extends AbstractMysqlIntegrationTest {
         Integer latest = jdbc.queryForObject(
                 "SELECT MAX(CAST(SUBSTRING(version, 1) AS UNSIGNED)) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertTrue(latest != null && latest >= 169,
-                "Expected Flyway version >= 169 but was " + latest);
+        assertTrue(latest != null && latest >= 175,
+                "Expected Flyway version >= 175 but was " + latest);
 
         Integer jobs = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'service_jobs'",
@@ -39,6 +39,29 @@ class FlywayMigrationIT extends AbstractMysqlIntegrationTest {
                 Integer.class);
         assertTrue(bookingItemComponents != null && bookingItemComponents == 1,
                 "booking_item_components (V169) should exist");
+
+        Integer bookingSettings = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'service_booking_settings'",
+                Integer.class);
+        assertTrue(bookingSettings != null && bookingSettings == 1,
+                "service_booking_settings (V170) should exist");
+
+        Integer arrivalWindows = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'service_booking_arrival_windows'",
+                Integer.class);
+        assertTrue(arrivalWindows != null && arrivalWindows == 1,
+                "service_booking_arrival_windows (V173) should exist");
+
+        Integer latestBookingColumns = jdbc.queryForObject(
+                """
+                        SELECT COUNT(*) FROM information_schema.columns
+                         WHERE table_schema = DATABASE()
+                           AND table_name = 'bookings'
+                           AND column_name IN ('service_price_snapshot', 'rejection_reason', 'rejected_at', 'rejected_by')
+                        """,
+                Integer.class);
+        assertTrue(latestBookingColumns != null && latestBookingColumns == 4,
+                "bookings columns from V174-V175 should exist");
 
         Integer refreshSessions = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'refresh_sessions'",

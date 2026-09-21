@@ -148,12 +148,19 @@ data class CatalogService(
     val name: String? = null,
     val serviceTypeName: String? = null,
     val price: Double? = 0.0,
+    val minPrice: Double? = null,
+    val maxPrice: Double? = null,
+    /** FIXED | STARTING_FROM | INSPECTION_REQUIRED */
+    val priceType: String? = null,
     val warrantyMonths: Int? = 0,
     val description: String? = null
 )
 
 data class ServiceRequestBody(
+    val serviceId: Int? = null,
     val serviceName: String? = null,
+    val displayedPrice: Double? = null,
+    val priceType: String? = null,
     val requestType: String? = "DIAGNOSIS",
     val deviceCategory: String? = null,
     val deviceName: String? = null,
@@ -175,7 +182,13 @@ data class ServiceRequestBody(
 data class BookingAvailabilityDate(
     val date: String? = null,
     val available: Boolean? = false,
-    val reason: String? = null
+    val reason: String? = null,
+    val openPeriods: List<BookingAvailabilityPeriod> = emptyList()
+)
+
+data class BookingAvailabilityPeriod(
+    val opensAt: String? = null,
+    val closesAt: String? = null
 )
 
 data class BookingAvailabilityWindow(
@@ -207,10 +220,17 @@ data class BookingSummary(
     val id: Int = 0,
     val bookingNo: String? = null,
     val status: String? = null,
+    val rejectionReason: String? = null,
+    val rejectedAt: String? = null,
     val complaintNote: String? = null,
     val appointmentDate: String? = null,
     val source: String? = null,
     val requestedServiceName: String? = null,
+    val requestedServiceId: Int? = null,
+    val serviceNameSnapshot: String? = null,
+    val servicePriceSnapshot: Double? = null,
+    val servicePriceType: String? = null,
+    val estimateApprovalStatus: String? = null,
     val requestType: String? = null,
     val deviceCategory: String? = null,
     val deviceName: String? = null,

@@ -22,8 +22,20 @@ public class BookingDTO {
     private String complaintNote;
     private BookingStatus status;
     private String remark;
+    private String rejectionReason;
+    private LocalDateTime rejectedAt;
+    private String rejectedBy;
     private String source;
     private String requestedServiceName;
+    /** Catalog service id selected by customer (nullable). */
+    private Integer requestedServiceId;
+    /** Alias / explicit name snapshot (same as requestedServiceName for portal bookings). */
+    private String serviceNameSnapshot;
+    private java.math.BigDecimal servicePriceSnapshot;
+    /** FIXED | STARTING_FROM | INSPECTION_REQUIRED */
+    private String servicePriceType;
+    /** NOT_REQUIRED | PENDING | APPROVED | REJECTED */
+    private String estimateApprovalStatus;
     private String requestType;
     private String deviceCategory;
     private String deviceName;

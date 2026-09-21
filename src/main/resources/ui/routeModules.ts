@@ -74,6 +74,7 @@ export const ScanPage = page(() => import('./pages/ScanPage'));
 export const OpeningBalancePage = page(() => import('./pages/OpeningBalancePage'));
 export const OpeningStockPage = page(() => import('./pages/OpeningStockPage'));
 export const AppVersionSettingsPage = page(() => import('./pages/AppVersionSettingsPage'));
+export const ServiceBookingSettingsPage = page(() => import('./pages/ServiceBookingSettingsPage'));
 export const OutdoorTracking = page(() => import('./pages/OutdoorTracking'));
 export const VideoManagement = page(() => import('./pages/VideoManagement'));
 
@@ -132,6 +133,7 @@ const routePreloads = new Map<string, PageLoader>([
   [AppRoute.ADMIN_QUERIES, AdminQueryPage.preload],
   [AppRoute.COMPANY_SETTINGS, CompanySettingsPage.preload],
   [AppRoute.VOUCHER_SETTINGS, VoucherSettingsPage.preload],
+  [AppRoute.SERVICE_BOOKING_SETTINGS, ServiceBookingSettingsPage.preload],
   [AppRoute.APP_VERSION_SETTINGS, AppVersionSettingsPage.preload],
   [AppRoute.AUDIT_LOGS, AuditLogManagement.preload],
   [AppRoute.INCOME_REPORT, DailyReport.preload],

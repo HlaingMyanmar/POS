@@ -1238,7 +1238,7 @@ fun HomeScaffold(
                                 notifications = vm.notifications,
                                 unreadNotificationCount = vm.unreadNotificationCount,
                                 orderCount = vm.orders.count { it.status !in listOf("COMPLETED", "CANCELLED") },
-                                serviceCount = vm.jobs.count { it.status !in listOf("DELIVERED", "CANCELLED") } + vm.bookings.size,
+                                serviceCount = activeServiceCount(vm.jobs, vm.bookings),
                                 completedCount = vm.purchases.size + vm.jobs.count { it.status in listOf("COMPLETED", "DELIVERED") },
                                 onProducts = { showProducts = true },
                                 onServices = { tab = 1; returnToProductsAfterCart = false },

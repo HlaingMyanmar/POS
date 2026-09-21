@@ -5,12 +5,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
-import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerCatalogOptionDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerCatalogProductDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerCatalogServiceDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalAuthResponse;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalBookingRequest;
+import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalBookingDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalOrderDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalOrderRequest;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalPasswordChangeRequest;
@@ -26,6 +26,7 @@ import org.sspd.servicemgmt.customerportaloptions.service.CustomerPortalService;
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerLoyaltyService;
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerChatService;
 import org.sspd.servicemgmt.companysettingoptions.service.CompanySettingsService;
+import org.sspd.servicemgmt.servicebookingsettingsoptions.service.ServiceBookingSettingsService;
 
 import java.util.List;
 
@@ -37,6 +38,7 @@ public class CustomerPortalController {
     private final CustomerPortalService service;
     private final CustomerPortalAuthService authService;
     private final CompanySettingsService companySettingsService;
+    private final ServiceBookingSettingsService serviceBookingSettingsService;
     private final CustomerPortalInvoiceService invoiceService;
     private final CustomerLoyaltyService loyaltyService;
     private final CustomerChatService chatService;
@@ -46,6 +48,7 @@ public class CustomerPortalController {
         var s = companySettingsService.getSettings();
         boolean hasLogo = s.getLogoBase64() != null && !s.getLogoBase64().isBlank();
         var deliveryPolicy = service.deliveryPolicy();
+        var bookingSettings = serviceBookingSettingsService.getSettings();
         // Do not embed large base64 in JSON — app loads /branding/logo instead (reliable on mobile).
         return ResponseEntity.ok(new ApiResponse<>(true, "Branding", CustomerPortalBrandingDTO.builder()
                 .companyName(s.getCompanyName())
@@ -63,6 +66,12 @@ public class CustomerPortalController {
                 .deliveryWeekdays(deliveryPolicy.weekdayHours())
                 .deliveryClosedDates(deliveryPolicy.closedDates())
                 .deliveryMinLeadDays(deliveryPolicy.minLeadDays())
+                .outdoorTransportationNotice(bookingSettings.getOutdoorTransportationNotice())
+                .outdoorTransportationFee(bookingSettings.getOutdoorTransportationFee())
+                .bookingRejectionMessage(bookingSettings.getBookingRejectionMessage())
+                .outdoorBookingEnabled(bookingSettings.getOutdoorBookingEnabled() == null
+                        || bookingSettings.getOutdoorBookingEnabled())
+                .outdoorBookingDisabledReason(bookingSettings.getOutdoorBookingDisabledReason())
                 .build()));
     }
 
@@ -180,13 +189,31 @@ public class CustomerPortalController {
 
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping("/bookings")
-    public ResponseEntity<ApiResponse<BookingDTO>> requestService(@RequestBody CustomerPortalBookingRequest request) {
+    public ResponseEntity<ApiResponse<CustomerPortalBookingDTO>> requestService(@RequestBody CustomerPortalBookingRequest request) {
         return ResponseEntity.status(201).body(new ApiResponse<>(true, "Service requested", service.requestService(request)));
+    }
+
+    @GetMapping("/booking-availability/dates")
+    public ResponseEntity<ApiResponse<List<org.sspd.servicemgmt.servicebookingsettingsoptions.dto.BookingAvailabilityDateDTO>>> bookingDates(
+            @RequestParam(defaultValue = "ONSITE") String mode,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) Integer days,
+            @RequestParam(defaultValue = "false") boolean emergency) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Available dates",
+                service.bookingAvailabilityDates(mode, from, days, emergency)));
+    }
+
+    @GetMapping("/booking-availability/windows")
+    public ResponseEntity<ApiResponse<List<org.sspd.servicemgmt.servicebookingsettingsoptions.dto.BookingAvailabilityWindowDTO>>> bookingWindows(
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            @RequestParam(defaultValue = "false") boolean emergency) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Arrival windows",
+                service.bookingAvailabilityWindows(date, emergency)));
     }
 
     @PreAuthorize("hasRole('CUSTOMER')")
     @GetMapping("/bookings")
-    public ResponseEntity<ApiResponse<List<BookingDTO>>> myBookings() {
+    public ResponseEntity<ApiResponse<List<CustomerPortalBookingDTO>>> myBookings() {
         return ResponseEntity.ok(new ApiResponse<>(true, "Bookings", service.myBookings()));
     }
 

@@ -266,6 +266,7 @@ const Layout: React.FC<LayoutProps> = ({
       { name: 'SQL Console', icon: <Terminal size={18} />, path: AppRoute.ADMIN_QUERIES, group: 'ဆက်တင်', permission: ['CAN_ACCESS_ADMIN_QUERY_READ', 'CAN_ACCESS_ADMIN_QUERY_WRITE'], permissionMatch: 'any' as const },
       { name: 'ကုမ္ပဏီဆက်တင်', icon: <Settings size={18} />, path: AppRoute.COMPANY_SETTINGS, group: 'ဆက်တင်' },
       { name: 'ပရင့်ဒီဇိုင်း', icon: <FileText size={18} />, path: AppRoute.VOUCHER_SETTINGS, group: 'ဆက်တင်' },
+      { name: 'Service & Booking', icon: <Truck size={18} />, path: AppRoute.SERVICE_BOOKING_SETTINGS, group: 'ဆက်တင်', permission: ['CAN_ACCESS_BOOKING_READ', 'CAN_ACCESS_SERVICE_JOB_READ', 'CAN_ACCESS_SERVICE_READ'], permissionMatch: 'any' as const },
       { name: 'App Version', icon: <Smartphone size={18} />, path: AppRoute.APP_VERSION_SETTINGS, group: 'ဆက်တင်', permission: 'CAN_ACCESS_USERS_READ' }
     ],
     []

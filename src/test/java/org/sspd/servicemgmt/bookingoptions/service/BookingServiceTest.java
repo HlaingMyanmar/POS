@@ -13,7 +13,9 @@ import org.sspd.servicemgmt.bookingoptions.model.Booking;
 import org.sspd.servicemgmt.bookingoptions.model.BookingItem;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingItemRepository;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingItemSummaryProjection;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingRequestPhotoRepository;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
@@ -29,9 +31,11 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -41,6 +45,7 @@ import static org.mockito.Mockito.when;
 class BookingServiceTest {
     @Mock BookingRepository repository;
     @Mock BookingItemRepository itemRepository;
+    @Mock BookingRequestPhotoRepository requestPhotoRepository;
     @Mock CustomerRepository customerRepository;
     @Mock CompanySettingsRepository companySettingsRepository;
     @Mock ServiceJobRepository serviceJobRepository;
@@ -54,7 +59,7 @@ class BookingServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(serviceBookingSettingsService.getMaxPhotosPerItem()).thenReturn(50);
-        service = new BookingService(repository, itemRepository, customerRepository,
+        service = new BookingService(repository, itemRepository, requestPhotoRepository, customerRepository,
             companySettingsRepository, serviceJobRepository, serviceJobService, dataEventPublisher,
             bookingPhotoStorageService, serviceBookingSettingsService);
     }
@@ -133,6 +138,34 @@ class BookingServiceTest {
     }
 
     @Test
+    void rejectsConfirmedBookingWithReasonAndAuditActor() {
+        Booking booking = booking(BookingStatus.CONFIRMED);
+        when(repository.findByIdForUpdate(10)).thenReturn(Optional.of(booking));
+        when(serviceJobRepository.findAllByBookingIdOrderByIdAsc(10)).thenReturn(List.of());
+        when(repository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BookingDTO result = service.reject(10, "  Service area is unavailable  ", "admin@example.com");
+
+        assertEquals(BookingStatus.REJECTED, result.getStatus());
+        assertEquals("Service area is unavailable", result.getRejectionReason());
+        assertEquals("admin@example.com", result.getRejectedBy());
+        assertNotNull(result.getRejectedAt());
+    }
+
+    @Test
+    void rejectionRequiresReason() {
+        Booking booking = booking(BookingStatus.CONFIRMED);
+        when(repository.findByIdForUpdate(10)).thenReturn(Optional.of(booking));
+        when(serviceJobRepository.findAllByBookingIdOrderByIdAsc(10)).thenReturn(List.of());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.reject(10, "  ", "admin"));
+
+        assertTrue(error.getMessage().contains("reason is required"));
+        verify(repository, never()).save(any(Booking.class));
+    }
+
+    @Test
     void createsStructuredCustomerRequestWithStoredPhoto() {
         Customer customer = Customer.builder()
                 .id(7).name("Customer").phone("091234567").address("Yangon").build();
@@ -176,6 +209,35 @@ class BookingServiceTest {
         assertEquals("/uploads/booking-photos/booking-items/42/request.webp",
                 created.getRequestPhotos().get(0).getImagePath());
         verify(bookingPhotoStorageService).store("data:image/jpeg;base64,AA==", 42, 1);
+    }
+
+    @Test
+    void findAllUsesBatchItemStatsAndSkipsRequestPhotoLazyLoads() {
+        Booking first = booking(BookingStatus.CONFIRMED);
+        Booking second = booking(BookingStatus.ARRIVED);
+        second.setId(11);
+        second.setBookingNo("BK-000011");
+        when(repository.search(any(), any(), any(), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(first, second)));
+        BookingItemSummaryProjection arrivedStats = org.mockito.Mockito.mock(BookingItemSummaryProjection.class);
+        when(arrivedStats.getBookingId()).thenReturn(11);
+        when(arrivedStats.getItemCount()).thenReturn(2L);
+        when(arrivedStats.getUnconvertedCount()).thenReturn(1L);
+        when(itemRepository.summarizeByBookingIds(any())).thenReturn(List.of(arrivedStats));
+        when(serviceJobRepository.findBookingIdsByServiceMode(any(), eq(ServiceMode.OUTDOOR)))
+                .thenReturn(List.of(10));
+
+        var page = service.findAll(null, null, null, 0, 20);
+
+        assertEquals(2, page.getContent().size());
+        assertTrue(page.getContent().get(0).isFullyConverted());
+        assertEquals(0, page.getContent().get(0).getUnconvertedItemCount());
+        assertTrue(page.getContent().get(0).getRequestPhotos().isEmpty());
+        assertEquals(1, page.getContent().get(1).getUnconvertedItemCount());
+        assertTrue(!page.getContent().get(1).isFullyConverted());
+        verify(requestPhotoRepository, never()).findAllByBookingIdIn(any());
+        verify(itemRepository).summarizeByBookingIds(any());
+        verify(serviceJobRepository).findBookingIdsByServiceMode(any(), eq(ServiceMode.OUTDOOR));
     }
 
     private Booking booking(BookingStatus status) {

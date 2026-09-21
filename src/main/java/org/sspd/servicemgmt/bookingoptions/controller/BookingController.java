@@ -2,6 +2,7 @@ package org.sspd.servicemgmt.bookingoptions.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
@@ -12,6 +13,7 @@ import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.service.BookingService;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
@@ -57,6 +59,17 @@ public class BookingController {
         if (status != BookingStatus.CANCELED)
             throw new IllegalArgumentException("Only CANCELED status can be set manually");
         return ResponseEntity.ok(new ApiResponse<>(true, "Booking canceled", service.cancel(id)));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApiResponse<BookingDTO>> reject(
+            @PathVariable Integer id,
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+        String reason = body == null || body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        String actor = authentication == null ? null : authentication.getName();
+        return ResponseEntity.ok(new ApiResponse<>(true, "Booking rejected", service.reject(id, reason, actor)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_UPDATE')")

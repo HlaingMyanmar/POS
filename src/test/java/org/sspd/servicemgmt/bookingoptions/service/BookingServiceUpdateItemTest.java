@@ -12,6 +12,7 @@ import org.sspd.servicemgmt.bookingoptions.model.BookingItemPhoto;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingItemRepository;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingRequestPhotoRepository;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
@@ -57,6 +58,7 @@ class BookingServiceUpdateItemTest {
         service = new BookingService(
                 bookingRepository,
                 itemRepository,
+                mock(BookingRequestPhotoRepository.class),
                 mock(CustomerRepository.class),
                 mock(CompanySettingsRepository.class),
                 serviceJobRepository,

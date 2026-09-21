@@ -20,7 +20,9 @@ import org.sspd.servicemgmt.bookingoptions.model.BookingItemPhoto;
 import org.sspd.servicemgmt.bookingoptions.model.BookingRequestPhoto;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingItemRepository;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingItemSummaryProjection;
 import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
+import org.sspd.servicemgmt.bookingoptions.repository.BookingRequestPhotoRepository;
 import org.sspd.servicemgmt.companysettingoptions.repository.CompanySettingsRepository;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
@@ -33,9 +35,12 @@ import org.sspd.servicemgmt.servicejoboptions.service.ServiceJobService;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +55,7 @@ public class BookingService {
 
     private final BookingRepository repository;
     private final BookingItemRepository itemRepository;
+    private final BookingRequestPhotoRepository requestPhotoRepository;
     private final CustomerRepository customerRepository;
     private final CompanySettingsRepository companySettingsRepository;
     private final ServiceJobRepository serviceJobRepository;
@@ -60,13 +66,28 @@ public class BookingService {
 
     @Transactional(readOnly = true)
     public Page<BookingDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
-        return repository.search(
+        Page<Booking> bookings = repository.search(
                 search == null ? "" : search.trim(),
                 parseDate(dateFrom),
                 parseDate(dateTo),
                 PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 500)),
-                        Sort.by(Sort.Direction.DESC, "id")))
-                .map(booking -> toDto(booking, false));
+                        Sort.by(Sort.Direction.DESC, "id")));
+        // Admin list needs conversion flags, not request photo payloads.
+        List<BookingDTO> mapped = mapSummaries(bookings.getContent(), false);
+        return new org.springframework.data.domain.PageImpl<>(mapped, bookings.getPageable(), bookings.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public List<BookingDTO> findSummariesByCustomerId(Integer customerId) {
+        return mapSummaries(repository.findByCustomer_IdOrderByIdDesc(customerId), true);
+    }
+
+    /**
+     * Single-booking summary helper. Prefer {@link #findAll} / {@link #findSummariesByCustomerId}
+     * for list endpoints so stats/photos are batch-loaded.
+     */
+    public BookingDTO toSummaryDto(Booking booking) {
+        return mapSummaries(List.of(booking), true).get(0);
     }
 
     @Transactional
@@ -90,6 +111,10 @@ public class BookingService {
                 .remark(trimToNull(dto.getRemark()))
                 .source(trimToNull(dto.getSource()))
                 .requestedServiceName(trimToNull(dto.getRequestedServiceName()))
+                .requestedServiceId(dto.getRequestedServiceId())
+                .servicePriceSnapshot(dto.getServicePriceSnapshot())
+                .servicePriceType(trimToNull(dto.getServicePriceType()))
+                .estimateApprovalStatus(trimToNull(dto.getEstimateApprovalStatus()))
                 .requestType(trimToNull(dto.getRequestType()))
                 .deviceCategory(trimToNull(dto.getDeviceCategory()))
                 .deviceName(trimToNull(dto.getDeviceName()))
@@ -116,8 +141,8 @@ public class BookingService {
     @Transactional
     public BookingDTO update(Integer id, BookingDTO dto) {
         Booking booking = requireForUpdate(id);
-        if (booking.getStatus() == BookingStatus.CANCELED)
-            throw new IllegalStateException("Canceled booking cannot be edited");
+        if (isClosed(booking))
+            throw new IllegalStateException("Canceled or rejected booking cannot be edited");
         if (isFullyConverted(booking))
             throw new IllegalStateException("Fully converted booking cannot be edited");
         validateBase(dto);
@@ -136,6 +161,8 @@ public class BookingService {
     public BookingDTO cancel(Integer id) {
         Booking booking = requireForUpdate(id);
         if (booking.getStatus() == BookingStatus.CANCELED) return toDto(booking, true);
+        if (booking.getStatus() == BookingStatus.REJECTED)
+            throw new IllegalStateException("Rejected booking cannot be canceled");
         if (!serviceJobRepository.findAllByBookingIdOrderByIdAsc(id).isEmpty())
             throw new IllegalStateException("Booking with linked service jobs cannot be canceled");
         booking.setStatus(BookingStatus.CANCELED);
@@ -145,10 +172,32 @@ public class BookingService {
     }
 
     @Transactional
+    public BookingDTO reject(Integer id, String reason, String rejectedBy) {
+        Booking booking = requireForUpdate(id);
+        if (booking.getStatus() == BookingStatus.REJECTED) return toDto(booking, true);
+        if (booking.getStatus() != BookingStatus.CONFIRMED)
+            throw new IllegalStateException("Only confirmed booking can be rejected");
+        if (!serviceJobRepository.findAllByBookingIdOrderByIdAsc(id).isEmpty())
+            throw new IllegalStateException("Booking with linked service jobs cannot be rejected");
+        String cleanReason = trimToNull(reason);
+        if (cleanReason == null)
+            throw new IllegalArgumentException("Rejection reason is required");
+        if (cleanReason.length() > 2000)
+            throw new IllegalArgumentException("Rejection reason must not exceed 2000 characters");
+        booking.setStatus(BookingStatus.REJECTED);
+        booking.setRejectionReason(cleanReason);
+        booking.setRejectedAt(java.time.LocalDateTime.now());
+        booking.setRejectedBy(trimToNull(rejectedBy));
+        BookingDTO result = toDto(repository.save(booking), true);
+        broadcast("BOOKING_REJECTED");
+        return result;
+    }
+
+    @Transactional
     public BookingDTO addItems(Integer id, List<BookingItemDTO> itemDtos) {
         Booking booking = requireForUpdate(id);
-        if (booking.getStatus() == BookingStatus.CANCELED)
-            throw new IllegalStateException("Canceled booking cannot receive items");
+        if (isClosed(booking))
+            throw new IllegalStateException("Canceled or rejected booking cannot receive items");
         if (!serviceJobRepository.findAllByBookingIdOrderByIdAsc(id).isEmpty())
             throw new IllegalStateException("Booking already converted to a service job");
         if (itemDtos == null || itemDtos.isEmpty())
@@ -183,8 +232,8 @@ public class BookingService {
     @Transactional
     public BookingDTO updateItem(Integer bookingId, Integer itemId, BookingItemDTO dto) {
         Booking booking = requireForUpdate(bookingId);
-        if (booking.getStatus() == BookingStatus.CANCELED)
-            throw new IllegalStateException("Canceled booking cannot be edited");
+        if (isClosed(booking))
+            throw new IllegalStateException("Canceled or rejected booking cannot be edited");
         BookingItem item = itemRepository.findByIdAndBookingId(itemId, bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking item not found"));
 
@@ -221,8 +270,8 @@ public class BookingService {
     @Transactional
     public BookingDTO removeItem(Integer bookingId, Integer itemId) {
         Booking booking = requireForUpdate(bookingId);
-        if (booking.getStatus() == BookingStatus.CANCELED)
-            throw new IllegalStateException("Canceled booking cannot be edited");
+        if (isClosed(booking))
+            throw new IllegalStateException("Canceled or rejected booking cannot be edited");
         BookingItem item = itemRepository.findByIdAndBookingId(itemId, bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking item not found"));
         if (item.getConvertedJobId() != null)
@@ -321,11 +370,69 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
     }
 
-    public BookingDTO toSummaryDto(Booking booking) {
-        return toDto(booking, false);
+    private List<BookingDTO> mapSummaries(List<Booking> bookings, boolean includeRequestPhotos) {
+        List<Integer> ids = bookings.stream().map(Booking::getId).filter(Objects::nonNull).toList();
+        Map<Integer, BookingSummaryStats> statsById = loadSummaryStats(ids);
+        Map<Integer, List<BookingRequestPhotoDTO>> photosById = includeRequestPhotos
+                ? loadRequestPhotosByBookingIds(ids)
+                : Map.of();
+        return bookings.stream()
+                .map(booking -> toSummaryDto(
+                        booking,
+                        statsById.getOrDefault(booking.getId(), BookingSummaryStats.EMPTY),
+                        photosById.getOrDefault(booking.getId(), List.of())))
+                .toList();
     }
 
-    private BookingDTO toDto(Booking booking, boolean detail) {
+    private BookingDTO toSummaryDto(
+            Booking booking,
+            BookingSummaryStats stats,
+            List<BookingRequestPhotoDTO> requestPhotos) {
+        BookingDTO dto = mapBaseFields(booking);
+        dto.setRequestPhotos(requestPhotos != null ? requestPhotos : List.of());
+        dto.setItems(List.of());
+        dto.setLinkedJobs(List.of());
+        dto.setUnconvertedItemCount(stats.unconvertedCount());
+        dto.setFullyConverted(stats.fullyConverted(booking.getStatus()));
+        return dto;
+    }
+
+    private Map<Integer, BookingSummaryStats> loadSummaryStats(Collection<Integer> bookingIds) {
+        if (bookingIds == null || bookingIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, BookingSummaryStats> stats = new HashMap<>();
+        for (BookingItemSummaryProjection row : itemRepository.summarizeByBookingIds(bookingIds)) {
+            stats.put(row.getBookingId(), new BookingSummaryStats(
+                    row.getItemCount(),
+                    row.getUnconvertedCount(),
+                    false));
+        }
+        Set<Integer> outdoorIds = new HashSet<>(
+                serviceJobRepository.findBookingIdsByServiceMode(bookingIds, ServiceMode.OUTDOOR));
+        for (Integer id : bookingIds) {
+            BookingSummaryStats existing = stats.getOrDefault(id, BookingSummaryStats.EMPTY);
+            stats.put(id, new BookingSummaryStats(
+                    existing.itemCount(),
+                    existing.unconvertedCount(),
+                    outdoorIds.contains(id)));
+        }
+        return stats;
+    }
+
+    private Map<Integer, List<BookingRequestPhotoDTO>> loadRequestPhotosByBookingIds(Collection<Integer> bookingIds) {
+        if (bookingIds == null || bookingIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, List<BookingRequestPhotoDTO>> byBooking = new HashMap<>();
+        for (BookingRequestPhoto photo : requestPhotoRepository.findAllByBookingIdIn(bookingIds)) {
+            byBooking.computeIfAbsent(photo.getBooking().getId(), ignored -> new ArrayList<>())
+                    .add(toRequestPhotoDto(photo));
+        }
+        return byBooking;
+    }
+
+    private BookingDTO mapBaseFields(Booking booking) {
         BookingDTO dto = new BookingDTO();
         dto.setId(booking.getId());
         dto.setBookingNo(booking.getBookingNo());
@@ -337,8 +444,16 @@ public class BookingService {
         dto.setComplaintNote(booking.getComplaintNote());
         dto.setStatus(booking.getStatus());
         dto.setRemark(booking.getRemark());
+        dto.setRejectionReason(booking.getRejectionReason());
+        dto.setRejectedAt(booking.getRejectedAt());
+        dto.setRejectedBy(booking.getRejectedBy());
         dto.setSource(booking.getSource());
         dto.setRequestedServiceName(booking.getRequestedServiceName());
+        dto.setRequestedServiceId(booking.getRequestedServiceId());
+        dto.setServiceNameSnapshot(booking.getRequestedServiceName());
+        dto.setServicePriceSnapshot(booking.getServicePriceSnapshot());
+        dto.setServicePriceType(booking.getServicePriceType());
+        dto.setEstimateApprovalStatus(booking.getEstimateApprovalStatus());
         dto.setRequestType(booking.getRequestType());
         dto.setDeviceCategory(booking.getDeviceCategory());
         dto.setDeviceName(booking.getDeviceName());
@@ -351,21 +466,48 @@ public class BookingService {
         dto.setPreferredTime(booking.getPreferredTime());
         dto.setPreferredAnytime(booking.getPreferredAnytime() == null || booking.getPreferredAnytime());
         dto.setCustomerPreferenceNote(booking.getCustomerPreferenceNote());
-        if (booking.getRequestPhotos() != null) {
-            dto.setRequestPhotos(booking.getRequestPhotos().stream()
-                    .map(this::toRequestPhotoDto)
-                    .toList());
-        }
         dto.setCreatedAt(booking.getCreatedAt());
         dto.setUpdatedAt(booking.getUpdatedAt());
+        return dto;
+    }
+
+    private BookingDTO toDto(Booking booking, boolean detail) {
+        BookingDTO dto = mapBaseFields(booking);
         if (detail) {
+            if (booking.getRequestPhotos() != null) {
+                dto.setRequestPhotos(booking.getRequestPhotos().stream()
+                        .map(this::toRequestPhotoDto)
+                        .toList());
+            }
             dto.setItems(booking.getItems().stream().map(this::toItemDto).toList());
             dto.setLinkedJobs(serviceJobService.findByBookingId(booking.getId()));
+            dto.setUnconvertedItemCount(booking.getItems().stream()
+                    .filter(item -> item.getConvertedJobId() == null).count());
+            dto.setFullyConverted(isFullyConverted(booking));
+        } else {
+            // Summary path without preloaded stats — keep behavior for accidental callers,
+            // but list endpoints must use mapSummaries() to avoid N+1.
+            BookingSummaryStats stats = loadSummaryStats(List.of(booking.getId()))
+                    .getOrDefault(booking.getId(), BookingSummaryStats.EMPTY);
+            dto.setRequestPhotos(List.of());
+            dto.setUnconvertedItemCount(stats.unconvertedCount());
+            dto.setFullyConverted(stats.fullyConverted(booking.getStatus()));
         }
-        dto.setUnconvertedItemCount(booking.getItems().stream()
-                .filter(item -> item.getConvertedJobId() == null).count());
-        dto.setFullyConverted(isFullyConverted(booking));
         return dto;
+    }
+
+    private record BookingSummaryStats(long itemCount, long unconvertedCount, boolean hasOutdoorJob) {
+        static final BookingSummaryStats EMPTY = new BookingSummaryStats(0, 0, false);
+
+        boolean fullyConverted(BookingStatus status) {
+            if (status == BookingStatus.CONFIRMED) {
+                return hasOutdoorJob;
+            }
+            if (status == BookingStatus.ARRIVED) {
+                return itemCount > 0 && unconvertedCount == 0;
+            }
+            return false;
+        }
     }
 
     private BookingItemDTO toItemDto(BookingItem item) {
@@ -679,6 +821,11 @@ public class BookingService {
             return !booking.getItems().isEmpty()
                     && booking.getItems().stream().allMatch(item -> item.getConvertedJobId() != null);
         return false;
+    }
+
+    private boolean isClosed(Booking booking) {
+        return booking.getStatus() == BookingStatus.CANCELED
+                || booking.getStatus() == BookingStatus.REJECTED;
     }
 
     private String generateBookingNo(Integer id) {

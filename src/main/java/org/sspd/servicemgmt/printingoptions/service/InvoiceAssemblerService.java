@@ -293,6 +293,7 @@ public class InvoiceAssemblerService {
             case CONFIRMED -> "အတည်ပြုပြီး";
             case ARRIVED -> "ပစ္စည်းလက်ခံပြီး";
             case CANCELED -> "ပယ်ဖျက်ထား";
+            case REJECTED -> "ငြင်းပယ်ထား";
         };
     }
 

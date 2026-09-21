@@ -63,11 +63,37 @@ public class Booking {
     @Column(columnDefinition = "TEXT")
     private String remark;
 
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    @Column(name = "rejected_at")
+    private LocalDateTime rejectedAt;
+
+    @Column(name = "rejected_by", length = 100)
+    private String rejectedBy;
+
     @Column(length = 20)
     private String source;
 
     @Column(name = "requested_service_name", length = 200)
     private String requestedServiceName;
+
+    /** Catalog service id at booking time (nullable FK; SET NULL if service deleted). */
+    @Column(name = "requested_service_id")
+    private Integer requestedServiceId;
+
+    /** Customer-visible catalog price captured at submit (immutable snapshot). */
+    @Column(name = "service_price_snapshot", precision = 15, scale = 2)
+    private java.math.BigDecimal servicePriceSnapshot;
+
+    /** FIXED | STARTING_FROM | INSPECTION_REQUIRED */
+    @Column(name = "service_price_type", length = 30)
+    private String servicePriceType;
+
+    /** NOT_REQUIRED | PENDING | APPROVED | REJECTED */
+    @Column(name = "estimate_approval_status", length = 30)
+    private String estimateApprovalStatus;
+
     @Column(name = "request_type", length = 30)
     private String requestType;
     @Column(name = "device_category", length = 80)

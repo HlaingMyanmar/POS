@@ -27,6 +27,7 @@ import org.sspd.servicemgmt.customerportaloptions.dto.CustomerDeliveryTownshipDT
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerDeliveryWardDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerOrderDeliveryUpdateRequest;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalBookingRequest;
+import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalBookingDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalJobDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalOrderDTO;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerPortalOrderRequest;
@@ -184,7 +185,11 @@ public class CustomerPortalService {
             dto.setId(s.getId());
             dto.setName(s.getItem());
             dto.setServiceTypeName(s.getServiceType() != null ? s.getServiceType().getName() : null);
-            dto.setPrice(s.getPrice());
+            String priceType = org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport.resolvePriceType(s);
+            dto.setPriceType(priceType);
+            dto.setPrice(org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport.resolveDisplayPrice(s, priceType));
+            dto.setMinPrice(s.getMinPrice());
+            dto.setMaxPrice(s.getMaxPrice());
             dto.setWarrantyMonths(s.getWarrantyMonths());
             dto.setDescription(s.getDescription());
             return dto;
@@ -192,10 +197,10 @@ public class CustomerPortalService {
     }
 
     @Transactional
-    public BookingDTO requestService(CustomerPortalBookingRequest req) {
+    public CustomerPortalBookingDTO requestService(CustomerPortalBookingRequest req) {
         var me = CustomerPortalAuth.require();
         authService.requireCompleteProfile(me.getCustomerId());
-        if (req == null || blank(req.getProblem()) && blank(req.getServiceName())) {
+        if (req == null || blank(req.getProblem()) && blank(req.getServiceName()) && req.getServiceId() == null) {
             throw new IllegalArgumentException("ပြဿနာ သို့မဟုတ် ဝန်ဆောင်မှု ထည့်ပါ");
         }
         String requestType = choice(req.getRequestType(), "DIAGNOSIS",
@@ -273,7 +278,7 @@ public class CustomerPortalService {
         dto.setComplaintNote(blank(req.getProblem()) ? null : req.getProblem().trim());
         dto.setRemark(blank(req.getRemark()) ? "CUSTOMER_APP" : req.getRemark().trim());
         dto.setSource("CUSTOMER_APP");
-        dto.setRequestedServiceName(clean(req.getServiceName(), 200));
+        applyServicePriceSnapshot(dto, req);
         dto.setRequestType(requestType);
         dto.setDeviceCategory(clean(req.getDeviceCategory(), 80));
         dto.setDeviceName(clean(req.getDeviceName(), 200));
@@ -286,7 +291,7 @@ public class CustomerPortalService {
         accountRepository.findByCustomer_Id(me.getCustomerId()).ifPresent(account ->
                 activityService.record(account, "SERVICE_REQUESTED",
                         created.getBookingNo() != null ? created.getBookingNo() : "Service booking requested"));
-        return created;
+        return CustomerPortalBookingDTO.from(created);
     }
 
     @Transactional(readOnly = true)
@@ -302,10 +307,10 @@ public class CustomerPortalService {
     }
 
     @Transactional(readOnly = true)
-    public List<BookingDTO> myBookings() {
+    public List<CustomerPortalBookingDTO> myBookings() {
         var me = CustomerPortalAuth.require();
-        return bookingRepository.findByCustomer_IdOrderByIdDesc(me.getCustomerId()).stream()
-                .map(bookingService::toSummaryDto)
+        return bookingService.findSummariesByCustomerId(me.getCustomerId()).stream()
+                .map(CustomerPortalBookingDTO::from)
                 .toList();
     }
 
@@ -1691,6 +1696,66 @@ public class CustomerPortalService {
     }
 
     private record Actor(String name, String type) {}
+
+    /**
+     * Persist the customer-visible catalog charge at booking time.
+     * Prefer live catalog values when serviceId is present; fall back to client display fields.
+     */
+    private void applyServicePriceSnapshot(BookingDTO dto, CustomerPortalBookingRequest req) {
+        Integer serviceId = req.getServiceId();
+        String clientName = clean(req.getServiceName(), 200);
+        java.math.BigDecimal clientPrice = req.getDisplayedPrice();
+        String clientType = org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport
+                .normalizePriceType(req.getPriceType());
+
+        if (serviceId != null) {
+            var item = serviceItemRepository.findById(serviceId)
+                    .orElseThrow(() -> new IllegalArgumentException("ရွေးထားသော service မရှိတော့ပါ"));
+            if (!item.isActive()) {
+                throw new IllegalArgumentException("ရွေးထားသော service ကို ယာယီရပ်ဆိုင်းထားပါသည်");
+            }
+            String priceType = org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport
+                    .resolvePriceType(item);
+            java.math.BigDecimal catalogPrice = org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport
+                    .resolveDisplayPrice(item, priceType);
+            // Prefer what the customer saw when provided and non-negative; else catalog at submit.
+            java.math.BigDecimal snapshotPrice = catalogPrice;
+            if (clientPrice != null) {
+                if (clientPrice.signum() < 0) {
+                    throw new IllegalArgumentException("Service price မမှန်ကန်ပါ");
+                }
+                snapshotPrice = clientPrice;
+            }
+            dto.setRequestedServiceId(item.getId());
+            dto.setRequestedServiceName(item.getItem());
+            dto.setServiceNameSnapshot(item.getItem());
+            dto.setServicePriceSnapshot(snapshotPrice);
+            dto.setServicePriceType(priceType);
+            dto.setEstimateApprovalStatus(
+                    org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport
+                            .defaultEstimateStatus(priceType));
+            return;
+        }
+
+        // Free-text / no catalog selection — still keep name + optional displayed price.
+        dto.setRequestedServiceId(null);
+        dto.setRequestedServiceName(clientName);
+        dto.setServiceNameSnapshot(clientName);
+        if (clientPrice != null && clientPrice.signum() < 0) {
+            throw new IllegalArgumentException("Service price မမှန်ကန်ပါ");
+        }
+        dto.setServicePriceSnapshot(clientPrice);
+        String priceType = clientType != null
+                ? clientType
+                : (clientPrice == null || clientPrice.signum() <= 0
+                    ? org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport.INSPECTION_REQUIRED
+                    : org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport.FIXED);
+        dto.setServicePriceType(clientName == null && clientPrice == null ? null : priceType);
+        dto.setEstimateApprovalStatus(dto.getServicePriceType() == null
+                ? null
+                : org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport
+                        .defaultEstimateStatus(dto.getServicePriceType()));
+    }
 
     private static String clean(String value, int maxLength) {
         if (blank(value)) return null;

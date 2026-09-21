@@ -1037,7 +1037,8 @@ private fun CustomerHistoryCard(
                     it.appointmentDate?.replace('T', ' ')?.take(10),
                     it.requestedServiceName,
                     when (it.status?.uppercase()) {
-                        "CANCELED", "CANCELLED", "REJECTED" -> "ငြင်းပယ်"
+                        "REJECTED" -> "ငြင်းပယ်ထား"
+                        "CANCELED", "CANCELLED" -> "ပယ်ဖျက်ထား"
                         else -> it.status?.replace('_', ' ')
                     }
                 ).joinToString(" • "),
@@ -1540,14 +1541,13 @@ private fun OrderDetailContent(order: CustomerOrder) {
 
 @Composable
 private fun BookingDetailContent(booking: BookingSummary) {
-    val canceled = booking.status?.uppercase() in setOf("CANCELED", "CANCELLED", "REJECTED")
-    var rejectionMessage by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(canceled) {
-        if (!canceled) return@LaunchedEffect
-        rejectionMessage = runCatching {
-            ApiClient.service.branding().body()?.data?.bookingRejectionMessage
-        }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+    val bookingStatus = booking.status?.uppercase()
+    val closed = bookingStatus in setOf("CANCELED", "CANCELLED", "REJECTED")
+    val rejectionMessage = when (bookingStatus) {
+        "REJECTED" -> booking.rejectionReason?.trim()?.takeIf { it.isNotEmpty() }
             ?: "သင့် service တောင်းဆိုမှုကို ဆိုင်မှ လက်မခံနိုင်ပါ။ နောက်ထပ်အသေးစိတ်အတွက် ဆိုင်သို့ ဆက်သွယ်ပေးပါ။"
+        "CANCELED", "CANCELLED" -> "ဤ Booking ကို ပယ်ဖျက်ထားပါသည်။ အသေးစိတ်အတွက် ဆိုင်သို့ ဆက်သွယ်နိုင်ပါသည်။"
+        else -> null
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DetailInfoRow(label = "Booking နံပါတ်", value = booking.bookingNo.orEmpty().ifBlank { "—" })
@@ -1571,14 +1571,15 @@ private fun BookingDetailContent(booking: BookingSummary) {
         }
         DetailInfoRow(
             label = "အခြေအနေ",
-            value = when (booking.status?.uppercase()) {
-                "CANCELED", "CANCELLED", "REJECTED" -> "ငြင်းပယ် / ပယ်ဖျက်"
+            value = when (bookingStatus) {
+                "REJECTED" -> "ငြင်းပယ်ထား"
+                "CANCELED", "CANCELLED" -> "ပယ်ဖျက်ထား"
                 "CONFIRMED" -> "လက်ခံထား"
                 "ARRIVED" -> "ဆိုင်ရောက်"
                 else -> booking.status?.replace('_', ' ') ?: "—"
             }
         )
-        if (canceled && !rejectionMessage.isNullOrBlank()) {
+        if (closed && !rejectionMessage.isNullOrBlank()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -1593,15 +1594,45 @@ private fun BookingDetailContent(booking: BookingSummary) {
                         color = Color(0xFF9F1239)
                     )
                     Text(
-                        rejectionMessage!!,
+                        rejectionMessage,
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF881337)
                     )
+                    booking.rejectedAt?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            "ငြင်းပယ်ချိန် · ${it.replace('T', ' ').take(16)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF9F1239)
+                        )
+                    }
                 }
             }
         }
-        if (!booking.requestedServiceName.isNullOrBlank()) {
-            DetailInfoRow(label = "ရွေးထားသော Service", value = booking.requestedServiceName)
+        if (!booking.requestedServiceName.isNullOrBlank() || !booking.serviceNameSnapshot.isNullOrBlank()) {
+            DetailInfoRow(
+                label = "ရွေးထားသော Service",
+                value = booking.serviceNameSnapshot ?: booking.requestedServiceName.orEmpty()
+            )
+        }
+        booking.servicePriceType?.takeIf { it.isNotBlank() }?.let { type ->
+            val priceText = when (type.uppercase()) {
+                "INSPECTION_REQUIRED" -> "စစ်ဆေးပြီးမှ ဈေးနှုန်း"
+                "STARTING_FROM" -> booking.servicePriceSnapshot?.let { "${it.toInt()} Ks မှ စတင်" } ?: "Starting from"
+                else -> booking.servicePriceSnapshot?.let { "${it.toInt()} Ks" } ?: "—"
+            }
+            DetailInfoRow(label = "Service ဈေး (booking လုပ်စဉ်)", value = priceText)
+        }
+        booking.estimateApprovalStatus?.takeIf { it.isNotBlank() }?.let {
+            DetailInfoRow(
+                label = "Estimate အခြေအနေ",
+                value = when (it.uppercase()) {
+                    "NOT_REQUIRED" -> "ခန့်မှန်းဈေး မလို"
+                    "PENDING" -> "ဆိုင်အတည်ပြုရန်"
+                    "APPROVED" -> "အတည်ပြုပြီး"
+                    "REJECTED" -> "ငြင်းပယ်"
+                    else -> it
+                }
+            )
         }
         if (!booking.requestType.isNullOrBlank()) {
             DetailInfoRow(label = "တောင်းဆိုမှုအမျိုးအစား", value = booking.requestType.replace('_', ' '))

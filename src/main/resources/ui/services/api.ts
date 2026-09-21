@@ -403,6 +403,8 @@ export const bookingService = {
   update: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/bookings/${id}`, dto),
   updateStatus: (id: number, status: string) =>
     api.patch<any, ApiResponse<any>>(`/v1/bookings/${id}/status?status=${status}`),
+  reject: (id: number, reason: string) =>
+    api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/reject`, { reason }),
   addItems: (id: number, items: any[]) => api.post<any, ApiResponse<any>>(`/v1/bookings/${id}/items`, items),
   updateItem: (id: number, itemId: number, item: any) =>
     api.put<any, ApiResponse<any>>(`/v1/bookings/${id}/items/${itemId}`, item),

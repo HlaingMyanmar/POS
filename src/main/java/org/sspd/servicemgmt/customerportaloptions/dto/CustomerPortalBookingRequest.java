@@ -11,7 +11,12 @@ import java.util.List;
 
 @Data
 public class CustomerPortalBookingRequest {
+    private Integer serviceId;
     private String serviceName;
+    /** Price shown to the customer in the app (snapshot source). */
+    private java.math.BigDecimal displayedPrice;
+    /** FIXED | STARTING_FROM | INSPECTION_REQUIRED — optional; server derives when missing. */
+    private String priceType;
     private String requestType;
     private String deviceCategory;
     private String deviceName;

@@ -80,6 +80,15 @@ public interface ServiceJobRepository extends JpaRepository<ServiceJob, Integer>
     boolean existsByBookingIdAndServiceMode(Integer bookingId, org.sspd.servicemgmt.servicejoboptions.model.ServiceMode serviceMode);
 
     @Query("""
+        select distinct j.bookingId from ServiceJob j
+        where j.bookingId in :bookingIds
+          and j.serviceMode = :serviceMode
+        """)
+    List<Integer> findBookingIdsByServiceMode(
+            @Param("bookingIds") Collection<Integer> bookingIds,
+            @Param("serviceMode") org.sspd.servicemgmt.servicejoboptions.model.ServiceMode serviceMode);
+
+    @Query("""
         SELECT j FROM ServiceJob j
         WHERE (:search IS NULL OR :search = ''
                OR LOWER(j.jobNo) LIKE LOWER(CONCAT('%',:search,'%'))

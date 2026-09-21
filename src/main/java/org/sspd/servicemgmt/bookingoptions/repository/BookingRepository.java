@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface BookingRepository extends JpaRepository<Booking, Integer> {
+    @EntityGraph(attributePaths = "customer")
     @Query("""
         select b from Booking b
         where (:search is null or :search = ''
@@ -45,4 +46,10 @@ public interface BookingRepository extends JpaRepository<Booking, Integer> {
 
     @EntityGraph(attributePaths = "customer")
     List<Booking> findByCustomer_IdOrderByIdDesc(Integer customerId);
+
+    long countByArrivalWindowId(Integer arrivalWindowId);
+
+    /** Outdoor capacity consumers: CONFIRMED only (ARRIVED is shop intake). */
+    long countByServiceDateAndArrivalWindowIdAndStatus(
+            LocalDate serviceDate, Integer arrivalWindowId, org.sspd.servicemgmt.bookingoptions.model.BookingStatus status);
 }

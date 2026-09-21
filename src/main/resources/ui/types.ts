@@ -1239,6 +1239,7 @@ export enum AppRoute {
   STAFF_PERFORMANCE = '/reports/staff-performance',
   STOCK_REPORT      = '/reports/stock',
   VOUCHER_SETTINGS     = '/settings/voucher',
+  SERVICE_BOOKING_SETTINGS = '/settings/service-booking',
   APP_VERSION_SETTINGS = '/settings/app-version',
   SHELF_LOCATIONS      = '/services/shelf-locations',
   OUTDOOR_TRACKING     = '/services/outdoor-tracking',

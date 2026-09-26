@@ -12,6 +12,8 @@ export type CompanySettings = {
   logoBase64?: string;
   notificationSoundBase64?: string;
   voucherConfigJson?: string;
+  /** Auto-reply sent when a customer opens the chat with a greeting (blank = off). */
+  chatGreeting?: string;
   salePrefix?: string;
   saleDigits?: number;
   purchasePrefix?: string;

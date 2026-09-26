@@ -57,7 +57,7 @@ fun ForgotPasswordContent(
         }
         AuthSectionHeader(
             title = "စကားဝှက် ပြန်သတ်မှတ်ရန်",
-            subtitle = "အကောင့် Email ထည့်ပါ။ Reset link ကို ပို့ပေးပါမယ်။"
+            subtitle = "Customer App အကောင့်နှင့် ချိတ်ထားသော Email သာ ထည့်ပါ။ အခြား Email သို့ ပို့မရပါ။"
         )
         AuthTextField(
             value = email,

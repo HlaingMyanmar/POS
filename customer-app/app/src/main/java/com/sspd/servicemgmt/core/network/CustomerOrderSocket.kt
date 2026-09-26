@@ -12,7 +12,8 @@ class CustomerOrderSocket(
     private val prefs: PreferenceManager,
     private val onUpdate: (CustomerNotification) -> Unit,
     private val onConnected: () -> Unit,
-    private val onDisconnected: () -> Unit = {}
+    private val onDisconnected: () -> Unit = {},
+    private val onChatMessage: ((ChatMessage) -> Unit)? = null
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val client = ApiClient.socketClient()
@@ -52,17 +53,31 @@ class CustomerOrderSocket(
                     when (normalized.substringBefore('\n')) {
                         "CONNECTED" -> {
                             webSocket.send("SUBSCRIBE\nid:customer-orders\ndestination:/user/topic/customer-orders\nack:auto\n\n\u0000")
+                            if (onChatMessage != null) {
+                                webSocket.send("SUBSCRIBE\nid:customer-chat\ndestination:/user/topic/chat\nack:auto\n\n\u0000")
+                            }
                             handler.post { if (!stopped && socket === webSocket) onConnected() }
                         }
                         "MESSAGE" -> {
+                            val destination = normalized.lineSequence()
+                                .firstOrNull { it.startsWith("destination:") }
+                                ?.removePrefix("destination:")
+                                ?.trim()
+                                .orEmpty()
                             val payload = normalized.substringAfter("\n\n", "")
-                            val notification = runCatching {
-                                Gson().fromJson(payload, CustomerNotification::class.java)
-                            }.getOrNull()
                             handler.post {
                                 if (stopped || socket !== webSocket) return@post
-                                if (notification?.orderId != null) onUpdate(notification)
-                                else onConnected() // payload parse miss → REST sync still picks cancel/confirm
+                                if (destination.contains("/chat")) {
+                                    val chat = CustomerChatSocket.parseChatPayload(payload)
+                                    if (chat != null) onChatMessage?.invoke(chat)
+                                    else onConnected()
+                                } else {
+                                    val notification = runCatching {
+                                        Gson().fromJson(payload, CustomerNotification::class.java)
+                                    }.getOrNull()
+                                    if (notification?.orderId != null) onUpdate(notification)
+                                    else onConnected()
+                                }
                             }
                         }
                         "ERROR" -> webSocket.close(1000, "STOMP error")

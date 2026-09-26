@@ -217,7 +217,7 @@ class BookingServiceTest {
         Booking second = booking(BookingStatus.ARRIVED);
         second.setId(11);
         second.setBookingNo("BK-000011");
-        when(repository.search(any(), any(), any(), any()))
+        when(repository.search(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(first, second)));
         BookingItemSummaryProjection arrivedStats = org.mockito.Mockito.mock(BookingItemSummaryProjection.class);
         when(arrivedStats.getBookingId()).thenReturn(11);
@@ -227,7 +227,7 @@ class BookingServiceTest {
         when(serviceJobRepository.findBookingIdsByServiceMode(any(), eq(ServiceMode.OUTDOOR)))
                 .thenReturn(List.of(10));
 
-        var page = service.findAll(null, null, null, 0, 20);
+        var page = service.findAll(null, null, null, null, null, null, 0, 20);
 
         assertEquals(2, page.getContent().size());
         assertTrue(page.getContent().get(0).isFullyConverted());

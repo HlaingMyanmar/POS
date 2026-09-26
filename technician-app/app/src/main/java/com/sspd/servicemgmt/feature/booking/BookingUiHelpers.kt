@@ -28,7 +28,9 @@ fun bookingNextAction(booking: BookingDTO): String {
       booking.fullyConverted == true -> "Items အားလုံးပြောင်းပြီး"
       else -> "ပစ္စည်းလက်ခံပြီး"
     }
+    "DONE", "COMPLETED" -> "ပြီးစီးပါပြီ"
     "CANCELED", "CANCELLED" -> "ပယ်ဖျက်ထား"
+    "REJECTED" -> "ငြင်းပယ်ထား"
     else -> "—"
   }
 }
@@ -38,7 +40,9 @@ fun BookingStatusBadge(status: String?) {
   val (bg, color, label) = when (status?.uppercase()) {
     "CONFIRMED" -> Triple(Color(0xFFDBEAFE), Color(0xFF1D4ED8), "အတည်ပြုပြီး")
     "ARRIVED"   -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "ပစ္စည်းလက်ခံပြီး")
+    "DONE", "COMPLETED" -> Triple(SuccessBg, Success, "ပြီးစီးပါပြီ")
     "CANCELED", "CANCELLED" -> Triple(DangerBg, Danger, "ပယ်ဖျက်ထား")
+    "REJECTED" -> Triple(DangerBg, Danger, "ငြင်းပယ်ထား")
     "PENDING"   -> Triple(WarningBg, Warning, "စောင့်ဆိုင်း")
     "IN_STORAGE" -> Triple(VioletBg, Violet, "သိမ်းထားပြီး")
     "CONVERTED" -> Triple(SuccessBg, Success, "အလုပ်ပြောင်းပြီး")

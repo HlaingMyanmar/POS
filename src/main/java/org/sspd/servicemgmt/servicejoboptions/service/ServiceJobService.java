@@ -20,6 +20,7 @@ import org.sspd.servicemgmt.creditoptions.repository.CustomerCreditApplicationRe
 import org.sspd.servicemgmt.creditoptions.service.CreditService;
 import org.sspd.servicemgmt.creditoptions.service.CustomerPaymentService;
 import org.sspd.servicemgmt.customeroptions.model.Customer;
+import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemComponentDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
 import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
@@ -423,6 +424,10 @@ public class ServiceJobService {
         recordActivity(job, "STATUS", from != null ? from.name() : null, status.name(),
                 status == ServiceJobStatus.WAITING_PARTS ? holdReason : null);
         broadcastJobEvent( "JOB_STATUS_CHANGED");
+        if (status == ServiceJobStatus.COMPLETED || status == ServiceJobStatus.DELIVERED
+                || status == ServiceJobStatus.CANCELLED || from == ServiceJobStatus.COMPLETED) {
+            syncBookingCompletion(job.getBookingId());
+        }
         return result;
     }
 
@@ -469,6 +474,7 @@ public class ServiceJobService {
         }
         ServiceJobDTO result = toDto(repo.save(job));
         broadcastJobEvent( "JOB_FINAL_APPROVED");
+        syncBookingCompletion(job.getBookingId());
         return result;
     }
 
@@ -796,6 +802,7 @@ public class ServiceJobService {
         recordActivity(saved, "SETTLED", saved.getStatus().name(), ServiceJobStatus.COMPLETED.name(),
                 "Settled " + saved.getNetAmount());
         broadcastJobEvent( "JOB_SETTLED");
+        syncBookingCompletion(saved.getBookingId());
         return toDto(repo.findById(saved.getId()).orElse(saved));
     }
 
@@ -920,6 +927,7 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "DELIVERED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.DELIVERED.name(), null);
         broadcastJobEvent( "JOB_DELIVERED");
+        syncBookingCompletion(job.getBookingId());
         return result;
     }
 
@@ -1290,6 +1298,7 @@ public class ServiceJobService {
         ServiceJobDTO result = toDto(repo.save(job));
         recordActivity(job, "VOIDED", ServiceJobStatus.COMPLETED.name(), ServiceJobStatus.IN_PROGRESS.name(), reason);
         broadcastJobEvent( "JOB_VOIDED");
+        syncBookingCompletion(job.getBookingId());
         return result;
     }
 
@@ -2118,5 +2127,39 @@ public class ServiceJobService {
 
     private void broadcastJobEvent(Object event) {
         dataEventPublisher.publishTopic("/topic/service-jobs", event);
+    }
+
+    /**
+     * When every non-cancelled job for a booking is COMPLETED/DELIVERED, mark the booking DONE.
+     * If a finished booking is reopened (void), restore CONFIRMED/ARRIVED intake status.
+     */
+    private void syncBookingCompletion(Integer bookingId) {
+        if (bookingId == null) return;
+        bookingRepository.findById(bookingId).ifPresent(booking -> {
+            if (booking.getStatus() == BookingStatus.CANCELED || booking.getStatus() == BookingStatus.REJECTED) {
+                return;
+            }
+            List<ServiceJob> jobs = repo.findAllByBookingIdOrderByIdAsc(bookingId);
+            if (jobs.isEmpty()) return;
+            List<ServiceJob> activeJobs = jobs.stream()
+                    .filter(job -> job.getStatus() != ServiceJobStatus.CANCELLED)
+                    .toList();
+            if (activeJobs.isEmpty()) return;
+            boolean allFinished = activeJobs.stream().allMatch(job ->
+                    job.getStatus() == ServiceJobStatus.COMPLETED
+                            || job.getStatus() == ServiceJobStatus.DELIVERED);
+            if (allFinished) {
+                if (booking.getStatus() != BookingStatus.DONE) {
+                    booking.setStatus(BookingStatus.DONE);
+                    bookingRepository.save(booking);
+                    dataEventPublisher.publishTopic("/topic/booking", "BOOKING_DONE");
+                }
+            } else if (booking.getStatus() == BookingStatus.DONE) {
+                boolean arrived = booking.getItems() != null && !booking.getItems().isEmpty();
+                booking.setStatus(arrived ? BookingStatus.ARRIVED : BookingStatus.CONFIRMED);
+                bookingRepository.save(booking);
+                dataEventPublisher.publishTopic("/topic/booking", "BOOKING_REOPENED");
+            }
+        });
     }
 }

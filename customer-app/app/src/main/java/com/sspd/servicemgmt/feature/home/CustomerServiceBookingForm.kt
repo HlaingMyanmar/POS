@@ -30,16 +30,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,8 +55,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -73,7 +75,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,19 +90,25 @@ import com.sspd.servicemgmt.core.ui.theme.AppTheme
 import com.sspd.servicemgmt.core.ui.theme.BorderColor
 import com.sspd.servicemgmt.core.ui.theme.CardBg
 import com.sspd.servicemgmt.core.ui.theme.Danger
+import com.sspd.servicemgmt.core.ui.theme.DangerBg
 import com.sspd.servicemgmt.core.ui.theme.OnPrimary
 import com.sspd.servicemgmt.core.ui.theme.Primary
 import com.sspd.servicemgmt.core.ui.theme.PrimaryDark
 import com.sspd.servicemgmt.core.ui.theme.PrimaryLight
 import com.sspd.servicemgmt.core.ui.theme.ScreenBg
+import com.sspd.servicemgmt.core.ui.theme.Success
+import com.sspd.servicemgmt.core.ui.theme.SuccessBg
 import com.sspd.servicemgmt.core.ui.theme.SurfaceSoft
 import com.sspd.servicemgmt.core.ui.theme.TextMain
 import com.sspd.servicemgmt.core.ui.theme.TextMuted
+import com.sspd.servicemgmt.core.ui.theme.Warning
+import com.sspd.servicemgmt.core.ui.theme.WarningBg
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.text.NumberFormat
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -125,12 +132,14 @@ private fun formatMmFee(amount: Double): String {
 
 @Composable
 fun CustomerServiceBookingForm(
-    services: List<CatalogService>,
+    services: List<CatalogService> = emptyList(),
     defaultAddress: String,
     submitting: Boolean,
     onSubmit: (ServiceRequestBody) -> Unit,
     modifier: Modifier = Modifier,
     initialStep: Int = 1,
+    /** Pre-selected catalog service from rates screen. */
+    initialService: CatalogService? = null,
     /** Preview / tests: pre-select service mode (ONSITE / SHOP / UNDECIDED). */
     initialServiceMode: String = "UNDECIDED",
     initialProblem: String = "",
@@ -141,12 +150,13 @@ fun CustomerServiceBookingForm(
     /** Preview: open SHOP optional schedule picker immediately. */
     initialShopScheduleOpen: Boolean = false,
     initialShopDropOffDate: String? = null,
+    showBottomNav: Boolean = true,
+    onClearSelectedService: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val previewMode = LocalInspectionMode.current
     val scope = rememberCoroutineScope()
     var entryMode by remember { mutableStateOf("PROBLEM") }
-    var selectedService by remember { mutableStateOf<CatalogService?>(null) }
     var requestType by remember { mutableStateOf("DIAGNOSIS") }
     var deviceCategory by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("") }
@@ -371,9 +381,8 @@ fun CustomerServiceBookingForm(
         else -> true
     }
     val validProblem = problem.trim().isNotEmpty()
-    val validService = selectedService != null
     val validAddress = serviceMode != "ONSITE" || serviceAddress.isNotBlank()
-    val canSubmit = !submitting && (validProblem || validService) && validAddress && validSchedule
+    val canSubmit = !submitting && validProblem && validAddress && validSchedule
 
     Column(
         modifier = modifier
@@ -399,13 +408,20 @@ fun CustomerServiceBookingForm(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (initialService != null) {
+                item {
+                    SelectedServiceBanner(
+                        service = initialService,
+                        onClear = onClearSelectedService
+                    )
+                }
+            }
             if (currentStep == 1) {
                 item {
                     FormSection("၁။ ဘာအတွက် အကူအညီလိုပါသလဲ?") {
                         ChoiceRow(
                             choices = listOf(
                                 BookingChoice("PROBLEM", "ပြဿနာပြောမယ်"),
-                                BookingChoice("SERVICE", "Service ရွေးမယ်"),
                                 BookingChoice("CONSULT", "မသေချာပါ")
                             ),
                             selected = entryMode,
@@ -413,7 +429,6 @@ fun CustomerServiceBookingForm(
                                 entryMode = it
                                 requestType = if (it == "CONSULT") "CONSULTATION"
                                 else if (requestType == "CONSULTATION") "DIAGNOSIS" else requestType
-                                if (it != "SERVICE") selectedService = null
                                 showValidation = false
                             }
                         )
@@ -423,29 +438,6 @@ fun CustomerServiceBookingForm(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted
                             )
-                        }
-                    }
-                }
-
-                if (entryMode == "SERVICE") {
-                    item {
-                        FormSection("Service ရွေးပါ (မဖြစ်မနေ မဟုတ်ပါ)") {
-                            if (services.isEmpty()) {
-                                Text("Service စာရင်းမရသေးပါ။ ပြဿနာကို ရေးပြီး ဆက်တင်နိုင်ပါတယ်။", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                            } else {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    items(services, key = { it.id }) { service ->
-                                        ServiceChoiceCard(
-                                            service = service,
-                                            selected = selectedService?.id == service.id,
-                                            onClick = {
-                                                selectedService = if (selectedService?.id == service.id) null else service
-                                                showValidation = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -474,15 +466,45 @@ fun CustomerServiceBookingForm(
                             maxLines = 6,
                             label = { Text("ဖြစ်နေတဲ့ပြဿနာ / လုပ်ပေးစေချင်တာ") },
                             placeholder = { Text("ဖြစ်နေတဲ့ပြဿနာကို အသေးစိတ် ရေးပေးပါ...") },
-                            isError = showValidation && !validProblem && !validService,
+                            isError = showValidation && !validProblem,
                             supportingText = {
                                 Text(
-                                    if (showValidation && !validProblem && !validService)
-                                        "ပြဿနာရေးပါ သို့မဟုတ် Service တစ်ခုရွေးပါ"
+                                    if (showValidation && !validProblem)
+                                        "ဖြစ်နေတဲ့ပြဿနာ / လုပ်ပေးစေချင်တာ ရေးပါ"
                                     else "ဘယ်အချိန်ကစဖြစ်တာ၊ ဘာတွေစမ်းပြီးပြီလဲ ထည့်ရေးပေးပါ"
                                 )
                             }
                         )
+                    }
+                }
+
+                if (showValidation && !validProblem) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = DangerBg,
+                            border = BorderStroke(1.dp, Danger.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = Danger,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Text(
+                                    text = "ဖြစ်နေသည့် ပြဿနာ သို့မဟုတ် လုပ်ပေးစေချင်တာကို ရေးပါ",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Danger,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -633,254 +655,140 @@ fun CustomerServiceBookingForm(
                             )
                         }
                         if (serviceMode == "ONSITE") {
-                            Text(
-                                "လာရောက်မည့်ရက်နှင့် arrival window ရွေးပါ",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextMain
+                            OnsiteSchedulePicker(
+                                availabilityDates = availabilityDates,
+                                selectedDate = serviceDate,
+                                onSelectDate = {
+                                    serviceDate = it
+                                    selectedWindowId = null
+                                    preferredAnytime = true
+                                    preferredTime = null
+                                    availabilityWindowsError = null
+                                },
+                                availabilityWindows = availabilityWindows,
+                                selectedWindowId = selectedWindowId,
+                                onSelectWindow = { selectedWindowId = it },
+                                loadingDates = availabilityLoading,
+                                loadingWindows = availabilityLoading,
+                                datesError = availabilityDatesError,
+                                windowsError = availabilityWindowsError,
+                                onRetryDates = { datesRetryKey++ },
+                                onRetryWindows = { windowsRetryKey++ },
+                                showValidation = showValidation
                             )
-                            if (availabilityLoading && availabilityDatesError == null) {
-                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                            }
-                            availabilityDatesError?.let { err ->
-                                AvailabilityLoadErrorBanner(
-                                    message = err,
-                                    onRetry = { datesRetryKey++ }
-                                )
-                            }
-                            if (availabilityDatesError == null) {
-                                val openDates = availabilityDates.filter { it.available == true }
-                                if (!availabilityLoading && openDates.isEmpty()) {
-                                    Text(
-                                        "လက်ရှိ ရနိုင်သော ရက် မရှိပါ။ နောက်မှ ထပ်ကြိုးစားပါ သို့မဟုတ် ဆိုင်နှင့် ဆက်သွယ်ပါ။",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextMuted
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        } else if (serviceMode == "SHOP") {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = CardBg,
+                                border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    openDates.forEach { d ->
-                                        val selected = serviceDate == d.date
-                                        FilterChip(
-                                            selected = selected,
-                                            onClick = {
-                                                serviceDate = d.date
-                                                selectedWindowId = null
-                                                preferredAnytime = true
-                                                preferredTime = null
-                                                availabilityWindowsError = null
-                                            },
-                                            label = { Text(d.date?.takeLast(5) ?: "—") }
-                                        )
-                                    }
-                                }
-                            }
-                            if (showValidation && serviceDate == null && availabilityDatesError == null) {
-                                Text("ရက်ရွေးပါ", color = Danger, style = MaterialTheme.typography.bodySmall)
-                            }
-                            if (!serviceDate.isNullOrBlank() && availabilityDatesError == null) {
-                                if (availabilityLoading && availabilityWindowsError == null) {
-                                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                                }
-                                availabilityWindowsError?.let { err ->
-                                    AvailabilityLoadErrorBanner(
-                                        message = err,
-                                        onRetry = { windowsRetryKey++ }
-                                    )
-                                }
-                                if (availabilityWindowsError == null) {
-                                    if (!availabilityLoading && availabilityWindows.isEmpty()) {
-                                        Text(
-                                            "ဤနေ့အတွက် arrival window မရှိပါ။ အခြားရက် ရွေးပါ။",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextMuted
-                                        )
-                                    }
-                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        availabilityWindows.forEach { w ->
-                                            val bookable = w.state == "AVAILABLE" || w.state == "FEW_LEFT"
-                                            val selected = selectedWindowId == w.windowId
-                                            val label = buildString {
-                                                append(w.name ?: "Window")
-                                                append(" ")
-                                                append((w.startTime ?: "").take(5))
-                                                append("–")
-                                                append((w.endTime ?: "").take(5))
-                                                append(" · ")
-                                                append(
-                                                    when (w.state) {
-                                                        "FEW_LEFT" -> "ကျန် ${w.remaining}"
-                                                        "FULL" -> "ပြည့်"
-                                                        "UNAVAILABLE" -> "မရနိုင်"
-                                                        else -> "ရနိုင်"
-                                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(38.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(PrimaryLight),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Event,
+                                                    contentDescription = null,
+                                                    tint = Primary,
+                                                    modifier = Modifier.size(20.dp)
                                                 )
                                             }
-                                            FilterChip(
-                                                selected = selected,
-                                                enabled = bookable,
-                                                onClick = { if (bookable) selectedWindowId = w.windowId },
-                                                label = { Text(label) }
-                                            )
+                                            Column {
+                                                Text(
+                                                    text = "ဆိုင်ယူလာမည့် ရက်စွဲနှင့် အချိန်",
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = TextMain
+                                                )
+                                                Text(
+                                                    text = "ဆိုင်ဖွင့်ချိန်အတွင်း မိမိအဆင်ပြေမည့်အချိန် (ရွေးချယ်နိုင်)",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = TextMuted
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                if (showValidation && selectedWindowId == null && availabilityWindowsError == null) {
-                                    Text("Arrival window ရွေးပါ", color = Danger, style = MaterialTheme.typography.bodySmall)
-                                }
-                                if (availabilityWindowsError == null) {
-                                ChoiceRow(
-                                    choices = listOf(
-                                        BookingChoice("ANYTIME", "Anytime"),
-                                        BookingChoice("PREFERRED", "Preferred time")
-                                    ),
-                                    selected = if (preferredAnytime) "ANYTIME" else "PREFERRED",
-                                    onSelect = {
-                                        preferredAnytime = it == "ANYTIME"
-                                        if (preferredAnytime) preferredTime = null
+
+                                    if (appointment != null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = PrimaryLight.copy(alpha = 0.5f),
+                                            border = BorderStroke(1.dp, Primary.copy(alpha = 0.25f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Schedule,
+                                                        contentDescription = null,
+                                                        tint = Primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = appointment!!.format(DateTimeFormatter.ofPattern("dd MMM yyyy (EEE) · h:mm a")),
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = PrimaryDark,
+                                                        style = MaterialTheme.typography.bodyMedium
+                                                    )
+                                                }
+                                                TextButton(
+                                                    onClick = { appointment = null },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("ဖျက်မည်", color = Danger, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
                                     }
-                                )
-                                if (!preferredAnytime) {
+
                                     OutlinedButton(
-                                        onClick = {
-                                            showPreferredTimePicker(context) { preferredTime = it }
-                                        },
-                                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text(
-                                            preferredTime?.format(DateTimeFormatter.ofPattern("h:mm a"))
-                                                ?: "Preferred time ရွေးရန်"
-                                        )
-                                    }
-                                }
-                                OutlinedTextField(
-                                    value = preferenceNote,
-                                    onValueChange = { if (it.length <= 500) preferenceNote = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    label = { Text("Preference note (optional)") },
-                                    minLines = 2,
-                                    maxLines = 3
-                                )
-                                Text(
-                                    "Arrival window သည် ခန့်မှန်းအချိန်ဖြစ်ပြီး အာမခံအတိအကျ မဟုတ်ပါ။",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted
-                                )
-                                }
-                            }
-                        } else if (serviceMode == "SHOP") {
-                            Text(
-                                "ဆိုင်ယူလာမည့် ရက်/အချိန် (ဆိုင်ဖွင့်ချိန်အတွင်း · ရွေးချယ်နိုင်)",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (!shopScheduleOpen) {
-                                OutlinedButton(
-                                    onClick = { shopScheduleOpen = true },
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("ဆိုင်လာမည့်ရက်/အချိန် ရွေးရန် (ရွေးချယ်နိုင်)")
-                                }
-                            } else {
-                                if (availabilityLoading && availabilityDatesError == null) {
-                                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                                }
-                                availabilityDatesError?.let { err ->
-                                    AvailabilityLoadErrorBanner(
-                                        message = err,
-                                        onRetry = { datesRetryKey++ }
-                                    )
-                                }
-                                if (availabilityDatesError == null) {
-                                    val openDates = availabilityDates.filter { it.available == true }
-                                    if (!availabilityLoading && openDates.isEmpty()) {
-                                        Text(
-                                            "လက်ရှိ ဆိုင်ဖွင့်ရက် မရှိပါ။ နောက်မှ ထပ်ကြိုးစားပါ သို့မဟုတ် အချိန်မသတ်မှတ်ဘဲ ဆက်လက်တင်နိုင်ပါသည်။",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextMuted
-                                        )
-                                    }
-                                    Row(
+                                        onClick = { showAppointmentPicker(context) { appointment = it } },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            .height(48.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, BorderColor)
                                     ) {
-                                        openDates.forEach { d ->
-                                            val selected = shopDropOffDate == d.date
-                                            FilterChip(
-                                                selected = selected,
-                                                onClick = {
-                                                    shopDropOffDate = d.date
-                                                    appointment = null
-                                                },
-                                                label = { Text(d.date?.takeLast(5) ?: "—") }
-                                            )
-                                        }
-                                    }
-                                    val selectedDay = availabilityDates.firstOrNull {
-                                        it.date == shopDropOffDate && it.available == true
-                                    }
-                                    val periods = selectedDay?.openPeriods.orEmpty()
-                                    if (!shopDropOffDate.isNullOrBlank()) {
-                                        if (periods.isEmpty() && !availabilityLoading) {
-                                            Text(
-                                                "ဤနေ့အတွက် ဆိုင်ဖွင့်ချိန် မရှိပါ။ အခြားရက် ရွေးပါ။",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = TextMuted
-                                            )
-                                        }
-                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            periods.forEach { period ->
-                                                val opens = parseAvailabilityTime(period.opensAt)
-                                                val selected = appointment != null &&
-                                                    appointment!!.toLocalDate().toString() == shopDropOffDate &&
-                                                    opens != null &&
-                                                    appointment!!.toLocalTime() == opens
-                                                FilterChip(
-                                                    selected = selected,
-                                                    enabled = opens != null,
-                                                    onClick = {
-                                                        val dateStr = shopDropOffDate ?: return@FilterChip
-                                                        val time = opens ?: return@FilterChip
-                                                        val date = runCatching {
-                                                            java.time.LocalDate.parse(dateStr)
-                                                        }.getOrNull() ?: return@FilterChip
-                                                        appointment = LocalDateTime.of(date, time)
-                                                    },
-                                                    label = {
-                                                        Text(formatOpenPeriodLabel(period.opensAt, period.closesAt))
-                                                    }
-                                                )
-                                            }
-                                        }
-                                        if (appointment != null) {
-                                            Text(
-                                                "ရွေးထားသည် — ${
-                                                    appointment!!.format(DateTimeFormatter.ofPattern("dd MMM yyyy, h:mm a"))
-                                                }",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = TextMuted
-                                            )
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Outlined.CalendarMonth,
+                                            contentDescription = null,
+                                            tint = Primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = if (appointment != null) "ရက်စွဲ/အချိန် ပြောင်းမည်" else "ဆိုင်လာမည့်ရက်/အချိန် ရွေးမည်",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Primary,
+                                            fontSize = 13.sp
+                                        )
                                     }
                                 }
-                                AssistChip(
-                                    onClick = {
-                                        shopScheduleOpen = false
-                                        shopDropOffDate = null
-                                        appointment = null
-                                        availabilityDates = emptyList()
-                                        availabilityDatesError = null
-                                    },
-                                    label = { Text("အချိန်မသတ်မှတ်တော့ပါ") }
-                                )
                             }
                         } else {
                             OutlinedButton(
@@ -955,12 +863,64 @@ fun CustomerServiceBookingForm(
                         )
                     }
                 }
+
+                if (showValidation && (!validAddress || !validSchedule)) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = DangerBg,
+                            border = BorderStroke(1.dp, Danger.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = Danger,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "ဖြည့်သွင်းရန် အချက်အလက်များ ကျန်ရှိနေပါသည်",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Danger,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    if (!validAddress) {
+                                        Text(
+                                            text = "• အိမ်အရောက် ဝန်ဆောင်မှုအတွက် လာရောက်ရမည့် လိပ်စာ ဖြည့်သွင်းပါ",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Danger
+                                        )
+                                    }
+                                    if (serviceMode == "ONSITE" && serviceDate == null) {
+                                        Text(
+                                            text = "• လာရောက်မည့် ရက်စွဲ ရွေးချယ်ပါ",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Danger
+                                        )
+                                    }
+                                    if (serviceMode == "ONSITE" && serviceDate != null && selectedWindowId == null) {
+                                        Text(
+                                            text = "• လာရောက်မည့် Arrival Window အချိန် ရွေးချယ်ပါ",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Danger
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if (currentStep == 3) {
                 item {
                     BookingReviewCard(
-                        selectedService = selectedService,
                         problem = problem,
                         deviceCategory = deviceCategory,
                         deviceName = deviceName,
@@ -999,7 +959,12 @@ fun CustomerServiceBookingForm(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 10.dp,
+                        bottom = if (showBottomNav) 10.dp + 72.dp else 10.dp
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1023,7 +988,7 @@ fun CustomerServiceBookingForm(
                     Button(
                         onClick = {
                             val valid = when (currentStep) {
-                                1 -> validProblem || validService
+                                1 -> validProblem
                                 2 -> validAddress && validSchedule
                                 else -> true
                             }
@@ -1047,10 +1012,10 @@ fun CustomerServiceBookingForm(
                         onClick = {
                             onSubmit(
                                 ServiceRequestBody(
-                                    serviceId = selectedService?.id?.takeIf { it > 0 },
-                                    serviceName = selectedService?.name,
-                                    displayedPrice = selectedService?.price?.takeIf { it > 0 },
-                                    priceType = selectedService?.priceType,
+                                    serviceId = initialService?.id?.takeIf { it > 0 },
+                                    serviceName = initialService?.name?.trim()?.ifBlank { null },
+                                    displayedPrice = initialService?.let { catalogDisplayedPrice(it) },
+                                    priceType = initialService?.priceType,
                                     requestType = requestType,
                                     deviceCategory = deviceCategory.ifBlank { null },
                                     deviceName = deviceName.trim().ifBlank { null },
@@ -1095,6 +1060,46 @@ fun CustomerServiceBookingForm(
                             Text("Service Booking တင်မည်", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedServiceBanner(
+    service: CatalogService,
+    onClear: (() -> Unit)?
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = PrimaryLight,
+        border = BorderStroke(1.dp, Primary.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "ရွေးထားသော ဝန်ဆောင်မှု",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PrimaryDark
+                )
+                Text(
+                    service.name.orEmpty().ifBlank { "ဝန်ဆောင်မှု" },
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain,
+                    maxLines = 2
+                )
+                service.serviceTypeName?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                }
+            }
+            if (onClear != null) {
+                TextButton(onClick = onClear) {
+                    Text("ဖယ်ရှားမည်", color = Primary)
                 }
             }
         }
@@ -1168,7 +1173,6 @@ private fun BookingStepHeader(
 
 @Composable
 private fun BookingReviewCard(
-    selectedService: CatalogService?,
     problem: String,
     deviceCategory: String,
     deviceName: String,
@@ -1231,7 +1235,6 @@ private fun BookingReviewCard(
                         Text("ပြင်မည် >", color = Primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
-                ReviewLine("Service", selectedService?.name ?: "Technician စစ်ဆေးပြီး ရွေးမည်")
                 if (problem.isNotBlank()) {
                     ReviewLine("ပြဿနာ", problem)
                 }
@@ -1356,26 +1359,6 @@ private fun ChoiceRow(
 }
 
 @Composable
-private fun ServiceChoiceCard(service: CatalogService, selected: Boolean, onClick: () -> Unit) {
-    OutlinedCard(
-        modifier = Modifier.width(210.dp).clickable(onClick = onClick),
-        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) Primary else BorderColor)
-    ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(service.name.orEmpty().ifBlank { "Service" }, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            service.serviceTypeName?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = TextMuted)
-            }
-            val priceLabel = catalogServicePriceLabel(service)
-            if (priceLabel != null) {
-                Text(priceLabel, color = Primary, fontWeight = FontWeight.SemiBold)
-            }
-            if (selected) Text("ရွေးထားသည် ✓", color = Primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
 private fun BookingPhotoSlot(
     photo: BookingPhotoSelection?,
     slot: Int,
@@ -1441,6 +1424,272 @@ private fun BookingPhotoSlot(
             }
         }
     }
+}
+
+@Composable
+private fun OnsiteSchedulePicker(
+    availabilityDates: List<BookingAvailabilityDate>,
+    selectedDate: String?,
+    onSelectDate: (String) -> Unit,
+    availabilityWindows: List<BookingAvailabilityWindow>,
+    selectedWindowId: Int?,
+    onSelectWindow: (Int) -> Unit,
+    loadingDates: Boolean,
+    loadingWindows: Boolean,
+    datesError: String?,
+    windowsError: String?,
+    onRetryDates: () -> Unit,
+    onRetryWindows: () -> Unit,
+    showValidation: Boolean
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = CardBg,
+        border = BorderStroke(1.dp, if (showValidation && (selectedDate == null || selectedWindowId == null)) Danger.copy(alpha = 0.6f) else BorderColor.copy(alpha = 0.6f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(PrimaryLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Event,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "လာရောက်မည့် ရက်စွဲနှင့် Arrival Window",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMain
+                    )
+                    Text(
+                        text = "Technician လာရောက်မည့် ရက်စွဲနှင့် အချိန်အပိုင်းအခြား ရွေးပါ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+            }
+
+            HorizontalDivider(color = BorderColor.copy(alpha = 0.4f))
+
+            // 1. Date Selection
+            Text(
+                text = "၁။ လာရောက်မည့် ရက်စွဲ ရွေးပါ",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = PrimaryDark
+            )
+
+            if (loadingDates && datesError == null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(vertical = 6.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Primary)
+                    Text("ရနိုင်သော ရက်စွဲများ ဖတ်နေသည်...", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                }
+            }
+
+            datesError?.let { err ->
+                AvailabilityLoadErrorBanner(message = err, onRetry = onRetryDates)
+            }
+
+            if (datesError == null) {
+                val openDates = availabilityDates.filter { it.available == true }
+                if (!loadingDates && openDates.isEmpty()) {
+                    Text(
+                        text = "လက်ရှိ ရနိုင်သော ရက် မရှိသေးပါ။ ဆိုင်သို့ တိုက်ရိုက် ဆက်သွယ်ပေးပါ။",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        openDates.forEach { d ->
+                            val isSelected = selectedDate == d.date
+                            Surface(
+                                onClick = { d.date?.let(onSelectDate) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) Primary else SurfaceSoft,
+                                border = BorderStroke(1.dp, if (isSelected) Primary else BorderColor)
+                            ) {
+                                Text(
+                                    text = formatDateLabel(d.date),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) OnPrimary else TextMain
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (showValidation && selectedDate == null && datesError == null) {
+                Text("• လာရောက်မည့် ရက်စွဲ ရွေးချယ်ပါ", color = Danger, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            }
+
+            // 2. Window Selection
+            if (!selectedDate.isNullOrBlank() && datesError == null) {
+                HorizontalDivider(color = BorderColor.copy(alpha = 0.4f))
+
+                Text(
+                    text = "၂။ Arrival Window အချိန် ရွေးပါ",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryDark
+                )
+
+                if (loadingWindows && windowsError == null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Primary)
+                        Text("Arrival Window အချိန်များ ဖတ်နေသည်...", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
+                }
+
+                windowsError?.let { err ->
+                    AvailabilityLoadErrorBanner(message = err, onRetry = onRetryWindows)
+                }
+
+                if (windowsError == null) {
+                    if (!loadingWindows && availabilityWindows.isEmpty()) {
+                        Text(
+                            text = "ဤနေ့အတွက် Arrival Window မရှိသေးပါ။ အခြားရက်စွဲ ရွေးချယ်ပါ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            availabilityWindows.forEach { w ->
+                                val isBookable = w.state == "AVAILABLE" || w.state == "FEW_LEFT"
+                                val isSelected = selectedWindowId == w.windowId
+                                val windowTitle = when (w.name?.uppercase()) {
+                                    "MORNING" -> "မနက်ပိုင်း"
+                                    "AFTERNOON" -> "မွန်းလွဲပိုင်း"
+                                    "EVENING" -> "ညနေပိုင်း"
+                                    else -> w.name.orEmpty().ifBlank { "Window" }
+                                }
+                                val timeRange = formatWindowTimeRange(w.startTime, w.endTime)
+
+                                Surface(
+                                    onClick = { if (isBookable && w.windowId != null) onSelectWindow(w.windowId) },
+                                    enabled = isBookable,
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = when {
+                                        isSelected -> PrimaryLight
+                                        !isBookable -> SurfaceSoft.copy(alpha = 0.6f)
+                                        else -> SurfaceSoft
+                                    },
+                                    border = BorderStroke(
+                                        1.dp,
+                                        when {
+                                            isSelected -> Primary
+                                            !isBookable -> BorderColor.copy(alpha = 0.3f)
+                                            else -> BorderColor
+                                        }
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = "$windowTitle ($timeRange)",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) PrimaryDark else if (!isBookable) TextMuted else TextMain
+                                            )
+                                        }
+
+                                        val (statusText, statusFg, statusBg) = when (w.state) {
+                                            "FEW_LEFT" -> Triple("ကျန် ${w.remaining} နေရာ", Warning, WarningBg)
+                                            "FULL" -> Triple("ပြည့်ပါပြီ", Danger, DangerBg)
+                                            "UNAVAILABLE" -> Triple("မရနိုင်ပါ", TextMuted, SurfaceSoft)
+                                            else -> Triple("✓ ရနိုင်သည်", Success, SuccessBg)
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = statusBg
+                                        ) {
+                                            Text(
+                                                text = statusText,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = statusFg
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (showValidation && selectedWindowId == null && windowsError == null) {
+                    Text("• လာရောက်မည့် Arrival Window အချိန် ရွေးချယ်ပါ", color = Danger, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+private fun formatDateLabel(dateStr: String?): String {
+    if (dateStr.isNullOrBlank()) return "—"
+    return runCatching {
+        val date = LocalDate.parse(dateStr)
+        val formatter = DateTimeFormatter.ofPattern("dd MMM (EEE)", Locale.ENGLISH)
+        date.format(formatter)
+    }.getOrDefault(dateStr)
+}
+
+private fun formatWindowTimeRange(startTime: String?, endTime: String?): String {
+    val start = parseWindowTime(startTime)
+    val end = parseWindowTime(endTime)
+    if (start != null && end != null) {
+        val fmt = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
+        return "${start.format(fmt)} – ${end.format(fmt)}"
+    }
+    return listOfNotNull(startTime?.take(5), endTime?.take(5)).joinToString(" – ")
+}
+
+private fun parseWindowTime(raw: String?): LocalTime? {
+    if (raw.isNullOrBlank() || raw.length < 5) return null
+    return runCatching {
+        val parts = raw.split(':')
+        LocalTime.of(parts[0].toInt(), parts[1].toInt())
+    }.getOrNull()
 }
 
 private fun showAppointmentPicker(context: Context, onSelected: (LocalDateTime) -> Unit) {
@@ -1559,25 +1808,6 @@ private fun availabilityErrorMessage(error: Throwable): String {
     }
 }
 
-private fun catalogServicePriceLabel(service: CatalogService): String? {
-    val type = service.priceType?.uppercase()
-    return when (type) {
-        "INSPECTION_REQUIRED" -> "စစ်ဆေးပြီးမှ ဈေးနှုန်း"
-        "STARTING_FROM" -> {
-            val from = service.minPrice?.takeIf { it > 0 } ?: service.price?.takeIf { it > 0 }
-            from?.let { "${it.roundToInt()} Ks မှ စတင်" }
-        }
-        else -> service.price?.takeIf { it > 0 }?.let { "${it.roundToInt()} Ks" }
-    }
-}
-
-private fun sampleCatalogServices(): List<CatalogService> = listOf(
-    CatalogService(1, "Laptop စစ်ဆေးပြုပြင်ခြင်း", "Computer Service", 15000.0, null, null, "FIXED", 1, null),
-    CatalogService(2, "Printer Service", "Office Equipment", 10000.0, 10000.0, 25000.0, "STARTING_FROM", 1, null),
-    CatalogService(3, "CCTV & Network Setup", "IT Support", 0.0, null, null, "INSPECTION_REQUIRED", 1, null),
-    CatalogService(4, "Desktop PC Repair", "Computer Service", 20000.0, null, null, "FIXED", 1, null)
-)
-
 private fun sampleAvailabilityDates(): List<BookingAvailabilityDate> {
     val today = java.time.LocalDate.now()
     return (0..6).map { offset ->
@@ -1663,7 +1893,6 @@ private fun CustomerServiceBookingStep1Preview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},
@@ -1679,7 +1908,6 @@ private fun CustomerServiceBookingStep2Preview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},
@@ -1695,7 +1923,6 @@ private fun CustomerServiceBookingOnsiteWindowsPreview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},
@@ -1717,7 +1944,6 @@ private fun CustomerServiceBookingShopPreview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},
@@ -1735,7 +1961,6 @@ private fun CustomerServiceBookingShopSchedulePreview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},
@@ -1755,7 +1980,6 @@ private fun CustomerServiceBookingStep3Preview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},
@@ -1771,7 +1995,6 @@ private fun CustomerServiceBookingOnsiteReviewPreview() {
     AppTheme {
         Surface {
             CustomerServiceBookingForm(
-                services = sampleCatalogServices(),
                 defaultAddress = "ရန်ကုန်မြို့၊ လှိုင်မြို့နယ်၊ အမှတ် ၁၂",
                 submitting = false,
                 onSubmit = {},

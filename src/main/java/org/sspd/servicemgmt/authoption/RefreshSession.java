@@ -46,7 +46,23 @@ public class RefreshSession {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** First login for this refresh family — absolute timeout anchor (not reset on rotate). */
+    @Column(name = "session_started_at", nullable = false)
+    private Instant sessionStartedAt;
+
+    /** Last successful refresh / unlock — idle timeout anchor. */
+    @Column(name = "last_seen_at", nullable = false)
+    private Instant lastSeenAt;
+
     public boolean isActive(Instant now) {
         return revokedAt == null && expiresAt != null && expiresAt.isAfter(now);
+    }
+
+    public Instant effectiveSessionStartedAt() {
+        return sessionStartedAt != null ? sessionStartedAt : createdAt;
+    }
+
+    public Instant effectiveLastSeenAt() {
+        return lastSeenAt != null ? lastSeenAt : createdAt;
     }
 }

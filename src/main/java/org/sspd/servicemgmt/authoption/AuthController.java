@@ -7,8 +7,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
+import org.sspd.servicemgmt.jwt.JwtService;
 
 import java.util.Locale;
 import java.util.Optional;
@@ -21,6 +24,7 @@ public class AuthController {
     public static final String CLIENT_TYPE_HEADER = "X-Client-Type";
 
     private final AuthService authService;
+    private final JwtService jwtService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(
@@ -46,12 +50,45 @@ public class AuthController {
                 .map(RefreshTokenRequest::refreshToken)
                 .filter(token -> !token.isBlank())
                 .orElse(null);
-        // Prefer explicit client type; body refresh token also implies mobile.
         boolean mobile = bodyToken != null || isMobileClient(httpRequest);
         String refreshToken = bodyToken != null ? bodyToken : refreshCookie;
 
         AuthService.LoginResult result = authService.refresh(refreshToken);
         return issueAuthResponse(result, "Token refreshed", mobile, response);
+    }
+
+    /** Idle unlock — password + refresh cookie; absolute session window unchanged. */
+    @PostMapping("/unlock")
+    public ResponseEntity<ApiResponse<AuthResponse>> unlock(
+            @Valid @RequestBody UnlockRequest request,
+            @CookieValue(name = "refreshToken", required = false) String refreshCookie,
+            HttpServletResponse response,
+            HttpServletRequest httpRequest) {
+        String bodyToken = request.refreshToken() != null && !request.refreshToken().isBlank()
+                ? request.refreshToken()
+                : null;
+        boolean mobile = bodyToken != null || isMobileClient(httpRequest);
+        String refreshToken = bodyToken != null ? bodyToken : refreshCookie;
+
+        AuthService.LoginResult result = authService.unlock(refreshToken, request.password());
+        return issueAuthResponse(result, "Session unlocked", mobile, response);
+    }
+
+    /** Short-lived token for void / refund / permission mutations. Requires authenticated access JWT. */
+    @PostMapping("/step-up")
+    public ResponseEntity<ApiResponse<StepUpResponse>> stepUp(@Valid @RequestBody StepUpRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication.getName() == null
+                || "anonymousUser".equals(authentication.getName())) {
+            throw new AuthSessionException(
+                    AuthSessionException.STEP_UP_REQUIRED, "Authentication required");
+        }
+        AuthService.StepUpResult result = authService.issueStepUp(authentication.getName(), request.password());
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Step-up granted",
+                new StepUpResponse(result.stepUpToken(), result.expiresInSeconds())));
     }
 
     @PostMapping("/logout")
@@ -102,11 +139,12 @@ public class AuthController {
     }
 
     private void setRefreshCookie(HttpServletResponse response, String refreshToken) {
+        long maxAgeSeconds = Math.max(1L, jwtService.remainingSeconds(refreshToken));
         ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken)
                 .httpOnly(true)
                 .secure(true)
                 .path("/api/v1/auth")
-                .maxAge(7 * 24 * 60 * 60)
+                .maxAge(maxAgeSeconds)
                 .sameSite("Strict")
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());

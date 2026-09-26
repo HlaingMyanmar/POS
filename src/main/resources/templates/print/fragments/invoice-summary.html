@@ -71,18 +71,18 @@
         <span class="inv-summary-row__label">Other Charges</span>
         <span class="inv-summary-row__value" th:text="${inv.otherCharges}">0</span>
       </div>
-      <div class="inv-summary-row inv-summary-row--sub">
-        <span class="inv-summary-row__label">Grand Total</span>
-        <span class="inv-summary-row__value" th:text="${inv.netAmount}">0</span>
-      </div>
-      <div class="inv-summary-row">
-        <span class="inv-summary-row__label">Paid</span>
-        <span class="inv-summary-row__value" th:text="${inv.paid}">0</span>
-      </div>
-      <div class="inv-summary-row inv-summary-row--highlight">
-        <span class="inv-summary-row__label">Balance</span>
-        <span class="inv-summary-row__value" th:text="${inv.balanceDue}">0</span>
-      </div>
+        <div class="inv-summary-row inv-summary-row--sub">
+          <span class="inv-summary-row__label">Grand Total</span>
+          <span class="inv-summary-row__value" th:text="${inv.netAmount}">0</span>
+        </div>
+        <div class="inv-summary-row">
+          <span class="inv-summary-row__label">Paid</span>
+          <span class="inv-summary-row__value" th:text="${inv.paid}">0</span>
+        </div>
+        <div th:class="${'inv-summary-row' + ((inv.balanceDue == null or inv.balanceDue == '0' or inv.balanceDue == '0.00') ? ' inv-summary-row--settled' : ' inv-summary-row--highlight')}">
+          <span class="inv-summary-row__label">Balance</span>
+          <span class="inv-summary-row__value" th:text="${inv.balanceDue}">0</span>
+        </div>
     </div>
   </div>
 

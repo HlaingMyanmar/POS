@@ -61,6 +61,9 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String remark;
 
+    @Column(name = "specifications", columnDefinition = "TEXT")
+    private String specifications;
+
     // Relationship များ
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")

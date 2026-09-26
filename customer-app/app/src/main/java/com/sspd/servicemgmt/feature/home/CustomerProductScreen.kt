@@ -1,6 +1,16 @@
 package com.sspd.servicemgmt.feature.home
 
 import android.content.res.Configuration
+import android.net.Uri
+import android.widget.MediaController
+import android.widget.VideoView
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -8,6 +18,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +32,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -45,8 +57,12 @@ import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.PlayCircleOutline
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.Button
@@ -66,9 +82,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,10 +105,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.CatalogOption
 import com.sspd.servicemgmt.core.network.CatalogProduct
+import com.sspd.servicemgmt.core.network.CatalogVideo
 import com.sspd.servicemgmt.core.ui.component.CatalogSkeletonGrid
 import com.sspd.servicemgmt.core.ui.component.ErrorRetryBanner
 import com.sspd.servicemgmt.core.ui.theme.AppTheme
@@ -134,7 +163,8 @@ fun CustomerProductScreen(
     onPage: (Int) -> Unit = {},
     onCatalogQuery: ((String, Int?, String?, String?, String) -> Unit)? = null,
     wishlistIds: Set<Int> = emptySet(),
-    onToggleFavorite: ((CatalogProduct) -> Unit)? = null
+    onToggleFavorite: ((CatalogProduct) -> Unit)? = null,
+    onLoadB2Playback: suspend (Int, Long) -> String = { _, _ -> "" }
 ) {
     var query by remember { mutableStateOf("") }
     var appliedCategory by remember { mutableStateOf(ALL) }
@@ -478,7 +508,8 @@ fun CustomerProductScreen(
             wishlisted = product.id in wishlistIds,
             onDismiss = { selectedProduct = null },
             onChangeQty = { onChangeQty(product, it) },
-            onToggleFavorite = onToggleFavorite?.let { cb -> { cb(product) } }
+            onToggleFavorite = onToggleFavorite?.let { cb -> { cb(product) } },
+            onLoadB2Playback = onLoadB2Playback
         )
     }
 }
@@ -1368,7 +1399,8 @@ private fun ProductDetailSheet(
     onDismiss: () -> Unit,
     onChangeQty: (Int) -> Unit,
     wishlisted: Boolean = false,
-    onToggleFavorite: (() -> Unit)? = null
+    onToggleFavorite: (() -> Unit)? = null,
+    onLoadB2Playback: suspend (Int, Long) -> String = { _, _ -> "" }
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1381,8 +1413,428 @@ private fun ProductDetailSheet(
             onDismiss = onDismiss,
             onChangeQty = onChangeQty,
             wishlisted = wishlisted,
-            onToggleFavorite = onToggleFavorite
+            onToggleFavorite = onToggleFavorite,
+            onLoadB2Playback = onLoadB2Playback
         )
+    }
+}
+@Composable
+private fun ProductVideoSection(
+    productId: Int,
+    videos: List<CatalogVideo>,
+    onLoadB2Playback: suspend (Int, Long) -> String
+) {
+    val clips = remember(videos) {
+        videos.filter(::isPlayableCatalogVideo)
+            .distinctBy(::videoKey)
+            .sortedWith(compareBy<CatalogVideo> { it.displayOrder }.thenBy { it.title })
+    }
+    if (clips.isEmpty()) return
+
+    var selectedKey by remember(clips) { mutableStateOf(videoKey(clips.first())) }
+    var playing by remember(clips) { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    val selected = clips.firstOrNull { videoKey(it) == selectedKey } ?: clips.first()
+    val title = selected.title.trim().ifBlank { "Product video" }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Outlined.Videocam,
+                contentDescription = null,
+                tint = Primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = "Product Videos",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = TextMain,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${clips.size} video${if (clips.size == 1) "" else "s"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF111827)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (playing) {
+                key(selectedKey) {
+                    when {
+                        selected.provider.equals("B2", ignoreCase = true) ->
+                            B2VideoPlayer(productId, selected.b2VideoId!!, onLoadB2Playback)
+                        selected.provider.equals("YOUTUBE", ignoreCase = true) ->
+                            EmbedVideoPlayer(
+                                url = "https://www.youtube.com/embed/${selected.providerVideoId!!.trim()}"
+                            )
+                        selected.provider.equals("GOOGLE_DRIVE", ignoreCase = true) ->
+                            EmbedVideoPlayer(
+                                url = "https://drive.google.com/file/d/${selected.providerVideoId!!.trim()}/preview"
+                            )
+                        else -> BunnyVideoPlayer(selected.bunnyVideoGuid!!)
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { playing = true }
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PlayCircleOutline,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(60.dp)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Tap to watch",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
+        if (playing) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = { isFullscreen = true },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Outlined.Fullscreen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("စခရင်အပြည့် ကြည့်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = { playing = false },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(36.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
+                ) {
+                    Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("ပိတ်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = TextMain,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        if (clips.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                clips.forEachIndexed { index, clip ->
+                    val isSelected = videoKey(clip) == selectedKey
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) PrimaryLight else SurfaceSoft,
+                        border = BorderStroke(1.dp, if (isSelected) Primary else BorderColor),
+                        modifier = Modifier
+                            .heightIn(min = 44.dp)
+                            .clickable {
+                                if (!isSelected) {
+                                    selectedKey = videoKey(clip)
+                                    playing = false
+                                }
+                            }
+                    ) {
+                        Text(
+                            text = "${index + 1}. ${clip.title.trim().ifBlank { "Video" }}",
+                            modifier = Modifier.widthIn(max = 200.dp)
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) PrimaryDark else TextMain,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (isFullscreen) {
+        Dialog(
+            onDismissRequest = { isFullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color.Black
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    key(selectedKey) {
+                        when {
+                            selected.provider.equals("B2", ignoreCase = true) ->
+                                B2VideoPlayer(productId, selected.b2VideoId!!, onLoadB2Playback)
+                            selected.provider.equals("YOUTUBE", ignoreCase = true) ->
+                                EmbedVideoPlayer(
+                                    url = "https://www.youtube.com/embed/${selected.providerVideoId!!.trim()}"
+                                )
+                            selected.provider.equals("GOOGLE_DRIVE", ignoreCase = true) ->
+                                EmbedVideoPlayer(
+                                    url = "https://drive.google.com/file/d/${selected.providerVideoId!!.trim()}/preview"
+                                )
+                            else -> BunnyVideoPlayer(selected.bunnyVideoGuid!!)
+                        }
+                    }
+                    IconButton(
+                        onClick = { isFullscreen = false },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                            .background(Color.Black.copy(alpha = 0.75f), CircleShape)
+                    ) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close fullscreen", tint = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun isPlayableCatalogVideo(clip: CatalogVideo): Boolean =
+    when {
+        clip.provider.equals("B2", ignoreCase = true) ->
+            (clip.b2VideoId ?: 0L) > 0L
+        clip.provider.equals("YOUTUBE", ignoreCase = true) ||
+            clip.provider.equals("GOOGLE_DRIVE", ignoreCase = true) ->
+            !clip.providerVideoId.isNullOrBlank()
+        else ->
+            clip.bunnyVideoGuid?.matches(BUNNY_VIDEO_GUID) == true
+    }
+
+private fun videoKey(video: CatalogVideo): String =
+    when {
+        video.provider.equals("B2", ignoreCase = true) ->
+            "b2:${video.b2VideoId}"
+        video.provider.equals("YOUTUBE", ignoreCase = true) ||
+            video.provider.equals("GOOGLE_DRIVE", ignoreCase = true) ->
+            "${video.provider.lowercase()}:${video.providerVideoId?.trim()}"
+        else ->
+            "bunny:${video.bunnyVideoGuid?.lowercase()}"
+    }
+
+@Composable
+private fun B2VideoPlayer(
+    productId: Int,
+    videoId: Long,
+    onLoadB2Playback: suspend (Int, Long) -> String
+) {
+    var url by remember(productId, videoId) { mutableStateOf<String?>(null) }
+    var loading by remember(productId, videoId) { mutableStateOf(true) }
+    var error by remember(productId, videoId) { mutableStateOf<String?>(null) }
+    var retry by remember(productId, videoId) { mutableStateOf(0) }
+
+    LaunchedEffect(productId, videoId, retry) {
+        url = null
+        loading = true
+        error = null
+        try {
+            url = onLoadB2Playback(productId, videoId)
+        } catch (ex: Exception) {
+            loading = false
+            error = ex.message ?: "Video ဖွင့်မရပါ"
+        }
+    }
+
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        url?.let { signedUrl ->
+            B2Media3Player(
+                url = signedUrl,
+                onReady = { loading = false },
+                onError = {
+                    loading = false
+                    error = "Video ဖွင့်မရပါ"
+                }
+            )
+        }
+        if (loading && error == null) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(30.dp))
+        }
+        if (error != null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(error.orEmpty(), color = Color.White)
+                Spacer(Modifier.height(6.dp))
+                TextButton(
+                    onClick = { retry++ },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("ပြန်စမ်းရန်")
+                }
+            }
+        }
+    }
+}
+@Composable
+private fun B2Media3Player(
+    url: String,
+    onReady: () -> Unit,
+    onError: () -> Unit
+) {
+    val context = LocalContext.current
+    val player = remember(url) { ExoPlayer.Builder(context).build() }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) onReady()
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                onError()
+            }
+        }
+        player.addListener(listener)
+        player.setMediaItem(MediaItem.fromUri(url))
+        player.prepare()
+        player.playWhenReady = true
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                setBackgroundColor(android.graphics.Color.BLACK)
+                useController = true
+                keepScreenOn = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                this.player = player
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        update = { view -> view.player = player },
+        onRelease = { view -> view.player = null }
+    )
+}
+private val BUNNY_VIDEO_GUID =
+    Regex("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+@Composable
+private fun BunnyVideoPlayer(guid: String) {
+    EmbedVideoPlayer(url = "https://iframe.mediadelivery.net/embed/758449/$guid")
+}
+
+@Composable
+private fun EmbedVideoPlayer(url: String) {
+    var loading by remember(url) { mutableStateOf(true) }
+    var failed by remember(url) { mutableStateOf(false) }
+    var retryKey by remember(url) { mutableStateOf(0) }
+
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        key(url, retryKey) {
+            AndroidView(
+                factory = { context ->
+                    WebView(context).apply {
+                        setBackgroundColor(android.graphics.Color.BLACK)
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+                        settings.userAgentString = settings.userAgentString
+                            .replace("; wv", "")
+                            .replace("Version/4.0 ", "")
+                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                        webChromeClient = WebChromeClient()
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                                loading = false
+                            }
+
+                            override fun onReceivedError(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                                error: WebResourceError?
+                            ) {
+                                if (request?.isForMainFrame == true) {
+                                    loading = false
+                                    failed = true
+                                }
+                            }
+
+                            override fun onReceivedHttpError(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                                errorResponse: WebResourceResponse?
+                            ) {
+                                if (request?.isForMainFrame == true && (errorResponse?.statusCode ?: 0) >= 400) {
+                                    loading = false
+                                    failed = true
+                                }
+                            }
+                        }
+                        val headers = if (url.contains("youtube.com/embed/")) {
+                            mapOf("Referer" to "https://sspdmyanmar.com/")
+                        } else emptyMap()
+                        loadUrl(url, headers)
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                onRelease = { view ->
+                    view.stopLoading()
+                    view.loadUrl("about:blank")
+                    view.destroy()
+                }
+            )
+        }
+        if (loading && !failed) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(30.dp))
+        }
+        if (failed) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Video ဖွင့်မရပါ", color = Color.White)
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = {
+                    failed = false
+                    loading = true
+                    retryKey++
+                }, colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("ပြန်စမ်းရန်")
+                }
+            }
+        }
     }
 }
 @Composable
@@ -1421,7 +1873,8 @@ private fun ProductDetailContent(
     onChangeQty: (Int) -> Unit,
     modifier: Modifier = Modifier,
     wishlisted: Boolean = false,
-    onToggleFavorite: (() -> Unit)? = null
+    onToggleFavorite: (() -> Unit)? = null,
+    onLoadB2Playback: suspend (Int, Long) -> String = { _, _ -> "" }
 ) {
     val stock = product.availableStock()
     val outOfStock = stock <= 0
@@ -1517,6 +1970,8 @@ private fun ProductDetailContent(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold
             )
+
+            ProductVideoSection(product.id, product.videos, onLoadB2Playback)
 
             HorizontalDivider(color = BorderColor.copy(alpha = 0.6f))
 

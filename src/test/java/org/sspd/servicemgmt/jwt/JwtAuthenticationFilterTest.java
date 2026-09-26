@@ -26,9 +26,9 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void malformedInvalidSignatureAndExpiredTokensReturnControlled401() throws Exception {
-        JwtService validIssuer = new JwtService(SECRET, 60_000);
-        JwtService otherIssuer = new JwtService(OTHER_SECRET, 60_000);
-        JwtService expiredIssuer = new JwtService(SECRET, -1);
+        JwtService validIssuer = new JwtService(SECRET, 60_000, 36_000_000L, 5L);
+        JwtService otherIssuer = new JwtService(OTHER_SECRET, 60_000, 36_000_000L, 5L);
+        JwtService expiredIssuer = new JwtService(SECRET, -1, 36_000_000L, 5L);
         var details = details(2);
 
         assertControlled401(validIssuer, "not-a-jwt");
@@ -38,13 +38,13 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void refreshTokenCannotAuthenticateAsAccessToken() throws Exception {
-        JwtService jwtService = new JwtService(SECRET, 60_000);
+        JwtService jwtService = new JwtService(SECRET, 60_000, 36_000_000L, 5L);
         assertControlled401(jwtService, jwtService.generateRefreshToken(details(2), 2));
     }
 
     @Test
     void validAccessTokenAuthenticatesAndContinuesChain() throws Exception {
-        JwtService jwtService = new JwtService(SECRET, 60_000);
+        JwtService jwtService = new JwtService(SECRET, 60_000, 36_000_000L, 5L);
         CustomUserDetailsService users = mock(CustomUserDetailsService.class);
         TokenAwareUserDetails details = details(2);
         when(users.loadUserByUsername("staff@example.com")).thenReturn(details);

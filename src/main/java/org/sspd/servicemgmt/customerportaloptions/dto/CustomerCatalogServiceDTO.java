@@ -10,6 +10,7 @@ public class CustomerCatalogServiceDTO {
     private String name;
     private String serviceTypeName;
     private BigDecimal price;
+    private BigDecimal normalPrice;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     /** FIXED | STARTING_FROM | INSPECTION_REQUIRED */

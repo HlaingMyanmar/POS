@@ -11,7 +11,11 @@ import { useAuth } from '../../context/AuthContext';
 const STATUS_COL: Record<string, { bg: string; text: string }> = {
   CONFIRMED: { bg: C.primaryLight, text: C.primary },
   ARRIVED:   { bg: '#ccfbf1', text: '#0f766e' },
+  DONE:      { bg: '#d1fae5', text: '#047857' },
+  COMPLETED: { bg: '#d1fae5', text: '#047857' },
   CANCELED:  { bg: C.dangerBg, text: C.danger },
+  CANCELLED: { bg: C.dangerBg, text: C.danger },
+  REJECTED:  { bg: C.dangerBg, text: C.danger },
 };
 
 function Row({ label, value }: { label: string; value?: string }) {

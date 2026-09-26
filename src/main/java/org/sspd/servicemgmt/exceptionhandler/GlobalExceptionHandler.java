@@ -24,6 +24,11 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(org.sspd.servicemgmt.stockoptions.productoptions.service.B2VideoStorageService.B2StorageException.class)
+    public ResponseEntity<ApiResponse<Void>> handleB2Video(
+            org.sspd.servicemgmt.stockoptions.productoptions.service.B2VideoStorageService.B2StorageException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(new ApiResponse<>(false, ex.getMessage(), null));
+    }
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -32,6 +37,19 @@ public class GlobalExceptionHandler {
                                 ? ex.getMessage()
                                 : "Username သို့မဟုတ် Password မှားနေပါသည်",
                         null));
+    }
+
+    @ExceptionHandler(org.sspd.servicemgmt.authoption.AuthSessionException.class)
+    public ResponseEntity<Map<String, Object>> handleAuthSession(
+            org.sspd.servicemgmt.authoption.AuthSessionException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
+        body.put("message", ex.getMessage() != null && !ex.getMessage().isBlank()
+                ? ex.getMessage()
+                : "Session error");
+        body.put("error", ex.getErrorCode());
+        body.put("data", null);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(LockedException.class)

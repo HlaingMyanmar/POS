@@ -96,6 +96,7 @@ class CustomerMainActivity : androidx.fragment.app.FragmentActivity() {
 
                 when {
                     !loggedIn -> AuthScreen(onSuccess = {
+                        if (prefs.authToken.isBlank()) return@AuthScreen
                         prefs.touchSession()
                         CustomerPushBridge.initialize(this@CustomerMainActivity)
                         loggedIn = true

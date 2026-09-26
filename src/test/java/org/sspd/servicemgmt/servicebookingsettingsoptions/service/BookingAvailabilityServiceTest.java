@@ -10,6 +10,7 @@ import org.sspd.servicemgmt.bookingoptions.repository.BookingRepository;
 import org.sspd.servicemgmt.servicebookingsettingsoptions.dto.BookingAvailabilityWindowDTO;
 import org.sspd.servicemgmt.servicebookingsettingsoptions.dto.ServiceBookingSettingsDTO;
 import org.sspd.servicemgmt.servicebookingsettingsoptions.model.ServiceBookingArrivalWindow;
+import org.sspd.servicemgmt.servicebookingsettingsoptions.model.ServiceBookingDateException;
 import org.sspd.servicemgmt.servicebookingsettingsoptions.model.ServiceBookingWeekdayHours;
 import org.sspd.servicemgmt.servicebookingsettingsoptions.repository.ServiceBookingArrivalWindowRepository;
 import org.sspd.servicemgmt.servicebookingsettingsoptions.repository.ServiceBookingDateExceptionRepository;
@@ -121,6 +122,85 @@ class BookingAvailabilityServiceTest {
         assertEquals(1, dates.get(0).getOpenPeriods().size());
         assertEquals(LocalTime.of(9, 0), dates.get(0).getOpenPeriods().get(0).getOpensAt());
         assertEquals(LocalTime.of(18, 0), dates.get(0).getOpenPeriods().get(0).getClosesAt());
+    }
+
+    @Test
+    void sameDayDisabledButEmergencyCanRequestToday() {
+        LocalDate today = LocalDate.now();
+        ServiceBookingSettingsDTO rules = new ServiceBookingSettingsDTO();
+        rules.setMaxAdvanceBookingDays(7);
+        rules.setMinNoticeHours(0);
+        rules.setAllowSameDayBooking(false);
+        rules.setAllowEmergencyRequest(true);
+        when(settingsService.getSettings()).thenReturn(rules);
+        stubWeekdayOpen(today);
+        when(dateExceptionRepository.findByExceptionDate(today)).thenReturn(Optional.empty());
+
+        assertTrue(!service.listDates("SHOP", today, 1, false).get(0).isAvailable());
+        assertTrue(service.listDates("SHOP", today, 1, true).get(0).isAvailable());
+    }
+
+    @Test
+    void minimumNoticeBlocksAppointmentInsideNoticeWindow() {
+        LocalDate date = LocalDate.now().plusDays(1);
+        ServiceBookingSettingsDTO rules = new ServiceBookingSettingsDTO();
+        rules.setMaxAdvanceBookingDays(7);
+        rules.setMinNoticeHours(48);
+        rules.setAllowSameDayBooking(true);
+        rules.setAllowEmergencyRequest(false);
+        when(settingsService.getSettings()).thenReturn(rules);
+        stubWeekdayOpen(date);
+        when(dateExceptionRepository.findByExceptionDate(date)).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.validateShopAppointment(date.atTime(10, 0), false));
+    }
+
+    @Test
+    void shopAppointmentOutsideBusinessHoursIsRejected() {
+        LocalDate date = LocalDate.now().plusDays(2);
+        ServiceBookingSettingsDTO rules = new ServiceBookingSettingsDTO();
+        rules.setMaxAdvanceBookingDays(7);
+        rules.setMinNoticeHours(0);
+        rules.setAllowSameDayBooking(true);
+        when(settingsService.getSettings()).thenReturn(rules);
+        stubWeekdayOpen(date);
+        when(dateExceptionRepository.findByExceptionDate(date)).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.validateShopAppointment(date.atTime(18, 0), false));
+    }
+
+    @Test
+    void closedDateExceptionOverridesWeeklyHours() {
+        LocalDate date = LocalDate.now().plusDays(2);
+        ServiceBookingSettingsDTO rules = new ServiceBookingSettingsDTO();
+        rules.setMaxAdvanceBookingDays(7);
+        rules.setMinNoticeHours(0);
+        rules.setAllowSameDayBooking(true);
+        when(settingsService.getSettings()).thenReturn(rules);
+        ServiceBookingDateException exception = new ServiceBookingDateException();
+        exception.setClosed(true);
+        exception.setReason("Holiday");
+        when(dateExceptionRepository.findByExceptionDate(date)).thenReturn(Optional.of(exception));
+
+        var result = service.listDates("SHOP", date, 1, false).get(0);
+        assertTrue(!result.isAvailable());
+        assertTrue(result.getReason().contains("Holiday"));
+    }
+
+    @Test
+    void outdoorDisabledOffersNoDatesOrWindows() {
+        LocalDate date = LocalDate.now().plusDays(2);
+        when(settingsService.isOutdoorBookingEnabled()).thenReturn(false);
+        ServiceBookingSettingsDTO rules = new ServiceBookingSettingsDTO();
+        rules.setOutdoorBookingDisabledReason("Unavailable");
+        when(settingsService.getSettings()).thenReturn(rules);
+
+        var result = service.listDates("ONSITE", date, 1, false).get(0);
+        assertTrue(!result.isAvailable());
+        assertEquals("Unavailable", result.getReason());
+        assertTrue(service.listWindows(date, false).isEmpty());
     }
 
     private void stubRules() {

@@ -307,6 +307,24 @@ const CompanySettingsPage: React.FC = () => {
             </div>
 
             <div className="border-t pt-5">
+              <h3 className="text-sm font-medium text-slate-700 mb-2">Customer Support Chat</h3>
+              <p className="mb-3 text-xs text-slate-500">
+                ဖောက်သည် chat မှာ "Hi" / "မင်္ဂလာပါ" စသဖြင့် စတင်နှုတ်ဆက်ရင် ဤစာသားကို အလိုအလျောက် ပြန်ပို့ပါမည်။ ဗလာထားရင် ပိတ်ထားမည်။
+              </p>
+              <label className="block text-sm font-medium text-slate-600 mb-1">Greeting message</label>
+              <textarea
+                rows={3}
+                value={settings.chatGreeting || ''}
+                onChange={e => set('chatGreeting', e.target.value)}
+                placeholder="မင်္ဂလာပါ — SSPD မှ ကြိုဆိုပါတယ်။ ဘာကူညီပေးရမလဲ?"
+                className="w-full max-w-2xl border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                စာရိုက်ထားရင် အလိုအလျောက် ပို့ပါမည် (စကားဝိုင်းတစ်ခုလျှင် တစ်ခါသာ)။
+              </p>
+            </div>
+
+            <div className="border-t pt-5">
               <h3 className="text-sm font-medium text-slate-700 mb-2">Logo</h3>
               <p className="text-xs text-slate-500 mb-3">Upload a PNG/JPG image (recommended: square, &lt; 500KB).</p>
               <div className="flex flex-wrap items-start gap-4">

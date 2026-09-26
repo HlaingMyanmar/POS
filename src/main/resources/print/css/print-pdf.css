@@ -269,6 +269,49 @@ html, body {
   color: #ffffff !important;
 }
 
+.inv-summary-row--settled,
+.inv-summary-row--settled .inv-summary-row__label,
+.inv-summary-row--settled .inv-summary-row__value {
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+  font-weight: 700;
+}
+
+.inv-table__item-name {
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.invoice-page--a4 .inv-header {
+  padding: 4mm 4mm 3.5mm !important;
+}
+.invoice-page--a4 .inv-header__company-name { font-size: 15pt !important; }
+.invoice-page--a4 .inv-header__company-sub { font-size: 8pt !important; line-height: 1.35 !important; }
+.invoice-page--a4 .inv-header__meta-title { font-size: 8.5pt !important; }
+.invoice-page--a4 .inv-header__meta-number { font-size: 13pt !important; }
+.invoice-page--a4 .inv-header__meta-date { font-size: 8.5pt !important; }
+.invoice-page--a4 .inv-header__logo {
+  width: 12mm !important;
+  height: 12mm !important;
+}
+.invoice-page--a4 .inv-body { padding: 4mm !important; }
+.invoice-page--a4 .inv-block { padding: 2.5mm 3mm !important; }
+.invoice-page--a4 .inv-block__title,
+.invoice-page--a4 .inv-section-label { font-size: 7.5pt !important; }
+.invoice-page--a4 .inv-block__label { font-size: 8pt !important; }
+.invoice-page--a4 .inv-block__value { font-size: 9.5pt !important; font-weight: 700 !important; }
+.invoice-page--a4 .inv-table { font-size: 9.5pt !important; }
+.invoice-page--a4 .inv-table th { font-size: 7.5pt !important; padding: 2mm !important; }
+.invoice-page--a4 .inv-table td { padding: 2.2mm 2mm !important; font-size: 9.5pt !important; }
+.invoice-page--a4 .inv-summary-row { font-size: 9.5pt !important; padding: 2mm 2.5mm !important; }
+.invoice-page--a4 .inv-summary-row--sub { font-size: 10.5pt !important; }
+.invoice-page--a4 .inv-summary-row--highlight { font-size: 10.5pt !important; }
+.invoice-page--a4 .inv-notice,
+.invoice-page--a4 .inv-remark { font-size: 8.5pt !important; line-height: 1.5 !important; padding: 2.5mm !important; }
+.invoice-page--a4 .inv-footer { font-size: 7.5pt !important; }
+
 .inv-remark,
 .inv-notice {
   background: #fff !important;

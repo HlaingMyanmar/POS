@@ -1,15 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
   AccountingDashboard, AdminQueryPage, AgingReportPage, AppVersionSettingsPage,
   AuditLogManagement, BackupSettings, BalanceSheetReport, BookingManagement,
   ServiceBookingSettingsPage,
   BrandManagement, CashDrawerManagement, CategoryManagement, ChartOfAccountManagement,
-  CompanySettingsPage, CreditManagement, CustomerAppAccountsPage, CustomerAppOrdersPage,
+  CompanySettingsPage, CreditManagement, CustomerAppAccountsPage, CustomerAppOrdersPage, CustomerChatInboxPage,
   CustomerHistoryReport, CustomerManagement, CustomerPasswordResetPage, CustomerPromoCodesPage,
   CustomerShopPage, DailyReport, DailySnapshotReport, Dashboard, DeliveryChargesPage,
-  ExpenseIncomeManagement, InitialAdminPage, JournalEntryManagement, LabelDesigner, Login,
+  ExpenseIncomeManagement, InitialAdminPage, JournalEntryManagement, LabelDesigner, Login, PublicWebsite,
   OpeningBalancePage, OpeningStockPage, OutdoorTracking, PaymentMethodManagement,
   PaymentTransactionManagement, PermissionManagement, ProductManagement, ProductSerialManagement,
   ProfitLossReport, PurchaseManagement, PurchaseOrderManagement, PurchaseReturnManagement,
@@ -22,9 +22,20 @@ import {
 } from './routeModules';
 import Layout from './components/Layout';
 import RouteLoadBoundary from './components/RouteLoadBoundary';
+import SessionLockOverlay from './components/SessionLockOverlay';
 import { User, AppLanguage, AppRoute, AppTheme } from './types';
 import { getFromSession } from './utils/storageHelper';
-import { authService, setAccessToken, setupService, SESSION_USER_EVENT, userFromAuthResponse } from './services/api';
+import {
+  authService,
+  setAccessToken,
+  setupService,
+  SESSION_USER_EVENT,
+  SESSION_LOCK_EVENT,
+  SESSION_UNLOCK_EVENT,
+  CLIENT_IDLE_TIMEOUT_MS,
+  dispatchSessionLock,
+  userFromAuthResponse,
+} from './services/api';
 import { disconnectWs, ensureWsConnected } from './services/wsClient';
 import { getCompanySettings } from './utils/companySettings';
 import { applyDocumentLanguage, resolveInitialLanguage, saveLanguagePreference } from './utils/language';
@@ -71,6 +82,7 @@ const App: React.FC = () => {
   const [needsInitialAdmin, setNeedsInitialAdmin] = useState(false);
   const [language, setLanguage]     = useState<AppLanguage>(resolveInitialLanguage);
   const [theme, setTheme]           = useState<AppTheme>(resolveInitialTheme);
+  const [sessionLocked, setSessionLocked] = useState(false);
 
   useEffect(() => {
     const cleanHash = () => {
@@ -125,9 +137,17 @@ const App: React.FC = () => {
           } else if (savedUser) {
             throw new Error("Refresh failed");
           }
-        } catch (e) {
-          // No cookie / expired session: stay logged out without noisy logout when nothing was cached.
-          if (savedUser) {
+        } catch (e: any) {
+          if (e?.error === 'SESSION_IDLE' && savedUser) {
+            try {
+              setUser(JSON.parse(savedUser));
+            } catch {
+              // ignore
+            }
+            setAccessToken(null);
+            setSessionLocked(true);
+          } else if (savedUser) {
+            // No cookie / expired session: stay logged out without noisy logout when nothing was cached.
             await authService.logout({ forceClearLocal: true });
           } else {
             authService.clearLocalSession();
@@ -150,6 +170,44 @@ const App: React.FC = () => {
     window.addEventListener(SESSION_USER_EVENT, onSessionUser);
     return () => window.removeEventListener(SESSION_USER_EVENT, onSessionUser);
   }, []);
+
+  useEffect(() => {
+    const onLock = () => setSessionLocked(true);
+    const onUnlock = () => setSessionLocked(false);
+    window.addEventListener(SESSION_LOCK_EVENT, onLock);
+    window.addEventListener(SESSION_UNLOCK_EVENT, onUnlock);
+    return () => {
+      window.removeEventListener(SESSION_LOCK_EVENT, onLock);
+      window.removeEventListener(SESSION_UNLOCK_EVENT, onUnlock);
+    };
+  }, []);
+
+  // Client-side idle hint (server still enforces on refresh). Absolute timeout is server-only.
+  useEffect(() => {
+    if (!user || sessionLocked) return;
+
+    let lastActivity = Date.now();
+    const mark = () => { lastActivity = Date.now(); };
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(evt => window.addEventListener(evt, mark, { passive: true }));
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') mark();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastActivity >= CLIENT_IDLE_TIMEOUT_MS) {
+        setAccessToken(null);
+        dispatchSessionLock();
+      }
+    }, 15_000);
+
+    return () => {
+      events.forEach(evt => window.removeEventListener(evt, mark));
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(timer);
+    };
+  }, [user, sessionLocked]);
 
   useEffect(() => {
     applyDocumentLanguage(language);
@@ -182,6 +240,7 @@ const App: React.FC = () => {
   }, [user]);
 
   const handleLoginSuccess = (userData: User, _token: string) => {
+    setSessionLocked(false);
     setUser(userData);
     ensureWsConnected();
     void getCompanySettings(true);
@@ -192,8 +251,31 @@ const App: React.FC = () => {
     void authService.logout().then((cleared) => {
       if (!cleared) return;
       disconnectWs();
+      setSessionLocked(false);
       setUser(null);
     });
+  };
+
+  const handleUnlock = async (password: string) => {
+    try {
+      const res = await authService.unlock(password);
+      if (!res.success) {
+        throw new Error(res.message || 'Unlock failed');
+      }
+      setUser(userFromAuthResponse(res.data));
+      setSessionLocked(false);
+      ensureWsConnected();
+    } catch (err: any) {
+      const data = err?.response?.data || err;
+      if (data?.error === 'SESSION_ABSOLUTE') {
+        setSessionLocked(false);
+        await authService.logout({ forceClearLocal: true });
+        setUser(null);
+        window.location.href = AppRoute.LOGIN;
+        return;
+      }
+      throw new Error(data?.message || err?.message || 'Unlock failed');
+    }
   };
 
   // Permission guard for child routes (no Layout — Layout is the parent)
@@ -211,6 +293,16 @@ const App: React.FC = () => {
 
   const publicCustomerRoutes = (
     <>
+      <Route path="/" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
+      <Route path="/login" element={<Navigate to={AppRoute.LOGIN} replace />} />
+      <Route path="/pos" element={<Navigate to={AppRoute.LOGIN} replace />} />
+      <Route path="/courses/*" element={<Navigate to="/" replace />} />
+      <Route path="/services" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
+      <Route path="/book-service" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
+      <Route path="/tracking" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
+      <Route path="/student" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
+      <Route path="/about" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
+      <Route path="/contact" element={<RouteLoadBoundary><PublicWebsite /></RouteLoadBoundary>} />
       <Route path={AppRoute.CUSTOMER_SHOP} element={<RouteLoadBoundary><CustomerShopPage /></RouteLoadBoundary>} />
       <Route path={AppRoute.CUSTOMER_PASSWORD_RESET} element={<RouteLoadBoundary><CustomerPasswordResetPage /></RouteLoadBoundary>} />
     </>
@@ -218,7 +310,7 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           {publicCustomerRoutes}
           <Route path="*" element={
@@ -227,24 +319,24 @@ const App: React.FC = () => {
             </div>
           } />
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     );
   }
 
   if (needsInitialAdmin) {
     return (
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           {publicCustomerRoutes}
           <Route path="*" element={<RouteLoadBoundary><InitialAdminPage onComplete={() => { setNeedsInitialAdmin(false); }} /></RouteLoadBoundary>} />
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     );
   }
 
   if (user && needsSetup) {
     return (
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           {publicCustomerRoutes}
           <Route path="*" element={<RouteLoadBoundary>
@@ -254,7 +346,7 @@ const App: React.FC = () => {
             }} />
           </RouteLoadBoundary>} />
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     );
   }
 
@@ -264,7 +356,8 @@ const App: React.FC = () => {
     : <Navigate to={AppRoute.LOGIN} replace />;
 
   return (
-    <HashRouter>
+    <>
+    <BrowserRouter>
       <Routes>
         {publicCustomerRoutes}
         <Route path="/scan" element={<RouteLoadBoundary><ScanPage /></RouteLoadBoundary>} />
@@ -316,6 +409,7 @@ const App: React.FC = () => {
           <Route path={AppRoute.CUSTOMER_PROMO_CODES} element={guard(<CustomerPromoCodesPage />,    'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.DELIVERY_CHARGES} element={guard(<DeliveryChargesPage />,          'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.CUSTOMER_APP_ACCOUNTS} element={guard(<CustomerAppAccountsPage />,  'CAN_ACCESS_CUSTOMER_READ')} />
+          <Route path={AppRoute.CUSTOMER_CHAT_INBOX} element={guard(<CustomerChatInboxPage />, 'CAN_ACCESS_CUSTOMER_READ')} />
           <Route path={AppRoute.SALE_RETURNS}        element={guard(<SaleReturnManagement />,       'CAN_ACCESS_SALE_RETURN_READ')} />
           <Route path={AppRoute.CREDIT}              element={guard(<CreditManagement />,           'CAN_ACCESS_SALE_READ')} />
           <Route path={AppRoute.PROFIT_LOSS}         element={guard(<ProfitLossReport />,           'CAN_ACCESS_REPORT_READ')} />
@@ -349,7 +443,15 @@ const App: React.FC = () => {
           <Route path="*" element={<Navigate to={AppRoute.DASHBOARD} />} />
         </Route>
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
+    {user && sessionLocked && (
+      <SessionLockOverlay
+        userName={user.name || user.username}
+        onUnlock={handleUnlock}
+        onSignOut={handleLogout}
+      />
+    )}
+    </>
   );
 };
 

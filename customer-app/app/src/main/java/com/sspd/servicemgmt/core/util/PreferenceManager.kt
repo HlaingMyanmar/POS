@@ -175,7 +175,7 @@ class PreferenceManager(context: Context) {
         val logoUrl = companyLogoUrl
         val logoBytes = companyLogoBytes()
         secrets.clear()
-        p.edit().clear().apply()
+        check(p.edit().clear().commit()) { "Unable to clear customer session" }
         if (url.isNotBlank()) serverUrl = url
         if (name.isNotBlank()) companyName = name
         if (tagline.isNotBlank()) companyTagline = tagline

@@ -102,6 +102,12 @@ interface ApiService {
     @GET("customer-portal/catalog/products")
     suspend fun catalogProducts(): Response<ApiResponse<List<CatalogProduct>>>
 
+    @GET("customer-portal/catalog/products/{productId}/videos/b2/{videoId}/playback")
+    suspend fun b2ProductVideoPlayback(
+        @Header("Authorization") auth: String,
+        @retrofit2.http.Path("productId") productId: Int,
+        @retrofit2.http.Path("videoId") videoId: Long
+    ): Response<ApiResponse<VideoPlaybackUrl>>
     @GET("customer-portal/catalog/categories")
     suspend fun catalogCategories(): Response<ApiResponse<List<CatalogOption>>>
 

@@ -54,47 +54,45 @@ public class PrintLayoutConfigRegistry {
         Map<String, PrintLayoutConfig> m = new LinkedHashMap<>();
 
         // ── A4 ────────────────────────────────────────────────────────────────
-        //  Physical:  210 × 297 mm,  10 mm margins all sides
-        //  Printable: 190 × 277 mm  →  718 × 1047 px
+        //  Physical:  210 × 297 mm,  12 mm L/R, 12 mm T/B
+        //  Printable: 186 × 273 mm  →  703 × 1032 px
         //
-        //  First-page layout heights (px):
-        //    Header band          82   (logo + company name + invoice meta)
-        //    Info blocks          96   (Bill To card + Invoice Details card)
-        //    Table header         28   (<thead>)
-        //    Totals area         130   (summary box + payment history)
-        //    Footer bar           30
-        //    Safety margin        20
+        //  First-page layout heights (px) — measured after A4 typography polish:
+        //    Header band         100
+        //    Info blocks         110
+        //    Table header         32
+        //    Totals area         150
+        //    Footer bar           36
+        //    Safety margin        24
         //    ─────────────────────────
-        //    Reserved            386 px
-        //    Available for rows  661 px
-        //    Row height           33 px
-        //    Rows on first page   20
+        //    Reserved            452 px
+        //    Available for rows  580 px
+        //    Row height           38 px
+        //    Rows on first page   15
         //
-        //  Continuation-page layout heights (px):
-        //    Cont. header         42
-        //    Table header         28
-        //    Footer bar           30
-        //    Safety margin        20
+        //  Continuation-page:
+        //    Cont. header         48
+        //    Table header         32
+        //    Footer bar           36
+        //    Safety margin        24
         //    ─────────────────────────
-        //    Reserved            120 px
-        //    Available for rows  927 px
-        //    Rows on cont. page   28
+        //    Reserved            140 px
+        //    Available for rows  892 px
+        //    Rows on cont. page   23
         // ─────────────────────────────────────────────────────────────────────
         m.put("A4", PrintLayoutConfig.builder()
                 .name("A4")
                 .pageWidthMm(210).pageHeightMm(297)
-                .marginTopMm(10).marginBottomMm(10)
-                .marginLeftMm(10).marginRightMm(10)
-                // component heights (measured from rendered template)
-                .headerHeightPx(82)
-                .infoBlocksHeightPx(96)
-                .contHeaderHeightPx(42)
-                .tableHeaderHeightPx(28)
-                .rowHeightPx(33)
-                .totalsAreaHeightPx(130)
-                .footerHeightPx(30)
-                .safetyMarginPx(20)
-                // CSS
+                .marginTopMm(12).marginBottomMm(12)
+                .marginLeftMm(12).marginRightMm(12)
+                .headerHeightPx(100)
+                .infoBlocksHeightPx(110)
+                .contHeaderHeightPx(48)
+                .tableHeaderHeightPx(32)
+                .rowHeightPx(38)
+                .totalsAreaHeightPx(150)
+                .footerHeightPx(36)
+                .safetyMarginPx(24)
                 .cssPageSize("A4 portrait")
                 .cssClassName("invoice-page--a4")
                 .build());

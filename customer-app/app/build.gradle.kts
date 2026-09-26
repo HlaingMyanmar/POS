@@ -98,8 +98,8 @@ android {
         applicationId = "com.sspd.customer"
         minSdk        = 26
         targetSdk     = 35
-        versionCode   = 1
-        versionName   = "1.0.0"
+        versionCode   = 12
+        versionName   = "1.0.12"
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("String", "DEFAULT_BASE_URL", "\"https://sspdmyanmar.com\"")
         buildConfigField("String", "APP_DISPLAY_NAME", "\"SSPD Customer\"")
@@ -182,6 +182,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.media3:media3-exoplayer:1.9.3")
+    implementation("androidx.media3:media3-ui:1.9.3")
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")

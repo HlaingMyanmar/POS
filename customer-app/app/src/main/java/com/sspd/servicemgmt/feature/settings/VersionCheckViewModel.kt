@@ -41,9 +41,16 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
                     downloadUrl = ApiClient.resolveApkDownloadUrl(dto.downloadUrl, "customer.apk")
                 )
                 if (update.versionCode > BuildConfig.VERSION_CODE) {
-                    _state.update { it.copy(update = update, checked = true) }
+                    _state.update {
+                        it.copy(
+                            availableUpdate = update,
+                            // Auto-prompt only for forced updates; optional updates show near logout.
+                            showDialog = update.forceUpdate,
+                            checked = true
+                        )
+                    }
                 } else {
-                    _state.update { it.copy(checked = true) }
+                    _state.update { it.copy(availableUpdate = null, showDialog = false, checked = true) }
                 }
             } catch (_: Exception) {
                 _state.update { it.copy(checked = true) }
@@ -51,16 +58,29 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun openUpdateDialog() {
+        if (_state.value.availableUpdate == null) return
+        _state.update { it.copy(showDialog = true) }
+    }
+
     fun dismiss() {
-        if (_state.value.update?.forceUpdate == true) return
-        _state.update { it.copy(update = null, downloadProgress = null, downloadError = null, apkFile = null, installStarted = false) }
+        if (_state.value.availableUpdate?.forceUpdate == true) return
+        _state.update {
+            it.copy(
+                showDialog = false,
+                downloadProgress = null,
+                downloadError = null,
+                apkFile = null,
+                installStarted = false
+            )
+        }
     }
 
     fun downloadAndInstall() {
-        val url = _state.value.update?.downloadUrl ?: return
+        val url = _state.value.availableUpdate?.downloadUrl ?: return
         if (url.isBlank()) return
         if (_state.value.downloadProgress != null) return
-        _state.update { it.copy(downloadProgress = 0f, downloadError = null, apkFile = null, installStarted = false) }
+        _state.update { it.copy(showDialog = true, downloadProgress = 0f, downloadError = null, apkFile = null, installStarted = false) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = OkHttpClient.Builder()
@@ -129,7 +149,8 @@ class VersionCheckViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     data class State(
-        val update: AppVersionDTO? = null,
+        val availableUpdate: AppVersionDTO? = null,
+        val showDialog: Boolean = false,
         val checked: Boolean = false,
         val downloadProgress: Float? = null,
         val apkFile: String? = null,

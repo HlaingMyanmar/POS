@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.api.PagedResponse;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingFilterSummaryDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemDTO;
 import org.sspd.servicemgmt.bookingoptions.model.BookingStatus;
 import org.sspd.servicemgmt.bookingoptions.service.BookingService;
@@ -29,9 +30,25 @@ public class BookingController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "") String dateFrom,
-            @RequestParam(defaultValue = "") String dateTo) {
+            @RequestParam(defaultValue = "") String dateTo,
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam(required = false) Integer customerId,
+            @RequestParam(defaultValue = "") String source) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Bookings",
-                new PagedResponse<>(service.findAll(search, dateFrom, dateTo, page, size))));
+                new PagedResponse<>(service.findAll(search, dateFrom, dateTo, status, customerId, source, page, size))));
+    }
+
+    @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")
+    @GetMapping("/filter-summary")
+    public ResponseEntity<ApiResponse<BookingFilterSummaryDTO>> filterSummary(
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam(defaultValue = "") String dateFrom,
+            @RequestParam(defaultValue = "") String dateTo,
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam(required = false) Integer customerId,
+            @RequestParam(defaultValue = "") String source) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Booking filter summary",
+                service.filterSummary(search, dateFrom, dateTo, status, customerId, source)));
     }
 
     @PreAuthorize("hasAuthority('CAN_ACCESS_BOOKING_READ')")

@@ -5,6 +5,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import java.security.Key;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,16 +25,22 @@ public class JwtService {
     private static final String TOKEN_TYPE_CLAIM = "typ";
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String REFRESH_TOKEN_TYPE = "refresh";
-    private static final long REFRESH_EXPIRATION_MS = 7L * 24 * 60 * 60 * 1000;
+    private static final String STEP_UP_TOKEN_TYPE = "stepup";
 
     private final String secretKey;
     private final long jwtExpiration;
+    private final long refreshExpirationMs;
+    private final long stepUpExpirationMs;
 
     public JwtService(
             @Value("${application.security.jwt.secret-key}") String secretKey,
-            @Value("${application.security.jwt.expiration}") long jwtExpiration) {
+            @Value("${application.security.jwt.expiration}") long jwtExpiration,
+            @Value("${application.security.jwt.refresh-expiration:36000000}") long refreshExpirationMs,
+            @Value("${application.security.auth.step-up-expiration-minutes:5}") long stepUpExpirationMinutes) {
         this.secretKey = secretKey;
         this.jwtExpiration = jwtExpiration;
+        this.refreshExpirationMs = refreshExpirationMs;
+        this.stepUpExpirationMs = Duration.ofMinutes(Math.max(1, stepUpExpirationMinutes)).toMillis();
     }
 
     public String generateToken(UserDetails userDetails) {
@@ -78,6 +86,10 @@ public class JwtService {
         public boolean isRefreshToken() {
             return REFRESH_TOKEN_TYPE.equals(tokenType);
         }
+
+        public boolean isStepUpToken() {
+            return STEP_UP_TOKEN_TYPE.equals(tokenType);
+        }
     }
 
     private String buildToken(
@@ -98,18 +110,46 @@ public class JwtService {
     }
 
     public String generateRefreshToken(UserDetails userDetails, int tokenVersion) {
-        return generateRefreshToken(userDetails, tokenVersion, UUID.randomUUID().toString());
+        return generateRefreshToken(userDetails, tokenVersion, UUID.randomUUID().toString(), refreshExpirationMs);
     }
 
     public String generateRefreshToken(UserDetails userDetails, int tokenVersion, String jti) {
+        return generateRefreshToken(userDetails, tokenVersion, jti, refreshExpirationMs);
+    }
+
+    /**
+     * Issues a refresh JWT whose lifetime is capped by {@code remainingTtlMs}
+     * (used so cookie / JWT expire with the absolute session window).
+     */
+    public String generateRefreshToken(
+            UserDetails userDetails, int tokenVersion, String jti, long remainingTtlMs) {
+        long ttl = Math.max(1_000L, Math.min(refreshExpirationMs, remainingTtlMs));
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("tv", tokenVersion);
         extraClaims.put(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE);
-        return buildToken(extraClaims, userDetails, REFRESH_EXPIRATION_MS, jti);
+        return buildToken(extraClaims, userDetails, ttl, jti);
+    }
+
+    public String generateStepUpToken(UserDetails userDetails, int tokenVersion) {
+        Map<String, Object> extraClaims = new HashMap<>();
+        extraClaims.put("tv", tokenVersion);
+        extraClaims.put(TOKEN_TYPE_CLAIM, STEP_UP_TOKEN_TYPE);
+        return buildToken(extraClaims, userDetails, stepUpExpirationMs, UUID.randomUUID().toString());
     }
 
     public long getRefreshExpirationMs() {
-        return REFRESH_EXPIRATION_MS;
+        return refreshExpirationMs;
+    }
+
+    public long getStepUpExpirationMs() {
+        return stepUpExpirationMs;
+    }
+
+    /** Seconds until JWT expiry (floored at 0). */
+    public long remainingSeconds(String token) {
+        Date exp = extractExpiration(token);
+        long seconds = Duration.between(Instant.now(), exp.toInstant()).getSeconds();
+        return Math.max(0L, seconds);
     }
 
     public boolean isAccessToken(String token) {
@@ -118,6 +158,10 @@ public class JwtService {
 
     public boolean isRefreshToken(String token) {
         return REFRESH_TOKEN_TYPE.equals(extractClaim(token, claims -> claims.get(TOKEN_TYPE_CLAIM, String.class)));
+    }
+
+    public boolean isStepUpToken(String token) {
+        return STEP_UP_TOKEN_TYPE.equals(extractClaim(token, claims -> claims.get(TOKEN_TYPE_CLAIM, String.class)));
     }
 
     public String extractUsername(String token) {

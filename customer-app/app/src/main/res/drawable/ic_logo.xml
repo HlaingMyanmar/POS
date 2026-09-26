@@ -5,24 +5,34 @@
     android:viewportWidth="120"
     android:viewportHeight="120">
 
-    <!-- Soft drop-shadow ring -->
+    <!-- Soft Drop Shadow Ring -->
     <path
-        android:fillColor="#0F172A"
-        android:alpha="0.10"
-        android:pathData="M60,12 C34,12 12,34 12,60 C12,86 34,108 60,108 C86,108 108,86 108,60 C108,34 86,12 60,12 Z"/>
+        android:fillColor="#000000"
+        android:fillAlpha="0.10"
+        android:pathData="M60,12 C34,12 12,34 12,60 C12,86 34,108 60,108 C86,108 108,86 108,60 C108,34 86,12 60,12 Z" />
 
-    <!-- White circle face -->
+    <!-- White Circle Card Face -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M60,7 C31,7 7,31 7,60 C7,89 31,113 60,113 C89,113 113,89 113,60 C113,31 89,7 60,7 Z"/>
+        android:pathData="M60,7 C31,7 7,31 7,60 C7,89 31,113 60,113 C89,113 113,89 113,60 C113,31 89,7 60,7 Z" />
 
-    <!-- S lettermark — single continuous stroke -->
+    <!-- SSPD "S" Brand Logo Stroke -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#0F766E"
-        android:strokeWidth="11"
+        android:strokeColor="#3730A3"
+        android:strokeWidth="10"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M76,40 C76,30 68,23 58,23 C48,23 40,30 40,40 C40,50 48,54 59,57 C70,60 80,65 80,75 C80,85 71,91 60,91 C49,91 40,85 40,75"/>
+        android:pathData="M72,38 C72,28 64,22 53,22 C42,22 34,28 34,38 C34,48 42,51 54,54 C66,57 75,62 75,73 C75,83 66,89 53,89 C40,89 32,82 32,72" />
+
+    <!-- Combined Service Tool Badge (Bottom Right Accent) -->
+    <path
+        android:fillColor="#4F46E5"
+        android:pathData="M80,56 C71.2,56 65,62.2 65,71 C65,79.8 71.2,86 80,86 C88.8,86 95,79.8 95,71 C95,62.2 88.8,56 80,56 Z" />
+
+    <!-- Service Cross Wrench Icon inside Badge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M87.5,63.5 C86.8,62.8 85.7,62.8 85.1,63.5 L82.2,66.4 L80.8,65.0 C81.2,63.9 81.0,62.6 80.1,61.7 C79.0,60.6 77.3,60.4 76.0,61.1 L78.3,63.4 L76.8,64.9 L74.5,62.6 C73.8,63.9 74.0,65.6 75.1,66.7 C76.0,67.6 77.3,67.8 78.4,67.4 L79.8,68.8 L76.9,71.7 C76.2,72.3 76.2,73.4 76.9,74.1 C77.5,74.7 78.6,74.7 79.3,74.1 L82.2,71.2 L83.6,72.6 C83.2,73.7 83.4,75.0 84.3,75.9 C85.4,77.0 87.1,77.2 88.4,76.5 L86.1,74.2 L87.6,72.7 L89.9,75.0 C90.6,73.7 90.4,72.0 89.3,70.9 C88.4,70.0 87.1,69.8 86.0,70.2 L84.6,68.8 L87.5,65.9 C88.2,65.3 88.2,64.2 87.5,63.5 Z" />
 
 </vector>

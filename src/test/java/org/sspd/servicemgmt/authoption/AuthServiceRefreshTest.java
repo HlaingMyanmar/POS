@@ -47,6 +47,8 @@ class AuthServiceRefreshTest {
                 auditLogService,
                 refreshTokenReuseHandler);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "singleSessionPerUser", true);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "idleTimeoutMinutes", 20L);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "absoluteTimeoutHours", 10L);
     }
 
     @Test
@@ -70,7 +72,7 @@ class AuthServiceRefreshTest {
         when(userRepository.findByUsernameOrEmail("tech@example.com", "tech@example.com"))
                 .thenReturn(Optional.of(user));
         when(jwtService.generateToken(details, 4)).thenReturn("access-new");
-        when(jwtService.generateRefreshToken(eq(details), eq(4), anyString())).thenReturn("refresh-new");
+        when(jwtService.generateRefreshToken(eq(details), eq(4), anyString(), anyLong())).thenReturn("refresh-new");
         when(jwtService.extractExpiration("refresh-new")).thenReturn(Date.from(Instant.now().plusSeconds(3600)));
         when(refreshTokenHasher.hash("refresh-new")).thenReturn("hash-new");
 
@@ -85,8 +87,88 @@ class AuthServiceRefreshTest {
         verify(refreshSessionRepository).save(argThat(saved ->
                 "hash-new".equals(saved.getTokenHash())
                         && "family-1".equals(saved.getFamilyId())
-                        && saved.getUserId().equals(4L)));
+                        && saved.getUserId().equals(4L)
+                        && saved.getSessionStartedAt() != null
+                        && saved.getLastSeenAt() != null));
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsWhenIdleTimeoutExceeded() {
+        var details = new TokenAwareUserDetails(
+                "tech@example.com", "hash", true, List.of(), 4);
+        var user = user(4L, 4);
+        var session = activeSession(user.getId(), "jti-old", "family-1", "hash-old");
+        session.setLastSeenAt(Instant.now().minusSeconds(21 * 60));
+
+        when(jwtService.isRefreshToken("refresh-old")).thenReturn(true);
+        when(jwtService.extractJti("refresh-old")).thenReturn("jti-old");
+        when(refreshSessionRepository.findByJtiForUpdate("jti-old")).thenReturn(Optional.of(session));
+        when(refreshTokenHasher.hash("refresh-old")).thenReturn("hash-old");
+        when(jwtService.extractUsername("refresh-old")).thenReturn("tech@example.com");
+        when(userDetailsService.loadUserByUsername("tech@example.com")).thenReturn(details);
+        when(jwtService.isTokenValid("refresh-old", details)).thenReturn(true);
+        when(jwtService.extractTokenVersion("refresh-old")).thenReturn(4);
+        when(userRepository.findByUsernameOrEmail("tech@example.com", "tech@example.com"))
+                .thenReturn(Optional.of(user));
+
+        AuthSessionException ex = assertThrows(AuthSessionException.class, () -> service.refresh("refresh-old"));
+        assertEquals(AuthSessionException.SESSION_IDLE, ex.getErrorCode());
+        verify(refreshSessionRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsWhenAbsoluteTimeoutExceeded() {
+        var details = new TokenAwareUserDetails(
+                "tech@example.com", "hash", true, List.of(), 4);
+        var user = user(4L, 4);
+        var session = activeSession(user.getId(), "jti-old", "family-1", "hash-old");
+        session.setSessionStartedAt(Instant.now().minusSeconds(11 * 3600));
+        session.setLastSeenAt(Instant.now());
+
+        when(jwtService.isRefreshToken("refresh-old")).thenReturn(true);
+        when(jwtService.extractJti("refresh-old")).thenReturn("jti-old");
+        when(refreshSessionRepository.findByJtiForUpdate("jti-old")).thenReturn(Optional.of(session));
+        when(refreshTokenHasher.hash("refresh-old")).thenReturn("hash-old");
+        when(jwtService.extractUsername("refresh-old")).thenReturn("tech@example.com");
+        when(userDetailsService.loadUserByUsername("tech@example.com")).thenReturn(details);
+        when(jwtService.isTokenValid("refresh-old", details)).thenReturn(true);
+        when(jwtService.extractTokenVersion("refresh-old")).thenReturn(4);
+        when(userRepository.findByUsernameOrEmail("tech@example.com", "tech@example.com"))
+                .thenReturn(Optional.of(user));
+
+        AuthSessionException ex = assertThrows(AuthSessionException.class, () -> service.refresh("refresh-old"));
+        assertEquals(AuthSessionException.SESSION_ABSOLUTE, ex.getErrorCode());
+        verify(refreshSessionRepository).revokeAllActiveInFamily(eq("family-1"), any());
+    }
+
+    @Test
+    void unlockResetsIdleWithinAbsoluteWindow() {
+        var details = new TokenAwareUserDetails(
+                "tech@example.com", "hash", true, List.of(), 4);
+        var user = user(4L, 4);
+        user.setUsername("tech");
+        var session = activeSession(user.getId(), "jti-old", "family-1", "hash-old");
+        session.setLastSeenAt(Instant.now().minusSeconds(30 * 60));
+
+        when(jwtService.isRefreshToken("refresh-old")).thenReturn(true);
+        when(jwtService.extractJti("refresh-old")).thenReturn("jti-old");
+        when(refreshSessionRepository.findByJtiForUpdate("jti-old")).thenReturn(Optional.of(session));
+        when(refreshTokenHasher.hash("refresh-old")).thenReturn("hash-old");
+        when(jwtService.extractUsername("refresh-old")).thenReturn("tech@example.com");
+        when(userDetailsService.loadUserByUsername("tech@example.com")).thenReturn(details);
+        when(jwtService.isTokenValid("refresh-old", details)).thenReturn(true);
+        when(jwtService.extractTokenVersion("refresh-old")).thenReturn(4);
+        when(userRepository.findByUsernameOrEmail("tech@example.com", "tech@example.com"))
+                .thenReturn(Optional.of(user));
+        when(jwtService.generateToken(details, 4)).thenReturn("access-new");
+        when(jwtService.generateRefreshToken(eq(details), eq(4), anyString(), anyLong())).thenReturn("refresh-new");
+        when(jwtService.extractExpiration("refresh-new")).thenReturn(Date.from(Instant.now().plusSeconds(3600)));
+        when(refreshTokenHasher.hash("refresh-new")).thenReturn("hash-new");
+
+        AuthService.LoginResult result = service.unlock("refresh-old", "secret");
+        assertEquals("access-new", result.accessToken());
+        verify(authenticationManager).authenticate(any());
     }
 
     @Test
@@ -118,16 +200,19 @@ class AuthServiceRefreshTest {
 
     @Test
     void reuseOfRotatedRefreshTokenRevokesFamilyAndBumpsTokenVersion() {
+        Instant now = Instant.now();
         var session = RefreshSession.builder()
                 .id(1L)
                 .userId(4L)
                 .jti("jti-old")
                 .tokenHash("hash-old")
                 .familyId("family-1")
-                .expiresAt(Instant.now().plusSeconds(3600))
-                .revokedAt(Instant.now().minusSeconds(10))
+                .expiresAt(now.plusSeconds(3600))
+                .revokedAt(now.minusSeconds(10))
                 .replacedByJti("jti-new")
-                .createdAt(Instant.now().minusSeconds(60))
+                .createdAt(now.minusSeconds(60))
+                .sessionStartedAt(now.minusSeconds(60))
+                .lastSeenAt(now.minusSeconds(60))
                 .build();
         var user = user(4L, 4);
 
@@ -175,14 +260,17 @@ class AuthServiceRefreshTest {
     }
 
     private static RefreshSession activeSession(Long userId, String jti, String familyId, String hash) {
+        Instant now = Instant.now();
         return RefreshSession.builder()
                 .id(1L)
                 .userId(userId)
                 .jti(jti)
                 .tokenHash(hash)
                 .familyId(familyId)
-                .expiresAt(Instant.now().plusSeconds(3600))
-                .createdAt(Instant.now())
+                .expiresAt(now.plusSeconds(3600))
+                .createdAt(now)
+                .sessionStartedAt(now)
+                .lastSeenAt(now)
                 .build();
     }
 }

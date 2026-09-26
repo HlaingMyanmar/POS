@@ -1,7 +1,7 @@
 ﻿
 import { ProductShippingEditor } from '../components/ShippingSettings';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resolveAssetUrl } from '../services/api';
 import { productService } from '../services/productapiservice';
 import { stockAdjustmentApiService } from '../services/stockadjustmentapiservice';
@@ -26,6 +26,7 @@ import { useWebsocket } from '../hooks/useWebsocket';
 import Swal from 'sweetalert2';
 import BarcodeLabel from '../components/BarcodeLabel';
 import BarcodeScannerCamera from '../components/BarcodeScannerCamera';
+import ProductVideos from '../components/ProductVideos';
 import { useRefreshOnTabActivate } from '../hooks/useRefreshOnTabActivate';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { BulkSelectionToolbar } from '../components/BulkSelectionToolbar';
@@ -250,6 +251,7 @@ const getCanPhysicalStockCount = (): boolean => {
 
 const ProductManagement: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const canDelete = getCanDelete();
   const canViewProductPriceHistory = getCanViewProductPriceHistory();
   const canPhysicalStockCount = getCanPhysicalStockCount();
@@ -268,7 +270,7 @@ const ProductManagement: React.FC = () => {
   const [filterBrandId, setFilterBrandId] = useState<'All' | number>('All');
   const [filterCategoryId, setFilterCategoryId] = useState<'All' | number>('All');
   const [filterTracking, setFilterTracking] = useState<'All' | 'Serial' | 'Qty'>('All');
-  const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
+  const [filterLowStockOnly, setFilterLowStockOnly] = useState(() => searchParams.get('lowStock') === '1');
   const [filterArchive, setFilterArchive] = useState<'All' | 'Active' | 'Archived'>('Active');
   const [showFilterTools, setShowFilterTools] = useState(false);
   
@@ -350,6 +352,7 @@ const ProductManagement: React.FC = () => {
     openingQty: 0,
     shelfLocation: '',
     remark: '',
+    specifications: '',
     categoryId: undefined,
     brandId: undefined,
     unitId: undefined
@@ -366,6 +369,9 @@ const ProductManagement: React.FC = () => {
   const [formPhotos, setFormPhotos] = useState<ProductPhotoDTO[]>([]);
   const [photoChanged, setPhotoChanged] = useState(false);
   const [viewFormPhoto, setViewFormPhoto] = useState<string | null>(null);
+  const [formBaselineKey, setFormBaselineKey] = useState('');
+  const [formBaselineSnapshot, setFormBaselineSnapshot] = useState('');
+  const [formFieldErrors, setFormFieldErrors] = useState<Record<string, string>>({});
 
   const productThumbUrl = (product?: Partial<ProductDTO> | null) => {
     const slot1 = product?.photos?.find(p => p.slot === 1) || product?.photos?.[0];
@@ -562,7 +568,7 @@ const ProductManagement: React.FC = () => {
       });
     });
 
-    const csvContent = toCsv(rows, { alwaysQuote: true, bom: true, lineEnding: '\r\n' });
+    const csvContent = toCsv(rows, { alwaysQuote: true, bom: true, lineEnding: '\n' });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -622,6 +628,91 @@ const ProductManagement: React.FC = () => {
   }, []);
 
   const flatCategoryOptions = useMemo(() => getCategoryOptions(categories), [categories, getCategoryOptions]);
+
+  const formSnapshotPayload = useCallback(() => JSON.stringify({
+    name: formData.name ?? '',
+    hasSerial: formData.hasSerial !== false,
+    productType: formData.productType,
+    sellingPrice: Number(formData.sellingPrice ?? 0),
+    costPrice: Number(formData.costPrice ?? 0),
+    reorderLevel: Number(formData.reorderLevel ?? 0),
+    warrantyTerms: formData.warrantyTerms ?? '',
+    openingQty: Number(formData.openingQty ?? 0),
+    shelfLocation: formData.shelfLocation ?? '',
+    remark: formData.remark ?? '',
+    specifications: formData.specifications ?? '',
+    categoryId: formData.categoryId ?? null,
+    brandId: formData.brandId ?? null,
+    unitId: formData.unitId ?? null,
+    formWarrantyValue,
+    formWarrantyUnit,
+    photoSlots: formPhotos.map(p => ({ slot: p.slot, imagePath: p.imagePath, thumbnailPath: p.thumbnailPath, dataUrl: p.dataUrl ? '1' : '' })),
+  }), [formData, formWarrantyValue, formWarrantyUnit, formPhotos]);
+
+  useEffect(() => {
+    if (!showForm || !formBaselineKey) return;
+    setFormBaselineSnapshot(formSnapshotPayload());
+    setFormFieldErrors({});
+  }, [formBaselineKey]); // eslint-disable-line react-hooks/exhaustive-deps -- capture once when form opens
+
+  const formIsDirty = useMemo(() => {
+    if (!showForm || !formBaselineSnapshot) return false;
+    return formSnapshotPayload() !== formBaselineSnapshot || photoChanged;
+  }, [showForm, formBaselineSnapshot, formSnapshotPayload, photoChanged]);
+
+  const closeProductForm = useCallback(async () => {
+    if (saving) return;
+    if (formIsDirty) {
+      const result = await Swal.fire({
+        title: 'ပြင်ဆင်ထားတာတွေကို မသိမ်းဘဲ ထွက်မလား?',
+        text: 'မသိမ်းရသေးသော အချက်အလက်များ ပျောက်သွားပါမည်။',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'မသိမ်းဘဲ ထွက်မည်',
+        cancelButtonText: 'ဆက်ပြင်မည်',
+        confirmButtonColor: '#dc2626',
+        reverseButtons: true,
+      });
+      if (!result.isConfirmed) return;
+    }
+    setShowForm(false);
+  }, [formIsDirty, saving]);
+
+  useEffect(() => {
+    if (!showForm || !formIsDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [showForm, formIsDirty]);
+
+  const estimatedMargin = useMemo(() => {
+    const selling = Number(formData.sellingPrice ?? 0);
+    const cost = Number(formData.costPrice ?? 0);
+    if (!Number.isFinite(selling) || !Number.isFinite(cost)) return null;
+    return selling - cost;
+  }, [formData.sellingPrice, formData.costPrice]);
+
+  const formatMoneyPreview = (n: number) =>
+    `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} Ks`;
+
+  const validateProductForm = useCallback(() => {
+    const errors: Record<string, string> = {};
+    if (!String(formData.name || '').trim()) errors.name = 'ကုန်ပစ္စည်းနာမည် လိုအပ်သည်';
+    if (!formData.categoryId) errors.categoryId = 'အမျိုးအစား ရွေးပါ';
+    if (!formData.brandId) errors.brandId = 'ဘရန်း ရွေးပါ';
+    if (!formData.unitId) errors.unitId = 'ယူနစ် ရွေးပါ';
+    if (Number(formData.sellingPrice ?? 0) < 0) errors.sellingPrice = 'ရောင်းဈေး ၀ သို့မဟုတ် အထက် ဖြစ်ရမည်';
+    if (Number(formData.costPrice ?? 0) < 0) errors.costPrice = 'ကုန်ကျစရိတ် ၀ သို့မဟုတ် အထက် ဖြစ်ရမည်';
+    if (Number(formData.reorderLevel ?? 0) < 0) errors.reorderLevel = 'ပြန်မှာယူအဆင့် အနှုတ်မဖြစ်ရ';
+    if (!editingProduct && formData.hasSerial === false && Number(formData.openingQty ?? 0) < 0) {
+      errors.openingQty = 'Opening quantity အနှုတ်မဖြစ်ရ';
+    }
+    setFormFieldErrors(errors);
+    return errors;
+  }, [formData, editingProduct]);
 
   const getAvailableCount = useCallback((product: ProductDTO) => (
     product.hasSerial !== false
@@ -869,6 +960,7 @@ const ProductManagement: React.FC = () => {
         openingQty: 0,
         shelfLocation: product.shelfLocation || '',
         remark: product.remark || '',
+        specifications: product.specifications || '',
         categoryId: product.categoryId,
         brandId: product.brandId,
         unitId: product.unitId
@@ -915,6 +1007,7 @@ const ProductManagement: React.FC = () => {
         openingQty: 0,
         shelfLocation: '',
         remark: '',
+        specifications: '',
         categoryId: undefined,
         brandId: undefined,
         unitId: undefined
@@ -928,6 +1021,7 @@ const ProductManagement: React.FC = () => {
     setBrandOpen(false);
     setCategoryOpen(false);
     setUnitOpen(false);
+    setFormBaselineKey(product ? `edit-${product.id}-${Date.now()}` : `create-${Date.now()}`);
     setShowForm(true);
   };
 
@@ -1030,7 +1124,7 @@ const ProductManagement: React.FC = () => {
         row.currentStock, row.reorderLevel, row.suggestedQuantity, row.currentCost || 0,
       ]),
     ];
-    const csv = toCsv(rows, { alwaysQuote: true, bom: true, lineEnding: '\r\n' });
+    const csv = toCsv(rows, { alwaysQuote: true, bom: true, lineEnding: '\n' });
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -1231,9 +1325,18 @@ const ProductManagement: React.FC = () => {
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.categoryId) { Swal.fire('စစ်ဆေးမှု', 'အမျိုးအစားတစ်ခု ရွေးပါ။', 'warning'); return; }
-    if (!formData.brandId) { Swal.fire('စစ်ဆေးမှု', 'ဘရန်းတစ်ခု ရွေးပါ။', 'warning'); return; }
-    if (!formData.unitId) { Swal.fire('စစ်ဆေးမှု', 'တိုင်းတာမှုယူနစ်တစ်ခု ရွေးပါ။', 'warning'); return; }
+    if (saving) return;
+    const errors = validateProductForm();
+    if (Object.keys(errors).length > 0) {
+      const first = Object.values(errors)[0] ?? 'လိုအပ်သော အချက်အလက်များကို ဖြည့်ပါ';
+      window.setTimeout(() => {
+        const invalidField = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+        invalidField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        invalidField?.focus({ preventScroll: true });
+      }, 0);
+      Swal.fire('စစ်ဆေးမှု', String(first), 'warning');
+      return;
+    }
     setSaving(true);
     try {
       const warrantyMonthsComputed =
@@ -1272,7 +1375,7 @@ const ProductManagement: React.FC = () => {
       }
       setShowForm(false);
       fetchData();
-      Swal.fire({ icon: 'success', title: 'မှတ်တမ်းသိမ်းပြီး', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+      Swal.fire({ icon: 'success', title: editingProduct ? 'Product updated successfully' : 'Product created successfully', toast: true, position: 'top-end', showConfirmButton: false, timer: 1800 });
     } catch (error: any) {
       Swal.fire('Error', error.message, 'error');
     } finally {
@@ -1376,453 +1479,687 @@ const ProductManagement: React.FC = () => {
     </div>
   );
 
-  if (showForm) return (
-    <div className="w-full max-w-none animate-in fade-in duration-200 text-left">
-      {/* Full-page form header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          type="button"
-          onClick={() => setShowForm(false)}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-500 hover:text-slate-800"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center text-white shrink-0">
-          <Package size={18} />
+  if (showForm) {
+    const inputClass =
+      'w-full min-h-[44px] px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/15 transition-all';
+    const labelClass = 'block text-xs font-bold text-slate-600 mb-1.5';
+    const sectionCard = 'bg-white border border-slate-200 rounded-xl';
+    const sectionHead = 'min-h-[44px] px-4 sm:px-5 py-2.5 border-b border-slate-100 flex flex-wrap items-center gap-2';
+    const sectionBody = 'p-4 sm:p-5 space-y-3';
+    const photoCount = formPhotos.filter(p => p && (p.dataUrl || p.imagePath || p.thumbnailPath)).length;
+    const hasWarranty = formWarrantyValue > 0;
+
+    return (
+    <div className="w-full animate-in fade-in duration-200 text-left">
+      <div className="w-full px-3 sm:px-4 lg:px-6 pb-32">
+        <div className="flex items-start gap-3 mb-5 pt-1">
+          <button
+            type="button"
+            onClick={() => void closeProductForm()}
+            className="mt-0.5 p-2.5 min-h-[44px] min-w-[44px] hover:bg-slate-100 rounded-lg transition-all text-slate-500 hover:text-slate-800"
+            aria-label="နောက်သို့"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
+            <Package size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+              {editingProduct ? 'ကုန်ပစ္စည်း ပြင်ဆင်ရန်' : 'ကုန်ပစ္စည်း အသစ်ထည့်ရန်'}
+            </h2>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {editingProduct
+                ? `Edit Product${editingProduct.productCode ? ` · ${editingProduct.productCode}` : ''}`
+                : 'Add Product · Product Master'}
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">
-            {editingProduct ? 'မှတ်တမ်းသတ်မှတ်ချက် ပြင်ဆင်ရန်' : 'မာစတာ မှတ်ပုံတင်ချက် အသစ်'}
-          </h2>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">ကုန်ပစ္စည်း သတ်မှတ်ချက်</p>
-        </div>
-      </div>
 
-      <form onSubmit={handleSaveProduct} className="w-full pb-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        <form onSubmit={handleSaveProduct} className="w-full" noValidate>
+          <div className="grid grid-cols-1 min-[1200px]:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-4 lg:gap-5 items-start">
 
-          {/* ══ LEFT COLUMN ══ */}
-          <div className="space-y-5">
+            <div className="contents min-[1200px]:block min-[1200px]:space-y-4 min-w-0 order-1">
 
-            {/* Section: Identity */}
-            <div className="bg-white border border-slate-200 rounded-2xl">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
-                <Package size={13} className="text-indigo-500" />
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ကုန်ပစ္စည်း သတ်မှတ်ချက်</span>
-              </div>
-              <div className="p-5 space-y-4">
-
-                {/* Name */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ကုန်ပစ္စည်းနာမည် <span className="text-rose-400">*</span></label>
-                  <div className="relative group">
-                    <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={15} />
-                    <input
-                      type="text" required value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      placeholder="E.g. NVIDIA GeForce GTX 1050Ti"
-                    />
-                  </div>
+              <section className={`${sectionCard} order-1`}>
+                <div className={sectionHead}>
+                  <Package size={14} className="text-indigo-500" />
+                  <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">Product Information</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">ကုန်ပစ္စည်း အချက်အလက်</span>
                 </div>
-
-                {/* Stock Tracking */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ကုန်သိုလှောင်မှု နည်းလမ်း <span className="text-rose-400">*</span></label>
-                  <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                    <button type="button"
-                      disabled={!!editingProduct}
-                      onClick={() => setFormData({ ...formData, hasSerial: true, stockQty: 0 })}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.hasSerial !== false ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'} ${editingProduct ? 'cursor-not-allowed opacity-70' : ''}`}>
-                      စီရီရယ်လိုအပ်သည်
-                    </button>
-                    <button type="button"
-                      disabled={!!editingProduct}
-                      onClick={() => setFormData({ ...formData, hasSerial: false, stockQty: Number(formData.stockQty || 0) })}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.hasSerial === false ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'} ${editingProduct ? 'cursor-not-allowed opacity-70' : ''}`}>
-                      အရေအတွက်သာ
-                    </button>
+                <div className={sectionBody}>
+                  <div>
+                    <label htmlFor="product-name" className={labelClass}>
+                      ကုန်ပစ္စည်းနာမည် <span className="text-rose-500" aria-hidden="true">*</span>
+                    </label>
+                    <div className="relative">
+                      <Package className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={15} aria-hidden="true" />
+                      <input
+                        id="product-name"
+                        type="text"
+                        required
+                        autoFocus
+                        value={formData.name}
+                        onChange={(e) => {
+                          setFormData({ ...formData, name: e.target.value });
+                          if (formFieldErrors.name) setFormFieldErrors(prev => ({ ...prev, name: '' }));
+                        }}
+                        onBlur={() => {
+                          if (!String(formData.name || '').trim()) {
+                            setFormFieldErrors(prev => ({ ...prev, name: 'ကုန်ပစ္စည်းနာမည် လိုအပ်သည်' }));
+                          }
+                        }}
+                        aria-invalid={!!formFieldErrors.name}
+                        aria-describedby={formFieldErrors.name ? 'product-name-error' : undefined}
+                        className={`${inputClass} min-h-[50px] pl-10 text-base font-bold ${formFieldErrors.name ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/15' : ''}`}
+                        placeholder="ဥပမာ: Desktop RAM EUDX DDR4 16GB 3600MHz"
+                      />
+                    </div>
+                    {formFieldErrors.name && (
+                      <p id="product-name-error" className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.name}</p>
+                    )}
                   </div>
-                  <p className="text-[10px] text-slate-400 ml-1">
-                    {editingProduct
-                      ? 'Tracking mode ကို Product edit မှ ပြောင်းမရပါ။ Serial assignment / stock workflow ကိုသုံးပါ။'
-                      : formData.hasSerial !== false
-                      ? 'စီရီရယ်နံပါတ်ဖြင့် တစ်ခုချင်းစီ ခြေရာခံသည်။'
-                      : 'ကုန်သိုလှောင်မှုကို စုစုပေါင်းအရေအတွက်ဖြင့် ခြေရာခံသည် — စီရီရယ်မလိုအပ်ပါ။'}
-                  </p>
-                </div>
 
-                {/* Opening stock is managed from the Opening Stock page. */}
-                {formData.hasSerial === false && (
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 flex items-start gap-3">
-                    <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <p className="text-xs font-black text-emerald-800">ကနဦးကုန်လက်ကျန်ကို Opening Stock page တွင်ထည့်ပါ</p>
-                      <p className="text-[10px] font-semibold text-emerald-700 mt-0.5">
-                        Product Master တွင် item အချက်အလက်၊ ဝယ်ဈေး၊ ပြန်မှာယူအဆင့်ကိုသာထိန်းပါမည်။ New product stock သည် 0 ဖြင့်စပါမည်။
+                      <label htmlFor="product-code" className={labelClass}>Product Code</label>
+                      <input
+                        id="product-code"
+                        type="text"
+                        readOnly
+                        value={editingProduct?.productCode || 'အလိုအလျောက်ထုတ်မည်'}
+                        className={`${inputClass} bg-slate-100 text-slate-500 cursor-default`}
+                      />
+                    </div>
+                    <div>
+                      <span className={labelClass} id="tracking-label">
+                        ကုန်သိုလှောင်မှု နည်းလမ်း <span className="text-rose-500">*</span>
+                      </span>
+                      <div
+                        role="group"
+                        aria-labelledby="tracking-label"
+                        className="flex gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200"
+                      >
+                        <button
+                          type="button"
+                          disabled={!!editingProduct}
+                          aria-pressed={formData.hasSerial !== false}
+                          onClick={() => setFormData({ ...formData, hasSerial: true, stockQty: 0 })}
+                          className={`flex-1 min-h-[40px] py-2 rounded-md text-xs font-bold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 ${
+                            formData.hasSerial !== false
+                              ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                              : 'text-slate-500 hover:text-slate-700'
+                          } ${editingProduct ? 'cursor-not-allowed opacity-70' : ''}`}
+                        >
+                          စီရီရယ်လိုအပ်သည်
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!editingProduct}
+                          aria-pressed={formData.hasSerial === false}
+                          onClick={() => setFormData({ ...formData, hasSerial: false, stockQty: Number(formData.stockQty || 0) })}
+                          className={`flex-1 min-h-[40px] py-2 rounded-md text-xs font-bold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 ${
+                            formData.hasSerial === false
+                              ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                              : 'text-slate-500 hover:text-slate-700'
+                          } ${editingProduct ? 'cursor-not-allowed opacity-70' : ''}`}
+                        >
+                          အရေအတွက်သာ
+                        </button>
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
+                        {editingProduct
+                          ? 'Tracking mode ကို Product edit မှ ပြောင်းမရပါ။ Serial assignment / stock workflow ကိုသုံးပါ။'
+                          : formData.hasSerial !== false
+                            ? 'စီရီရယ်နံပါတ်ဖြင့် တစ်ခုချင်းစီ ခြေရာခံသည်။'
+                            : 'စုစုပေါင်းအရေအတွက်ဖြင့် ခြေရာခံသည် — စီရီရယ်မလိုအပ်ပါ။'}
                       </p>
                     </div>
                   </div>
-                )}
 
-              </div>
-            </div>
-
-            {/* Section: Pricing */}
-            <div className="bg-white border border-slate-200 rounded-2xl">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
-                <DollarSign size={13} className="text-emerald-500" />
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ဈေးနှုန်းနှင့် အနည်းဆုံးပမာဏ</span>
-                {editingProduct && (
-                  <button type="button" onClick={handleOpenPricePicker}
-                    className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-lg text-[10px] font-black uppercase transition-all">
-                    <ClipboardList size={11} /> ဝယ်ယူမှုမှ ရွေးချယ်ရန်
-                  </button>
-                )}
-              </div>
-              <div className="p-5 grid grid-cols-2 gap-4">
-
-                {/* Selling Price */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ရောင်းဈေး</label>
-                  <div className="relative group">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors" size={14} />
-                    <input type="number" min="0"
-                      value={formData.sellingPrice ?? 0}
-                      onChange={(e) => setFormData({...formData, sellingPrice: Number(e.target.value)})}
-                      className="w-full pl-9 pr-3 py-3 border rounded-xl text-sm font-semibold outline-none transition-all bg-slate-50 border-slate-200 focus:border-emerald-400 focus:bg-white"
-                    />
-                  </div>
-                  <p className="text-[9px] text-slate-400 ml-1">MMK · မထည့်လည်းရသည် · Purchase ပြီးမှ auto update ဖြစ်သည်</p>
+                  {formData.hasSerial === false && (
+                    <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/50 px-3 py-2 flex items-start gap-2">
+                      <CheckCircle2 size={14} className="text-emerald-600 mt-0.5 shrink-0" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-emerald-900">Opening stock ကို သီးခြား စီမံသည်</p>
+                        <p className="text-[11px] font-medium text-emerald-800/90 mt-0.5 leading-snug">
+                          Product Master ဖန်တီးခြင်းသည် stock ကို တိုက်ရိုက် မဖန်တီးပါ။ ကနဦးကုန်လက်ကျန်ကို Opening Stock page တွင်ထည့်ပါ။ New product stock သည် 0 ဖြင့်စပါမည်။
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </section>
 
-                {/* Cost Price */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ကုန်ကျစရိတ်</label>
-                  <div className="relative group">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={14} />
-                    <input type="number" min="0"
-                      value={formData.costPrice ?? 0}
-                      onChange={(e) => setFormData({...formData, costPrice: Number(e.target.value)})}
-                      className="w-full pl-9 pr-3 py-3 border rounded-xl text-sm font-semibold outline-none transition-all bg-slate-50 border-slate-200 focus:border-indigo-400 focus:bg-white"
-                    />
-                  </div>
-                  <p className="text-[9px] text-slate-400 ml-1">MMK · Opening Stock သိမ်းရန် ဝယ်ဈေးလိုအပ်သည်</p>
-                </div>
-
-                {/* Reorder Level */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ပြန်မှာယူမည့် အဆင့်</label>
-                  <div className="relative group">
-                    <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-amber-500 transition-colors" size={14} />
-                    <input type="number" min="0"
-                      value={formData.reorderLevel ?? 0}
-                      onChange={(e) => setFormData({...formData, reorderLevel: Math.max(0, Number(e.target.value) || 0)})}
-                      className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-amber-400 focus:bg-white transition-all"
-                      placeholder="0"
-                    />
-                  </div>
-                  <p className="text-[9px] text-slate-400 ml-1">ကုန်သိုလှောင်မှု နည်းပါးသတိပေး သတ်မှတ်ချက်</p>
-                </div>
-
-                {/* Warranty */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အခြေခံ အာမခံ</label>
-                  <div className="flex gap-2">
-                    <input type="number" min="0"
-                      value={formWarrantyValue}
-                      onChange={e => setFormWarrantyValue(Math.max(0, Number(e.target.value) || 0))}
-                      className="flex-1 px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                      placeholder="0"
-                    />
-                    <select
-                      value={formWarrantyUnit}
-                      onChange={e => setFormWarrantyUnit(e.target.value as 'ရက်' | 'လ' | 'နှစ်')}
-                      className="px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
+              <section className={`${sectionCard} order-3`}>
+                <div className={sectionHead}>
+                  <DollarSign size={14} className="text-emerald-500" />
+                  <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">Pricing & Inventory</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">ဈေးနှုန်းနှင့် ကုန်လက်ကျန်</span>
+                  {editingProduct && (
+                    <button
+                      type="button"
+                      onClick={handleOpenPricePicker}
+                      className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wide transition-all"
                     >
-                      <option value="ရက်">ရက်</option>
-                      <option value="လ">လ</option>
-                      <option value="နှစ်">နှစ်</option>
-                    </select>
-                  </div>
-                  {formWarrantyValue > 0 && (
-                    <p className="text-[9px] text-indigo-500 font-semibold ml-1">
-                      = {formWarrantyUnit === 'နှစ်' ? formWarrantyValue * 12 : formWarrantyUnit === 'ရက်' ? Math.round(formWarrantyValue / 30) : formWarrantyValue} လ
-                    </p>
+                      <ClipboardList size={12} /> ဝယ်ယူမှုမှ ရွေးချယ်ရန်
+                    </button>
                   )}
                 </div>
-
-                {!editingProduct && formData.hasSerial === false && (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Opening Quantity</label>
-                    <input type="number" min={0} value={formData.openingQty ?? 0}
-                      onChange={(e) => setFormData({ ...formData, openingQty: Math.max(0, Number(e.target.value) || 0) })}
-                      className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all" />
+                <div className={sectionBody}>
+                  <div>
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-3">Pricing</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div>
+                        <label htmlFor="cost-price" className={labelClass}>ကုန်ကျစရိတ် (Cost Price)</label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={14} aria-hidden="true" />
+                          <input
+                            id="cost-price"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={formData.costPrice ?? 0}
+                            onChange={(e) => {
+                              setFormData({ ...formData, costPrice: Number(e.target.value) });
+                              if (formFieldErrors.costPrice) setFormFieldErrors(prev => ({ ...prev, costPrice: '' }));
+                            }}
+                            aria-invalid={!!formFieldErrors.costPrice}
+                            className={`${inputClass} pl-9 ${formFieldErrors.costPrice ? 'border-rose-400' : ''}`}
+                          />
+                        </div>
+                        {formFieldErrors.costPrice
+                          ? <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.costPrice}</p>
+                          : <p className="mt-1.5 text-[11px] text-slate-500">MMK · Opening Stock သိမ်းရန် ဝယ်ဈေးလိုအပ်သည်</p>}
+                      </div>
+                      <div>
+                        <label htmlFor="selling-price" className={labelClass}>ရောင်းဈေး (Selling Price)</label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={14} aria-hidden="true" />
+                          <input
+                            id="selling-price"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={formData.sellingPrice ?? 0}
+                            onChange={(e) => {
+                              setFormData({ ...formData, sellingPrice: Number(e.target.value) });
+                              if (formFieldErrors.sellingPrice) setFormFieldErrors(prev => ({ ...prev, sellingPrice: '' }));
+                            }}
+                            aria-invalid={!!formFieldErrors.sellingPrice}
+                            className={`${inputClass} pl-9 ${formFieldErrors.sellingPrice ? 'border-rose-400' : ''}`}
+                          />
+                        </div>
+                        {formFieldErrors.sellingPrice
+                          ? <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.sellingPrice}</p>
+                          : <p className="mt-1.5 text-[11px] text-slate-500">MMK · မထည့်လည်းရသည် · Purchase ပြီးမှ auto update ဖြစ်သည်</p>}
+                      </div>
+                    </div>
+                    {estimatedMargin != null && (Number(formData.costPrice) > 0 || Number(formData.sellingPrice) > 0) && (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
+                        <p className="text-[11px] font-medium text-slate-500 tabular-nums">Selling {formatMoneyPreview(Number(formData.sellingPrice ?? 0))} − Cost {formatMoneyPreview(Number(formData.costPrice ?? 0))}</p>
+                        <p className={`mt-0.5 text-xs font-bold tabular-nums ${estimatedMargin >= 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          Estimated margin: {formatMoneyPreview(estimatedMargin)}
+                          <span className="font-medium text-slate-400 ml-1">· Preview only</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">စင် / အကွက်</label>
-                  <input
-                    type="text"
-                    value={formData.shelfLocation ?? ''}
-                    onChange={(e) => setFormData({ ...formData, shelfLocation: e.target.value })}
-                    className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-teal-400 focus:bg-white transition-all"
-                    placeholder="ဥပမာ: A-03 / Bin 12"
+                  <div className="border-t border-slate-100 pt-4">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-3">Inventory</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div>
+                        <label htmlFor="reorder-level" className={labelClass}>ပြန်မှာယူမည့် အဆင့် (Reorder Level)</label>
+                        <div className="relative">
+                          <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={14} aria-hidden="true" />
+                          <input
+                            id="reorder-level"
+                            type="number"
+                            min="0"
+                            value={formData.reorderLevel ?? 0}
+                            onChange={(e) => {
+                              setFormData({ ...formData, reorderLevel: Math.max(0, Number(e.target.value) || 0) });
+                              if (formFieldErrors.reorderLevel) setFormFieldErrors(prev => ({ ...prev, reorderLevel: '' }));
+                            }}
+                            className={`${inputClass} pl-9 ${formFieldErrors.reorderLevel ? 'border-rose-400' : ''}`}
+                            placeholder="0"
+                          />
+                        </div>
+                        {formFieldErrors.reorderLevel
+                          ? <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.reorderLevel}</p>
+                          : <p className="mt-1.5 text-[11px] text-slate-500">ကုန်သိုလှောင်မှု နည်းပါးသတိပေး သတ်မှတ်ချက်</p>}
+                      </div>
+                      {!editingProduct && formData.hasSerial === false ? (
+                        <div>
+                          <label htmlFor="opening-qty" className={labelClass}>Opening Quantity</label>
+                          <input
+                            id="opening-qty"
+                            type="number"
+                            min={0}
+                            value={formData.openingQty ?? 0}
+                            onChange={(e) => {
+                              setFormData({ ...formData, openingQty: Math.max(0, Number(e.target.value) || 0) });
+                              if (formFieldErrors.openingQty) setFormFieldErrors(prev => ({ ...prev, openingQty: '' }));
+                            }}
+                            className={`${inputClass} ${formFieldErrors.openingQty ? 'border-rose-400' : ''}`}
+                          />
+                          {formFieldErrors.openingQty && (
+                            <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.openingQty}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="hidden sm:block" aria-hidden="true" />
+                      )}
+                    </div>
+                    <div className="mt-3 max-w-md">
+                      <label htmlFor="shelf-location" className={labelClass}>စင် / အကွက် (Location)</label>
+                      <input
+                        id="shelf-location"
+                        type="text"
+                        value={formData.shelfLocation ?? ''}
+                        onChange={(e) => setFormData({ ...formData, shelfLocation: e.target.value })}
+                        className={inputClass}
+                        placeholder="ဥပမာ: A-03 / Bin 12"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className={`${sectionCard} order-6`}>
+                <div className={sectionHead}>
+                  <Info size={14} className="text-slate-400" />
+                  <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">Product Description</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">မှတ်ချက် (optional)</span>
+                </div>
+                <div className="p-4 sm:p-5">
+                  <label htmlFor="product-remark" className="sr-only">Product description</label>
+                  <textarea
+                    id="product-remark"
+                    rows={5}
+                    value={formData.remark}
+                    onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+                    className="w-full min-h-[120px] max-h-[280px] px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/15 transition-all resize-y"
+                    placeholder="နည်းပညာ မှတ်ချက်များ၊ တွေ့ရှိချက်များ၊ ဖော်ပြချက်များ..."
+                  />
+
+                  <label htmlFor="product-specifications" className="mt-4 block text-xs font-bold text-slate-600">
+                    Specifications
+                    <span className="ml-1 text-[11px] font-medium text-slate-400">(တစ်ကြောင်းလျှင် Label: Value — shop မှာ Specifications tab တွင် ပြမည်)</span>
+                  </label>
+                  <textarea
+                    id="product-specifications"
+                    rows={6}
+                    value={formData.specifications ?? ''}
+                    onChange={(e) => setFormData({ ...formData, specifications: e.target.value })}
+                    className="mt-1.5 w-full min-h-[120px] max-h-[320px] px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/15 transition-all resize-y"
+                    placeholder={'RAM: 8GB DDR4\nSSD: 512GB NVMe\nDisplay: 14" IPS'}
                   />
                 </div>
-
-                {/* Warranty Terms */}
-                <div className="col-span-2 space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အာမခံ စည်းကမ်း</label>
-                  <input
-                    type="text"
-                    value={formData.warrantyTerms ?? ''}
-                    onChange={(e) => setFormData({ ...formData, warrantyTerms: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                    placeholder="ဥပမာ: ၇ ရက် ဝန်ဆောင်မှုအာမခံ / ၁ လ စစ်ဆေးမှုအာမခံ / အာမခံမပါ"
-                  />
-                  <p className="text-[9px] text-slate-400 ml-1">ဒုတိယမြောက်ပစ္စည်းနှင့် ကွဲပြားသောအာမခံမူဝါဒများအတွက် ပြောင်းလွယ်သောစာသား။</p>
-                </div>
-
-              </div>
+              </section>
             </div>
 
-          </div>{/* end LEFT */}
+            <div className="contents min-[1200px]:block min-[1200px]:space-y-4 min-w-0 order-2">
 
-          {/* ══ RIGHT COLUMN ══ */}
-          <div className="space-y-5">
-
-            {/* Section: Classification */}
-            <div className="bg-white border border-slate-200 rounded-2xl">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
-                <Layers size={13} className="text-indigo-500" />
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">အမျိုးအစား သတ်မှတ်ချက်</span>
-              </div>
-              <div className="p-5 space-y-4">
-
-                {/* Condition */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ပစ္စည်း အခြေအနေ <span className="text-rose-400">*</span></label>
-                  <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                    <button type="button" onClick={() => setFormData({...formData, productType: ProductType.NEW})}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.productType === ProductType.NEW ? 'bg-white text-indigo-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                      အသစ်
-                    </button>
-                    <button type="button" onClick={() => setFormData({...formData, productType: ProductType.SECOND})}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.productType === ProductType.SECOND ? 'bg-white text-amber-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                      အသုံးပြုပြီး
-                    </button>
-                    <button type="button" onClick={() => setFormData({...formData, productType: ProductType.SECOND_NEW})}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${formData.productType === ProductType.SECOND_NEW ? 'bg-white text-violet-600 shadow border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                      အသစ်နှင့်တူသော
-                    </button>
-                  </div>
+              <section className={`${sectionCard} order-2`}>
+                <div className={sectionHead}>
+                  <Layers size={14} className="text-indigo-500" />
+                  <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">Classification</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">အမျိုးအစား</span>
                 </div>
-
-                {/* Category */}
-                <div className="space-y-1.5 relative">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">အမျိုးအစား <span className="text-rose-400">*</span></label>
-                  <div className="relative group">
-                    <Layers className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors z-10" size={15} />
-                    <input type="text"
-                      value={categorySearch || (formData.categoryId ? flatCategoryOptions.find(c => c.id === formData.categoryId)?.displayName || '' : '')}
-                      onFocus={() => { setCategoryOpen(true); setCategorySearch(''); }}
-                      onChange={(e) => { setCategorySearch(e.target.value); setCategoryOpen(true); }}
-                      onBlur={() => setTimeout(() => setCategoryOpen(false), 150)}
-                      placeholder="အမျိုးအစား ရှာပါ..."
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                    />
-                  </div>
-                  {categoryOpen && (
-                    <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
-                      {flatCategoryOptions.filter(c => c.displayName.toLowerCase().includes((categorySearch || '').toLowerCase())).map(c => (
-                        <div key={c.id} onMouseDown={() => { setFormData({...formData, categoryId: c.id}); setCategorySearch(''); setCategoryOpen(false); }}
-                          className={`px-4 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.categoryId === c.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
-                          {c.displayName}
-                        </div>
+                <div className={sectionBody}>
+                  <div>
+                    <span className={labelClass} id="product-type-label">
+                      ပစ္စည်း အခြေအနေ <span className="text-rose-500">*</span>
+                    </span>
+                    <div
+                      role="group"
+                      aria-labelledby="product-type-label"
+                      className="flex flex-col gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200"
+                    >
+                      {([
+                        [ProductType.NEW, 'အသစ်', 'text-indigo-700'],
+                        [ProductType.SECOND, 'အသုံးပြုပြီး', 'text-amber-700'],
+                        [ProductType.SECOND_NEW, 'အသစ်နှင့်တူသော', 'text-violet-700'],
+                      ] as const).map(([value, label, activeText]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={formData.productType === value}
+                          onClick={() => setFormData({ ...formData, productType: value })}
+                          className={`w-full min-h-[40px] py-2 px-3 rounded-md text-xs font-bold text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 ${
+                            formData.productType === value
+                              ? `bg-white ${activeText} shadow-sm border border-slate-200`
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
                       ))}
-                      {flatCategoryOptions.filter(c => c.displayName.toLowerCase().includes((categorySearch || '').toLowerCase())).length === 0 && (
-                        <div className="px-4 py-3 text-xs text-slate-400 font-bold">ရလဒ်မတွေ့ပါ</div>
-                      )}
                     </div>
-                  )}
-                </div>
-
-                {/* Brand */}
-                <div className="space-y-1.5 relative">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">ဘရန်း <span className="text-rose-400">*</span></label>
-                  <div className="relative group">
-                    <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors z-10" size={15} />
-                    <input type="text"
-                      value={brandSearch || (formData.brandId ? brands.find(b => b.id === formData.brandId)?.name || '' : '')}
-                      onFocus={() => { setBrandOpen(true); setBrandSearch(''); }}
-                      onChange={(e) => { setBrandSearch(e.target.value); setBrandOpen(true); }}
-                      onBlur={() => setTimeout(() => setBrandOpen(false), 150)}
-                      placeholder="ဘရန်း ရှာပါ..."
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                    />
                   </div>
-                  {brandOpen && (
-                    <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
-                      {brands.filter(b => b.name.toLowerCase().includes((brandSearch || '').toLowerCase())).map(b => (
-                        <div key={b.id} onMouseDown={() => { setFormData({...formData, brandId: b.id}); setBrandSearch(''); setBrandOpen(false); }}
-                          className={`px-4 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.brandId === b.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
-                          {b.name}
-                        </div>
-                      ))}
-                      {brands.filter(b => b.name.toLowerCase().includes((brandSearch || '').toLowerCase())).length === 0 && (
-                        <div className="px-4 py-3 text-xs text-slate-400 font-bold">ရလဒ်မတွေ့ပါ</div>
-                      )}
+
+                  <div className="relative">
+                    <label htmlFor="product-category" className={labelClass}>
+                      အမျိုးအစား <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Layers className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 z-10 pointer-events-none" size={15} aria-hidden="true" />
+                      <input
+                        id="product-category"
+                        type="text"
+                        value={categorySearch || (formData.categoryId ? flatCategoryOptions.find(c => c.id === formData.categoryId)?.displayName || '' : '')}
+                        onFocus={() => { setCategoryOpen(true); setCategorySearch(''); }}
+                        onChange={(e) => { setCategorySearch(e.target.value); setCategoryOpen(true); }}
+                        onBlur={() => setTimeout(() => setCategoryOpen(false), 150)}
+                        placeholder="အမျိုးအစား ရှာပါ..."
+                        aria-invalid={!!formFieldErrors.categoryId}
+                        aria-autocomplete="list"
+                        aria-expanded={categoryOpen}
+                        className={`${inputClass} pl-10 ${formFieldErrors.categoryId ? 'border-rose-400' : ''}`}
+                      />
                     </div>
-                  )}
-                </div>
-
-                {/* Unit */}
-                <div className="space-y-1.5 relative">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">တိုင်းတာမှု ယူနစ် <span className="text-rose-400">*</span></label>
-                  <div className="relative group">
-                    <Ruler className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors z-10" size={15} />
-                    <input type="text"
-                      value={unitSearch || (formData.unitId ? units.find(u => u.id === formData.unitId)?.unitName || '' : '')}
-                      onFocus={() => { setUnitOpen(true); setUnitSearch(''); }}
-                      onChange={(e) => { setUnitSearch(e.target.value); setUnitOpen(true); }}
-                      onBlur={() => setTimeout(() => setUnitOpen(false), 150)}
-                      placeholder="ဥပမာ: ခု၊ ဘောက်စ်၊ ကီလို..."
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                    />
-                  </div>
-                  {unitOpen && (
-                    <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
-                      {units.filter(u => u.unitName.toLowerCase().includes((unitSearch || '').toLowerCase())).map(u => (
-                        <div key={u.id} onMouseDown={() => { setFormData({...formData, unitId: u.id}); setUnitSearch(''); setUnitOpen(false); }}
-                          className={`px-4 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.unitId === u.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
-                          {u.unitName}
-                        </div>
-                      ))}
-                      {units.filter(u => u.unitName.toLowerCase().includes((unitSearch || '').toLowerCase())).length === 0 && (
-                        <div className="px-4 py-3 text-xs text-slate-400 font-bold">ရလဒ်မတွေ့ပါ</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            </div>
-
-            <ProductShippingEditor productId={editingProduct?.id} />
-            {/* Section: Remarks */}
-            <div className="bg-white border border-slate-200 rounded-2xl">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
-                <Info size={13} className="text-slate-400" />
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">မှတ်ချက်</span>
-                <span className="text-[10px] text-slate-400">(ရွေးချယ်နိုင်)</span>
-              </div>
-              <div className="p-5">
-                <textarea rows={4}
-                  value={formData.remark}
-                  onChange={(e) => setFormData({...formData, remark: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all resize-none"
-                  placeholder="နည်းပညာ မှတ်ချက်များ၊ တွေ့ရှိချက်များ၊ ဖော်ပြချက်များ..."
-                />
-              </div>
-            </div>
-
-            {/* Photo Upload */}
-            <div className="bg-white border border-slate-200 rounded-2xl">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 rounded-t-2xl">
-                <Camera size={13} className="text-indigo-500" />
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ကုန်ပစ္စည်း ဓာတ်ပုံ</span>
-                <span className="ml-auto text-[9px] text-slate-400 font-bold">အလိုအလျောက်ချုံ့ · အများဆုံး ၃ ပုံ (Slot 1-3)</span>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {[1, 2, 3].map((slot) => {
-                    const photo = formPhotos.find(p => p.slot === slot);
-                    const src = photoPreviewUrl(photo);
-                    return (
-                      <div key={slot} className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-2">
-                        <div className="mb-2 text-center text-[11px] font-semibold text-slate-500">ပုံ {slot}</div>
-                        {src ? (
-                          <div className="space-y-2">
-                            <button
-                              type="button"
-                              onClick={() => setViewFormPhoto(photoFullUrl(photo))}
-                              className="group relative block w-full overflow-hidden rounded-lg border bg-white"
-                              title="ပုံကြီးကြည့်ရန်"
-                            >
-                              <img
-                                src={src}
-                                alt={`Product photo ${slot}`}
-                                className="h-24 w-full object-contain rounded-lg bg-slate-50"
-                              />
-                            </button>
-                            <div className="flex flex-col gap-2">
-                              <label className="inline-flex items-center justify-center gap-2 px-3 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-indigo-100 transition-all">
-                                <Camera size={13} /> ပြောင်းရန်
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    void uploadProductPhotoSlot(slot, e.target.files?.[0]);
-                                    e.currentTarget.value = '';
-                                  }}
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setFormPhotos(prev => prev.filter(p => p.slot !== slot));
-                                  setPhotoChanged(true);
-                                }}
-                                className="inline-flex items-center justify-center gap-2 px-3 py-1.5 border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-100 transition-all"
-                              >
-                                <X size={13} /> ဖယ်ရှားရန်
-                              </button>
-                            </div>
+                    {categoryOpen && (
+                      <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto" role="listbox">
+                        {flatCategoryOptions.filter(c => c.displayName.toLowerCase().includes((categorySearch || '').toLowerCase())).map(c => (
+                          <div
+                            key={c.id}
+                            role="option"
+                            aria-selected={formData.categoryId === c.id}
+                            onMouseDown={() => {
+                              setFormData({ ...formData, categoryId: c.id });
+                              setCategorySearch('');
+                              setCategoryOpen(false);
+                              if (formFieldErrors.categoryId) setFormFieldErrors(prev => ({ ...prev, categoryId: '' }));
+                            }}
+                            className={`px-3.5 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.categoryId === c.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
+                          >
+                            {c.displayName}
                           </div>
-                        ) : (
-                          <label className="flex h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border bg-white text-xs font-semibold text-blue-700 hover:bg-blue-50">
-                            <Camera size={18} />
-                            <span>ရွေးပါ</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                void uploadProductPhotoSlot(slot, e.target.files?.[0]);
-                                e.currentTarget.value = '';
-                              }}
-                            />
-                          </label>
+                        ))}
+                        {flatCategoryOptions.filter(c => c.displayName.toLowerCase().includes((categorySearch || '').toLowerCase())).length === 0 && (
+                          <div className="px-3.5 py-3 text-xs text-slate-400 font-bold">ရလဒ်မတွေ့ပါ</div>
                         )}
                       </div>
-                    );
-                  })}
+                    )}
+                    {formFieldErrors.categoryId && (
+                      <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.categoryId}</p>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <label htmlFor="product-brand" className={labelClass}>
+                      ဘရန်း <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Tag className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 z-10 pointer-events-none" size={15} aria-hidden="true" />
+                      <input
+                        id="product-brand"
+                        type="text"
+                        value={brandSearch || (formData.brandId ? brands.find(b => b.id === formData.brandId)?.name || '' : '')}
+                        onFocus={() => { setBrandOpen(true); setBrandSearch(''); }}
+                        onChange={(e) => { setBrandSearch(e.target.value); setBrandOpen(true); }}
+                        onBlur={() => setTimeout(() => setBrandOpen(false), 150)}
+                        placeholder="ဘရန်း ရှာပါ..."
+                        aria-invalid={!!formFieldErrors.brandId}
+                        className={`${inputClass} pl-10 ${formFieldErrors.brandId ? 'border-rose-400' : ''}`}
+                      />
+                    </div>
+                    {brandOpen && (
+                      <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto" role="listbox">
+                        {brands.filter(b => b.name.toLowerCase().includes((brandSearch || '').toLowerCase())).map(b => (
+                          <div
+                            key={b.id}
+                            role="option"
+                            aria-selected={formData.brandId === b.id}
+                            onMouseDown={() => {
+                              setFormData({ ...formData, brandId: b.id });
+                              setBrandSearch('');
+                              setBrandOpen(false);
+                              if (formFieldErrors.brandId) setFormFieldErrors(prev => ({ ...prev, brandId: '' }));
+                            }}
+                            className={`px-3.5 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.brandId === b.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
+                          >
+                            {b.name}
+                          </div>
+                        ))}
+                        {brands.filter(b => b.name.toLowerCase().includes((brandSearch || '').toLowerCase())).length === 0 && (
+                          <div className="px-3.5 py-3 text-xs text-slate-400 font-bold">ရလဒ်မတွေ့ပါ</div>
+                        )}
+                      </div>
+                    )}
+                    {formFieldErrors.brandId && (
+                      <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.brandId}</p>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <label htmlFor="product-unit" className={labelClass}>
+                      တိုင်းတာမှု ယူနစ် <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Ruler className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 z-10 pointer-events-none" size={15} aria-hidden="true" />
+                      <input
+                        id="product-unit"
+                        type="text"
+                        value={unitSearch || (formData.unitId ? units.find(u => u.id === formData.unitId)?.unitName || '' : '')}
+                        onFocus={() => { setUnitOpen(true); setUnitSearch(''); }}
+                        onChange={(e) => { setUnitSearch(e.target.value); setUnitOpen(true); }}
+                        onBlur={() => setTimeout(() => setUnitOpen(false), 150)}
+                        placeholder="ဥပမာ: ခု၊ ဘောက်စ်၊ ကီလို..."
+                        aria-invalid={!!formFieldErrors.unitId}
+                        className={`${inputClass} pl-10 ${formFieldErrors.unitId ? 'border-rose-400' : ''}`}
+                      />
+                    </div>
+                    {unitOpen && (
+                      <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto" role="listbox">
+                        {units.filter(u => u.unitName.toLowerCase().includes((unitSearch || '').toLowerCase())).map(u => (
+                          <div
+                            key={u.id}
+                            role="option"
+                            aria-selected={formData.unitId === u.id}
+                            onMouseDown={() => {
+                              setFormData({ ...formData, unitId: u.id });
+                              setUnitSearch('');
+                              setUnitOpen(false);
+                              if (formFieldErrors.unitId) setFormFieldErrors(prev => ({ ...prev, unitId: '' }));
+                            }}
+                            className={`px-3.5 py-2.5 text-xs font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.unitId === u.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
+                          >
+                            {u.unitName}
+                          </div>
+                        ))}
+                        {units.filter(u => u.unitName.toLowerCase().includes((unitSearch || '').toLowerCase())).length === 0 && (
+                          <div className="px-3.5 py-3 text-xs text-slate-400 font-bold">ရလဒ်မတွေ့ပါ</div>
+                        )}
+                      </div>
+                    )}
+                    {formFieldErrors.unitId && (
+                      <p className="mt-1.5 text-xs font-semibold text-rose-600" role="alert">{formFieldErrors.unitId}</p>
+                    )}
+                  </div>
                 </div>
+              </section>
+
+              <section className={`${sectionCard} order-4`}>
+                <div className={sectionHead}>
+                  <Shield size={14} className="text-teal-500" />
+                  <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">Warranty</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">အာမခံ</span>
+                </div>
+                <div className={sectionBody}>
+                  <div>
+                    <label htmlFor="warranty-value" className={labelClass}>အခြေခံ အာမခံ</label>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        id="warranty-value"
+                        type="number"
+                        min="0"
+                        value={formWarrantyValue}
+                        onChange={e => setFormWarrantyValue(Math.max(0, Number(e.target.value) || 0))}
+                        className={inputClass}
+                        placeholder="0"
+                      />
+                      <label htmlFor="warranty-unit" className="sr-only">Warranty unit</label>
+                      <select
+                        id="warranty-unit"
+                        value={formWarrantyUnit}
+                        onChange={e => setFormWarrantyUnit(e.target.value as 'ရက်' | 'လ' | 'နှစ်')}
+                        className={`${inputClass} min-w-[5.5rem]`}
+                      >
+                        <option value="ရက်">ရက်</option>
+                        <option value="လ">လ</option>
+                        <option value="နှစ်">နှစ်</option>
+                      </select>
+                    </div>
+                    {hasWarranty && (
+                      <p className="mt-1.5 text-[11px] text-indigo-600 font-semibold">
+                        = {formWarrantyUnit === 'နှစ်' ? formWarrantyValue * 12 : formWarrantyUnit === 'ရက်' ? Math.round(formWarrantyValue / 30) : formWarrantyValue} လ
+                      </p>
+                    )}
+                    {!hasWarranty && (
+                      <p className="mt-1.5 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">No warranty duration · 0 months</p>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="warranty-terms" className={labelClass}>Warranty terms / policy (optional)</label>
+                    <input
+                      id="warranty-terms"
+                      type="text"
+                      value={formData.warrantyTerms ?? ''}
+                      onChange={(e) => setFormData({ ...formData, warrantyTerms: e.target.value })}
+                      className={inputClass}
+                      placeholder="ဥပမာ: ၇ ရက် ဝန်ဆောင်မှုအာမခံ / အာမခံမပါ"
+                    />
+                    <p className="mt-1.5 text-[11px] text-slate-500 leading-snug">
+                      ဒုတိယမြောက်ပစ္စည်းနှင့် ကွဲပြားသောအာမခံမူဝါဒများအတွက် ပြောင်းလွယ်သောစာသား။
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              {editingProduct && <div className="order-7 min-w-0"><ProductVideos key={editingProduct.id} productId={editingProduct.id} editable /></div>}
+              <div className="order-8 min-w-0"><ProductShippingEditor productId={editingProduct?.id} /></div>
+
+              <section className={`${sectionCard} order-9`}>
+                <div className={sectionHead}>
+                  <Camera size={14} className="text-indigo-500" />
+                  <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">Product Photos</h3>
+                  <span className="ml-auto text-[11px] font-bold text-slate-500 tabular-nums">{photoCount} / 3</span>
+                </div>
+                <div className="p-4 sm:p-5">
+                  <p className="text-[11px] text-slate-500 mb-3">အလိုအလျောက်ချုံ့ · အများဆုံး ၃ ပုံ · Slot 1 = primary</p>
+                  <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                    {[1, 2, 3].map((slot) => {
+                      const photo = formPhotos.find(p => p.slot === slot);
+                      const src = photoPreviewUrl(photo);
+                      return (
+                        <div key={slot} className="relative aspect-square rounded-xl border border-dashed border-slate-300 bg-slate-50 overflow-hidden group">
+                          {src ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setViewFormPhoto(photoFullUrl(photo))}
+                                className="absolute inset-0 block w-full h-full"
+                                title="ပုံကြီးကြည့်ရန်"
+                                aria-label={`ပုံ ${slot} ကြည့်ရန်`}
+                              >
+                                <img
+                                  src={src}
+                                  alt={`Product photo ${slot}`}
+                                  className="h-full w-full object-cover bg-slate-100"
+                                />
+                              </button>
+                              {slot === 1 && (
+                                <span className="absolute top-1.5 left-1.5 z-[1] rounded bg-indigo-600/90 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
+                                  Primary
+                                </span>
+                              )}
+                              <div className="absolute inset-x-0 bottom-0 z-[1] flex gap-1 p-1.5 bg-gradient-to-t from-black/55 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                <label className="flex-1 inline-flex items-center justify-center gap-1 min-h-[32px] px-1.5 bg-white/95 text-indigo-700 text-[10px] font-bold rounded-md cursor-pointer hover:bg-white">
+                                  <Camera size={12} aria-hidden="true" />
+                                  <span>ပြောင်း</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    aria-label={`ပုံ ${slot} ပြောင်းရန်`}
+                                    onChange={(e) => {
+                                      void uploadProductPhotoSlot(slot, e.target.files?.[0]);
+                                      e.currentTarget.value = '';
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormPhotos(prev => prev.filter(p => p.slot !== slot));
+                                    setPhotoChanged(true);
+                                  }}
+                                  className="inline-flex items-center justify-center min-h-[32px] min-w-[32px] bg-white/95 text-rose-600 rounded-md hover:bg-rose-50"
+                                  aria-label={`ပုံ ${slot} ဖယ်ရှားရန်`}
+                                  title="ဖယ်ရှားရန်"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <label className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1.5 text-slate-500 hover:bg-indigo-50/60 hover:text-indigo-700 transition-colors">
+                              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-400">
+                                <Plus size={18} aria-hidden="true" />
+                              </span>
+                              <span className="text-[10px] font-bold">Add photo</span>
+                              <span className="text-[9px] font-semibold text-slate-400">Slot {slot}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                aria-label={`ပုံ ${slot} ထည့်ရန်`}
+                                onChange={(e) => {
+                                  void uploadProductPhotoSlot(slot, e.target.files?.[0]);
+                                  e.currentTarget.value = '';
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div className="fixed bottom-0 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-sm">
+            <div className="mx-auto w-full max-w-[1480px] px-3 sm:px-4 lg:px-6 py-3 flex flex-wrap items-center gap-3 justify-between">
+              <p className={`text-xs font-semibold ${formIsDirty ? 'text-amber-700' : 'text-slate-400'}`} aria-live="polite">
+                {formIsDirty ? 'Unsaved changes' : editingProduct ? 'No unsaved changes' : 'Ready to create'}
+              </p>
+              <div className="flex items-center gap-2.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => void closeProductForm()}
+                  className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 sm:px-5 border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wider bg-white text-slate-600 hover:bg-slate-50 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || (!!editingProduct && !formIsDirty)}
+                  className="inline-flex items-center justify-center gap-2 min-h-[44px] w-[160px] sm:w-[172px] bg-indigo-600 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-sm shadow-indigo-600/20 active:scale-[0.98] transition-all hover:bg-indigo-700 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+                >
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {saving ? 'Saving...' : editingProduct ? (formIsDirty ? 'Save Changes' : 'No Changes') : 'Save Product'}
+                </button>
               </div>
             </div>
+          </div>
+        </form>
+      </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setShowForm(false)}
-                className="flex items-center gap-2 px-5 py-3 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest bg-white text-slate-500 hover:bg-slate-50 transition-all shadow-sm">
-                <ArrowLeft size={14} /> နောက်သို့
-              </button>
-              <button type="submit" disabled={saving}
-                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-600/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:bg-indigo-700">
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {editingProduct ? 'ပြောင်းလဲချက် သိမ်းရန်' : 'ကုန်ပစ္စည်း မှတ်ပုံတင်ရန်'}
-              </button>
-            </div>
-
-          </div>{/* end RIGHT */}
-
-        </div>
-      </form>
-
-      {/* Product photo viewer */}
       {viewFormPhoto && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center bg-black/85 backdrop-blur-sm"
@@ -1845,7 +2182,6 @@ const ProductManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Purchase History Price Picker Modal (used inside full-page form too) */}
       {isPricePickerOpen && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
@@ -1955,7 +2291,8 @@ const ProductManagement: React.FC = () => {
         </div>
       )}
     </div>
-  );
+    );
+  }
 
   return (
     <div className="space-y-3 animate-in fade-in duration-400 h-full flex flex-col overflow-hidden text-left">
@@ -3214,6 +3551,7 @@ const ProductManagement: React.FC = () => {
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Shelf location</span><span className="text-right text-xs font-black text-teal-700">{detailProduct.shelfLocation || '-'}</span></div>
                 <div className="flex items-center justify-between gap-3 p-3"><span className="text-xs font-semibold text-slate-500">Warranty</span><span className="text-right text-xs font-black text-slate-800">{formatWarranty(detailProduct)}</span></div>
               </div>
+              <ProductVideos key={detailProduct.id} productId={detailProduct.id} />
               {canViewProductPriceHistory && <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5"><p className="text-xs font-black text-slate-700">Price History / Weighted Average Cost</p></div>
                 {detailPriceLoading ? <div className="p-5 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-1 animate-spin" size={16} />Loading...</div> : detailPriceHistory.length === 0 ? <p className="p-4 text-xs font-semibold text-slate-400">Purchase price history မရှိသေးပါ။</p> : <div className="max-h-48 divide-y divide-slate-100 overflow-y-auto">{detailPriceHistory.map((row) => <div key={`${row.purchaseId}-${row.purchaseDate}`} className="grid grid-cols-2 gap-2 p-3 text-[11px]"><div><p className="font-black text-slate-700">{row.purchaseCode} · {row.supplierName || '-'}</p><p className="text-slate-400">{row.purchaseDate ? new Date(row.purchaseDate).toLocaleDateString() : '-'}</p></div><div className="text-right"><p className="font-bold text-indigo-700">Unit: {row.unitCost.toLocaleString()} Ks</p><p className="font-black text-emerald-700">WAC: {row.weightedAverageCost.toLocaleString()} Ks</p></div></div>)}</div>}

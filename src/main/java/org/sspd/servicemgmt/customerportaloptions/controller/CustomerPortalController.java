@@ -36,6 +36,7 @@ import java.util.List;
 public class CustomerPortalController {
 
     private final CustomerPortalService service;
+    private final org.sspd.servicemgmt.stockoptions.productoptions.service.B2ProductVideoService b2Videos;
     private final CustomerPortalAuthService authService;
     private final CompanySettingsService companySettingsService;
     private final ServiceBookingSettingsService serviceBookingSettingsService;
@@ -53,6 +54,9 @@ public class CustomerPortalController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Branding", CustomerPortalBrandingDTO.builder()
                 .companyName(s.getCompanyName())
                 .taglineMm(s.getTaglineMm())
+                .companyAddress(s.getCompanyAddress())
+                .companyPhone(s.getCompanyPhone())
+                .companyEmail(s.getCompanyEmail())
                 .logoBase64(null)
                 .hasLogo(hasLogo)
                 .logoUrl(hasLogo ? "/api/v1/customer-portal/branding/logo" : null)
@@ -124,6 +128,14 @@ public class CustomerPortalController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Products", service.catalogPage(page, size, q, categoryId, brandId, productType, sort)));
     }
 
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @GetMapping("/catalog/products/{productId}/videos/b2/{videoId}/playback")
+    public ResponseEntity<ApiResponse<org.sspd.servicemgmt.stockoptions.productoptions.controller.B2ProductVideoController.PlaybackUrl>> b2VideoPlayback(
+            @PathVariable Integer productId, @PathVariable Long videoId) {
+        String url = b2Videos.playbackUrl(productId, videoId, true);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Playback URL",
+                new org.sspd.servicemgmt.stockoptions.productoptions.controller.B2ProductVideoController.PlaybackUrl(url)));
+    }
     @GetMapping("/catalog/categories")
     public ResponseEntity<ApiResponse<List<CustomerCatalogOptionDTO>>> categories() {
         return ResponseEntity.ok(new ApiResponse<>(true, "Categories", service.catalogCategories()));

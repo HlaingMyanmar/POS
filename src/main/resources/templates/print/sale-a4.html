@@ -1,13 +1,19 @@
 <!-- Sale A4 — sale-header / sale-table / sale-footer -->
 <div class="invoice-page invoice-page--a4" xmlns:th="http://www.thymeleaf.org">
-  <div th:replace="~{print/fragments/sale-header :: render(${inv})}"></div>
-  <div class="inv-body">
-    <div th:replace="~{print/fragments/sale-table :: render(${inv})}"></div>
-    <th:block th:if="${inv.currentPage == inv.totalPages}">
-      <div th:replace="~{print/fragments/sale-footer :: last(${inv})}"></div>
-    </th:block>
-    <th:block th:if="${inv.currentPage < inv.totalPages}">
-      <div th:replace="~{print/fragments/sale-footer :: cont(${inv})}"></div>
-    </th:block>
+  <div class="inv-page-shell">
+    <div th:replace="~{print/fragments/sale-header :: render(${inv})}"></div>
+    <div class="inv-body inv-body--fill">
+      <div th:replace="~{print/fragments/sale-table :: render(${inv})}"></div>
+      <th:block th:if="${inv.currentPage == inv.totalPages}">
+        <div class="inv-closing">
+          <div th:replace="~{print/fragments/sale-footer :: last(${inv})}"></div>
+        </div>
+      </th:block>
+      <th:block th:if="${inv.currentPage &lt; inv.totalPages}">
+        <div class="inv-closing inv-closing--cont">
+          <div th:replace="~{print/fragments/sale-footer :: cont(${inv})}"></div>
+        </div>
+      </th:block>
+    </div>
   </div>
 </div>

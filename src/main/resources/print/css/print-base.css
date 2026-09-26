@@ -416,7 +416,7 @@ body {
   border-left: 3px solid #94a3b8;
   border-radius: var(--inv-radius-sm);
   padding: 8px 12px;
-  min-height: 36px;
+  min-height: 0;
   font-size: 11px;
   color: #475569;
   white-space: pre-wrap;
@@ -1060,3 +1060,292 @@ body {
 .invoice-page--pos-80mm .inv-header__logo { max-height: 28px; }
 .invoice-page--pos-58mm .inv-header__qr,
 .invoice-page--pos-80mm .inv-header__qr { max-height: 36px; }
+
+/* =============================================================================
+   A4 professional scale (final cascade) — larger than thermal / A5 density.
+   Does NOT stretch empty space; footer sits at page bottom via flex shell.
+============================================================================= */
+.invoice-page--a4 {
+  width: 210mm;
+  min-height: 297mm;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  color: #111827;
+  background: #fff;
+}
+
+.invoice-page--a4 .inv-page-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 297mm;
+  width: 100%;
+}
+
+.invoice-page--a4 .inv-body--fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  padding: 5mm 5mm 4mm;
+}
+
+.invoice-page--a4 .inv-closing {
+  margin-top: auto;
+  padding-top: 3mm;
+}
+
+.invoice-page--a4 .inv-header {
+  padding: 5mm 5mm 4mm;
+  align-items: flex-start;
+  gap: 4mm;
+}
+
+.invoice-page--a4 .inv-header__logo {
+  max-height: 14mm;
+  max-width: 18mm;
+}
+
+.invoice-page--a4 .inv-header__company-name {
+  font-size: 16pt;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.invoice-page--a4 .inv-header__company-sub {
+  font-size: 8.5pt;
+  line-height: 1.4;
+  color: #4b5563;
+  margin-top: 1.5mm;
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.invoice-page--a4 .inv-header__meta-title {
+  font-size: 9pt;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #374151;
+  margin-bottom: 1mm;
+}
+
+.invoice-page--a4 .inv-header__copy-label {
+  font-size: 8pt;
+  font-weight: 700;
+  color: #6b7280;
+  margin-bottom: 1mm;
+}
+
+.invoice-page--a4 .inv-header__meta-number {
+  font-size: 14pt;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.invoice-page--a4 .inv-header__meta-date {
+  font-size: 9pt;
+  margin-top: 1mm;
+  color: #4b5563;
+}
+
+.invoice-page--a4 .inv-header__qr {
+  width: 16mm;
+  height: 16mm;
+}
+
+.invoice-page--a4 .inv-info-grid {
+  gap: 3.5mm;
+  margin: 0 0 4mm;
+  padding: 0 0 3.5mm;
+}
+
+.invoice-page--a4 .inv-block {
+  padding: 3mm 3.5mm;
+}
+
+.invoice-page--a4 .inv-block__title,
+.invoice-page--a4 .inv-section-label {
+  font-size: 8pt;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin-bottom: 2mm;
+  padding-bottom: 1.5mm;
+}
+
+.invoice-page--a4 .inv-block__label {
+  font-size: 8.5pt;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.invoice-page--a4 .inv-block__value {
+  font-size: 10pt;
+  font-weight: 700;
+  color: #111827;
+}
+
+.invoice-page--a4 .inv-badge {
+  font-size: 8pt;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: #047857;
+  font-weight: 700;
+}
+
+.invoice-page--a4 .inv-badge--partial { color: #92400e; }
+.invoice-page--a4 .inv-badge--neutral { color: #374151; }
+
+.invoice-page--a4 .inv-table-wrap { margin-bottom: 4mm; }
+
+.invoice-page--a4 .inv-table {
+  font-size: 10pt;
+  table-layout: fixed;
+}
+
+.invoice-page--a4 .inv-table th {
+  font-size: 8pt;
+  padding: 2.2mm 2mm;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.invoice-page--a4 .inv-table td {
+  padding: 2.4mm 2mm;
+  vertical-align: top;
+  font-size: 10pt;
+}
+
+.invoice-page--a4 .inv-table__item-name {
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.invoice-page--a4 .inv-table__sub {
+  font-size: 8pt;
+  line-height: 1.3;
+  margin-top: 0.8mm;
+}
+
+.invoice-page--a4 .inv-bottom {
+  grid-template-columns: minmax(0, 1fr) 62mm;
+  gap: 4mm;
+  align-items: start;
+}
+
+.invoice-page--a4 .inv-summary-box {
+  width: 62mm;
+}
+
+.invoice-page--a4 .inv-summary-row {
+  padding: 2mm 3mm;
+  font-size: 10pt;
+}
+
+.invoice-page--a4 .inv-summary-row--sub {
+  font-size: 11pt;
+  font-weight: 800;
+  background: #f3f4f6;
+}
+
+.invoice-page--a4 .inv-summary-row--highlight {
+  background: #111827;
+  color: #fff;
+  font-size: 11pt;
+  font-weight: 800;
+}
+
+.invoice-page--a4 .inv-summary-row--settled {
+  background: #f3f4f6;
+  color: #111827;
+  font-weight: 700;
+  font-size: 10.5pt;
+  border-top: 1px solid #9ca3af;
+}
+
+.invoice-page--a4 .inv-summary-row--settled .inv-summary-row__value {
+  font-weight: 800;
+}
+
+.invoice-page--a4 .inv-notice {
+  font-size: 9pt;
+  line-height: 1.55;
+  padding: 2.5mm 3mm;
+  min-height: 0;
+}
+
+.invoice-page--a4 .inv-remark-block {
+  margin-top: 3mm;
+}
+
+.invoice-page--a4 .inv-remark {
+  font-size: 9pt;
+  line-height: 1.45;
+  padding: 2mm 3mm;
+  min-height: 0;
+}
+
+.invoice-page--a4 .inv-pay-table {
+  font-size: 9pt;
+}
+
+.invoice-page--a4 .inv-pay-table th {
+  font-size: 7.5pt;
+  padding: 1.8mm 2mm;
+}
+
+.invoice-page--a4 .inv-pay-table td {
+  padding: 1.8mm 2mm;
+  font-size: 9pt;
+}
+
+.invoice-page--a4 .inv-signatures {
+  margin-top: 8mm;
+  gap: 10mm;
+}
+
+.invoice-page--a4 .inv-sign__line {
+  margin-top: 10mm;
+  font-size: 9pt;
+}
+
+.invoice-page--a4 .inv-footer {
+  margin-top: 4mm;
+  padding-top: 2.5mm;
+  font-size: 8pt;
+  color: #4b5563;
+  letter-spacing: 0.02em;
+}
+
+.invoice-page--a4 .inv-cont-header {
+  padding: 3mm 5mm;
+}
+
+.invoice-page--a4 .inv-cont-header__title { font-size: 10pt; }
+.invoice-page--a4 .inv-cont-header__page { font-size: 9pt; }
+
+/* A5 remains a genuine compact layout (not scaled A4). */
+.invoice-page--a5 {
+  width: 148mm;
+  min-height: 210mm;
+}
+
+/* Thermal stays independent — never inherit A4 spacing. */
+.invoice-page--pos-80mm,
+.invoice-page--pos-58mm {
+  min-height: auto !important;
+  display: block;
+}
+
+@media print {
+  .invoice-page--a4 .inv-page-shell {
+    min-height: 0;
+  }
+  .invoice-page--a4 {
+    min-height: auto;
+  }
+}

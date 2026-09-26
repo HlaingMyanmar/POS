@@ -27,7 +27,7 @@
             style="color:#94a3b8; font-weight:600; font-size:11px;"
             th:text="${item.rowNo}">1</td>
         <td th:if="${inv.showColItem}">
-          <div style="font-weight:500;" th:text="${item.productName}">Product Name</div>
+          <div class="inv-table__item-name" th:text="${item.productName}">Product Name</div>
           <div th:if="${item.foc}"
                class="inv-table__sub" style="color:#047857; font-weight:700;">FOC</div>
           <th:block th:with="infoLine=${item.getSerialInfoLine(false, !inv.showColWarranty, !inv.showColLineDiscount)}">

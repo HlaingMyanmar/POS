@@ -10,6 +10,7 @@ const page = (loader: PageLoader): LazyPage =>
   Object.assign(lazy(loader), { preload: loader });
 
 export const Login = page(() => import('./pages/Login'));
+export const PublicWebsite = page(() => import('./pages/website/PublicWebsite'));
 export const Dashboard = page(() => import('./pages/Dashboard'));
 export const UserManagement = page(() => import('./pages/UserManagement'));
 export const RoleManagement = page(() => import('./pages/RoleManagement'));
@@ -40,8 +41,9 @@ export const CustomerAppOrdersPage = page(() => import('./pages/CustomerAppOrder
 export const CustomerPromoCodesPage = page(() => import('./pages/CustomerPromoCodesPage'));
 export const DeliveryChargesPage = page(() => import('./pages/DeliveryChargesPage'));
 export const CustomerAppAccountsPage = page(() => import('./pages/CustomerAppAccountsPage'));
-export const CustomerShopPage = page(() => import('./pages/customer-shop/CustomerShopPage'));
-export const CustomerPasswordResetPage = page(() => import('./pages/customer-shop/CustomerPasswordResetPage'));
+export const CustomerChatInboxPage = page(() => import('./pages/CustomerChatInboxPage'));
+export const CustomerShopPage = page(() => import('./pages/website/customer-shop/CustomerShopPage'));
+export const CustomerPasswordResetPage = page(() => import('./pages/website/customer-shop/CustomerPasswordResetPage'));
 export const CreditManagement = page(() => import('./pages/CreditManagement'));
 export const StockAdjustmentManagement = page(() => import('./pages/StockAdjustmentManagement'));
 export const ExpenseIncomeManagement = page(() => import('./pages/ExpenseIncomeManagement'));
@@ -115,6 +117,7 @@ const routePreloads = new Map<string, PageLoader>([
   [AppRoute.CUSTOMER_PROMO_CODES, CustomerPromoCodesPage.preload],
   [AppRoute.DELIVERY_CHARGES, DeliveryChargesPage.preload],
   [AppRoute.CUSTOMER_APP_ACCOUNTS, CustomerAppAccountsPage.preload],
+  [AppRoute.CUSTOMER_CHAT_INBOX, CustomerChatInboxPage.preload],
   [AppRoute.SALE_RETURNS, SaleReturnManagement.preload],
   [AppRoute.CREDIT, CreditManagement.preload],
   [AppRoute.PROFIT_LOSS, ProfitLossReport.preload],

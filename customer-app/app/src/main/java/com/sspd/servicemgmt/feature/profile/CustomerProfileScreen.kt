@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CreditCard
 import androidx.compose.material.icons.rounded.Lock
@@ -91,7 +93,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.network.ApiClient
+import com.sspd.servicemgmt.core.network.AppVersionDTO
 import com.sspd.servicemgmt.core.network.BookingSummary
 import com.sspd.servicemgmt.core.network.CustomerAuthResponse
 import com.sspd.servicemgmt.core.network.CustomerJob
@@ -142,10 +146,13 @@ fun CustomerProfileScreen(
     biometricEnabled: Boolean = false,
     onBiometricEnabledChange: (Boolean) -> Unit = {},
     onNavigateToOrders: () -> Unit = {},
+    onNavigateToBookings: () -> Unit = {},
     onNavigateToWishlist: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
     onSave: (name: String, phone: String, address: String) -> Unit,
     onChangePassword: (currentPassword: String, newPassword: String, onSuccess: () -> Unit) -> Unit,
+    availableUpdate: AppVersionDTO? = null,
+    onOpenUpdate: () -> Unit = {},
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
@@ -188,7 +195,7 @@ fun CustomerProfileScreen(
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-        // 1. Header Bar: "အကောင့်" + Settings Icon
+        // 1. Top Header Bar: Screen Title & Settings Icon Button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -196,13 +203,15 @@ fun CustomerProfileScreen(
         ) {
             Text(
                 text = "အကောင့်",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
                 color = TextMain
             )
             IconButton(
                 onClick = { editingProfile = true },
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Settings,
@@ -213,11 +222,11 @@ fun CustomerProfileScreen(
             }
         }
 
-        // 2. Compact Profile Card (Avatar + Customer Name + Phone/Email + Subtitle)
+        // 2. Hero Profile Card
         Surface(
             onClick = { editingProfile = true },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(22.dp),
             color = CardBg,
             border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f)),
             shadowElevation = 1.dp
@@ -225,12 +234,12 @@ fun CustomerProfileScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(56.dp)
                         .clip(CircleShape)
                         .background(PrimaryLight)
                         .border(1.dp, Primary.copy(alpha = 0.25f), CircleShape),
@@ -239,7 +248,7 @@ fun CustomerProfileScreen(
                     Text(
                         text = profile.name.initials(),
                         color = Primary,
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
@@ -261,140 +270,298 @@ fun CustomerProfileScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = PrimaryLight.copy(alpha = 0.6f)
+                    ) {
+                        Text(
+                            text = "CUSTOMER • #${(profile.customerId ?: 0).toString().padStart(5, '0')}",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryDark
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = { editingProfile = true },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text("ပြင်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // 3. Credit Status Summary Banner
+        val creditAllowed = profile.creditAllowed == true && profile.creditHold != true
+        val statusColor = if (creditAllowed) Success else Warning
+        val statusBg = if (creditAllowed) SuccessBg else WarningBg
+
+        Surface(
+            onClick = { showCreditDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = CardBg,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(statusBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CreditCard,
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "အကြွေးဝယ်ယူခွင့် အခြေအနေ",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextMain
+                        )
+                        Text(
+                            text = if (creditAllowed) "အများဆုံး: ${money(profile.creditLimit ?: 0.0)} (${profile.creditDays ?: 0} ရက်)"
+                            else "ဆိုင်မှ အကြွေးဝယ်ယူခွင့် မသတ်မှတ်ရသေးပါ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = statusBg
+                ) {
                     Text(
-                        text = "ပရိုဖိုင်ကြည့်ရန် / ပြင်ဆင်ရန် ➔",
+                        text = if (creditAllowed) "ACTIVE" else "PENDING",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Primary,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.ExtraBold,
+                        color = statusColor
                     )
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = TextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
             }
         }
 
-        // 3. 2x2 Action Cards Grid (Orders, Wishlist, Payments, Addresses)
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ProfileGridCard(
+        // Grouped Section 1: ဝယ်ယူမှုနှင့် ဝန်ဆောင်မှု မှတ်တမ်း
+        Text(
+            text = "ဝယ်ယူမှုနှင့် ဝန်ဆောင်မှု မှတ်တမ်း",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextMain
+        )
+
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = CardBg,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f))
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                ProfileMenuRowItem(
                     icon = Icons.AutoMirrored.Outlined.ReceiptLong,
-                    label = "အော်ဒါများ",
-                    countBadge = orderCount,
-                    onClick = onNavigateToOrders,
-                    modifier = Modifier.weight(1f)
+                    title = "အော်ဒါများ (Orders)",
+                    subtitle = "လတ်တလော မှာယူထားသော အော်ဒါမှတ်တမ်း",
+                    badgeCount = orderCount,
+                    onClick = onNavigateToOrders
                 )
-                ProfileGridCard(
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
+
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.Handyman,
+                    title = "Service Job တောင်းဆိုချက်များ",
+                    subtitle = "ပြုပြင်ရေးနှင့် ဝန်ဆောင်မှု မှတ်တမ်း",
+                    badgeCount = bookings.size,
+                    onClick = onNavigateToBookings
+                )
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
+
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.Inventory2,
+                    title = "ဝယ်ယူခဲ့သော ပစ္စည်းများ & ဘောက်ချာများ",
+                    subtitle = "အရောင်းဘောက်ချာများနှင့် ငွေပေးချေမှုအနှစ်ချုပ်",
+                    onClick = { showHistoryDialog = true }
+                )
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
+
+                ProfileMenuRowItem(
                     icon = Icons.Outlined.FavoriteBorder,
-                    label = "စိတ်ကြိုက်များ",
-                    onClick = onNavigateToWishlist,
-                    modifier = Modifier.weight(1f)
+                    title = "စိတ်ကြိုက် သိမ်းဆည်းထားသည်များ",
+                    subtitle = "သိမ်းထားသော ပစ္စည်းများ",
+                    onClick = onNavigateToWishlist
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ProfileGridCard(
+        }
+
+        // Grouped Section 2: ကိုယ်ရေးအချက်အလက်နှင့် အကောင့်
+        Text(
+            text = "ကိုယ်ရေးအချက်အလက်နှင့် အကောင့်",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextMain
+        )
+
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = CardBg,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f))
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.Settings,
+                    title = "ကိုယ်ရေးအချက်အလက် ပြင်ဆင်ရန်",
+                    subtitle = "အမည်၊ ဖုန်း နှင့် ပို့ဆောင်မည့် လိပ်စာ",
+                    onClick = { editingProfile = true }
+                )
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
+
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.EmojiEvents,
+                    title = "SSPD Rewards Points",
+                    subtitle = "ရရှိထားသော ဆုလက်ဆောင် Points များ",
+                    badgeText = "${loyaltyPoints?.currentPoints ?: 0} Points",
+                    onClick = { showPointsDialog = true }
+                )
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
+
+                ProfileMenuRowItem(
                     icon = Icons.Rounded.CreditCard,
-                    label = "ငွေပေးချေမှုများ",
-                    onClick = { showCreditDialog = true },
-                    modifier = Modifier.weight(1f)
+                    title = "ငွေပေးချေမှု & အကြွေးဝယ်ယူခွင့်",
+                    subtitle = "အကြွေးဝယ်ယူခွင့် သတ်မှတ်ချက် ကြည့်ရန်",
+                    onClick = { showCreditDialog = true }
                 )
-                ProfileGridCard(
-                    icon = Icons.Outlined.LocationOn,
-                    label = "လိပ်စာများ",
-                    onClick = { editingProfile = true },
-                    modifier = Modifier.weight(1f)
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
+
+                ProfileMenuRowItem(
+                    icon = Icons.Rounded.Lock,
+                    title = "အကောင့် လုံခြုံရေး (စကားဝှက်)",
+                    subtitle = "စကားဝှက် ပြောင်းလဲရန်",
+                    onClick = { showPasswordDialog = true }
                 )
             }
         }
 
-        // 4. Section 1: "သင့်အတွက် အကျိုးခံစားခွင့်များ"
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "သင့်အတွက် အကျိုးခံစားခွင့်များ",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextMain,
-                modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
-            )
+        // Grouped Section 3: အကူအညီပေးရေးနှင့် အခြား
+        Text(
+            text = "အကူအညီပေးရေးနှင့် အခြား",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextMain
+        )
 
-            ProfileMenuRowItem(
-                icon = Icons.Outlined.EmojiEvents,
-                label = "SSPD ဆုလက်ဆောင်များ (${loyaltyPoints?.currentPoints ?: 0} Points)",
-                onClick = { showPointsDialog = true }
-            )
-            HorizontalDivider(color = ScreenBg)
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = CardBg,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f))
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.HelpOutline,
+                    title = "အကူအညီပေးဌာန (Customer Support)",
+                    subtitle = "ဆိုင်နှင့် တိုက်ရိုက် စာရေးမေးမြန်းရန်",
+                    onClick = onNavigateToChat
+                )
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
 
-            ProfileMenuRowItem(
-                icon = Icons.Outlined.ConfirmationNumber,
-                label = "ဘောက်ချာများ / မှတ်တမ်း",
-                onClick = { showHistoryDialog = true }
-            )
-            HorizontalDivider(color = ScreenBg)
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.Description,
+                    title = "စည်းကမ်းသတ်မှတ်ချက်များ",
+                    subtitle = "အသုံးပြုမှု ဆိုင်ရာ မူဝါဒများ",
+                    onClick = { showTermsDialog = true }
+                )
+                HorizontalDivider(color = ScreenBg, modifier = Modifier.padding(horizontal = 14.dp))
 
-            ProfileMenuRowItem(
-                icon = Icons.Outlined.CardGiftcard,
-                label = "သူငယ်ချင်းများကို ဖိတ်ခေါ်ရန်",
-                onClick = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, "SSPD Customer App")
-                        putExtra(Intent.EXTRA_TEXT, "SSPD Customer App ကို အသုံးပြုပြီး ပစ္စည်းများ မှာယူနိုင်ပါသည်။ https://sspdmyanmar.com")
+                ProfileMenuRowItem(
+                    icon = Icons.Outlined.CardGiftcard,
+                    title = "App ကို မိတ်ဆွေများထံ မျှဝေရန်",
+                    subtitle = "SSPD Customer App အသုံးပြုရန် ဖိတ်ခေါ်မည်",
+                    onClick = {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "SSPD Customer App")
+                            putExtra(Intent.EXTRA_TEXT, "SSPD Customer App ကို အသုံးပြုပြီး ပစ္စည်းများ မှာယူနိုင်ပါသည်။ https://sspdmyanmar.com")
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "App မျှဝေရန်"))
                     }
-                    context.startActivity(Intent.createChooser(shareIntent, "App ဖိတ်ခေါ်ရန်"))
+                )
+            }
+        }
+
+        // App version (update row only when a newer build is available)
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CardBg,
+            border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.6f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("App ဗားရှင်း", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    Text(
+                        "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMain
+                    )
                 }
-            )
+                if (availableUpdate != null) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = onOpenUpdate,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                        border = BorderStroke(1.dp, Primary.copy(alpha = 0.45f))
+                    ) {
+                        Icon(Icons.Outlined.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Update ရရှိနိုင် · v${availableUpdate.versionName}",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
-        // 5. Section 2: "အထွေထွေ"
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "အထွေထွေ",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextMain,
-                modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
-            )
-
-            ProfileMenuRowItem(
-                icon = Icons.Outlined.HelpOutline,
-                label = "အကူအညီပေးဌာန (Customer Support)",
-                onClick = onNavigateToChat
-            )
-            HorizontalDivider(color = ScreenBg)
-
-            ProfileMenuRowItem(
-                icon = Icons.Outlined.Description,
-                label = "စည်းကမ်းသတ်မှတ်ချက်များ",
-                onClick = { showTermsDialog = true }
-            )
-            HorizontalDivider(color = ScreenBg)
-
-            ProfileMenuRowItem(
-                icon = Icons.Rounded.Lock,
-                label = "စကားဝှက် ပြောင်းရန်",
-                onClick = { showPasswordDialog = true }
-            )
-            HorizontalDivider(color = ScreenBg)
-
-            ProfileMenuRowItem(
-                icon = Icons.AutoMirrored.Outlined.Logout,
-                label = "အကောင့်မှ ထွက်မည်",
-                tint = Danger,
-                onClick = onLogout
-            )
-
-            Spacer(Modifier.height(84.dp))
+        // Logout Button
+        OutlinedButton(
+            onClick = onLogout,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+            border = BorderStroke(1.dp, Danger.copy(alpha = 0.4f))
+        ) {
+            Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = Danger, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("အကောင့်မှ ထွက်မည်", fontWeight = FontWeight.Bold)
         }
+
+        Spacer(Modifier.height(96.dp))
     }
 
     // Edit Profile Modal Dialog
@@ -563,8 +730,12 @@ private fun ProfileGridCard(
 @Composable
 private fun ProfileMenuRowItem(
     icon: ImageVector,
-    label: String,
-    tint: Color = TextMain,
+    title: String,
+    subtitle: String? = null,
+    badgeText: String? = null,
+    badgeCount: Int? = null,
+    tint: Color = Primary,
+    titleColor: Color = TextMain,
     onClick: () -> Unit
 ) {
     Row(
@@ -572,7 +743,7 @@ private fun ProfileMenuRowItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 13.dp, horizontal = 4.dp),
+            .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -581,25 +752,86 @@ private fun ProfileMenuRowItem(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (badgeCount != null && badgeCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .sizeIn(minWidth = 22.dp, minHeight = 22.dp)
+                        .clip(CircleShape)
+                        .background(Primary)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                        color = OnPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else if (!badgeText.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = PrimaryLight
+                ) {
+                    Text(
+                        text = badgeText,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Primary
+                    )
+                }
+            }
+
             Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(22.dp)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = tint
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = TextMuted,
+                modifier = Modifier.size(20.dp)
             )
         }
-        Icon(
-            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(20.dp)
-        )
     }
 }
 
@@ -1039,6 +1271,9 @@ private fun CustomerHistoryCard(
                     when (it.status?.uppercase()) {
                         "REJECTED" -> "ငြင်းပယ်ထား"
                         "CANCELED", "CANCELLED" -> "ပယ်ဖျက်ထား"
+                        "DONE", "COMPLETED" -> "ပြီးစီးပါပြီ"
+                        "CONFIRMED" -> "လက်ခံထား"
+                        "ARRIVED" -> "ဆိုင်ရောက်"
                         else -> it.status?.replace('_', ' ')
                     }
                 ).joinToString(" • "),
@@ -1540,13 +1775,15 @@ private fun OrderDetailContent(order: CustomerOrder) {
 }
 
 @Composable
-private fun BookingDetailContent(booking: BookingSummary) {
+internal fun BookingDetailContent(booking: BookingSummary) {
     val bookingStatus = booking.status?.uppercase()
-    val closed = bookingStatus in setOf("CANCELED", "CANCELLED", "REJECTED")
+    val closed = bookingStatus in setOf("CANCELED", "CANCELLED", "REJECTED", "DONE", "COMPLETED")
+    val done = bookingStatus in setOf("DONE", "COMPLETED")
     val rejectionMessage = when (bookingStatus) {
         "REJECTED" -> booking.rejectionReason?.trim()?.takeIf { it.isNotEmpty() }
             ?: "သင့် service တောင်းဆိုမှုကို ဆိုင်မှ လက်မခံနိုင်ပါ။ နောက်ထပ်အသေးစိတ်အတွက် ဆိုင်သို့ ဆက်သွယ်ပေးပါ။"
         "CANCELED", "CANCELLED" -> "ဤ Booking ကို ပယ်ဖျက်ထားပါသည်။ အသေးစိတ်အတွက် ဆိုင်သို့ ဆက်သွယ်နိုင်ပါသည်။"
+        "DONE", "COMPLETED" -> "ဤ Booking အတွက် ဝန်ဆောင်မှု ပြီးစီးပါပြီ။"
         else -> null
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1574,6 +1811,7 @@ private fun BookingDetailContent(booking: BookingSummary) {
             value = when (bookingStatus) {
                 "REJECTED" -> "ငြင်းပယ်ထား"
                 "CANCELED", "CANCELLED" -> "ပယ်ဖျက်ထား"
+                "DONE", "COMPLETED" -> "ပြီးစီးပါပြီ"
                 "CONFIRMED" -> "လက်ခံထား"
                 "ARRIVED" -> "ဆိုင်ရောက်"
                 else -> booking.status?.replace('_', ' ') ?: "—"
@@ -1583,27 +1821,29 @@ private fun BookingDetailContent(booking: BookingSummary) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFFFF1F2),
-                border = BorderStroke(1.dp, Color(0xFFFECDD3))
+                color = if (done) Color(0xFFECFDF5) else Color(0xFFFFF1F2),
+                border = BorderStroke(1.dp, if (done) Color(0xFFA7F3D0) else Color(0xFFFECDD3))
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "ဆိုင်မှ အသိပေးချက်",
+                        if (done) "ပြီးစီးအသိပေးချက်" else "ဆိုင်မှ အသိပေးချက်",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF9F1239)
+                        color = if (done) Color(0xFF065F46) else Color(0xFF9F1239)
                     )
                     Text(
                         rejectionMessage,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF881337)
+                        color = if (done) Color(0xFF047857) else Color(0xFF881337)
                     )
-                    booking.rejectedAt?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            "ငြင်းပယ်ချိန် · ${it.replace('T', ' ').take(16)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF9F1239)
-                        )
+                    if (!done) {
+                        booking.rejectedAt?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                "ငြင်းပယ်ချိန် · ${it.replace('T', ' ').take(16)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF9F1239)
+                            )
+                        }
                     }
                 }
             }
@@ -1613,14 +1853,6 @@ private fun BookingDetailContent(booking: BookingSummary) {
                 label = "ရွေးထားသော Service",
                 value = booking.serviceNameSnapshot ?: booking.requestedServiceName.orEmpty()
             )
-        }
-        booking.servicePriceType?.takeIf { it.isNotBlank() }?.let { type ->
-            val priceText = when (type.uppercase()) {
-                "INSPECTION_REQUIRED" -> "စစ်ဆေးပြီးမှ ဈေးနှုန်း"
-                "STARTING_FROM" -> booking.servicePriceSnapshot?.let { "${it.toInt()} Ks မှ စတင်" } ?: "Starting from"
-                else -> booking.servicePriceSnapshot?.let { "${it.toInt()} Ks" } ?: "—"
-            }
-            DetailInfoRow(label = "Service ဈေး (booking လုပ်စဉ်)", value = priceText)
         }
         booking.estimateApprovalStatus?.takeIf { it.isNotBlank() }?.let {
             DetailInfoRow(

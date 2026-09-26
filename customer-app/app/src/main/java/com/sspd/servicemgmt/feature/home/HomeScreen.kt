@@ -12,6 +12,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -138,6 +140,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     var checkoutPlacing by mutableStateOf(false); private set
     var serviceRequestSubmitting by mutableStateOf(false); private set
     var openHistoryTab by mutableStateOf(false)
+    var openBookingsTab by mutableStateOf(false)
     private var pendingCheckout: PendingCheckout? = null
     private var lastCheckoutKey: String? = null
     private var lastCheckoutStamp: String? = null
@@ -254,7 +257,10 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             prefs,
             onUpdate = { notification -> receiveOrderNotification(notification) },
             onConnected = { orderSocketConnected = true; refreshOrderUpdates() },
-            onDisconnected = { orderSocketConnected = false }
+            onDisconnected = { orderSocketConnected = false },
+            onChatMessage = { msg ->
+                chatMessages = (chatMessages.filter { it.id != msg.id } + msg).sortedBy { it.createdAt }
+            }
         ).also { it.start() }
     }
 
@@ -263,10 +269,10 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         chatSocket = CustomerChatSocket(
             prefs,
             { msg ->
-                chatMessages = (chatMessages + msg).sortedBy { it.createdAt }
+                chatMessages = (chatMessages.filter { it.id != msg.id } + msg).sortedBy { it.createdAt }
             },
-            { /* Connected */ },
-            { /* Disconnected */ }
+            { loadChatHistory() },
+            { /* Disconnected — socket retries automatically */ }
         ).also { it.start() }
         loadChatHistory()
     }
@@ -381,6 +387,15 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
 
     fun auth() = ApiClient.bearer(prefs.authToken)
+    suspend fun b2ProductVideoUrl(productId: Int, videoId: Long): String {
+        val response = ApiClient.service.b2ProductVideoPlayback(auth(), productId, videoId)
+        val url = response.body()?.data?.url
+        if (!response.isSuccessful || url.isNullOrBlank()) {
+            throw IllegalStateException(response.body()?.message ?: "Video ဖွင့်မရပါ")
+        }
+        return url
+    }
+
     @JvmName("updateBiometricEnabled")
     fun setBiometricEnabled(enabled: Boolean) {
         prefs.biometricEnabled = enabled
@@ -390,6 +405,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     fun phone() = prefs.phone
     fun logout() {
         stopOrderUpdates()
+        stopChat()
+        chatMessages = emptyList()
         getApplication<Application>()
             .getSharedPreferences("notif_read", android.content.Context.MODE_PRIVATE)
             .edit().clear().apply()
@@ -430,9 +447,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
   
     private suspend fun fetchProfile() {
-        val response = ApiClient.service.me(auth())
+        val sessionToken = prefs.authToken
+        if (sessionToken.isBlank()) return
+        val response = ApiClient.service.me(ApiClient.bearer(sessionToken))
         val data = response.body()?.data
-        if (response.isSuccessful && data != null) syncProfile(data)
+        if (response.isSuccessful && data != null) syncProfile(data, sessionToken)
     }
 
     fun saveProfile(name: String, phone: String, address: String) {
@@ -446,15 +465,17 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             profileSaving = true
+            val sessionToken = prefs.authToken
+            if (sessionToken.isBlank()) { profileSaving = false; return@launch }
             try {
                 val response = ApiClient.service.updateProfile(
-                    auth(),
+                    ApiClient.bearer(sessionToken),
                     ProfileUpdateRequest(name.trim().ifBlank { null }, phone.trim(), address.trim())
                 )
                 val body = response.body()
                 val data = body?.data
                 if (response.isSuccessful && body?.success == true && data != null) {
-                    syncProfile(data)
+                    syncProfile(data, sessionToken)
                     message = "Profile ပြင်ဆင်ပြီးပါပြီ"
                 } else {
                     message = body?.message ?: "Profile သိမ်းမရပါ"
@@ -470,15 +491,17 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     fun changePassword(currentPassword: String, newPassword: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             passwordSaving = true
+            val sessionToken = prefs.authToken
+            if (sessionToken.isBlank()) { passwordSaving = false; return@launch }
             try {
                 val response = ApiClient.service.changePassword(
-                    auth(),
+                    ApiClient.bearer(sessionToken),
                     ChangePasswordRequest(currentPassword, newPassword)
                 )
                 val body = response.body()
                 val data = body?.data
                 if (response.isSuccessful && body?.success == true && data != null) {
-                    syncProfile(data)
+                    syncProfile(data, sessionToken)
                     message = "စကားဝှက် ပြောင်းပြီးပါပြီ"
                     onSuccess()
                 } else {
@@ -497,7 +520,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun syncProfile(data: CustomerAuthResponse) {
+    private fun syncProfile(data: CustomerAuthResponse, sessionToken: String) {
+        if (sessionToken.isBlank() || prefs.authToken != sessionToken) return
         profile = data
         data.accessToken?.takeIf { it.isNotBlank() }?.let { prefs.authToken = it }
         prefs.displayName = data.name.orEmpty()
@@ -740,8 +764,15 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             serviceRequestSubmitting = true
             try {
                 val res = ApiClient.service.requestService(auth(), request)
-                message = if (res.isSuccessful && res.body()?.success == true) "Service ခေါ်ပြီးပါပြီ" else (res.body()?.message ?: "မအောင်မြင်ပါ")
-                if (res.isSuccessful && res.body()?.success == true) loadMine()
+                if (res.isSuccessful && res.body()?.success == true) {
+                    res.body()?.data?.let { created ->
+                        bookings = listOf(created) + bookings.filterNot { it.id == created.id }
+                    }
+                    openBookingsTab = true
+                    loadMine()
+                } else {
+                    message = res.body()?.message ?: "မအောင်မြင်ပါ"
+                }
             } catch (e: Exception) {
                 message = networkErrorMessage(e)
             } finally {
@@ -753,10 +784,12 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun bindCartAccount() {
         var id = prefs.customerId
         if (id <= 0) {
+            val sessionToken = prefs.authToken
+            if (sessionToken.isBlank()) return
             runCatching {
-                val data = ApiClient.service.me(auth()).body()?.data
-                if (data != null) {
-                    syncProfile(data)
+                val data = ApiClient.service.me(ApiClient.bearer(sessionToken)).body()?.data
+                if (data != null && prefs.authToken == sessionToken) {
+                    syncProfile(data, sessionToken)
                     id = data.customerId ?: 0
                 }
             }
@@ -988,7 +1021,7 @@ fun HomeScaffold(
     fun performLogout(idle: Boolean = false) {
         if (sessionEnded) return
         sessionEnded = true
-        vm.logout()
+        runCatching { vm.logout() }
         if (idle) {
             Toast.makeText(
                 context,
@@ -1003,6 +1036,7 @@ fun HomeScaffold(
 
     DisposableEffect(vm, lifecycleOwner) {
         vm.startOrderUpdates()
+        vm.startChat()
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 if (prefs.isSessionIdle()) {
@@ -1018,6 +1052,7 @@ fun HomeScaffold(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             vm.stopOrderUpdates()
+            vm.stopChat()
         }
     }
 
@@ -1044,6 +1079,7 @@ fun HomeScaffold(
 
     var tab by remember { mutableIntStateOf(0) }
     var showProducts by remember { mutableStateOf(false) }
+    var serviceSection by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         if (prefs.consumeOpenOrdersTab() || prefs.focusOrderId > 0) {
             tab = 3
@@ -1055,6 +1091,14 @@ fun HomeScaffold(
             tab = 3
             showProducts = false
             vm.openHistoryTab = false
+        }
+    }
+    LaunchedEffect(vm.openBookingsTab) {
+        if (vm.openBookingsTab) {
+            tab = 1
+            showProducts = false
+            serviceSection = 1
+            vm.openBookingsTab = false
         }
     }
     var showNotifications by remember { mutableStateOf(false) }
@@ -1115,16 +1159,18 @@ fun HomeScaffold(
         versionVm.check()
         vm.loadCatalog(); vm.loadMine(); vm.loadProfile(); vm.refreshCartQuietly()
     }
-    versionState.update?.let { update ->
-        UpdateDialog(
-            update = update,
-            downloadProgress = versionState.downloadProgress,
-            apkFile = versionState.apkFile,
-            downloadError = versionState.downloadError,
-            onDownload = versionVm::downloadAndInstall,
-            onInstall = { versionVm.triggerInstall(context) },
-            onDismiss = versionVm::dismiss
-        )
+    if (versionState.showDialog) {
+        versionState.availableUpdate?.let { update ->
+            UpdateDialog(
+                update = update,
+                downloadProgress = versionState.downloadProgress,
+                apkFile = versionState.apkFile,
+                downloadError = versionState.downloadError,
+                onDownload = versionVm::downloadAndInstall,
+                onInstall = { versionVm.triggerInstall(context) },
+                onDismiss = versionVm::dismiss
+            )
+        }
     }
     val cartItems by CartStore.items.collectAsState()
     val cartCount = cartItems.sumOf { it.qty }
@@ -1161,7 +1207,8 @@ fun HomeScaffold(
 
         Scaffold(
             topBar = {
-                if (tab != 0 || showProducts) {
+                val showOuterTopBar = (tab != 0 || showProducts) && tab != 1 && tab != 2 && tab != 4 && tab != 6
+                if (showOuterTopBar) {
                     Surface(
                         color = CardBg,
                         border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.5f)),
@@ -1260,7 +1307,7 @@ fun HomeScaffold(
                             onRefresh = { vm.pullToRefresh(catalog = true) },
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            ServiceTab(vm)
+                            ServiceTab(vm, serviceSection, onSectionChange = { serviceSection = it })
                         }
                         2 -> CartTab(
                             vm = vm,
@@ -1291,8 +1338,11 @@ fun HomeScaffold(
                         ) {
                             AccountTab(
                                 vm = vm,
+                                availableUpdate = versionState.availableUpdate,
+                                onOpenUpdate = versionVm::openUpdateDialog,
                                 onLogout = { performLogout(idle = false) },
                                 onNavigateToOrders = { tab = 3; showProducts = false; returnToProductsAfterCart = false },
+                                onNavigateToBookings = { tab = 1; serviceSection = 1; showProducts = false },
                                 onNavigateToWishlist = { if (CustomerAppFeatures.WISHLIST) { tab = 5; showProducts = false; returnToProductsAfterCart = false } },
                                 onNavigateToChat = { tab = 6; showProducts = false; returnToProductsAfterCart = false }
                             )
@@ -1315,9 +1365,12 @@ fun HomeScaffold(
                             }
                         }
                         6 -> {
-                            LaunchedEffect(Unit) { vm.startChat() }
-                            DisposableEffect(Unit) {
-                                onDispose { vm.stopChat() }
+                            LaunchedEffect(Unit) {
+                                vm.loadChatHistory()
+                                while (true) {
+                                    delay(8_000)
+                                    vm.loadChatHistory()
+                                }
                             }
                             CustomerChatScreen(
                                 messages = vm.chatMessages,
@@ -1358,31 +1411,34 @@ fun HomeScaffold(
                     }
                 }
 
-            CustomerBottomNav(
-                modifier = Modifier.align(Alignment.BottomCenter),
-                homeSelected = tab == 0 && !showProducts,
-                wishlistSelected = CustomerAppFeatures.WISHLIST && tab == 5,
-                serviceSelected = tab == 1,
-                productsSelected = showProducts,
-                cartSelected = tab == 2,
-                profileSelected = tab == 4,
-                cartCount = cartCount,
-                onHome = { goHome() },
-                onService = {
-                    tab = 1; showProducts = false; returnToProductsAfterCart = false
-                },
-                onProducts = {
-                    tab = 0; showProducts = true; returnToProductsAfterCart = false
-                },
-                onWishlist = {
-                    if (!CustomerAppFeatures.WISHLIST) return@CustomerBottomNav
-                    tab = 5; showProducts = false; returnToProductsAfterCart = false
-                },
-                onCart = { openCart(fromProducts = showProducts) },
-                onProfile = {
-                    tab = 4; showProducts = false; returnToProductsAfterCart = false
-                }
-            )
+            val showNav = tab != 1 && tab != 4 && tab != 6 && (tab != 2 || cartCount == 0)
+            if (showNav) {
+                CustomerBottomNav(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    homeSelected = tab == 0 && !showProducts,
+                    wishlistSelected = CustomerAppFeatures.WISHLIST && tab == 5,
+                    serviceSelected = tab == 1,
+                    productsSelected = showProducts,
+                    cartSelected = tab == 2,
+                    profileSelected = tab == 4,
+                    cartCount = cartCount,
+                    onHome = { goHome() },
+                    onService = {
+                        tab = 1; showProducts = false; returnToProductsAfterCart = false
+                    },
+                    onProducts = {
+                        tab = 0; showProducts = true; returnToProductsAfterCart = false
+                    },
+                    onWishlist = {
+                        if (!CustomerAppFeatures.WISHLIST) return@CustomerBottomNav
+                        tab = 5; showProducts = false; returnToProductsAfterCart = false
+                    },
+                    onCart = { openCart(fromProducts = showProducts) },
+                    onProfile = {
+                        tab = 4; showProducts = false; returnToProductsAfterCart = false
+                    }
+                )
+            }
         }
     }
 
@@ -1425,18 +1481,67 @@ private fun ProductTab(vm: HomeViewModel, onOpenCart: () -> Unit) {
         onChangeQty = { product, qty -> CartStore.setQty(product, qty) },
         onOpenCart = onOpenCart,
         wishlistIds = vm.wishlistIds,
-        onToggleFavorite = { vm.toggleWishlist(it) }
+        onToggleFavorite = { vm.toggleWishlist(it) },
+        onLoadB2Playback = vm::b2ProductVideoUrl
     )
 }
 
 @Composable
-private fun ServiceTab(vm: HomeViewModel) {
-    CustomerServiceBookingForm(
-        services = vm.services,
-        defaultAddress = vm.profile.address.orEmpty(),
-        submitting = vm.serviceRequestSubmitting,
-        onSubmit = vm::requestService
-    )
+private fun ServiceTab(vm: HomeViewModel, section: Int, onSectionChange: (Int) -> Unit) {
+    var bookingService by remember { mutableStateOf<CatalogService?>(null) }
+    LaunchedEffect(section) {
+        if (section == 1) bookingService = null
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = section == 0,
+                onClick = { onSectionChange(0) },
+                label = { Text("Booking တင်မည်") }
+            )
+            FilterChip(
+                selected = section == 1,
+                onClick = { vm.retryBookings(); onSectionChange(1) },
+                label = { Text("Booking များ") }
+            )
+            FilterChip(
+                selected = section == 2,
+                onClick = { onSectionChange(2) },
+                label = { Text("ဝန်ဆောင်မှုနှုန်းထားများ") }
+            )
+        }
+        when (section) {
+            1 -> CustomerBookingsScreen(
+                bookings = vm.bookings,
+                error = vm.bookingsError,
+                onRetry = vm::retryBookings,
+                modifier = Modifier.weight(1f)
+            )
+            2 -> CustomerServiceRatesScreen(
+                services = vm.services,
+                onRetry = { vm.pullToRefresh(catalog = true) },
+                onBookService = { service ->
+                    bookingService = service
+                    onSectionChange(0)
+                },
+                modifier = Modifier.weight(1f)
+            )
+            else -> CustomerServiceBookingForm(
+                services = vm.services,
+                defaultAddress = vm.profile.address.orEmpty(),
+                submitting = vm.serviceRequestSubmitting,
+                onSubmit = vm::requestService,
+                modifier = Modifier.weight(1f),
+                showBottomNav = false,
+                initialService = bookingService,
+                onClearSelectedService = { bookingService = null }
+            )
+        }
+    }
 }
 
 @Composable
@@ -2053,12 +2158,16 @@ private fun ActivityTab(
 @Composable
 private fun AccountTab(
     vm: HomeViewModel,
+    availableUpdate: com.sspd.servicemgmt.core.network.AppVersionDTO? = null,
+    onOpenUpdate: () -> Unit = {},
     onLogout: () -> Unit,
     onNavigateToOrders: () -> Unit,
+    onNavigateToBookings: () -> Unit,
     onNavigateToWishlist: () -> Unit,
     onNavigateToChat: () -> Unit
 ) {
     var confirmLogout by remember { mutableStateOf(false) }
+    val doLogout by rememberUpdatedState(onLogout)
     LaunchedEffect(Unit) { vm.loadProfile() }
     CustomerProfileScreen(
         profile = vm.profile,
@@ -2075,10 +2184,13 @@ private fun AccountTab(
         biometricEnabled = vm.biometricEnabled,
         onBiometricEnabledChange = vm::setBiometricEnabled,
         onNavigateToOrders = onNavigateToOrders,
+        onNavigateToBookings = onNavigateToBookings,
         onNavigateToWishlist = onNavigateToWishlist,
         onNavigateToChat = onNavigateToChat,
         onSave = vm::saveProfile,
         onChangePassword = vm::changePassword,
+        availableUpdate = availableUpdate,
+        onOpenUpdate = onOpenUpdate,
         onLogout = { confirmLogout = true }
     )
     if (confirmLogout) {
@@ -2091,7 +2203,7 @@ private fun AccountTab(
             confirmButton = {
                 TextButton(onClick = {
                     confirmLogout = false
-                    onLogout()
+                    doLogout()
                 }) { Text("ချက်ချင်း ထွက်မည်", fontWeight = FontWeight.Bold, color = Danger) }
             },
             dismissButton = {

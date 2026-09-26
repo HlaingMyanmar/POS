@@ -4,7 +4,7 @@ import com.sspd.servicemgmt.core.network.BookingSummary
 import com.sspd.servicemgmt.core.network.CustomerJob
 import java.util.Locale
 
-private val CLOSED_BOOKING_STATUSES = setOf("CANCELED", "CANCELLED", "REJECTED")
+private val CLOSED_BOOKING_STATUSES = setOf("CANCELED", "CANCELLED", "REJECTED", "DONE", "COMPLETED")
 private val CLOSED_JOB_STATUSES = setOf("DELIVERED", "CANCELED", "CANCELLED", "REJECTED")
 
 private fun String?.normalizedStatus(): String =

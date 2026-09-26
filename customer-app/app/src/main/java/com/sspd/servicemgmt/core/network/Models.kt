@@ -108,6 +108,18 @@ data class ChangePasswordRequest(
     val newPassword: String
 )
 
+data class CatalogVideo(
+    val bunnyVideoGuid: String? = null,
+    val b2VideoId: Long? = null,
+    val provider: String = "BUNNY",
+    val title: String = "",
+    val displayOrder: Int = 0,
+    val providerVideoId: String? = null,
+    val sourceUrl: String? = null
+)
+
+data class VideoPlaybackUrl(val url: String = "")
+
 data class CatalogProduct(
     val id: Int = 0,
     val name: String? = null,
@@ -125,7 +137,8 @@ data class CatalogProduct(
     val inStock: Boolean? = true,
     val stockQty: Int? = 0,
     val thumbnailUrl: String? = null,
-    val photoUrls: List<String>? = emptyList()
+    val photoUrls: List<String>? = emptyList(),
+    val videos: List<CatalogVideo> = emptyList()
 )
 
 data class CatalogPage(
@@ -148,6 +161,7 @@ data class CatalogService(
     val name: String? = null,
     val serviceTypeName: String? = null,
     val price: Double? = 0.0,
+    val normalPrice: Double? = null,
     val minPrice: Double? = null,
     val maxPrice: Double? = null,
     /** FIXED | STARTING_FROM | INSPECTION_REQUIRED */
@@ -700,7 +714,8 @@ data class ChatMessage(
     val senderId: Int = 0,
     val text: String = "",
     val createdAt: String? = null,
-    val isFromAdmin: Boolean = false
+    val isFromAdmin: Boolean = false,
+    val senderName: String? = null
 )
 
 data class ChatRequest(

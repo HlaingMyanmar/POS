@@ -11,9 +11,11 @@ import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppAccountEmailReq
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppAccountLinkRequest;
 import org.sspd.servicemgmt.customerportaloptions.dto.CustomerAppActivityDTO;
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerAppAccountAdminService;
+import org.sspd.servicemgmt.customerportaloptions.service.CustomerPortalAuthService;
 import org.sspd.servicemgmt.customerportaloptions.service.CustomerPortalService;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/customer-app-accounts")
@@ -22,6 +24,7 @@ public class CustomerAppAccountShopController {
 
     private final CustomerPortalService service;
     private final CustomerAppAccountAdminService adminService;
+    private final CustomerPortalAuthService authService;
 
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_READ','CAN_ACCESS_SALE_READ')")
     @GetMapping
@@ -48,6 +51,15 @@ public class CustomerAppAccountShopController {
             @PathVariable Integer id, @RequestBody CustomerAppAccountEmailRequest body) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Email updated",
                 service.updateAccountEmail(id, body == null ? null : body.getEmail())));
+    }
+
+    @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_UPDATE','CAN_ACCESS_SALE_UPDATE')")
+    @PostMapping("/{id}/send-password-reset")
+    public ResponseEntity<ApiResponse<Map<String, String>>> sendPasswordReset(@PathVariable Integer id) {
+        String email = authService.sendPasswordResetForAccount(id);
+        return ResponseEntity.ok(new ApiResponse<>(true,
+                "Password reset link ကို " + email + " သို့ ပို့ပြီးပါပြီ",
+                Map.of("email", email)));
     }
 
     @PreAuthorize("hasAnyAuthority('CAN_ACCESS_CUSTOMER_UPDATE','CAN_ACCESS_SALE_UPDATE')")

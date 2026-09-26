@@ -12,6 +12,9 @@ import lombok.NoArgsConstructor;
 public class CustomerPortalBrandingDTO {
     private String companyName;
     private String taglineMm;
+    private String companyAddress;
+    private String companyPhone;
+    private String companyEmail;
     /** Prefer loading via logoUrl — base64 may be omitted for large logos. */
     private String logoBase64;
     private boolean hasLogo;

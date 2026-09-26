@@ -16,6 +16,8 @@ public class CompanySettingsDTO {
     /** Data URL (audio/mpeg, audio/wav, audio/ogg, …) for order alert sound. */
     private String notificationSoundBase64;
     private String voucherConfigJson;
+    /** Auto-reply sent when a customer opens the chat with a greeting (blank = disabled). */
+    private String chatGreeting;
     private String salePrefix;
     private Integer saleDigits;
     private String purchasePrefix;

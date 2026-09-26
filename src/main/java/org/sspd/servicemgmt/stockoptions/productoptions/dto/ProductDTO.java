@@ -16,6 +16,8 @@ public class ProductDTO {
     private BigDecimal lastPurchaseCost;
     private String remark;
 
+    private String specifications;
+
     // Category အချက်အလက်
     private Integer categoryId;
     private String categoryName;

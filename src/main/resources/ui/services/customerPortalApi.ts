@@ -21,6 +21,21 @@ export type CustomerAuthPayload = Partial<CustomerSession> & {
   resetSent?: boolean;
 };
 
+/**
+ * Product video as returned by the customer catalog.
+ * provider: B2 (needs a signed URL + a logged-in customer), BUNNY (public iframe embed),
+ * YOUTUBE / GOOGLE_DRIVE (providerVideoId), or a direct external sourceUrl.
+ */
+export type CatalogVideo = {
+  provider?: string;
+  title?: string;
+  displayOrder?: number;
+  b2VideoId?: number;
+  bunnyVideoGuid?: string;
+  providerVideoId?: string;
+  sourceUrl?: string;
+};
+
 export type CatalogProduct = {
   id: number;
   name: string;
@@ -32,13 +47,43 @@ export type CatalogProduct = {
   warrantyMonths?: number;
   warrantyTerms?: string;
   inStock?: boolean;
+  stockQty?: number;
+  remark?: string;
+  specifications?: string;
+  reviewCount?: number;
+  reviewRating?: number;
   photoUrls?: string[];
   thumbnailUrl?: string;
+  videos?: CatalogVideo[];
+};
+
+/**
+ * One customer support chat message.
+ * REST history uses `text` / `createdAt`; realtime socket frames also send `content` / `sentAt`.
+ */
+export type CustomerChatMessage = {
+  id?: number;
+  senderId?: number;
+  text?: string;
+  content?: string;
+  createdAt?: string;
+  sentAt?: string;
+  isFromAdmin?: boolean;
+  senderRole?: string;
+  senderName?: string;
 };
 
 export type CatalogOption = { id: number; name: string; parentId?: number; parentName?: string };
 export type CatalogPage = { content: CatalogProduct[]; page: number; size: number; totalElements: number; hasNext: boolean };
-export type CatalogQuery = { page?: number; size?: number; q?: string; categoryId?: number; brandId?: number; sort?: string };
+export type CatalogQuery = { page?: number; size?: number; q?: string; categoryId?: number; brandId?: number; productType?: string; sort?: string };
+
+export type ProductReview = {
+  id?: number;
+  customerName?: string;
+  rating: number;
+  comment?: string;
+  createdAt?: string;
+};
 
 export type CatalogService = {
   id: number;
@@ -71,8 +116,13 @@ export type DeliveryQuote = {
 export type CustomerBranding = {
   companyName?: string;
   taglineMm?: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  logoUrl?: string;
   pickupDepositPercent?: number;
   deliveryEnabled?: boolean;
+  outdoorBookingEnabled?: boolean;
   deliveryOpensAt?: string;
   deliveryClosesAt?: string;
   deliveryDays?: string;
@@ -164,7 +214,24 @@ export type CustomerBooking = {
   status: string;
   complaintNote?: string;
   appointmentDate?: string;
+  serviceDate?: string;
   createdAt?: string;
+};
+
+export type BookingAvailabilityDate = { date: string; available: boolean; reason?: string };
+export type BookingAvailabilityWindow = { windowId: number; name: string; startTime: string; endTime: string; remaining: number; state: string };
+export type WebsiteBookingRequest = {
+  serviceId?: number;
+  serviceName?: string;
+  deviceName?: string;
+  problem?: string;
+  serviceMode: 'SHOP' | 'ONSITE';
+  serviceAddress?: string;
+  appointmentDate?: string;
+  serviceDate?: string;
+  arrivalWindowId?: number;
+  preferredAnytime?: boolean;
+  photos?: { slot: number; fileName: string; contentType: string; dataUrl: string }[];
 };
 
 export type CustomerPurchase = {
@@ -190,6 +257,7 @@ export type CustomerPurchase = {
 export type CustomerJob = {
   id: number;
   jobNo: string;
+  bookingNo?: string;
   status?: string;
   itemName?: string;
   deviceType?: string;
@@ -300,6 +368,20 @@ export const customerPortalService = {
   categories: () => customerApi.get<any, ApiResponse<CatalogOption[]>>('/v1/customer-portal/catalog/categories'),
   brands: () => customerApi.get<any, ApiResponse<CatalogOption[]>>('/v1/customer-portal/catalog/brands'),
   products: () => customerApi.get<any, ApiResponse<CatalogProduct[]>>('/v1/customer-portal/catalog/products'),
+  /** Signed playback URL for a B2 clip — the endpoint requires a logged-in customer. */
+  b2VideoPlayback: (productId: number, videoId: number) =>
+    customerApi
+      .get<any, ApiResponse<{ url: string }>>(`/v1/customer-portal/catalog/products/${productId}/videos/b2/${videoId}/playback`)
+      .then((res: any) => (res?.data?.url as string) || ''),
+  /** Product reviews — list is public, submitting requires a logged-in customer. */
+  productReviews: (productId: number) =>
+    customerApi.get<any, ApiResponse<ProductReview[]>>(`/v1/customer-portal/catalog/products/${productId}/reviews`),
+  submitReview: (productId: number, body: { rating: number; comment: string }) =>
+    customerApi.post<any, ApiResponse<ProductReview>>(`/v1/customer-portal/catalog/products/${productId}/reviews`, body),
+  /** Customer support chat — both endpoints require a logged-in customer. */
+  chatHistory: () => customerApi.get<any, ApiResponse<CustomerChatMessage[]>>('/v1/customer-portal/chat/history'),
+  chatSend: (text: string) =>
+    customerApi.post<any, ApiResponse<CustomerChatMessage>>('/v1/customer-portal/chat/send', { text }),
   services: () => customerApi.get<any, ApiResponse<CatalogService[]>>('/v1/customer-portal/catalog/services'),
   branding: () => customerApi.get<any, ApiResponse<CustomerBranding>>('/v1/customer-portal/branding'),
   deliveryLocations: () => customerApi.get<any, ApiResponse<any[]>>('/v1/customer-portal/delivery-locations'),
@@ -352,7 +434,11 @@ export const customerPortalService = {
     const blob = await customerApi.get<any, Blob>(`/v1/customer-portal/history/purchases/${saleId}/invoice.pdf`, { responseType: 'blob' });
     return blob;
   },
-  requestService: (body: { serviceName?: string; deviceName?: string; problem?: string }) =>
+  bookingDates: (mode: 'SHOP' | 'ONSITE') =>
+    customerApi.get<any, ApiResponse<BookingAvailabilityDate[]>>('/v1/customer-portal/booking-availability/dates', { params: { mode, days: 30 } }),
+  bookingWindows: (date: string) =>
+    customerApi.get<any, ApiResponse<BookingAvailabilityWindow[]>>('/v1/customer-portal/booking-availability/windows', { params: { date } }),
+  requestService: (body: Partial<WebsiteBookingRequest>) =>
     customerApi.post<any, ApiResponse<CustomerBooking>>('/v1/customer-portal/bookings', body),
   myBookings: () => customerApi.get<any, ApiResponse<CustomerBooking[]>>('/v1/customer-portal/bookings'),
   myPurchases: () => customerApi.get<any, ApiResponse<CustomerPurchase[]>>('/v1/customer-portal/history/purchases'),
@@ -394,4 +480,3 @@ export const customerPortalService = {
   removeWishlist: (productId: number) =>
     customerApi.delete<any, ApiResponse<{ productId: number; wishlisted: boolean }>>(`/v1/customer-portal/wishlist/${productId}`),
 };
-

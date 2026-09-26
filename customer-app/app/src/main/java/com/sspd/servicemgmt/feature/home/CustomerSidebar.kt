@@ -20,7 +20,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sspd.servicemgmt.BuildConfig
 import com.sspd.servicemgmt.core.feature.CustomerAppFeatures
+import com.sspd.servicemgmt.core.network.AppVersionDTO
 import com.sspd.servicemgmt.core.network.CustomerAuthResponse
 import com.sspd.servicemgmt.core.network.LoyaltyPoints
 import com.sspd.servicemgmt.core.ui.theme.*
@@ -31,7 +33,9 @@ fun CustomerSidebarContent(
     loyaltyPoints: LoyaltyPoints?,
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    availableUpdate: AppVersionDTO? = null,
+    onOpenUpdate: () -> Unit = {}
 ) {
     ModalDrawerSheet(
         drawerShape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp),
@@ -162,6 +166,33 @@ fun CustomerSidebarContent(
 
                 Spacer(Modifier.weight(1f))
                 HorizontalDivider(color = BorderColor, modifier = Modifier.padding(vertical = 8.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (availableUpdate != null) {
+                        TextButton(
+                            onClick = onOpenUpdate,
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                "Update · v${availableUpdate.versionName}",
+                                color = Primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
 
                 SidebarMenuItem(
                     icon = Icons.AutoMirrored.Outlined.Logout,

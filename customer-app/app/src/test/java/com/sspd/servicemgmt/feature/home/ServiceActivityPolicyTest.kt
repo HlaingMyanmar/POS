@@ -13,6 +13,7 @@ class ServiceActivityPolicyTest {
         val bookings = listOf(
             BookingSummary(status = "CONFIRMED"),
             BookingSummary(status = "ARRIVED"),
+            BookingSummary(status = "DONE"),
             BookingSummary(status = "CANCELED"),
             BookingSummary(status = "CANCELLED"),
             BookingSummary(status = "REJECTED"),
@@ -41,5 +42,6 @@ class ServiceActivityPolicyTest {
         assertTrue(isActiveBooking(BookingSummary(status = "CONFIRMED")))
         assertTrue(isActiveBooking(BookingSummary(status = "ARRIVED")))
         assertFalse(isActiveBooking(BookingSummary(status = "REJECTED")))
+        assertFalse(isActiveBooking(BookingSummary(status = "DONE")))
     }
 }

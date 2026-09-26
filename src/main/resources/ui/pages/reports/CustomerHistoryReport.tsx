@@ -8,6 +8,36 @@ import { useRefreshOnTabActivate } from '../../hooks/useRefreshOnTabActivate';
 
 const money=(v:any)=>`${Number(v||0).toLocaleString()} Ks`;
 const fmtDate=(v:any)=>v?new Date(v).toLocaleDateString('en-GB'):'—';
+const fmtDateTime=(v:any)=>{
+ if(!v)return '—';
+ const d=new Date(v);
+ return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+};
+const parseAt=(v:any):Date|null=>{
+ if(v==null||v==='')return null;
+ if(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)){
+  const d=new Date(`${v}T00:00:00`);
+  return Number.isNaN(d.getTime())?null:d;
+ }
+ const d=new Date(v);
+ return Number.isNaN(d.getTime())?null:d;
+};
+const formatDuration=(ms:number)=>{
+ const safe=Math.max(0,Math.floor(ms));
+ const totalMin=Math.floor(safe/60000);
+ const days=Math.floor(totalMin/(60*24));
+ const hours=Math.floor((totalMin%(60*24))/60);
+ const mins=totalMin%60;
+ const parts:string[]=[];
+ if(days)parts.push(`${days} ရက်`);
+ if(hours)parts.push(`${hours} နာရီ`);
+ if(mins||!parts.length)parts.push(`${mins} မိနစ်`);
+ return parts.join(' ');
+};
+const jobFinishAt=(job:any)=>parseAt(job.deliveredDate)||parseAt(job.completedDate)||null;
+const jobStartAt=(job:any,booking?:any)=>
+ parseAt(booking?.createdAt)||parseAt(booking?.bookingDate)||parseAt(job?.receivedDate)||parseAt(job?.appointmentDate)||null;
+const bookingStatusLabel:Record<string,string>={CONFIRMED:'အတည်ပြုပြီး',ARRIVED:'ပစ္စည်းလက်ခံပြီး',DONE:'ပြီးစီးပါပြီ',REJECTED:'ငြင်းပယ်ထား',CANCELED:'ပယ်ဖျက်ထား'};
 const rows=(r:any)=>r?.data?.content??r?.data??[];
 const jobCharge=(job:any)=>{
  const posted=Number(job.netAmount??0),finalCost=Number(job.finalCost??0);
@@ -24,6 +54,11 @@ const resolutionLabel:Record<string,string>={SERVICE_ONLY:'Service သာ',REPLA
 const dispositionLabel:Record<string,string>={REUSE:'Stock ပြန်ဝင်',QUARANTINE:'Quarantine',DAMAGED:'ပျက်စီး',SUPPLIER_RETURN:'Supplier ပြန်ပို့'};
 const isRefundJob=(job:any)=>job?.resolutionMode==='REFUND'&&Number(job?.refundAmount||0)>0;
 const statusLabel:Record<string,string>={RECEIVED:'လက်ခံပြီး',INSPECTING:'စစ်ဆေးနေ',IN_PROGRESS:'ဝန်ဆောင်မှု ပြင်ဆင်နေ',COMPLETED:'ပြီးစီး',DELIVERED:'ပစ္စည်းပေးအပ်ပြီး',CANCELLED:'ပယ်ဖျက်ပြီး'};
+const bookingTitle=(b:any)=>{
+ const fromItems=(b.items||[]).map((it:any)=>it.itemName||it.deviceType).filter(Boolean).join(', ');
+ if(fromItems)return fromItems;
+ return [b.deviceCategory,b.deviceName,b.requestedServiceName||b.serviceNameSnapshot,b.complaintNote].filter(Boolean).join(' · ')||'Booking';
+};
 
 function CustomerPicker({customers,value,onChange}:any){
  const selected=customers.find((c:any)=>String(c.id)===String(value));
@@ -56,9 +91,103 @@ export default function CustomerHistoryReport(){
  const customer=customers.find(c=>String(c.id)===customerId);
  const saleTotal=sales.reduce((s,x)=>s+Number(x.netAmount||0),0),serviceTotal=jobs.reduce((s,x)=>s+jobCharge(x),0),refundTotal=jobs.reduce((s,x)=>s+(isRefundJob(x)?Number(x.refundAmount||0):0),0),netSpend=saleTotal+serviceTotal-refundTotal,serviceOutstanding=jobs.reduce((s,x)=>s+(isRefundJob(x)||isJobPaid(x)?0:(Number(x.dueAmount)>0?Number(x.dueAmount):jobCharge(x))),0),due=sales.reduce((s,x)=>s+Number(x.dueAmount||0),0)+serviceOutstanding,reworks=jobs.filter(j=>j.rework).length;
  const devices=useMemo(()=>{const m=new Map<string,any>();jobs.forEach(j=>{const serial=String(j.serialNo||'').trim(),name=String(j.itemName||'Unknown Device').trim(),key=serial?`s:${serial.toLowerCase()}`:`n:${name.toLowerCase()}`,charge=jobCharge(j),d=m.get(key)||{name,serial,count:0,reworks:0,spent:0,toCollect:0,paidJobs:0,problems:new Set<string>(),last:''};d.count++;d.reworks+=j.rework?1:0;d.spent+=charge;if(isJobPaid(j))d.paidJobs++;else d.toCollect+=Number(j.dueAmount)>0?Number(j.dueAmount):charge;if(j.problemDesc)d.problems.add(j.problemDesc);if(!d.last||String(j.receivedDate)>d.last)d.last=j.receivedDate;m.set(key,d)});return [...m.values()].map(d=>({...d,problems:[...d.problems]})).sort((a,b)=>b.count-a.count)},[jobs]);
- const first=[...sales.map(s=>s.saleDate),...bookings.map(b=>b.bookingDate),...jobs.map(j=>j.receivedDate)].filter(Boolean).sort()[0];
+ const first=[...sales.map(s=>s.saleDate),...bookings.map(b=>b.bookingDate||b.createdAt),...jobs.map(j=>j.receivedDate)].filter(Boolean).sort()[0];
  const alerts=[...(due>0?[`ပေးရန်ကျန်ငွေ ${money(due)} ရှိသည်`]:[]),...devices.filter(d=>d.count>=3).map(d=>`${d.name}${d.serial?` (${d.serial})`:''} ကို ${d.count} ကြိမ် ပြုပြင်ထားသည်`),...(reworks>=2?[`Warranty/Rework စုစုပေါင်း ${reworks} ကြိမ်ရှိသည်`]:[])];
- const timeline=[...sales.map(x=>({kind:'SALE',at:x.saleDate,code:x.saleCode,title:(x.details||[]).map((d:any)=>`${d.productName} × ${d.qty}`).join(', ')||'Sale',amount:x.netAmount})),...bookings.map(x=>({kind:'INTAKE',at:x.bookingDate,code:x.invoiceNo,title:x.devices?.map((d:any)=>`${d.brand} ${d.model||''}`).join(', ')||`${x.brand||''} ${x.model||''}`,amount:null})),...jobs.map(x=>isRefundJob(x)?({kind:'REFUND',at:x.refundDate||x.receivedDate,code:x.jobNo,title:`${x.originalPartName||x.itemName||'Part'} ငွေပြန်အမ်း`,amount:-Number(x.refundAmount||0),status:`${x.refundPaymentMethodName||'Payment'}${x.refundTransactionNo?` · ${x.refundTransactionNo}`:''}`}):({kind:x.rework?'REWORK':'SERVICE',at:x.receivedDate,code:x.jobNo,title:`${x.itemName||'Device'} — ${x.problemDesc||'Service'}`,amount:jobCharge(x),status:`${statusLabel[x.status]||x.status} · ${isJobPaid(x)?'ငွေရှင်းပြီး ✓':jobCharge(x)>0?'ငွေရှင်းရန်လိုအပ်':'အခမဲ့'}`}))].sort((a,b)=>String(b.at).localeCompare(String(a.at))); const tabs=[['overview','Overview'],['timeline','Activity Timeline'],['sales',`Sales (${sales.length})`],['service',`Service (${jobs.length})`],['devices',`Devices (${devices.length})`]] as const;
+ const bookingById=useMemo(()=>{
+  const m=new Map<string,any>();
+  bookings.forEach((b:any)=>{if(b?.id!=null)m.set(String(b.id),b)});
+  return m;
+ },[bookings]);
+ const timeline=useMemo(()=>{
+  const saleEvents=sales.map((x:any)=>({
+   kind:'SALE' as const,
+   at:x.saleDate,
+   sortAt:x.saleDate,
+   code:x.saleCode,
+   title:(x.details||[]).map((d:any)=>`${d.productName} × ${d.qty}`).join(', ')||'Sale',
+   amount:x.netAmount,
+  }));
+  const bookingEvents=bookings.map((x:any)=>{
+   const linked=jobs.filter((j:any)=>String(j.bookingId)===String(x.id)&&!isRefundJob(j)&&String(j.status||'').toUpperCase()!=='CANCELLED');
+   const finished=linked.map(jobFinishAt).filter(Boolean) as Date[];
+   const start=jobStartAt(null,x);
+   const end=finished.length?new Date(Math.max(...finished.map(d=>d.getTime()))):null;
+   const allDone=linked.length>0&&finished.length===linked.length;
+   const endOrNow=end||(linked.length?new Date():null);
+   const durationMs=start&&endOrNow?endOrNow.getTime()-start.getTime():null;
+   return {
+    kind:'INTAKE' as const,
+    at:x.createdAt||x.bookingDate,
+    sortAt:x.createdAt||x.bookingDate,
+    code:x.bookingNo||`#${x.id}`,
+    title:bookingTitle(x),
+    amount:null as number|null,
+    status:bookingStatusLabel[x.status]||x.status,
+    bookingRef:x.bookingNo,
+    startAt:start?start.toISOString():null,
+    endAt:end?end.toISOString():null,
+    duration:durationMs!=null?formatDuration(durationMs):null,
+    durationLabel:allDone?'Booking → Job ပြီးစီး':linked.length?'Booking → လက်ရှိအထိ (မပြီးသေး)':null,
+    durationPending:!allDone&&!!linked.length,
+   };
+  });
+  const jobEvents=jobs.flatMap((x:any)=>{
+   if(isRefundJob(x)){
+    return [{
+     kind:'REFUND' as const,
+     at:x.refundDate||x.receivedDate,
+     sortAt:x.refundDate||x.receivedDate,
+     code:x.jobNo,
+     title:`${x.originalPartName||x.itemName||'Part'} ငွေပြန်အမ်း`,
+     amount:-Number(x.refundAmount||0),
+     status:`${x.refundPaymentMethodName||'Payment'}${x.refundTransactionNo?` · ${x.refundTransactionNo}`:''}`,
+    }];
+   }
+   const booking=x.bookingId!=null?bookingById.get(String(x.bookingId)):undefined;
+   const start=jobStartAt(x,booking);
+   const end=jobFinishAt(x);
+   const pending=!end&&String(x.status||'').toUpperCase()!=='CANCELLED';
+   const endOrNow=end||(pending?new Date():null);
+   const durationMs=start&&endOrNow?endOrNow.getTime()-start.getTime():null;
+   const finishLabel=x.deliveredDate?'ပေးအပ်ပြီး':x.completedDate?'ပြီးစီး':'';
+   const base={
+    kind:(x.rework?'REWORK':'SERVICE') as 'REWORK'|'SERVICE',
+    at:x.receivedDate,
+    sortAt:x.receivedDate,
+    code:x.jobNo,
+    title:`${x.itemName||'Device'} — ${x.problemDesc||'Service'}`,
+    amount:jobCharge(x),
+    status:`${statusLabel[x.status]||x.status} · ${isJobPaid(x)?'ငွေရှင်းပြီး ✓':jobCharge(x)>0?'ငွေရှင်းရန်လိုအပ်':'အခမဲ့'}`,
+    bookingRef:x.bookingNo||booking?.bookingNo||null,
+    startAt:start?start.toISOString():null,
+    endAt:end?end.toISOString():null,
+    duration:durationMs!=null?formatDuration(durationMs):null,
+    durationLabel:booking
+     ?(end?`Booking → Job ${finishLabel}`:'Booking → လက်ရှိအထိ')
+     :(end?`လက်ခံ → Job ${finishLabel}`:null),
+    durationPending:pending&&!!durationMs,
+   };
+   const events:any[]=[base];
+   if(end){
+    events.push({
+     ...base,
+     kind:'TURNAROUND' as const,
+     at:end.toISOString(),
+     sortAt:end.toISOString(),
+     title:booking
+      ?`${x.jobNo} · Booking ${x.bookingNo||booking.bookingNo||''} မှ ပြီးစီးသည်အထိ`
+      :`${x.jobNo} · လက်ခံမှ ပြီးစီးသည်အထိ`,
+     amount:null,
+     status:finishLabel||statusLabel[x.status]||x.status,
+     durationPending:false,
+    });
+   }
+   return events;
+  });
+  return [...saleEvents,...bookingEvents,...jobEvents]
+   .sort((a,b)=>String(b.sortAt||b.at||'').localeCompare(String(a.sortAt||a.at||'')));
+ },[sales,bookings,jobs,bookingById]);
+ const tabs=[['overview','Overview'],['timeline','Activity Timeline'],['sales',`Sales (${sales.length})`],['service',`Service (${jobs.length})`],['devices',`Devices (${devices.length})`]] as const;
  return <div className="space-y-5 p-4 md:p-6 print:p-0">
   <header className="flex flex-wrap items-center justify-between gap-3 print:hidden"><div className="flex items-center gap-3"><span className="rounded-xl bg-indigo-100 p-2.5"><History className="text-indigo-700"/></span><div><h1 className="text-xl font-black text-slate-900">Customer History</h1><p className="text-xs text-slate-500">အရောင်း၊ ပစ္စည်းအပ်နှံမှုနှင့် Service history</p></div></div>{customer&&<button onClick={()=>window.print()} className="flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"><Printer size={16}/> Print Report</button>}</header>
   <section className="rounded-2xl border bg-white p-4 print:hidden"><label className="mb-2 block text-xs font-black uppercase text-slate-500">Customer ရွေးပါ</label><CustomerPicker customers={customers} value={customerId} onChange={setCustomerId}/></section>
@@ -109,6 +238,67 @@ function Rework({job,children,depth}:any){
   {nested.length>0&&<div className="border-l border-dashed border-amber-300 pl-3">{nested.map((child:any)=><Rework key={child.id} job={child} children={children} depth={depth+1}/>)}</div>}
  </div>
 }
-function Timeline({rows}:any){if(!rows.length)return <Empty/>;const s:any={SALE:['bg-blue-100 text-blue-700',ShoppingCart],INTAKE:['bg-violet-100 text-violet-700',PackageCheck],SERVICE:['bg-emerald-100 text-emerald-700',Wrench],REWORK:['bg-amber-100 text-amber-700',History],REFUND:['bg-rose-100 text-rose-700',CircleDollarSign]};return <section className="rounded-2xl border bg-white p-5"><h3 className="mb-5 flex gap-2 font-black"><CalendarDays size={19}/> Activity Timeline</h3>{rows.map((x:any,i:number)=>{const [cls,Icon]=s[x.kind];return <div key={i} className="relative flex gap-4 pb-5"><span className="absolute bottom-0 left-5 top-10 w-px bg-slate-200"/><span className={`z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${cls}`}><Icon size={17}/></span><div className="flex flex-1 justify-between gap-2 rounded-xl border bg-slate-50 p-3"><div><Badge text={x.kind} cls={cls}/><b className="ml-2 font-mono text-sm">{x.code}</b><p className="mt-1 text-sm">{x.title}</p><p className="text-xs text-slate-400">{fmtDate(x.at)} {x.status?`· ${x.status}`:''}</p></div>{x.amount!==null&&<b>{Number(x.amount)?money(x.amount):'FREE'}</b>}</div></div>})}</section>}
+function Timeline({rows}:any){
+ if(!rows.length)return <Empty/>;
+ const s:any={
+  SALE:['bg-blue-100 text-blue-700',ShoppingCart],
+  INTAKE:['bg-violet-100 text-violet-700',PackageCheck],
+  SERVICE:['bg-emerald-100 text-emerald-700',Wrench],
+  REWORK:['bg-amber-100 text-amber-700',History],
+  REFUND:['bg-rose-100 text-rose-700',CircleDollarSign],
+  TURNAROUND:['bg-indigo-100 text-indigo-700',CalendarDays],
+ };
+ return <section className="rounded-2xl border bg-white p-5">
+  <h3 className="mb-2 flex gap-2 font-black"><CalendarDays size={19}/> Activity Timeline</h3>
+  <p className="mb-5 text-xs text-slate-500">Booking မှ Service Job ပြီးစီးသည်အထိ ကြာချိန်ကို အထူးပြထားပါသည်</p>
+  {rows.map((x:any,i:number)=>{
+   const [cls,Icon]=s[x.kind]||s.SERVICE;
+   return <div key={i} className="relative flex gap-4 pb-5">
+    <span className="absolute bottom-0 left-5 top-10 w-px bg-slate-200"/>
+    <span className={`z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${cls}`}><Icon size={17}/></span>
+    <div className={`flex flex-1 flex-col gap-2 rounded-xl border p-3 ${x.kind==='TURNAROUND'?'border-indigo-200 bg-indigo-50/70':'bg-slate-50'}`}>
+     <div className="flex justify-between gap-2">
+      <div className="min-w-0">
+       <div className="flex flex-wrap items-center gap-2">
+        <Badge text={x.kind==='TURNAROUND'?'ကြာချိန်':x.kind} cls={cls}/>
+        <b className="font-mono text-sm">{x.code}</b>
+        {x.bookingRef&&x.kind!=='INTAKE'&&<span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">BK {x.bookingRef}</span>}
+       </div>
+       <p className="mt-1 text-sm">{x.title}</p>
+       <p className="text-xs text-slate-400">{fmtDateTime(x.at)} {x.status?`· ${x.status}`:''}</p>
+      </div>
+      {x.amount!==null&&x.amount!==undefined&&<b className="shrink-0">{Number(x.amount)?money(x.amount):'FREE'}</b>}
+     </div>
+     {x.duration&&(
+      <div className={`rounded-lg border px-3 py-2 ${x.durationPending?'border-amber-200 bg-amber-50 text-amber-900':'border-indigo-200 bg-white text-indigo-900'}`}>
+       <p className="text-[10px] font-black uppercase tracking-wide opacity-70">{x.durationLabel||'ကြာချိန်'}</p>
+       <p className="text-sm font-black">{x.duration}{x.durationPending?' (ဆက်လက်)':''}</p>
+       {(x.startAt||x.endAt)&&(
+        <p className="mt-1 text-[11px] opacity-80">
+         {x.startAt?`စ: ${fmtDateTime(x.startAt)}`:''}
+         {x.startAt&&x.endAt?' → ':''}
+         {x.endAt?`ဆုံး: ${fmtDateTime(x.endAt)}`:''}
+        </p>
+       )}
+      </div>
+     )}
+    </div>
+   </div>;
+  })}
+ </section>;
+}
 function Sales({rows}:any){if(!rows.length)return <Empty/>;return <div className="space-y-3">{rows.map((s:any)=><article key={s.id} className="rounded-2xl border bg-white p-4"><div className="flex justify-between"><div><Badge text="SALE" cls="bg-blue-100 text-blue-700"/><b className="ml-2 font-mono text-indigo-700">{s.saleCode}</b><p className="text-xs text-slate-400">{fmtDate(s.saleDate)}</p></div><Cost job={s}/></div><div className="mt-3 divide-y rounded-xl bg-slate-50 px-3">{(s.details||[]).map((d:any,i:number)=><div key={i} className="flex justify-between py-2 text-sm"><span><b>{d.productName}</b> × {d.qty}{d.serialNumbers?.length?<small>SN: {d.serialNumbers.join(', ')}</small>:null}</span><b>{money(d.subtotal)}</b></div>)}</div></article>)}</div>}
-function Intakes({rows}:any){if(!rows.length)return <Empty text="ပစ္စည်းလက်ခံမှတ်တမ်းမရှိပါ"/>;return <section><Title icon={PackageCheck} title="ပစ္စည်းလက်ခံထားမှု" sub={`${rows.length} intake records`}/><div className="mt-3 grid gap-3 md:grid-cols-2">{rows.map((b:any)=><div key={b.id} className="rounded-xl border bg-white p-3"><div className="flex justify-between"><b className="font-mono text-violet-700">{b.invoiceNo}</b><Badge text={b.reworkReturn?'REWORK RETURN':b.status} cls={b.reworkReturn?'bg-amber-100 text-amber-800':'bg-violet-100 text-violet-700'}/></div><p className="mt-2 text-sm font-bold">{b.devices?.map((d:any)=>`${d.brand} ${d.model||''}`).join(', ')||`${b.brand||''} ${b.model||''}`}</p><p className="text-xs text-slate-400">{fmtDate(b.bookingDate)}</p></div>)}</div></section>}
+function Intakes({rows}:any){
+ if(!rows.length)return <Empty text="Booking မှတ်တမ်းမရှိပါ"/>;
+ return <section>
+  <Title icon={PackageCheck} title="Booking / ပစ္စည်းလက်ခံထားမှု" sub={`${rows.length} booking records`}/>
+  <div className="mt-3 grid gap-3 md:grid-cols-2">{rows.map((b:any)=><div key={b.id} className="rounded-xl border bg-white p-3">
+   <div className="flex justify-between gap-2">
+    <b className="font-mono text-violet-700">{b.bookingNo||`#${b.id}`}</b>
+    <Badge text={bookingStatusLabel[b.status]||b.status} cls={b.status==='DONE'?'bg-emerald-100 text-emerald-700':b.status==='REJECTED'||b.status==='CANCELED'?'bg-rose-100 text-rose-700':'bg-violet-100 text-violet-700'}/>
+   </div>
+   <p className="mt-2 text-sm font-bold">{bookingTitle(b)}</p>
+   <p className="text-xs text-slate-400">{fmtDateTime(b.createdAt||b.bookingDate)}</p>
+  </div>)}</div>
+ </section>;
+}

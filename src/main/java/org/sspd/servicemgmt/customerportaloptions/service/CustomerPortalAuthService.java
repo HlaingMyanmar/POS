@@ -23,6 +23,7 @@ import org.sspd.servicemgmt.customerportaloptions.model.CustomerAppAccount;
 import org.sspd.servicemgmt.customerportaloptions.support.CustomerPasswordRules;
 import org.sspd.servicemgmt.customerportaloptions.repository.CustomerAppAccountRepository;
 import org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth;
+import org.sspd.servicemgmt.exceptionhandler.ResourceNotFoundException;
 import org.sspd.servicemgmt.jwt.CustomerPortalUserDetails;
 import org.sspd.servicemgmt.jwt.JwtService;
 
@@ -113,10 +114,49 @@ public class CustomerPortalAuthService {
         String email = normalizeEmail(req == null ? null : req.getEmail());
         if (email == null) throw new IllegalArgumentException("Email ထည့်ပါ");
         CustomerAppAccount account = findAccountByEmail(email);
-        if (account != null) {
-            sendResetEmail(account, email);
+        if (account == null) {
+            throw new IllegalArgumentException(
+                    "ဤ Email ဖြင့် Customer App အကောင့် မရှိပါ။ အကောင့်နှင့် ချိတ်ထားသော Email သာ သုံးပါ");
         }
-        return resetSentResponse(email);
+        String linked = linkedAppEmail(account);
+        if (linked == null) {
+            throw new IllegalArgumentException("ဤ App အကောင့်တွင် Email မချိတ်ရသေးပါ။ Admin သို့ ဆက်သွယ်ပါ");
+        }
+        if (!linked.equals(email)) {
+            throw new IllegalArgumentException(
+                    "Reset link ကို အကောင့်နှင့် ချိတ်ထားသော Email သို့သာ ပို့နိုင်ပါသည်");
+        }
+        sendResetEmail(account, linked);
+        return resetSentResponse(linked);
+    }
+
+    /**
+     * Admin-triggered reset email to the account's linked Customer App email.
+     */
+    @Transactional
+    public String sendPasswordResetForAccount(Integer accountId) {
+        CustomerAppAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer app account not found"));
+        if (!Boolean.TRUE.equals(account.getEnabled())) {
+            throw new IllegalArgumentException("ဤ App အကောင့် ပိတ်ထားပါသည်");
+        }
+        String linked = linkedAppEmail(account);
+        if (linked == null) {
+            throw new IllegalArgumentException("App အကောင့်တွင် Email မချိတ်ရသေးပါ။ အရင် Email ချိတ်ပါ");
+        }
+        sendResetEmail(account, linked);
+        activityService.record(account, "ADMIN_PASSWORD_RESET_SENT", linked);
+        return linked;
+    }
+
+    /** Canonical email used for Customer App login / reset (account email preferred). */
+    private static String linkedAppEmail(CustomerAppAccount account) {
+        String fromAccount = normalizeEmail(account.getEmail());
+        if (fromAccount != null) return fromAccount;
+        if (account.getCustomer() != null) {
+            return normalizeEmail(account.getCustomer().getEmail());
+        }
+        return null;
     }
 
     @Transactional

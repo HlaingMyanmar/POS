@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingDTO;
+import org.sspd.servicemgmt.bookingoptions.dto.BookingFilterSummaryDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemComponentDTO;
 import org.sspd.servicemgmt.bookingoptions.dto.BookingItemPhotoDTO;
@@ -38,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -65,16 +67,74 @@ public class BookingService {
     private final ServiceBookingSettingsService serviceBookingSettingsService;
 
     @Transactional(readOnly = true)
-    public Page<BookingDTO> findAll(String search, String dateFrom, String dateTo, int page, int size) {
+    public Page<BookingDTO> findAll(
+            String search,
+            String dateFrom,
+            String dateTo,
+            BookingStatus status,
+            Integer customerId,
+            String source,
+            int page,
+            int size) {
         Page<Booking> bookings = repository.search(
-                search == null ? "" : search.trim(),
+                normalizeSearch(search),
                 parseDate(dateFrom),
                 parseDate(dateTo),
+                status,
+                customerId,
+                normalizeSource(source),
                 PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 500)),
                         Sort.by(Sort.Direction.DESC, "id")));
         // Admin list needs conversion flags, not request photo payloads.
         List<BookingDTO> mapped = mapSummaries(bookings.getContent(), false);
         return new org.springframework.data.domain.PageImpl<>(mapped, bookings.getPageable(), bookings.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public BookingFilterSummaryDTO filterSummary(
+            String search,
+            String dateFrom,
+            String dateTo,
+            BookingStatus status,
+            Integer customerId,
+            String source) {
+        String q = normalizeSearch(search);
+        LocalDate from = parseDate(dateFrom);
+        LocalDate to = parseDate(dateTo);
+        String sourceFilter = normalizeSource(source);
+
+        long total = repository.countFiltered(q, from, to, status, customerId, sourceFilter);
+        long appCount = repository.countFiltered(q, from, to, status, customerId, "CUSTOMER_APP");
+
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        for (BookingStatus s : BookingStatus.values()) {
+            byStatus.put(s.name(), 0L);
+        }
+        for (Object[] row : repository.countGroupedByStatus(q, from, to, customerId, sourceFilter)) {
+            if (row == null || row.length < 2 || row[0] == null) continue;
+            BookingStatus s = (BookingStatus) row[0];
+            long count = row[1] instanceof Number n ? n.longValue() : 0L;
+            byStatus.put(s.name(), count);
+        }
+
+        return BookingFilterSummaryDTO.builder()
+                .total(total)
+                .appCount(appCount)
+                .byStatus(byStatus)
+                .build();
+    }
+
+    private static String normalizeSearch(String search) {
+        return search == null ? "" : search.trim();
+    }
+
+    private static String normalizeSource(String source) {
+        if (source == null || source.isBlank()) return null;
+        String trimmed = source.trim();
+        if ("APP".equalsIgnoreCase(trimmed) || "CUSTOMER_APP".equalsIgnoreCase(trimmed)) {
+            return "CUSTOMER_APP";
+        }
+        return trimmed;
     }
 
     @Transactional(readOnly = true)
@@ -825,7 +885,8 @@ public class BookingService {
 
     private boolean isClosed(Booking booking) {
         return booking.getStatus() == BookingStatus.CANCELED
-                || booking.getStatus() == BookingStatus.REJECTED;
+                || booking.getStatus() == BookingStatus.REJECTED
+                || booking.getStatus() == BookingStatus.DONE;
     }
 
     private String generateBookingNo(Integer id) {

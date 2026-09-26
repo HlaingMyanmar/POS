@@ -7,12 +7,15 @@ import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.sspd.servicemgmt.api.ApiResponse;
 import org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth;
 import org.sspd.servicemgmt.chatoptions.dto.ChatMessageDTO;
+import org.sspd.servicemgmt.chatoptions.dto.CustomerConversationDTO;
+import org.sspd.servicemgmt.customeroptions.repository.CustomerRepository;
 import org.sspd.servicemgmt.chatoptions.model.ChatMessage;
 import org.sspd.servicemgmt.chatoptions.repository.ChatMessageRepository;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
@@ -21,6 +24,8 @@ import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Comparator;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 @RestController
@@ -31,6 +36,38 @@ public class ChatController {
     private final ChatMessageRepository chatRepo;
     private final SimpMessagingTemplate messaging;
     private final UserRepository userRepository;
+    private final CustomerRepository customerRepository;
+
+    @GetMapping("/conversations")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_READ')")
+    public ResponseEntity<ApiResponse<List<CustomerConversationDTO>>> conversations() {
+        List<CustomerConversationDTO> conversations = chatRepo.findCustomerIdsWithMessages().stream()
+                .map(customerId -> {
+                    ChatMessage latest = chatRepo.findByCustomerIdOrderBySentAtDesc(customerId, PageRequest.of(0, 1))
+                            .stream().findFirst().orElse(null);
+                    if (latest == null) return null;
+                    var customer = customerRepository.findById(customerId).orElse(null);
+                    return new CustomerConversationDTO(customerId,
+                            customer == null ? "Customer #" + customerId : customer.getName(),
+                            customer == null ? null : customer.getPhone(),
+                            latest.getContent(), latest.getSentAt(),
+                            "CUSTOMER".equalsIgnoreCase(latest.getSenderRole()));
+                })
+                .filter(java.util.Objects::nonNull)
+                .sorted(Comparator.comparing(CustomerConversationDTO::lastAt).reversed())
+                .toList();
+        return ResponseEntity.ok(new ApiResponse<>(true, "Conversations", conversations));
+    }
+
+    @GetMapping("/customers/{customerId}/messages")
+    @PreAuthorize("hasAuthority('CAN_ACCESS_CUSTOMER_READ')")
+    public ResponseEntity<ApiResponse<List<ChatMessageDTO>>> customerMessages(@PathVariable Integer customerId) {
+        List<ChatMessageDTO> messages = new java.util.ArrayList<>(chatRepo
+                .findByCustomerIdOrderBySentAtDesc(customerId, PageRequest.of(0, 100))
+                .stream().map(this::toDto).toList());
+        Collections.reverse(messages);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Messages", messages));
+    }
 
     // REST: load last 100 messages
     @GetMapping("/messages")
@@ -85,21 +122,39 @@ public class ChatController {
                 .customerId(customerId)
                 .senderUsername(username)
                 .senderName(displayName)
-                .senderRole(role)
+                .senderRole(role == null || role.isBlank() ? "STAFF" : role)
                 .content(content.trim())
                 .sentAt(LocalDateTime.now())
                 .build();
         chatRepo.save(msg);
 
         ChatMessageDTO dto = toDto(msg);
+        // Staff inbox always listens on the shared topic.
+        messaging.convertAndSend("/topic/chat", dto);
         if (customerId != null) {
-            messaging.convertAndSendToUser(
-                    org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth.usernameForCustomer(customerId),
-                    "/topic/chat", dto);
-        } else {
-            messaging.convertAndSend("/topic/chat", dto);
+            String customerUser = org.sspd.servicemgmt.customerportaloptions.support.CustomerPortalAuth
+                    .usernameForCustomer(customerId);
+            // Deliver both shapes: ChatMessageDTO (content/sentAt) and portal DTO aliases (text/createdAt).
+            messaging.convertAndSendToUser(customerUser, "/topic/chat", dto);
+            messaging.convertAndSendToUser(customerUser, "/topic/chat", customerFacingPayload(msg));
         }
         return dto;
+    }
+
+    private static java.util.Map<String, Object> customerFacingPayload(ChatMessage m) {
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("id", m.getId());
+        payload.put("customerId", m.getCustomerId());
+        payload.put("senderId", m.getCustomerId());
+        payload.put("content", m.getContent());
+        payload.put("text", m.getContent());
+        payload.put("senderName", m.getSenderName());
+        payload.put("senderRole", m.getSenderRole());
+        payload.put("isFromAdmin", !"CUSTOMER".equalsIgnoreCase(m.getSenderRole()));
+        String when = m.getSentAt() == null ? null : m.getSentAt().toString();
+        payload.put("sentAt", when);
+        payload.put("createdAt", when);
+        return payload;
     }
 
     private ChatMessageDTO toDto(ChatMessage m) {

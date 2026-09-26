@@ -11,7 +11,7 @@ import { compressImageFile } from '../utils/imageCompression';
 import PortaledCombobox from '../components/PortaledCombobox';
 import { InvoicePrintPreview } from '../print/components/InvoicePrintPreview';
 
-type BookingStatus = 'CONFIRMED' | 'ARRIVED' | 'REJECTED' | 'CANCELED';
+type BookingStatus = 'CONFIRMED' | 'ARRIVED' | 'DONE' | 'REJECTED' | 'CANCELED';
 type ItemPhoto = { id?: number; slot?: number; fileName?: string; contentType?: string; dataUrl?: string; imagePath?: string; thumbnailPath?: string };
 type ItemComponent = { id?: number; componentType: string; brand: string; model: string; specification: string; serialNo: string; quantity: number; conditionNote: string };
 type Item = { id?: number; itemName: string; deviceType: string; serialNo: string; color: string; accessories: string; problemDesc: string; itemCondition: string; noticed: string; convertedJobId?: number | null; photos?: ItemPhoto[]; components?: ItemComponent[] };
@@ -46,6 +46,7 @@ const input = 'w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm out
 const status: Record<BookingStatus, { label: string; style: string }> = {
   CONFIRMED: { label: 'အတည်ပြုပြီး', style: 'bg-blue-100 text-blue-700' },
   ARRIVED: { label: 'ပစ္စည်းလက်ခံပြီး', style: 'bg-amber-100 text-amber-700' },
+  DONE: { label: 'ပြီးစီးပါပြီ', style: 'bg-emerald-100 text-emerald-700' },
   REJECTED: { label: 'ငြင်းပယ်ထား', style: 'bg-rose-100 text-rose-700' },
   CANCELED: { label: 'ပယ်ဖျက်ထား', style: 'bg-rose-100 text-rose-700' },
 };
@@ -232,6 +233,14 @@ export default function BookingManagement() {
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'' | BookingStatus>('');
+  const [customerFilter, setCustomerFilter] = useState<number | null>(null);
+  const [appOnly, setAppOnly] = useState(false);
+  const [filterSummary, setFilterSummary] = useState<{ total: number; appCount: number; byStatus: Record<string, number> }>({
+    total: 0,
+    appCount: 0,
+    byStatus: {},
+  });
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(0);
   const [total, setTotal] = useState(0);
@@ -291,11 +300,23 @@ export default function BookingManagement() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res: any = await bookingService.getAll(page, 20, search.trim(), from, to);
-      setRows(res?.data?.content || []); setPages(Number(res?.data?.totalPages || 0)); setTotal(Number(res?.data?.totalElements || 0));
+      const source = appOnly ? 'CUSTOMER_APP' : '';
+      const [res, summaryRes]: any[] = await Promise.all([
+        bookingService.getAll(page, 20, search.trim(), from, to, statusFilter, customerFilter, source),
+        bookingService.filterSummary(search.trim(), from, to, statusFilter, customerFilter, source),
+      ]);
+      setRows(res?.data?.content || []);
+      setPages(Number(res?.data?.totalPages || 0));
+      setTotal(Number(res?.data?.totalElements || 0));
+      const summary = summaryRes?.data || {};
+      setFilterSummary({
+        total: Number(summary.total || 0),
+        appCount: Number(summary.appCount || 0),
+        byStatus: summary.byStatus || {},
+      });
     } catch (e: any) { Swal.fire('မရရှိပါ', e?.message || 'Booking စာရင်းမရပါ။', 'error'); }
     finally { setLoading(false); }
-  }, [page, search, from, to]);
+  }, [page, search, from, to, statusFilter, customerFilter, appOnly]);
   const loadCustomers = useCallback(async () => {
     try {
       const list = await customerService.getAll();
@@ -512,7 +533,90 @@ export default function BookingManagement() {
 
   return <div className="space-y-5 p-4 md:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Booking Management</h1><p className="text-sm text-slate-500">Outdoor ချိန်းဆိုမှုနှင့် ဆိုင်အပ်ပစ္စည်း လက်ခံမှု</p></div>{can('CAN_ACCESS_BOOKING_CREATE') && <button onClick={openCreate} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white"><Plus size={18} /> Booking အသစ်</button>}</div>
-    <div className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-[1fr_170px_170px]"><div className="relative"><Search size={18} className="absolute left-3 top-3 text-slate-400" /><input className={input + ' pl-10'} placeholder="Booking No, Customer, Phone, Complaint" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} /></div><input className={input} type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(0); }} /><input className={input} type="date" value={to} onChange={e => { setTo(e.target.value); setPage(0); }} /></div>
+
+    <div className="space-y-3 rounded-2xl border bg-white p-4">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => { setStatusFilter(''); setPage(0); }}
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition ${!statusFilter ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+        >
+          အားလုံး
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${!statusFilter ? 'bg-white/80' : 'bg-slate-100 text-slate-500'}`}>
+            {Object.values(filterSummary.byStatus).reduce((sum, n) => sum + Number(n || 0), 0)}
+          </span>
+        </button>
+        {(Object.keys(status) as BookingStatus[]).map(key => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => { setStatusFilter(key); setPage(0); }}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition ${statusFilter === key ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            {status[key].label}
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${statusFilter === key ? 'bg-white/80' : 'bg-slate-100 text-slate-500'}`}>
+              {Number(filterSummary.byStatus[key] || 0)}
+            </span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => { setAppOnly(v => !v); setPage(0); }}
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition ${appOnly ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+        >
+          APP
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${appOnly ? 'bg-white/80' : 'bg-slate-100 text-slate-500'}`}>
+            {filterSummary.appCount}
+          </span>
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-[1fr_220px_170px_170px]">
+        <div className="relative">
+          <Search size={18} className="absolute left-3 top-3 text-slate-400" />
+          <input
+            className={input + ' pl-10'}
+            placeholder="Booking No, Customer, Phone, Complaint"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(0); }}
+          />
+        </div>
+        <PortaledCombobox
+          items={customerItems}
+          value={customerFilter || 0}
+          placeholder="ဖောက်သည် စစ်ထုတ်ရန်..."
+          inputClassName={input}
+          onChange={id => { setCustomerFilter(id || null); setPage(0); }}
+        />
+        <input className={input} type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(0); }} />
+        <input className={input} type="date" value={to} onChange={e => { setTo(e.target.value); setPage(0); }} />
+      </div>
+      {(statusFilter || customerFilter || appOnly || search || from || to) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span>
+            စစ်ထုတ်ရလဒ် {total} ခု
+            {appOnly ? ' · APP bookings' : ''}
+            {customerFilter ? ` · Customer #${customerFilter}` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter('');
+              setCustomerFilter(null);
+              setAppOnly(false);
+              setSearch('');
+              setFrom('');
+              setTo('');
+              setPage(0);
+            }}
+            className="font-semibold text-blue-600 hover:underline"
+          >
+            Filter ရှင်းမည်
+          </button>
+        </div>
+      )}
+    </div>
+
     <div className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Booking နံပါတ်</th><th className="px-4 py-3">ဖောက်သည်</th><th className="px-4 py-3">ချိန်းဆိုချိန်</th><th className="px-4 py-3">အခြေအနေ</th><th className="px-4 py-3">တိုင်ပင်ချက်</th><th className="px-4 py-3 text-right">လုပ်ဆောင်ချက်</th></tr></thead><tbody className="divide-y">
       {loading ? <tr><td colSpan={6} className="py-12 text-center">Loading...</td></tr> : !rows.length ? <tr><td colSpan={6} className="py-12 text-center text-slate-500">Booking မရှိသေးပါ။</td></tr> : rows.map(b => <tr key={b.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-semibold text-blue-700">{b.bookingNo}{b.source === 'CUSTOMER_APP' && <span className="ml-1 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-black text-indigo-700">APP</span>}</td><td className="px-4 py-3"><b>{b.customerName}</b><div className="text-xs text-slate-500">{b.customerPhone}</div></td><td className="px-4 py-3">{b.serviceDate ? <><div>{b.serviceDate}</div><div className="text-xs text-slate-500">{b.arrivalWindowId ? (windowNames[b.arrivalWindowId] || `Window #${b.arrivalWindowId}`) : (b.preferredAnytime === false && b.preferredTime ? String(b.preferredTime).slice(0, 5) : 'Anytime')}</div></> : dateText(b.appointmentDate || b.bookingDate)}</td><td className="px-4 py-3"><span className={'rounded-full px-2.5 py-1 text-xs font-semibold ' + status[b.status].style}>{status[b.status].label}</span></td><td className="max-w-xs truncate px-4 py-3">{b.complaintNote || '—'}</td><td className="px-4 py-3"><div className="flex justify-end gap-1"><button onClick={() => getDetail(b.id)} className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"><Eye size={17} /></button>{can('CAN_ACCESS_BOOKING_UPDATE') && !['CANCELED', 'REJECTED'].includes(b.status) && !b.fullyConverted && <button onClick={() => openEdit(b)} className="rounded-lg p-2 text-amber-600 hover:bg-amber-50"><Pencil size={17} /></button>}{can('CAN_ACCESS_BOOKING_DELETE') && b.status === 'CONFIRMED' && <button onClick={() => action('Booking ဖျက်မည်လား?', b.bookingNo, () => bookingService.remove(b.id), 'ဖျက်ပြီးပါပြီ')} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"><Trash2 size={17} /></button>}</div></td></tr>)}
     </tbody></table></div><div className="flex items-center justify-between border-t px-4 py-3 text-sm"><span>စုစုပေါင်း {total}</span><div className="flex items-center gap-2"><button disabled={!page} onClick={() => setPage(p => p - 1)} className="rounded-lg border p-2 disabled:opacity-40"><ChevronLeft size={17} /></button><span>{pages ? page + 1 : 0} / {pages}</span><button disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)} className="rounded-lg border p-2 disabled:opacity-40"><ChevronRight size={17} /></button></div></div></div>
@@ -521,7 +625,7 @@ export default function BookingManagement() {
     {showAddCustomer && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4"><div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b px-5 py-4"><h3 className="text-lg font-bold">Customer အသစ်</h3><button type="button" disabled={creatingCustomer} onClick={() => { setShowAddCustomer(false); setNewCustomer(emptyNewCustomer()); }} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-50"><X size={20} /></button></div><div className="space-y-3 p-5"><Label text="အမည်" required><input className={input} value={newCustomer.name} onChange={e => setNewCustomer({ ...newCustomer, name: e.target.value })} placeholder="Customer အမည်" /></Label><Label text="ဖုန်း"><input className={input} value={newCustomer.phone} onChange={e => setNewCustomer({ ...newCustomer, phone: e.target.value })} placeholder="ဖုန်းနံပါတ်" /></Label><Label text="လိပ်စာ"><textarea rows={3} className={input} value={newCustomer.address} onChange={e => setNewCustomer({ ...newCustomer, address: e.target.value })} placeholder="လိပ်စာ" /></Label><div className="flex justify-end gap-2 border-t pt-4"><button type="button" disabled={creatingCustomer} onClick={() => { setShowAddCustomer(false); setNewCustomer(emptyNewCustomer()); }} className="rounded-xl border px-4 py-2.5">မလုပ်တော့ပါ</button><button type="button" disabled={creatingCustomer} onClick={() => void createCustomer()} className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white disabled:opacity-50">{creatingCustomer ? 'သိမ်းနေသည်...' : 'သိမ်းမည်'}</button></div></div></div></div>}
 
     {detail && <Modal title={detail.bookingNo + ' အသေးစိတ်'} close={() => setDetail(null)} wide><div className="space-y-5 p-5">
-      <div className="grid gap-3 rounded-xl bg-slate-50 p-4 md:grid-cols-4"><div><small>Customer</small><div className="font-semibold">{detail.customerName}</div><small>{detail.customerPhone}</small></div><div><small>Appointment</small><div className="font-semibold">{dateText(detail.appointmentDate || detail.bookingDate)}</div></div><div><small>Status</small><div><span className={'rounded-full px-2.5 py-1 text-xs font-semibold ' + status[detail.status].style}>{status[detail.status].label}</span></div></div><div><small>Next action</small><div className="font-semibold text-blue-700">{detail.status === 'CONFIRMED' ? detail.linkedJobs.length ? 'Outdoor Job ပြောင်းပြီး' : 'Outdoor ပြောင်း / ပစ္စည်းလက်ခံ' : detail.status === 'ARRIVED' ? detail.unconvertedItemCount ? 'Indoor Job ပြောင်းရန်' : 'Items အားလုံးပြောင်းပြီး' : 'လုပ်ဆောင်၍မရ'}</div></div></div>
+      <div className="grid gap-3 rounded-xl bg-slate-50 p-4 md:grid-cols-4"><div><small>Customer</small><div className="font-semibold">{detail.customerName}</div><small>{detail.customerPhone}</small></div><div><small>Appointment</small><div className="font-semibold">{dateText(detail.appointmentDate || detail.bookingDate)}</div></div><div><small>Status</small><div><span className={'rounded-full px-2.5 py-1 text-xs font-semibold ' + status[detail.status].style}>{status[detail.status].label}</span></div></div><div><small>Next action</small><div className="font-semibold text-blue-700">{detail.status === 'CONFIRMED' ? detail.linkedJobs.length ? 'Outdoor Job ပြောင်းပြီး' : 'Outdoor ပြောင်း / ပစ္စည်းလက်ခံ' : detail.status === 'ARRIVED' ? detail.unconvertedItemCount ? 'Indoor Job ပြောင်းရန်' : 'Items အားလုံးပြောင်းပြီး' : detail.status === 'DONE' ? 'ပြီးစီးပါပြီ' : 'လုပ်ဆောင်၍မရ'}</div></div></div>
       {detail.status === 'REJECTED' && <section className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><h3 className="font-bold">ငြင်းပယ်မှုအသေးစိတ်</h3><p className="mt-1 whitespace-pre-wrap">{detail.rejectionReason || 'အကြောင်းပြချက်မရှိပါ။'}</p><div className="mt-2 text-xs text-rose-700">{detail.rejectedBy && <>လုပ်ဆောင်သူ: {detail.rejectedBy}</>}{detail.rejectedAt && <> · {dateText(detail.rejectedAt)}</>}</div></section>}
       <div><h3 className="font-semibold">Complaint</h3><p className="whitespace-pre-wrap text-sm text-slate-600">{detail.complaintNote || '—'}</p></div>
       {(detail.source === 'CUSTOMER_APP' || detail.requestedServiceName || detail.requestType) && <section className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">

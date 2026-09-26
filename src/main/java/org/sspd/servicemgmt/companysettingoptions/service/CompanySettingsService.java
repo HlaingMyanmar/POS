@@ -73,6 +73,7 @@ public class CompanySettingsService {
         s.setLogoBase64(dto.getLogoBase64());
         s.setNotificationSoundBase64(dto.getNotificationSoundBase64());
         s.setVoucherConfigJson(dto.getVoucherConfigJson());
+        s.setChatGreeting(trimToNull(dto.getChatGreeting()));
         if (dto.getSalePrefix() != null) s.setSalePrefix(dto.getSalePrefix().isBlank() ? "INV" : dto.getSalePrefix().trim());
         if (dto.getSaleDigits() != null && dto.getSaleDigits() >= 1 && dto.getSaleDigits() <= 10) s.setSaleDigits(dto.getSaleDigits());
         if (dto.getPurchasePrefix() != null) s.setPurchasePrefix(dto.getPurchasePrefix().isBlank() ? "PUR" : dto.getPurchasePrefix().trim());
@@ -140,6 +141,7 @@ public class CompanySettingsService {
         dto.setLogoBase64(s.getLogoBase64());
         dto.setNotificationSoundBase64(s.getNotificationSoundBase64());
         dto.setVoucherConfigJson(s.getVoucherConfigJson());
+        dto.setChatGreeting(s.getChatGreeting());
         dto.setSalePrefix(s.getSalePrefix() != null ? s.getSalePrefix() : "INV");
         dto.setSaleDigits(s.getSaleDigits() != null ? s.getSaleDigits() : 5);
         dto.setPurchasePrefix(s.getPurchasePrefix() != null ? s.getPurchasePrefix() : "PUR");

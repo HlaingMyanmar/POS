@@ -62,14 +62,14 @@
           <span class="inv-summary-row__label">Paid</span>
           <span class="inv-summary-row__value" th:text="${inv.paid}">0</span>
         </div>
-        <div class="inv-summary-row inv-summary-row--highlight">
+        <div th:class="${'inv-summary-row' + ((inv.balanceDue == null or inv.balanceDue == '0' or inv.balanceDue == '0.00') ? ' inv-summary-row--settled' : ' inv-summary-row--highlight')}">
           <span class="inv-summary-row__label">Balance</span>
           <span class="inv-summary-row__value" th:text="${inv.balanceDue}">0</span>
         </div>
       </div>
     </div>
   </div>
-  <div th:if="${not #strings.isEmpty(inv.remark)}" style="margin-top:14px;">
+  <div th:if="${not #strings.isEmpty(inv.remark)}" class="inv-remark-block">
     <div class="inv-section-label">Remarks</div>
     <div class="inv-remark" th:text="${inv.remark}"></div>
   </div>

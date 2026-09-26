@@ -347,6 +347,10 @@ const VoucherPreview: React.FC<{
   const rowCount = Math.min(Math.max(setting.rowsOnFirstPage || 5, 3), isPos ? 5 : 7);
   const rows = Array.from({ length: rowCount });
   const paperWidth = is58 ? 200 : isPos ? 260 : isA5 ? 320 : 360;
+  // Keep the settings preview tied to the real ISO paper proportions.
+  // Previously A4/A5 were fixed-width cards with content-driven heights, so
+  // switching paper size did not show the actual 210x297 / 148x210 page.
+  const paperMinHeight = isPos ? undefined : Math.round(paperWidth * (isA5 ? 210 / 148 : 297 / 210));
   const padX = isPos ? 10 : 14;
 
   if (isPos) {
@@ -354,7 +358,7 @@ const VoucherPreview: React.FC<{
       <div className="rounded-xl border border-slate-200 bg-slate-100 p-3">
         <div
           className="mx-auto overflow-hidden rounded-lg bg-white shadow-sm"
-          style={{ width: paperWidth, fontFamily: setting.tableDataFontFamily || 'Arial' }}
+          style={{ width: paperWidth, minHeight: paperMinHeight, fontFamily: setting.tableDataFontFamily || 'Arial' }}
         >
           <div className="border-b border-dashed border-slate-300 px-3 py-3 text-center">
             {setting.showLogo && logoSrc && (
@@ -395,10 +399,18 @@ const VoucherPreview: React.FC<{
             <div className="flex justify-between"><span>Paid</span><b>100,000</b></div>
             <div className="flex justify-between font-black"><span>Due</span><span>25,000</span></div>
           </div>
-          {(setting.showQrCode || setting.footerNote) && (
+          {(setting.showQrCode || setting.footerNote || setting.customerNotice) && (
             <div className="border-t border-dashed border-slate-300 px-3 py-3 text-center">
               {setting.showQrCode && <div className="mb-2 flex justify-center"><PreviewQr size={52} /></div>}
               {setting.footerNote && <p className="text-[9px] text-slate-500">{setting.footerNote}</p>}
+              {setting.customerNotice && (
+                <div
+                  className="mt-2 whitespace-pre-wrap break-words rounded border border-dashed border-slate-300 bg-slate-50 px-2 py-1.5 text-left text-slate-600"
+                  style={{ fontFamily: setting.noticeFontFamily || 'Arial', fontSize: Math.max(setting.noticeFontSizePx || 9, 8) }}
+                >
+                  {setting.customerNotice}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -410,7 +422,7 @@ const VoucherPreview: React.FC<{
     <div className="rounded-xl border border-slate-200 bg-slate-100 p-3">
       <div
         className="mx-auto overflow-hidden rounded-lg bg-white shadow-sm"
-        style={{ width: paperWidth, fontFamily: setting.tableDataFontFamily || 'Arial' }}
+        style={{ width: paperWidth, minHeight: paperMinHeight, fontFamily: setting.tableDataFontFamily || 'Arial' }}
       >
         {/* Compact white header: brand left · meta text + QR side-by-side */}
         <div
@@ -553,7 +565,7 @@ const VoucherPreview: React.FC<{
           >
             {setting.footerNote && <p className="font-semibold text-slate-600">{setting.footerNote}</p>}
             {setting.customerNotice && (
-              <p className="mt-1" style={{ fontFamily: setting.noticeFontFamily || 'Arial', fontSize: Math.max(setting.noticeFontSizePx || 9, 8) }}>
+              <p className="mt-1 whitespace-pre-wrap break-words" style={{ fontFamily: setting.noticeFontFamily || 'Arial', fontSize: Math.max(setting.noticeFontSizePx || 9, 8) }}>
                 {setting.customerNotice}
               </p>
             )}

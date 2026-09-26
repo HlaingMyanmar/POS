@@ -292,6 +292,7 @@ public class InvoiceAssemblerService {
         return switch (status) {
             case CONFIRMED -> "အတည်ပြုပြီး";
             case ARRIVED -> "ပစ္စည်းလက်ခံပြီး";
+            case DONE -> "ပြီးစီးပါပြီ";
             case CANCELED -> "ပယ်ဖျက်ထား";
             case REJECTED -> "ငြင်းပယ်ထား";
         };

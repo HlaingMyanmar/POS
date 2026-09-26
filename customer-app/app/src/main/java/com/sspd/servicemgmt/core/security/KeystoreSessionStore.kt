@@ -66,8 +66,10 @@ class KeystoreSessionStore(
         legacy.edit().remove(key).commit()
     }
 
+    @Synchronized
     fun clear() {
-        encrypted.edit().clear().commit()
+        check(encrypted.edit().clear().commit()) { "Unable to clear encrypted session" }
+        check(legacy.edit().remove("auth_token").commit()) { "Unable to clear legacy session" }
     }
 
     private fun getOrCreateKey(): SecretKey {

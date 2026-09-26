@@ -935,12 +935,12 @@ private fun CheckoutNextBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (!showBottomNav) Modifier.navigationBarsPadding() else Modifier)
+                .navigationBarsPadding()
                 .padding(
                     start = 16.dp,
                     end = 16.dp,
                     top = 10.dp,
-                    bottom = if (showBottomNav) 10.dp + 68.dp else 10.dp
+                    bottom = if (showBottomNav) 10.dp + 72.dp else 10.dp
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -1127,12 +1127,12 @@ private fun CartContinueBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (!showBottomNav) Modifier.navigationBarsPadding() else Modifier)
+                .navigationBarsPadding()
                 .padding(
                     start = 16.dp,
                     end = 16.dp,
                     top = 10.dp,
-                    bottom = if (showBottomNav) 10.dp + 68.dp else 10.dp
+                    bottom = if (showBottomNav) 10.dp + 72.dp else 10.dp
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -2453,12 +2453,12 @@ private fun CartCheckoutBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (!showBottomNav) Modifier.navigationBarsPadding() else Modifier)
+                .navigationBarsPadding()
                 .padding(
                     start = 16.dp,
                     end = 16.dp,
                     top = 10.dp,
-                    bottom = if (showBottomNav) 10.dp + 68.dp else 10.dp
+                    bottom = if (showBottomNav) 10.dp + 72.dp else 10.dp
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {

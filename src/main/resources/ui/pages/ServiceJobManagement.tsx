@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useDataEvents } from '../hooks/useDataEvents';
 import { useWebsocket } from '../hooks/useWebsocket';
 import { Printer, FileEdit, AlertTriangle, PackageCheck, RotateCcw, Plus, Camera, RefreshCw } from 'lucide-react';
@@ -1165,6 +1166,7 @@ const AttachmentPreviewLightbox: React.FC<{
 };
 
 export default function ServiceJobManagement() {
+  const [searchParams] = useSearchParams();
   const currentUser = useMemo(() => {
     try { return JSON.parse(getFromSession('sspd_user') || '{}') as { staffId?: number; name?: string; username?: string; roles?: string[]; permissions?: string[] }; }
     catch { return {}; }
@@ -1188,7 +1190,10 @@ export default function ServiceJobManagement() {
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(0);
   const [tab, setTab]             = useState<WorkTab>('active');
-  const [statusFilter, setStatusFilter] = useState<'all' | JobStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | JobStatus>(() => {
+    const raw = String(searchParams.get('status') || '').toUpperCase();
+    return (STATUS_LIST as readonly string[]).includes(raw) ? (raw as JobStatus) : 'all';
+  });
   const [search, setSearch]       = useState('');
   const [defaultDate]             = useState(getLocalToday);
   const [dateFrom, setDateFrom]   = useState(defaultDate);

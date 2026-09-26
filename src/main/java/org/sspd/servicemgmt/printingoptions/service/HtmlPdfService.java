@@ -91,10 +91,11 @@ public class HtmlPdfService {
      */
     public byte[] generatePdf(PrintInvoiceData data, PrintRequest req) {
         PrintLayoutConfig config = dynamicConfig.resolveConfig(req.getDocumentType(), req.getPaperSize());
-        log.info("Generating PDF: invoice={}, paper={}, rowsFirst={}, rowsCont={}",
+        log.info("Generating PDF: invoice={}, paper={}, rowsFirst={}, rowsCont={}, copy={}",
                 data.getInvoiceNo(), config.getName(),
-                config.getRowsOnFirstPage(), config.getRowsOnContinuationPage());
-        List<PrintInvoiceData> pages = paginationService.buildPages(data, config);
+                config.getRowsOnFirstPage(), config.getRowsOnContinuationPage(),
+                req.getCopyType());
+        List<PrintInvoiceData> pages = buildCopyPages(data, config, req.getCopyType());
         String body = templateService.renderPdfBody(pages, config);
         String xhtml = wrapForPdf(body, config, pages.isEmpty() ? null : pages.get(0));
         return xhtmlToPdf(xhtml, data.getInvoiceNo());
@@ -102,7 +103,7 @@ public class HtmlPdfService {
 
     public String generateHtmlPreview(PrintInvoiceData data, PrintRequest req) {
         PrintLayoutConfig config = dynamicConfig.resolveConfig(req.getDocumentType(), req.getPaperSize());
-        List<PrintInvoiceData> pages = paginationService.buildPages(data, config);
+        List<PrintInvoiceData> pages = buildCopyPages(data, config, req.getCopyType());
         return templateService.renderHtmlPreview(pages, config);
     }
 
@@ -165,13 +166,16 @@ public class HtmlPdfService {
 
     private List<PrintInvoiceData> buildCopyPages(PrintInvoiceData data, PrintLayoutConfig config, String copyType) {
         List<PrintInvoiceData> customerPages = paginationService.buildPages(data, config);
-        if (!"BOTH".equalsIgnoreCase(copyType)) return customerPages;
+        if (!"BOTH".equalsIgnoreCase(copyType)) {
+            return customerPages;
+        }
+        // Print duplication only — same invoice numbers / amounts, second set labeled SHOP COPY.
         List<PrintInvoiceData> shopPages = paginationService.buildPages(data, config);
         shopPages.forEach(page -> page.setCopyLabel("SHOP COPY"));
-        return new java.util.ArrayList<>() {{
-            addAll(customerPages);
-            addAll(shopPages);
-        }};
+        List<PrintInvoiceData> combined = new java.util.ArrayList<>(customerPages.size() + shopPages.size());
+        combined.addAll(customerPages);
+        combined.addAll(shopPages);
+        return combined;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

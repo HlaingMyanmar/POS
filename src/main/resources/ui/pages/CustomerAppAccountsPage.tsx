@@ -42,6 +42,7 @@ const ACTION_LABEL: Record<string, string> = {
   SERVICE_REQUESTED: 'Service တောင်း',
   ADMIN_CREATED: 'Admin ဖန်တီး',
   ADMIN_LINKED: 'Admin ချိတ်',
+  ADMIN_PASSWORD_RESET_SENT: 'Admin Reset link ပို့',
 };
 
 const fmt = (v?: string) => (v ? String(v).replace('T', ' ').slice(0, 16) : '—');
@@ -114,6 +115,46 @@ const CustomerAppAccountsPage: React.FC = () => {
         icon: 'error',
         title: 'မအောင်မြင်ပါ',
         text: e?.response?.data?.message || e?.message || 'Email ပြင်မရပါ',
+      });
+    }
+  };
+
+  const sendPasswordReset = async (account: Account) => {
+    if (!account.email) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Email မရှိပါ',
+        text: 'Reset link ပို့ရန် App အကောင့် Email အရင် ချိတ်/ပြင်ပါ',
+      });
+      return;
+    }
+    const confirm = await Swal.fire({
+      icon: 'question',
+      title: 'Password reset link ပို့မည်လား?',
+      html: `<p class="text-sm text-slate-600">ချိတ်ထားသော Email သို့ ပို့ပါမည်:</p>
+             <p class="mt-2 font-mono text-sm font-black text-indigo-700">${account.email}</p>`,
+      showCancelButton: true,
+      confirmButtonText: 'ပို့မည်',
+      cancelButtonText: 'မလုပ်တော့ပါ',
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+      const res = await api.post<any>(`/v1/customer-app-accounts/${account.id}/send-password-reset`, {});
+      await Swal.fire({
+        icon: 'success',
+        title: 'ပို့ပြီးပါပြီ',
+        text: res.message || `${account.email} သို့ ပို့ပြီးပါပြီ`,
+        timer: 2200,
+        showConfirmButton: false,
+      });
+      if (selected?.id === account.id) {
+        await openActivity(account);
+      }
+    } catch (e: any) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'မအောင်မြင်ပါ',
+        text: e?.response?.data?.message || e?.message || 'Reset link ပို့မရပါ',
       });
     }
   };
@@ -299,6 +340,13 @@ const CustomerAppAccountsPage: React.FC = () => {
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-500">{fmt(a.createdAt)}</td>
                 <td className="px-4 py-3 text-right whitespace-nowrap space-x-1">
+                  <button
+                    onClick={() => void sendPasswordReset(a)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800"
+                    title={a.email ? `Reset link → ${a.email}` : 'Email မရှိ'}
+                  >
+                    <Mail size={12} /> Reset link
+                  </button>
                   <button
                     onClick={() => void openRelink(a)}
                     className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800"

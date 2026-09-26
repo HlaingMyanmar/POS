@@ -84,6 +84,15 @@ const netUnitPrice = (sale: SaleDTO, detail: { qty: number; unitPrice: number; s
 const SaleReturnManagement: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const sessionUser = useMemo(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('sspd_user') || '{}') as { roles?: string[]; permissions?: string[] };
+    } catch {
+      return {};
+    }
+  }, []);
+  const canManageReasons = (sessionUser.roles || []).some((role) => ['ADMINISTRATOR', 'ROLE_ADMINISTRATOR'].includes(role))
+    || (sessionUser.permissions || []).includes('CAN_ACCESS_SALE_RETURN_UPDATE');
   const [rows, setRows] = useState<SaleReturnDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -365,7 +374,7 @@ const SaleReturnManagement: React.FC = () => {
   const validForm = customerId > 0
     && saleId > 0
     && details.length > 0
-    && details.every((d) => d.productId > 0 && d.qty > 0 && d.unitPrice > 0)
+    && details.every((d) => d.productId > 0 && d.qty > 0 && d.unitPrice > 0 && !!d.reasonId)
     && serialValidation.qtyMatchesSerialCount
     && serialValidation.allRowsHaveSerials
     && serialValidation.uniqueAcrossRows
@@ -492,6 +501,28 @@ const SaleReturnManagement: React.FC = () => {
     });
   }, [loading, location.pathname, location.search, navigate, openView]);
 
+  const addReason = async () => {
+    const result = await Swal.fire({
+      title: 'Sale Return အကြောင်းရင်း ထည့်ရန်',
+      html: '<input id="sr-code" class="swal2-input" placeholder="Code"><input id="sr-name" class="swal2-input" placeholder="အမည်"><input id="sr-description" class="swal2-input" placeholder="ဖော်ပြချက် (မဖြည့်လည်းရ)">',
+      showCancelButton: true,
+      preConfirm: () => {
+        const code = (document.getElementById('sr-code') as HTMLInputElement).value.trim();
+        const name = (document.getElementById('sr-name') as HTMLInputElement).value.trim();
+        if (!code || !name) { Swal.showValidationMessage('Code နှင့် အမည် ဖြည့်ပါ'); return false; }
+        return { code, name, description: (document.getElementById('sr-description') as HTMLInputElement).value.trim(), active: true };
+      }
+    });
+    if (!result.isConfirmed || !result.value) return;
+    try {
+      const created = await saleReturnReasonApiService.create(result.value);
+      setReasons((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      Swal.fire({ icon: 'success', title: 'အကြောင်းရင်း ထည့်ပြီးပါပြီ', toast: true, position: 'top-end', timer: 1600, showConfirmButton: false });
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'အကြောင်းရင်း ထည့်၍မရပါ', 'error');
+    }
+  };
+
   const onSave = async () => {
     if (saving) return;
     if (!validForm) {
@@ -520,7 +551,7 @@ const SaleReturnManagement: React.FC = () => {
           unitPrice: Number(d.unitPrice),
           subtotal: Number((d.qty * d.unitPrice).toFixed(2)),
           serialNumbers: isSerialProduct(d.productId) ? d.serialNumbers.map((sn) => sanitizeSerial(sn)).filter(Boolean) : [],
-          reasonId: d.reasonId || reasons[0]?.id,
+          reasonId: d.reasonId,
           restock: d.restock !== false
         }))
       };
@@ -620,7 +651,7 @@ const SaleReturnManagement: React.FC = () => {
                 <input type="datetime-local" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ပြန်လက်ခံရသည့်အကြောင်းရင်း</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Return တစ်ခုလုံး၏ မှတ်ချက် (မဖြည့်လည်းရ)</label>
                 <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="ဥပမာ - ပစ္စည်းမှားဝယ် / defect / exchange / customer refund" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none" />
               </div>
             </div>
@@ -628,7 +659,10 @@ const SaleReturnManagement: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-800 text-sm">ပြန်လက်ခံမည့် ပစ္စည်းများ</h3>
-                <button onClick={() => setDetails((d) => [...d, emptyDetail()])} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"><Plus size={14} /> Add Row</button>
+                <div className="flex items-center gap-2">
+                  {canManageReasons && <button type="button" onClick={addReason} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">Reason အသစ်ထည့်</button>}
+                  <button onClick={() => setDetails((d) => [...d, emptyDetail()])} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700"><Plus size={14} /> Add Row</button>
+                </div>
               </div>
               <div className="overflow-auto">
                 <table className="w-full text-left border-collapse min-w-[700px]">
@@ -637,7 +671,7 @@ const SaleReturnManagement: React.FC = () => {
                       <th className="px-4 py-3 border-b border-slate-100">ပစ္စည်း</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-24">အရေအတွက်</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-32">တစ်ခုဈေး</th>
-                      <th className="px-4 py-3 border-b border-slate-100 w-36">အကြောင်းရင်း</th>
+                      <th className="px-4 py-3 border-b border-slate-100 w-36">ပစ္စည်းအကြောင်းရင်း *</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-28">Restock</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-36 text-right">စုစုပေါင်း</th>
                       <th className="px-4 py-3 border-b border-slate-100 w-12"></th>
@@ -658,7 +692,7 @@ const SaleReturnManagement: React.FC = () => {
                             <td className="px-4 py-3"><input type="number" min="0" step="0.01" value={d.unitPrice || ''} onChange={(e) => onDetailChange(i, 'unitPrice', e.target.value)} className="w-full px-2 py-1 bg-transparent border-none text-sm focus:ring-0 focus:outline-none" /></td>
                             <td className="px-4 py-3">
                               <select value={d.reasonId || 0} onChange={(e) => setDetails((prev) => prev.map((row, idx) => idx === i ? { ...row, reasonId: Number(e.target.value) || undefined } : row))} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs">
-                                <option value={0}>Reason</option>
+                                <option value={0}>အကြောင်းရင်း ရွေးပါ</option>
                                 {reasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                               </select>
                             </td>
@@ -736,6 +770,8 @@ const SaleReturnManagement: React.FC = () => {
                 <input type="text" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)} placeholder="မဖြည့်လည်းရ" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
               </div>
 
+              {reasons.length === 0 && <p className="text-[10px] text-rose-500">Reason စာရင်းမရှိပါ။ စာမျက်နှာ Refresh လုပ်ပါ။</p>}
+              {details.some((d) => d.productId > 0 && !d.reasonId) && <p className="text-[10px] text-rose-500">ပစ္စည်းတစ်ခုချင်းစီအတွက် အကြောင်းရင်း ရွေးပါ။</p>}
               {!serialValidation.qtyMatchesSerialCount && <p className="text-[10px] text-rose-500">Each serial-tracked row must contain exactly `qty` serial numbers.</p>}
               {serialValidation.qtyMatchesSerialCount && !serialValidation.allRowsHaveSerials && <p className="text-[10px] text-rose-500">Every serial number field is required for serial products.</p>}
               {!serialValidation.uniqueAcrossRows && <p className="text-[10px] text-rose-500">Duplicate serial numbers are not allowed.</p>}
@@ -758,6 +794,7 @@ const SaleReturnManagement: React.FC = () => {
       <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center">
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center 2xl:order-2">
           <button onClick={() => loadRows(currentPage, pageSize, debouncedSearch)} className="inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> ပြန်ဖတ်ရန်</button>
+          {canManageReasons && <button type="button" onClick={addReason} className="inline-flex justify-center items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">Reason အသစ်ထည့်</button>}
           <button onClick={openCreate} className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"><Plus size={16} /> အရောင်းပြန်လက်ခံမှုအသစ်</button>
         </div>
       <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 2xl:order-1">

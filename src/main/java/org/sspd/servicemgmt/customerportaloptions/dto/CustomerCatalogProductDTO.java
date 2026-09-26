@@ -21,8 +21,12 @@ public class CustomerCatalogProductDTO {
     private Integer warrantyMonths;
     private String warrantyTerms;
     private String remark;
+    private String specifications;
+    private Integer reviewCount;
+    private Double reviewRating;
     private boolean inStock;
     private Integer stockQty;
     private String thumbnailUrl;
     private List<String> photoUrls = new ArrayList<>();
+    private List<CustomerCatalogVideoDTO> videos = new ArrayList<>();
 }

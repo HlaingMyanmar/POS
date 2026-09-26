@@ -66,7 +66,7 @@ const isServiceJobRequest = (url?: string) => /\/v1\/service-jobs(?:\/|$)/i.test
  * Request Interceptor
  * Injects token from JS Memory
  */
-api.interceptors.request.use(config => {
+api.interceptors.request.use(async config => {
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
     const headers = config.headers;
     if (headers && typeof headers.delete === 'function') {
@@ -78,6 +78,18 @@ api.interceptors.request.use(config => {
   }
   if (_accessToken) {
     config.headers.Authorization = `Bearer ${_accessToken}`;
+  }
+  if (needsStepUp(config.method, config.url) && !(config as any)._stepUpAttached) {
+    const token = await ensureStepUpToken();
+    if (!token) {
+      return Promise.reject({
+        success: false,
+        message: 'Re-authentication cancelled',
+        error: 'STEP_UP_REQUIRED',
+      });
+    }
+    config.headers['X-Step-Up-Token'] = token;
+    (config as any)._stepUpAttached = true;
   }
   return config;
 });
@@ -99,14 +111,58 @@ api.interceptors.response.use(
           title: 'Session Ended',
           text: 'This account has been logged in from another device. You have been signed out.',
           confirmButtonText: 'OK'
-        }).then(() => { window.location.href = '#/login'; });
+        }).then(() => { window.location.href = '/pos/login'; });
       });
       return Promise.reject(errData);
     }
 
+    if (error.response?.status === 401 && errData?.error === 'SESSION_ABSOLUTE') {
+      clearStepUpToken();
+      void authService.logout({ forceClearLocal: true }).finally(() => {
+        Swal.fire({
+          icon: 'info',
+          title: 'Shift ended',
+          text: 'Maximum session time reached. Please sign in again.',
+          confirmButtonText: 'OK',
+        }).then(() => { window.location.href = '/pos/login'; });
+      });
+      return Promise.reject(errData);
+    }
+
+    if (error.response?.status === 401 && errData?.error === 'SESSION_IDLE') {
+      setAccessToken(null);
+      clearStepUpToken();
+      dispatchSessionLock();
+      return Promise.reject(errData);
+    }
+
+    if (
+      error.response?.status === 401
+      && (errData?.error === 'STEP_UP_REQUIRED' || errData?.error === 'STEP_UP_INVALID')
+      && originalRequest
+      && !(originalRequest as any)._stepUpRetry
+    ) {
+      clearStepUpToken();
+      (originalRequest as any)._stepUpRetry = true;
+      try {
+        const token = await ensureStepUpToken();
+        if (token) {
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers['X-Step-Up-Token'] = token;
+          (originalRequest as any)._stepUpAttached = true;
+          return api(originalRequest);
+        }
+      } catch {
+        // fall through
+      }
+      return Promise.reject(errData || { success: false, message: 'Re-authentication required', error: 'STEP_UP_REQUIRED' });
+    }
+
     const requestUrl = String(originalRequest?.url || '');
     const isPublicSetup = requestUrl.includes('/v1/setup/');
-    const isAuthRequest = requestUrl.includes('/v1/auth/login') || requestUrl.includes('/v1/auth/refresh');
+    const isAuthRequest = requestUrl.includes('/v1/auth/login')
+      || requestUrl.includes('/v1/auth/refresh')
+      || requestUrl.includes('/v1/auth/unlock');
 
     // If token expired (401) and we haven't retried yet
     if (!isPublicSetup && !isAuthRequest && error.response?.status === 401 && originalRequest && !originalRequest._retry) {
@@ -119,9 +175,22 @@ api.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${refreshRes.data.accessToken}`;
           return api(originalRequest);
         }
-      } catch (refreshError) {
+      } catch (refreshError: any) {
+        const refreshErr = refreshError?.response?.data || refreshError;
+        if (refreshErr?.error === 'SESSION_IDLE') {
+          setAccessToken(null);
+          clearStepUpToken();
+          dispatchSessionLock();
+          return Promise.reject(refreshErr);
+        }
+        if (refreshErr?.error === 'SESSION_ABSOLUTE') {
+          clearStepUpToken();
+          await authService.logout({ forceClearLocal: true });
+          window.location.href = '/pos/login';
+          return Promise.reject(refreshErr);
+        }
         await authService.logout({ forceClearLocal: true });
-        window.location.href = '#/login';
+        window.location.href = '/pos/login';
       }
     }
 
@@ -163,6 +232,106 @@ api.interceptors.response.use(
 );
 
 export const SESSION_USER_EVENT = 'sspd:session-user';
+export const SESSION_LOCK_EVENT = 'sspd:session-lock';
+export const SESSION_UNLOCK_EVENT = 'sspd:session-unlock';
+
+/** Client idle hint (ms) — server enforces the same via refresh/unlock (default 20m). */
+export const CLIENT_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
+
+let _stepUpToken: string | null = null;
+let _stepUpExpiresAt = 0;
+let _stepUpPromptInFlight: Promise<string | null> | null = null;
+let sessionLocked = false;
+
+export const isSessionLocked = () => sessionLocked;
+
+export const dispatchSessionLock = () => {
+  sessionLocked = true;
+  window.dispatchEvent(new CustomEvent(SESSION_LOCK_EVENT));
+};
+
+export const dispatchSessionUnlock = () => {
+  sessionLocked = false;
+  window.dispatchEvent(new CustomEvent(SESSION_UNLOCK_EVENT));
+};
+
+const clearStepUpToken = () => {
+  _stepUpToken = null;
+  _stepUpExpiresAt = 0;
+};
+
+const promptStepUpPassword = async (): Promise<string | null> => {
+  const result = await Swal.fire({
+    title: 'Confirm identity',
+    text: 'This action requires re-entering your password.',
+    input: 'password',
+    inputPlaceholder: 'Password',
+    showCancelButton: true,
+    confirmButtonText: 'Confirm',
+    cancelButtonText: 'Cancel',
+    inputAttributes: { autocapitalize: 'off', autocomplete: 'current-password' },
+  });
+  if (!result.isConfirmed) return null;
+  const password = String(result.value || '');
+  return password.trim() ? password : null;
+};
+
+const fetchStepUpToken = async (password: string): Promise<string> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Client-Type': 'web',
+  };
+  if (_accessToken) {
+    headers.Authorization = `Bearer ${_accessToken}`;
+  }
+  const response = await axios.post<ApiResponse<{ stepUpToken: string; expiresInSeconds: number }>>(
+    joinUrl(BASE_URL, '/v1/auth/step-up'),
+    { password },
+    { withCredentials: true, headers },
+  );
+  const body = response.data;
+  if (!body?.success || !body.data?.stepUpToken) {
+    throw new Error(body?.message || 'Step-up failed');
+  }
+  _stepUpToken = body.data.stepUpToken;
+  const ttlSec = Number(body.data.expiresInSeconds) || 300;
+  _stepUpExpiresAt = Date.now() + Math.max(30, ttlSec - 15) * 1000;
+  return _stepUpToken;
+};
+
+/** Prompts for password and caches a short-lived step-up token. */
+export const ensureStepUpToken = async (): Promise<string | null> => {
+  if (_stepUpToken && Date.now() < _stepUpExpiresAt) {
+    return _stepUpToken;
+  }
+  if (_stepUpPromptInFlight) {
+    return _stepUpPromptInFlight;
+  }
+  _stepUpPromptInFlight = (async () => {
+    const password = await promptStepUpPassword();
+    if (!password) return null;
+    return fetchStepUpToken(password);
+  })().finally(() => {
+    _stepUpPromptInFlight = null;
+  });
+  return _stepUpPromptInFlight;
+};
+
+const needsStepUp = (method?: string, url?: string): boolean => {
+  const m = String(method || 'get').toUpperCase();
+  const path = String(url || '').replace(/^.*\/api/, '/api').split('?')[0];
+  // Paths are relative to BASE_URL (/api) so often start with /v1/...
+  const p = path.startsWith('/v1/') ? `/api${path}` : path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`;
+
+  if (m === 'DELETE' && /^\/api\/v1\/sales\/\d+$/.test(p)) return true;
+  if (m === 'POST' && p === '/api/v1/sale-returns') return true;
+  if (m === 'DELETE' && /^\/api\/v1\/sale-returns\/\d+$/.test(p)) return true;
+  if (m === 'POST' && /^\/api\/v1\/sale-returns\/\d+\/void$/.test(p)) return true;
+  if ((m === 'PUT' || m === 'DELETE') && /^\/api\/v1\/user\/\d+\/role(?:\/\d+)?$/.test(p)) return true;
+  if ((m === 'POST' || m === 'PUT' || m === 'DELETE') && /^\/api\/v1\/roles(?:\/|$)/.test(p)) return true;
+  if ((m === 'POST' || m === 'PUT' || m === 'DELETE') && /^\/api\/v1\/permissions(?:\/|$)/.test(p)) return true;
+  return false;
+};
 
 export const userFromAuthResponse = (data: AuthResponse): User => ({
   username: data.username,
@@ -182,6 +351,8 @@ const persistSessionUser = (data: AuthResponse) => {
 
 const clearLocalAuthSession = () => {
   setAccessToken(null);
+  clearStepUpToken();
+  sessionLocked = false;
   removeFromSession('sspd_refresh');
   removeFromSession('sspd_user');
   removeFromSession('sspd_token'); // Clean up old legacy keys
@@ -238,11 +409,36 @@ export const authService = {
           }
           return result;
         })
+        .catch(error => {
+          const errData = error?.response?.data;
+          if (errData?.error === 'SESSION_IDLE' || errData?.error === 'SESSION_ABSOLUTE') {
+            throw errData;
+          }
+          throw error;
+        })
         .finally(() => {
           refreshInFlight = null;
         });
     }
     return refreshInFlight;
+  },
+
+  unlock: async (password: string): Promise<ApiResponse<AuthResponse>> => {
+    const response = await axios.post<ApiResponse<AuthResponse>>(
+      joinUrl(BASE_URL, '/v1/auth/unlock'),
+      { password },
+      {
+        withCredentials: true,
+        headers: { 'Content-Type': 'application/json', 'X-Client-Type': 'web' },
+      },
+    );
+    const result = response.data;
+    if (result.success && result.data?.accessToken) {
+      setAccessToken(result.data.accessToken);
+      persistSessionUser(result.data);
+      dispatchSessionUnlock();
+    }
+    return result;
   },
 
   clearLocalSession: clearLocalAuthSession,
@@ -313,6 +509,14 @@ export const serviceBookingSettingsService = {
   createDateException: (dto: any) => api.post<any, ApiResponse<any>>('/v1/service-booking-settings/date-exceptions', dto),
   updateDateException: (id: number, dto: any) => api.put<any, ApiResponse<any>>(`/v1/service-booking-settings/date-exceptions/${id}`, dto),
   deleteDateException: (id: number) => api.delete<any, ApiResponse<void>>(`/v1/service-booking-settings/date-exceptions/${id}`),
+};
+
+export type CustomerChatConversation = { customerId: number; customerName: string; phone?: string | null; lastMessage: string; lastAt: string; lastFromCustomer: boolean };
+export type StaffChatMessage = { id: number; customerId: number; senderName?: string; senderRole?: string; content: string; sentAt: string };
+export const customerChatService = {
+  conversations: () => api.get<any, ApiResponse<CustomerChatConversation[]>>('/v1/chat/conversations'),
+  messages: (customerId: number) => api.get<any, ApiResponse<StaffChatMessage[]>>(`/v1/chat/customers/${customerId}/messages`),
+  send: (customerId: number, content: string) => api.post<any, ApiResponse<StaffChatMessage>>('/v1/chat/send', { customerId, content }),
 };
 
 // ── App Version Settings ───────────────────────────────────
@@ -392,11 +596,41 @@ export const serviceItemService = {
 
 // ── Bookings ──────────────────────────────────────────────
 export const bookingService = {
-  getAll: (page = 0, size = 20, search = '', dateFrom = '', dateTo = '') => {
+  getAll: (
+    page = 0,
+    size = 20,
+    search = '',
+    dateFrom = '',
+    dateTo = '',
+    status = '',
+    customerId: number | string | null = null,
+    source = '',
+  ) => {
     const q = search ? `&search=${encodeURIComponent(search)}` : '';
     const df = dateFrom ? `&dateFrom=${dateFrom}` : '';
     const dt = dateTo ? `&dateTo=${dateTo}` : '';
-    return api.get<any, ApiResponse<PagedData<any>>>(`/v1/bookings?page=${page}&size=${size}${q}${df}${dt}`);
+    const st = status ? `&status=${encodeURIComponent(status)}` : '';
+    const cid = customerId != null && customerId !== '' ? `&customerId=${customerId}` : '';
+    const src = source ? `&source=${encodeURIComponent(source)}` : '';
+    return api.get<any, ApiResponse<PagedData<any>>>(`/v1/bookings?page=${page}&size=${size}${q}${df}${dt}${st}${cid}${src}`);
+  },
+  filterSummary: (
+    search = '',
+    dateFrom = '',
+    dateTo = '',
+    status = '',
+    customerId: number | string | null = null,
+    source = '',
+  ) => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    if (status) params.set('status', status);
+    if (customerId != null && customerId !== '') params.set('customerId', String(customerId));
+    if (source) params.set('source', source);
+    const qs = params.toString();
+    return api.get<any, ApiResponse<any>>(`/v1/bookings/filter-summary${qs ? `?${qs}` : ''}`);
   },
   getById: (id: number) => api.get<any, ApiResponse<any>>(`/v1/bookings/${id}`),
   create: (dto: any) => api.post<any, ApiResponse<any>>('/v1/bookings', dto),

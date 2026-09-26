@@ -270,8 +270,30 @@ public class TemplateRenderingService {
                   <style>
                     %s
                     @page { size: %s; margin: %.1fmm %.1fmm %.1fmm %.1fmm; }
-                    body { padding: 16px; background: #e5e7eb; }
-                    .invoice-page { box-shadow: 0 2px 16px rgba(30,58,95,.12); margin-bottom: 20px; }
+                    html, body { margin: 0; padding: 0; }
+                    body {
+                      padding: 12px;
+                      background: #e8edf3;
+                      font-family: Pyidaungsu, 'Myanmar Text', 'Segoe UI', Arial, sans-serif;
+                    }
+                    .invoice-page {
+                      box-shadow: 0 4px 24px rgba(15, 23, 42, 0.12);
+                      margin: 0 auto 20px;
+                      background: #fff;
+                    }
+                    .invoice-page:last-child { margin-bottom: 0; }
+                    @media print {
+                      body { padding: 0 !important; background: #fff !important; }
+                      /* @page margins define the printable content box. A physical
+                         page-width element inside it causes shrink or overflow. */
+                      .invoice-page {
+                        width: 100%% !important;
+                        min-height: 0 !important;
+                        box-shadow: none !important;
+                        margin: 0 !important;
+                        overflow: visible !important;
+                      }
+                    }
                     %s
                   </style>
                 </head>

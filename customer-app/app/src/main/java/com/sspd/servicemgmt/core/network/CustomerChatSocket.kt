@@ -2,10 +2,13 @@ package com.sspd.servicemgmt.core.network
 
 import android.os.Handler
 import android.os.Looper
-import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.sspd.servicemgmt.core.util.PreferenceManager
-import okhttp3.*
-import java.util.concurrent.TimeUnit
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 
 /** Real-time chat socket for customer support. */
 class CustomerChatSocket(
@@ -27,13 +30,6 @@ class CustomerChatSocket(
         val old = socket
         socket = null
         old?.close(1000, "Chat session closed")
-    }
-
-    fun sendMessage(text: String) {
-        val msg = ChatRequest(text)
-        val payload = Gson().toJson(msg)
-        val frame = "SEND\nid:chat-send\ndestination:/app/chat/send\ncontent-type:application/json\n\n$payload\u0000"
-        socket?.send(frame)
     }
 
     private fun connect() {
@@ -61,12 +57,11 @@ class CustomerChatSocket(
                         }
                         "MESSAGE" -> {
                             val payload = normalized.substringAfter("\n\n", "")
-                            val message = runCatching {
-                                Gson().fromJson(payload, ChatMessage::class.java)
-                            }.getOrNull()
+                            val message = parseChatPayload(payload)
                             handler.post {
                                 if (stopped || socket !== webSocket) return@post
-                                message?.let { onMessageReceived(it) }
+                                if (message != null) onMessageReceived(message)
+                                else onConnected() // parse miss → reload history
                             }
                         }
                         "ERROR" -> webSocket.close(1000, "STOMP error")
@@ -88,6 +83,69 @@ class CustomerChatSocket(
                 handler.removeCallbacks(reconnect)
                 handler.postDelayed(reconnect, 5000)
             }
+        }
+    }
+
+    companion object {
+        fun parseChatPayload(payload: String): ChatMessage? = runCatching {
+            val value = JsonParser.parseString(payload).asJsonObject
+            val text = firstString(value.get("text"), value.get("content")).orEmpty().trim()
+            if (text.isEmpty()) return@runCatching null
+            val role = firstString(value.get("senderRole"))
+            val isAdmin = when {
+                value.has("isFromAdmin") && value.get("isFromAdmin").isJsonPrimitive ->
+                    value.get("isFromAdmin").asBoolean
+                else -> !role.equals("CUSTOMER", ignoreCase = true)
+            }
+            ChatMessage(
+                id = firstInt(value.get("id")),
+                senderId = firstInt(value.get("customerId"), value.get("senderId")),
+                text = text,
+                createdAt = firstTime(value.get("createdAt"), value.get("sentAt")),
+                isFromAdmin = isAdmin,
+                senderName = firstString(value.get("senderName"))
+            )
+        }.getOrNull()
+
+        private fun firstString(vararg elements: JsonElement?): String? {
+            for (el in elements) {
+                if (el == null || el.isJsonNull || !el.isJsonPrimitive) continue
+                val text = el.asString
+                if (text.isNotBlank()) return text
+            }
+            return null
+        }
+
+        private fun firstInt(vararg elements: JsonElement?): Int {
+            for (el in elements) {
+                if (el == null || el.isJsonNull || !el.isJsonPrimitive || !el.asJsonPrimitive.isNumber) continue
+                return el.asLong.toInt()
+            }
+            return 0
+        }
+
+        private fun firstTime(vararg elements: JsonElement?): String? {
+            for (el in elements) {
+                if (el == null || el.isJsonNull) continue
+                when {
+                    el.isJsonPrimitive -> return el.asString
+                    el.isJsonArray -> {
+                        val parts = el.asJsonArray.mapNotNull {
+                            if (it.isJsonPrimitive && it.asJsonPrimitive.isNumber) it.asInt else null
+                        }
+                        if (parts.size >= 3) {
+                            val y = parts[0]
+                            val m = parts[1]
+                            val d = parts[2]
+                            val h = parts.getOrElse(3) { 0 }
+                            val mi = parts.getOrElse(4) { 0 }
+                            val s = parts.getOrElse(5) { 0 }
+                            return "%04d-%02d-%02dT%02d:%02d:%02d".format(y, m, d, h, mi, s)
+                        }
+                    }
+                }
+            }
+            return null
         }
     }
 }

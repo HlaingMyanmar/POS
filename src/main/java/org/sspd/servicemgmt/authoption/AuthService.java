@@ -1,6 +1,7 @@
 package org.sspd.servicemgmt.authoption;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.LockedException;
@@ -17,6 +18,7 @@ import org.sspd.servicemgmt.jwt.TokenAwareUserDetails;
 import org.sspd.servicemgmt.rbacoptions.useroptions.model.User;
 import org.sspd.servicemgmt.rbacoptions.useroptions.repository.UserRepository;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,9 +40,14 @@ public class AuthService {
     private final AuditLogService auditLogService;
     private final RefreshTokenReuseHandler refreshTokenReuseHandler;
 
-    @org.springframework.beans.factory.annotation.Value(
-            "${application.security.auth.single-session-per-user:true}")
+    @Value("${application.security.auth.single-session-per-user:true}")
     private boolean singleSessionPerUser;
+
+    @Value("${application.security.auth.idle-timeout-minutes:20}")
+    private long idleTimeoutMinutes;
+
+    @Value("${application.security.auth.absolute-timeout-hours:10}")
+    private long absoluteTimeoutHours;
 
     @Transactional
     public LoginResult authenticateUser(AuthRequest request, String ip, String device) {
@@ -55,7 +62,6 @@ public class AuthService {
                 .orElseGet(() -> LoginAttemptService.normalizeKey(rawLogin));
 
         loginAttemptService.assertNotLocked(lockKey);
-        // Honor any legacy locks still keyed by username/email from before canonical keys.
         knownUser.ifPresent(u -> {
             loginAttemptService.assertNotLocked(LoginAttemptService.normalizeKey(u.getUsername()));
             loginAttemptService.assertNotLocked(LoginAttemptService.normalizeKey(u.getEmail()));
@@ -99,11 +105,13 @@ public class AuthService {
             refreshSessionRepository.revokeAllActiveForUser(user.getId(), Instant.now());
         }
 
+        Instant now = Instant.now();
         UserDetails userDetails = userDetailsService.loadUserByUsername(rawLogin);
         String accessToken = jwtService.generateToken(userDetails, tokenVersion);
         String refreshJti = UUID.randomUUID().toString();
-        String refreshToken = jwtService.generateRefreshToken(userDetails, tokenVersion, refreshJti);
-        persistRefreshSession(user.getId(), refreshToken, refreshJti, UUID.randomUUID().toString());
+        long remainingMs = absoluteTimeout().toMillis();
+        String refreshToken = jwtService.generateRefreshToken(userDetails, tokenVersion, refreshJti, remainingMs);
+        persistRefreshSession(user.getId(), refreshToken, refreshJti, UUID.randomUUID().toString(), now, now);
 
         LoginResult result = toLoginResult(userDetails, user, accessToken, refreshToken);
         try {
@@ -123,68 +131,173 @@ public class AuthService {
 
     @Transactional
     public LoginResult refresh(String refreshToken) {
+        return rotateRefreshSession(refreshToken, false);
+    }
+
+    /**
+     * Idle unlock: password re-check + refresh cookie. Resets idle clock; absolute clock unchanged.
+     */
+    @Transactional
+    public LoginResult unlock(String refreshToken, String password) {
+        if (password == null || password.isBlank()) {
+            throw new BadCredentialsException("Password is required");
+        }
+        RefreshSessionProbe probe = loadActiveRefreshSession(refreshToken);
+        assertAbsoluteNotExpired(probe.session(), Instant.now());
+
+        User user = probe.user();
+        String login = user.getUsername() != null && !user.getUsername().isBlank()
+                ? user.getUsername()
+                : user.getEmail();
         try {
-            if (refreshToken == null || refreshToken.isBlank() || !jwtService.isRefreshToken(refreshToken)) {
-                throw new BadCredentialsException("Invalid refresh token");
-            }
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(login, password));
+        } catch (AuthenticationException ex) {
+            throw new BadCredentialsException("Username သို့မဟုတ် Password မှားနေပါသည်");
+        }
 
-            String jti = jwtService.extractJti(refreshToken);
-            if (jti == null || jti.isBlank()) {
-                throw new BadCredentialsException("Invalid refresh token");
-            }
+        return rotateRefreshSession(refreshToken, true);
+    }
 
-            RefreshSession session = refreshSessionRepository.findByJtiForUpdate(jti)
-                    .orElseThrow(() -> new BadCredentialsException("Refresh session expired"));
+    /**
+     * Issues a short-lived step-up token after password confirmation (for void / refund / RBAC).
+     */
+    @Transactional(readOnly = true)
+    public StepUpResult issueStepUp(String username, String password) {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new BadCredentialsException("Password is required");
+        }
+        try {
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
+        } catch (AuthenticationException ex) {
+            throw new BadCredentialsException("Username သို့မဟုတ် Password မှားနေပါသည်");
+        }
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        int tokenVersion = userDetails instanceof TokenAwareUserDetails tad ? tad.getTokenVersion() : 0;
+        String stepUpToken = jwtService.generateStepUpToken(userDetails, tokenVersion);
+        return new StepUpResult(stepUpToken, jwtService.getStepUpExpirationMs() / 1000L);
+    }
 
+    private LoginResult rotateRefreshSession(String refreshToken, boolean unlockIdle) {
+        try {
+            RefreshSessionProbe probe = loadActiveRefreshSession(refreshToken);
             Instant now = Instant.now();
-            if (!session.isActive(now)) {
-                if (session.getReplacedByJti() != null) {
-                    refreshTokenReuseHandler.revokeFamilyAndInvalidateUser(
-                            session.getFamilyId(), session.getUserId());
-                }
-                throw new BadCredentialsException("Refresh session expired");
-            }
+            RefreshSession session = probe.session();
+            UserDetails userDetails = probe.userDetails();
+            User user = probe.user();
+            TokenAwareUserDetails tokenAware = (TokenAwareUserDetails) userDetails;
 
-            String expectedHash = refreshTokenHasher.hash(refreshToken);
-            if (!Objects.equals(expectedHash, session.getTokenHash())) {
-                refreshTokenReuseHandler.revokeFamilyAndInvalidateUser(
-                        session.getFamilyId(), session.getUserId());
-                throw new BadCredentialsException("Refresh session expired");
-            }
-
-            String username = jwtService.extractUsername(refreshToken);
-            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-            if (!userDetails.isEnabled()
-                    || !jwtService.isTokenValid(refreshToken, userDetails)
-                    || !(userDetails instanceof TokenAwareUserDetails tokenAware)
-                    || !Objects.equals(jwtService.extractTokenVersion(refreshToken), tokenAware.getTokenVersion())) {
-                refreshTokenReuseHandler.revokeFamily(session.getFamilyId());
-                throw new BadCredentialsException("Refresh session expired");
-            }
-
-            User user = userRepository.findByUsernameOrEmail(username, username)
-                    .orElseThrow(() -> new BadCredentialsException("Refresh session expired"));
-            if (!Objects.equals(user.getId(), session.getUserId())) {
-                refreshTokenReuseHandler.revokeFamilyAndInvalidateUser(
-                        session.getFamilyId(), session.getUserId());
-                throw new BadCredentialsException("Refresh session expired");
+            assertAbsoluteNotExpired(session, now);
+            if (!unlockIdle) {
+                assertIdleNotExpired(session, now);
             }
 
             int tokenVersion = tokenAware.getTokenVersion();
             String accessToken = jwtService.generateToken(userDetails, tokenVersion);
             String newJti = UUID.randomUUID().toString();
-            String rotatedRefreshToken = jwtService.generateRefreshToken(userDetails, tokenVersion, newJti);
+            Instant sessionStarted = session.effectiveSessionStartedAt();
+            long remainingMs = remainingAbsoluteMs(sessionStarted, now);
+            String rotatedRefreshToken = jwtService.generateRefreshToken(
+                    userDetails, tokenVersion, newJti, remainingMs);
 
             session.setRevokedAt(now);
             session.setReplacedByJti(newJti);
-            persistRefreshSession(user.getId(), rotatedRefreshToken, newJti, session.getFamilyId());
+            persistRefreshSession(
+                    user.getId(),
+                    rotatedRefreshToken,
+                    newJti,
+                    session.getFamilyId(),
+                    sessionStarted,
+                    now);
 
             return toLoginResult(userDetails, user, accessToken, rotatedRefreshToken);
-        } catch (BadCredentialsException ex) {
+        } catch (AuthSessionException | BadCredentialsException ex) {
             throw ex;
         } catch (RuntimeException ex) {
             throw new BadCredentialsException("Invalid or expired refresh token");
         }
+    }
+
+    private RefreshSessionProbe loadActiveRefreshSession(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank() || !jwtService.isRefreshToken(refreshToken)) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
+
+        String jti = jwtService.extractJti(refreshToken);
+        if (jti == null || jti.isBlank()) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
+
+        RefreshSession session = refreshSessionRepository.findByJtiForUpdate(jti)
+                .orElseThrow(() -> new BadCredentialsException("Refresh session expired"));
+
+        Instant now = Instant.now();
+        if (!session.isActive(now)) {
+            if (session.getReplacedByJti() != null) {
+                refreshTokenReuseHandler.revokeFamilyAndInvalidateUser(
+                        session.getFamilyId(), session.getUserId());
+            }
+            throw new BadCredentialsException("Refresh session expired");
+        }
+
+        String expectedHash = refreshTokenHasher.hash(refreshToken);
+        if (!Objects.equals(expectedHash, session.getTokenHash())) {
+            refreshTokenReuseHandler.revokeFamilyAndInvalidateUser(
+                    session.getFamilyId(), session.getUserId());
+            throw new BadCredentialsException("Refresh session expired");
+        }
+
+        String username = jwtService.extractUsername(refreshToken);
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        if (!userDetails.isEnabled()
+                || !jwtService.isTokenValid(refreshToken, userDetails)
+                || !(userDetails instanceof TokenAwareUserDetails tokenAware)
+                || !Objects.equals(jwtService.extractTokenVersion(refreshToken), tokenAware.getTokenVersion())) {
+            refreshTokenReuseHandler.revokeFamily(session.getFamilyId());
+            throw new BadCredentialsException("Refresh session expired");
+        }
+
+        User user = userRepository.findByUsernameOrEmail(username, username)
+                .orElseThrow(() -> new BadCredentialsException("Refresh session expired"));
+        if (!Objects.equals(user.getId(), session.getUserId())) {
+            refreshTokenReuseHandler.revokeFamilyAndInvalidateUser(
+                    session.getFamilyId(), session.getUserId());
+            throw new BadCredentialsException("Refresh session expired");
+        }
+
+        return new RefreshSessionProbe(session, userDetails, user);
+    }
+
+    private void assertAbsoluteNotExpired(RefreshSession session, Instant now) {
+        Instant deadline = session.effectiveSessionStartedAt().plus(absoluteTimeout());
+        if (!deadline.isAfter(now)) {
+            refreshTokenReuseHandler.revokeFamily(session.getFamilyId());
+            throw new AuthSessionException(
+                    AuthSessionException.SESSION_ABSOLUTE,
+                    "Session expired. Please sign in again.");
+        }
+    }
+
+    private void assertIdleNotExpired(RefreshSession session, Instant now) {
+        Instant lastSeen = session.effectiveLastSeenAt();
+        if (!lastSeen.plus(idleTimeout()).isAfter(now)) {
+            throw new AuthSessionException(
+                    AuthSessionException.SESSION_IDLE,
+                    "Session locked due to inactivity. Please unlock.");
+        }
+    }
+
+    private Duration idleTimeout() {
+        return Duration.ofMinutes(Math.max(1, idleTimeoutMinutes));
+    }
+
+    private Duration absoluteTimeout() {
+        return Duration.ofHours(Math.max(1, absoluteTimeoutHours));
+    }
+
+    private long remainingAbsoluteMs(Instant sessionStartedAt, Instant now) {
+        Instant deadline = sessionStartedAt.plus(absoluteTimeout());
+        long remaining = Duration.between(now, deadline).toMillis();
+        return Math.max(1_000L, remaining);
     }
 
     /**
@@ -246,7 +359,13 @@ public class AuthService {
         return null;
     }
 
-    private void persistRefreshSession(Long userId, String refreshToken, String jti, String familyId) {
+    private void persistRefreshSession(
+            Long userId,
+            String refreshToken,
+            String jti,
+            String familyId,
+            Instant sessionStartedAt,
+            Instant lastSeenAt) {
         Instant expiresAt = jwtService.extractExpiration(refreshToken).toInstant();
         RefreshSession session = RefreshSession.builder()
                 .userId(userId)
@@ -255,6 +374,8 @@ public class AuthService {
                 .familyId(familyId)
                 .expiresAt(expiresAt)
                 .createdAt(Instant.now())
+                .sessionStartedAt(sessionStartedAt)
+                .lastSeenAt(lastSeenAt)
                 .build();
         refreshSessionRepository.save(session);
     }
@@ -282,6 +403,8 @@ public class AuthService {
                 permissions);
     }
 
+    private record RefreshSessionProbe(RefreshSession session, UserDetails userDetails, User user) {}
+
     public record LoginResult(
             String accessToken,
             String refreshToken,
@@ -291,4 +414,6 @@ public class AuthService {
             Integer staffId,
             Set<String> roles,
             Set<String> permissions) {}
+
+    public record StepUpResult(String stepUpToken, long expiresInSeconds) {}
 }

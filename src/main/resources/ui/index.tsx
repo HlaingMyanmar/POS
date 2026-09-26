@@ -3,6 +3,18 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
+// Keep existing bookmarked hash URLs usable after moving to clean paths.
+if (window.location.hash.startsWith('#/')) {
+  const legacyRoute = window.location.hash.slice(1);
+  const queryIndex = legacyRoute.indexOf('?');
+  const legacyPath = queryIndex === -1 ? legacyRoute : legacyRoute.slice(0, queryIndex);
+  const search = queryIndex === -1 ? '' : legacyRoute.slice(queryIndex);
+  const publicRoutes = new Set(['/', '/shop', '/services', '/book-service', '/tracking', '/student', '/about', '/contact', '/scan']);
+  const isPublicRoute = publicRoutes.has(legacyPath) || legacyPath === '/courses' || legacyPath.startsWith('/courses/');
+  const nextPath = legacyPath.startsWith('/pos/') ? legacyPath : isPublicRoute ? legacyPath : '/pos' + legacyPath;
+  window.history.replaceState(null, '', nextPath + search);
+}
+
 console.log("System Initializing...");
 
 // Global error listener to help debug white screens

@@ -22,6 +22,7 @@ import retrofit2.Response
 
 class AuthViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = PreferenceManager(app)
+    private var loginGeneration = 0
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var notice by mutableStateOf<String?>(null); private set
@@ -39,6 +40,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Clears stale login success so AuthScreen does not auto-skip after logout. */
     fun resetForLoginScreen() {
+        loginGeneration++
         loading = false
         error = null
         notice = null
@@ -125,6 +127,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
         email: String,
         server: String
     ) {
+        val attemptGeneration = loginGeneration
         viewModelScope.launch {
             loading = true
             error = null
@@ -145,7 +148,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
                         "ဤ email ဖြင့် အကောင့်ရှိပြီးသား။ Password ပြန်သတ်မှတ်ရန် link ကို email သို့ ပို့ပြီးပါပြီ"
                     }
                 } else if (res.isSuccessful && body?.success == true && !data?.accessToken.isNullOrBlank()) {
-                    applySession(data!!, name, phone, address)
+                    if (attemptGeneration == loginGeneration) applySession(data!!, name, phone, address)
                 } else {
                     error = apiMessage(res, if (register) "အကောင့်ဖွင့်မရပါ" else "အကောင့်ဝင်မရပါ")
                 }
@@ -181,6 +184,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun google(idToken: String, server: String) {
+        val attemptGeneration = loginGeneration
         viewModelScope.launch {
             loading = true
             error = null
@@ -191,7 +195,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
                 val body = res.body()
                 val data = body?.data
                 if (res.isSuccessful && body?.success == true && !data?.accessToken.isNullOrBlank()) {
-                    applySession(data!!)
+                    if (attemptGeneration == loginGeneration) applySession(data!!)
                 } else {
                     error = apiMessage(res, "Gmail ဝင်မရပါ")
                 }

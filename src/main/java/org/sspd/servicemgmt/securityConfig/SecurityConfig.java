@@ -30,6 +30,7 @@ public class SecurityConfig {
     private final AuthenticationProvider authenticationProvider;
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final PublicEndpointRateLimitFilter publicEndpointRateLimitFilter;
+    private final org.sspd.servicemgmt.authoption.StepUpAuthFilter stepUpAuthFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:3000,http://127.0.0.1:3000}")
     private String allowedOriginsRaw;
@@ -40,6 +41,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/auth/step-up").authenticated()
                         .requestMatchers("/api/v1/auth/**", "/api/v1/customer-portal/auth/**", "/ws-clinic/**", "/ws-native/**", "/topic/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/customer/reset-password").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/customer-reset-password.html").permitAll()
@@ -63,6 +65,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(stepUpAuthFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(publicEndpointRateLimitFilter, JwtAuthenticationFilter.class);
 
         return http.build();
@@ -81,7 +84,7 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(
                 "Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin",
-                "X-Setup-Token", "X-Scanner-Token", "X-Client-Type"));
+                "X-Setup-Token", "X-Scanner-Token", "X-Client-Type", "X-Step-Up-Token"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

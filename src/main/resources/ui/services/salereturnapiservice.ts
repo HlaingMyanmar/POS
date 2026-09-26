@@ -1,5 +1,5 @@
 import { api } from './api';
-import { ApiResponse, SaleReturnDTO, SaleReturnDetailDTO } from '../types';
+import { ApiResponse, SaleReturnDTO, SaleReturnDetailDTO, SaleReturnReasonDTO } from '../types';
 
 type AnyRecord = Record<string, any>;
 
@@ -165,8 +165,10 @@ export const saleReturnApiService = {
 };
 
 export const saleReturnReasonApiService = {
-  getAll: async (activeOnly = true) => {
-    const res = await api.get<any, ApiResponse<any[]>>(`/v1/sale-return-reasons?activeOnly=${activeOnly}`);
+  getAll: async (activeOnly = true): Promise<SaleReturnReasonDTO[]> => {
+    const res = await api.get<any, ApiResponse<SaleReturnReasonDTO[]>>(`/v1/sale-return-reasons?activeOnly=${activeOnly}`);
     return res.data ?? [];
-  }
+  },
+  create: async (reason: SaleReturnReasonDTO): Promise<SaleReturnReasonDTO> =>
+    (await api.post<any, ApiResponse<SaleReturnReasonDTO>>('/v1/sale-return-reasons', reason)).data!
 };

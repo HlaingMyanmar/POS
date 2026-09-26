@@ -129,10 +129,13 @@ public class CustomerPortalService {
 
     @Transactional(readOnly = true)
     public List<CustomerCatalogProductDTO> catalogProducts() {
-        return productRepository.findAll().stream()
+        var products = productRepository.findAll().stream()
                 .filter(p -> !Boolean.TRUE.equals(p.getArchived()))
                 .map(this::toCatalogProduct)
                 .toList();
+        catalogRepository.attachVideos(products);
+        catalogRepository.attachReviewSummary(products);
+        return products;
     }
 
     private final org.sspd.servicemgmt.customerportaloptions.repository.CustomerCatalogRepository catalogRepository;
@@ -188,6 +191,7 @@ public class CustomerPortalService {
             String priceType = org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport.resolvePriceType(s);
             dto.setPriceType(priceType);
             dto.setPrice(org.sspd.servicemgmt.bookingoptions.support.ServicePriceSnapshotSupport.resolveDisplayPrice(s, priceType));
+            dto.setNormalPrice(s.getPrice());
             dto.setMinPrice(s.getMinPrice());
             dto.setMaxPrice(s.getMaxPrice());
             dto.setWarrantyMonths(s.getWarrantyMonths());
@@ -996,6 +1000,7 @@ public class CustomerPortalService {
         dto.setWarrantyMonths(p.getWarrantyMonths());
         dto.setWarrantyTerms(blank(p.getWarrantyTerms()) ? null : p.getWarrantyTerms().trim());
         dto.setRemark(blank(p.getRemark()) ? null : p.getRemark().trim());
+        dto.setSpecifications(blank(p.getSpecifications()) ? null : p.getSpecifications().trim());
         int stock;
         if (Boolean.TRUE.equals(p.getHasSerial())) {
             Long available = productSerialRepository.countByProductIdAndStatus(p.getId(), SerialStatus.Available);

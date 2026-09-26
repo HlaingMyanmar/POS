@@ -49,6 +49,10 @@ public class CompanySettings {
     @Column(name = "notification_sound_base64", columnDefinition = "LONGTEXT")
     private String notificationSoundBase64;
 
+    /** Auto-reply sent when a customer opens the chat with a greeting (blank = disabled). */
+    @Column(name = "chat_greeting", length = 1000)
+    private String chatGreeting;
+
     @Lob
     @Column(name = "voucher_config_json", columnDefinition = "LONGTEXT")
     private String voucherConfigJson;
